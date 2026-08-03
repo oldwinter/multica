@@ -1,0 +1,85 @@
+{
+  "page": {
+    "eyebrow": "검토 가능한 프로필",
+    "title": "Twin 워크스페이스",
+    "description": "작업에 반영하기 전에 근거를 확인하세요.",
+    "preview_badge": "미리보기 데이터"
+  },
+  "actions": {
+    "open_issues": "이슈 열기",
+    "open_agents": "에이전트 열기",
+    "review_profile": "프로필 검토",
+    "try_again": "다시 시도",
+    "connect_evidence": "근거 연결"
+  },
+  "status": {
+    "pending": {
+      "label": "승인 대기",
+      "title": "사용 전에 검토하세요",
+      "description": "승인 전에는 실행에 사용하지 않습니다."
+    },
+    "signed_off": {
+      "label": "승인됨",
+      "title": "작업에 반영할 준비가 됨",
+      "description": "프로필이 검토된 근거 스냅샷과 일치합니다."
+    },
+    "invalid": {
+      "label": "유효하지 않은 패키지",
+      "title": "먼저 패키지를 수정하세요",
+      "description": "원본 파일을 수정하기 전에는 프로필을 사용할 수 없습니다."
+    }
+  },
+  "summary": {
+    "sources": "소스",
+    "assertions": "주장",
+    "skills": "스킬",
+    "rules": "규칙",
+    "last_reviewed": "최근 검토"
+  },
+  "review": {
+    "title": "검토 경로",
+    "description": "승인과 실행 완료를 별도로 판단합니다.",
+    "steps": {
+      "import": { "label": "가져오기", "description": "근거 선택" },
+      "generate": { "label": "Twin 생성", "description": "주장 초안" },
+      "topic": { "label": "주제 열고 할당", "description": "목표 범위 정하기" },
+      "coordinate": { "label": "실행 조율", "description": "진행과 예외 관찰" },
+      "accept": { "label": "보고 및 승인", "description": "사람의 결정" },
+      "deposition": { "label": "기록", "description": "변경분 보관" }
+    }
+  },
+  "tabs": {
+    "overview": "개요",
+    "evidence": "근거",
+    "topics": "주제"
+  },
+  "evidence": {
+    "title": "근거 스냅샷",
+    "description": "각 주장은 원본 자료와 연결되어 있습니다.",
+    "source_count": "개 소스",
+    "view_detail": "근거 보기"
+  },
+  "topics": {
+    "title": "이슈 기반 주제",
+    "description": "범위가 정해진 작업을 이슈로 전달합니다.",
+    "open_issue": "이슈 열기",
+    "empty": "아직 주제가 없습니다."
+  },
+  "states": {
+    "loading": "Twin 프로필 로드 중",
+    "empty_title": "아직 Twin 프로필이 없습니다",
+    "empty_description": "근거를 연결해 검토 가능한 프로필을 만드세요.",
+    "error_title": "Twin 프로필을 사용할 수 없습니다",
+    "error_description": "프로필을 불러오지 못했습니다."
+  },
+  "state_labels": {
+    "complete": "완료",
+    "current": "검토 중",
+    "upcoming": "예정"
+  },
+  "topic_states": {
+    "active": "활성",
+    "waiting": "대기 중",
+    "accepted": "승인됨"
+  }
+}

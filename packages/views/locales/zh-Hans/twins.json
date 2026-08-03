@@ -1,0 +1,85 @@
+{
+  "page": {
+    "eyebrow": "可审阅的画像",
+    "title": "Twin 工作台",
+    "description": "先审阅证据，再让它参与当前工作区的执行。",
+    "preview_badge": "预览数据"
+  },
+  "actions": {
+    "open_issues": "打开 Issues",
+    "open_agents": "打开智能体",
+    "review_profile": "审阅画像",
+    "try_again": "重试",
+    "connect_evidence": "连接证据"
+  },
+  "status": {
+    "pending": {
+      "label": "等待首肯",
+      "title": "使用前先审阅",
+      "description": "完成首肯前，画像不能指导执行。"
+    },
+    "signed_off": {
+      "label": "已首肯",
+      "title": "可以参与工作",
+      "description": "画像与已审阅的证据快照一致。"
+    },
+    "invalid": {
+      "label": "包无效",
+      "title": "先修复画像包",
+      "description": "修复源文件后才能读取这个画像。"
+    }
+  },
+  "summary": {
+    "sources": "来源",
+    "assertions": "论断",
+    "skills": "技能",
+    "rules": "规则",
+    "last_reviewed": "最近审阅"
+  },
+  "review": {
+    "title": "审阅路径",
+    "description": "Twin 循环把接受决定与运行完成分开。",
+    "steps": {
+      "import": { "label": "导入", "description": "选择证据" },
+      "generate": { "label": "生成 Twin", "description": "形成论断草稿" },
+      "topic": { "label": "打开主题并派发", "description": "界定工作目标" },
+      "coordinate": { "label": "协调执行", "description": "观察进展与例外" },
+      "accept": { "label": "报告并接受", "description": "由人做决定" },
+      "deposition": { "label": "沉积", "description": "归档增量" }
+    }
+  },
+  "tabs": {
+    "overview": "概览",
+    "evidence": "证据快照",
+    "topics": "Issue 主题"
+  },
+  "evidence": {
+    "title": "证据快照",
+    "description": "每条论断都保留到源材料的链接。",
+    "source_count": "个来源",
+    "view_detail": "查看证据"
+  },
+  "topics": {
+    "title": "Issue 主题",
+    "description": "通过现有 Issue 模型派发边界清晰的工作。",
+    "open_issue": "打开 Issue",
+    "empty": "还没有主题。"
+  },
+  "states": {
+    "loading": "正在加载 Twin 画像",
+    "empty_title": "还没有 Twin 画像",
+    "empty_description": "连接证据，创建可审阅的画像。",
+    "error_title": "Twin 画像不可用",
+    "error_description": "暂时无法加载画像。"
+  },
+  "state_labels": {
+    "complete": "已完成",
+    "current": "审阅中",
+    "upcoming": "待处理"
+  },
+  "topic_states": {
+    "active": "进行中",
+    "waiting": "等待中",
+    "accepted": "已接受"
+  }
+}

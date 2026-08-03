@@ -19,6 +19,7 @@ const LEGACY_ROUTE_SEGMENTS = new Set([
   "inbox",
   "my-issues",
   "autopilots",
+  "twins",
   "runtimes",
   "skills",
   "settings",

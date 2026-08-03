@@ -25,6 +25,7 @@ import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/vie
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
 import { SettingsPage } from "@multica/views/settings";
+import { TwinsPage } from "@multica/views/twins";
 import { useT } from "@multica/views/i18n";
 import { Download, Server } from "lucide-react";
 import { DaemonSettingsTab } from "./components/daemon-settings-tab";
@@ -185,6 +186,7 @@ export const appRoutes: RouteObject[] = [
             element: <AgentDetailPage />,
             handle: { title: "Agent" },
           },
+          { path: "twins", element: <TwinsPage />, handle: { title: "Twin" } },
           {
             path: "members/:id",
             element: <MemberDetailPage />,

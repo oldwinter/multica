@@ -1,0 +1,85 @@
+{
+  "page": {
+    "eyebrow": "Reviewable profile",
+    "title": "Twin workspace",
+    "description": "Review evidence before it informs work in this workspace.",
+    "preview_badge": "Preview data"
+  },
+  "actions": {
+    "open_issues": "Open issues",
+    "open_agents": "Open agents",
+    "review_profile": "Review profile",
+    "try_again": "Try again",
+    "connect_evidence": "Connect evidence"
+  },
+  "status": {
+    "pending": {
+      "label": "Pending sign-off",
+      "title": "Review before use",
+      "description": "This profile cannot guide execution until a person signs off."
+    },
+    "signed_off": {
+      "label": "Signed off",
+      "title": "Ready to inform work",
+      "description": "The profile matches the reviewed evidence snapshot."
+    },
+    "invalid": {
+      "label": "Invalid package",
+      "title": "Fix the package first",
+      "description": "The profile is unavailable until its source files are repaired."
+    }
+  },
+  "summary": {
+    "sources": "Sources",
+    "assertions": "Assertions",
+    "skills": "Skills",
+    "rules": "Rules",
+    "last_reviewed": "Last reviewed"
+  },
+  "review": {
+    "title": "Review path",
+    "description": "The Twin loop keeps acceptance separate from runtime completion.",
+    "steps": {
+      "import": { "label": "Import", "description": "Select evidence" },
+      "generate": { "label": "Generate Twin", "description": "Draft assertions" },
+      "topic": { "label": "Open topic and dispatch", "description": "Bound the objective" },
+      "coordinate": { "label": "Coordinate execution", "description": "Observe progress" },
+      "accept": { "label": "Report and accept", "description": "Human decision" },
+      "deposition": { "label": "Deposition", "description": "Archive a delta" }
+    }
+  },
+  "tabs": {
+    "overview": "Overview",
+    "evidence": "Evidence snapshot",
+    "topics": "Issue-backed topics"
+  },
+  "evidence": {
+    "title": "Evidence snapshot",
+    "description": "Assertions stay linked to their source material.",
+    "source_count": "sources",
+    "view_detail": "View evidence"
+  },
+  "topics": {
+    "title": "Issue-backed topics",
+    "description": "Dispatch bounded work through the workspace issue model.",
+    "open_issue": "Open issue",
+    "empty": "No topics yet."
+  },
+  "states": {
+    "loading": "Loading Twin profile",
+    "empty_title": "No Twin profile yet",
+    "empty_description": "Connect evidence to create a reviewable profile.",
+    "error_title": "Twin profile unavailable",
+    "error_description": "We could not load the profile."
+  },
+  "state_labels": {
+    "complete": "Complete",
+    "current": "In review",
+    "upcoming": "Upcoming"
+  },
+  "topic_states": {
+    "active": "Active",
+    "waiting": "Waiting",
+    "accepted": "Accepted"
+  }
+}

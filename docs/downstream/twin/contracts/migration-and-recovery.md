@@ -1,0 +1,72 @@
+# Migration, recovery, platform, and final-custody contract
+
+<!-- twin-contract: migrations -->
+| id | rule | owner/proof | rejection | semantic_sha256 |
+| --- | --- | --- | --- | --- |
+| migration-table-identity | every new table has one non-null identity, separate concurrent unique index, later PK USING INDEX | Todo 7 then Todo 8 | implicit index, duplicate identity, wrong reverse down order | b41f7ecf952382ba15bcfd73088c4f410aa041278861c5f8768f256baa419a2a |
+| migration-pending-files | pending indexes are exactly two adjacent up/down pairs | Todo 8 only | Todo 20 addition/edit or wrong count | efaea46b63f3e55430aa915da3a8e4c07c3c8a6ccb0e71166364ad28897044a5 |
+| migration-receipt | provision disposable database first; run production migration runner and named tests; remove database | post-commit clean TARGET_SHA receipt | skip, no-test, pre-provision, leak, dirty/parent SHA | 69900f867f3ef6f5742f4e06d6ab91777b0dfe24f421e49e3b5dcfae7e514480 |
+| migration-barrier | Todo 1 commit precedes Todo 2; Todo 2 exact docs precede Todo 3 manifest | commit graph | early manifest or uncommitted path set | 70086586038dab8b5a7ff8f70b68aad1483be3fccb6a4429fd20de37312547f6 |
+
+<!-- twin-contract: recovery-operations -->
+| id | operation | prepare | release | reconcile/terminal | semantic_sha256 |
+| --- | --- | --- | --- | --- | --- |
+| recovery-artifact | stage private bytes and digest | durable operation row | commit metadata after verification | repair commit or quarantine/delete stage; never usable mismatch | cf983c91eb9b28e3294b21f773765833a71028093d34f85a19c062a8905e0a4f |
+| recovery-token | validate/lock identities and tombstone | rotate successor once | return plaintext once | replay conflict or explicit lost-response replacement | 4f10cba498d09dc34ba9f0b49782727e93911ee6cb1c27b56542967338d443b8 |
+| recovery-import | normalize/dedup local corpus | metadata operation | commit safe summary | retry/cleanup partial local artifact, no raw upload | 1694fa442c849924f1d492d33fed40a8b9a2ddeb41d694ff93d1223b0d3c7b63 |
+| recovery-generation | pin remote-allowed evidence and Ask | local artifact stage | commit draft metadata | reconcile artifact-before-DB and duplicate retry | ccaf281516918f13d398eb5bd1d24ed16cac1f50965f80d0bf27185c73b3e7d4 |
+| recovery-sign | validate Git/package/source policy | immutable local commit | create monotonic version metadata | quarantine tamper; no dangling version | 4a97a30217f0cf22078eae23408851b5f9515756d688582d3ca6e886e3c041e6 |
+| recovery-run | create private workspace, S2, Task link | open exec gate only after all proofs | supervised execution | hard-stop/reap/retain or authorized cleanup | 7ff23374421a3881187c8a99cb80a96607f546608a95888a2efb684c86c3913c |
+| recovery-effect | persist intent/idempotency/permit | external call once | record provider proof | confirmed/failed/unknown_outcome; manual proof resolution | 5d57d1886d38daeee1107c5aa07cf3e8b1bcf0f388d2c100f42b046ff648558a |
+| recovery-deposition | stage candidate/diff and aggregate digest | owner local review | typed commit | confirmed projection or compensating retry by same key | 2d23924a47a9a022678332b8ca8e19810f58b078dce729aff16632d6409e992a |
+
+<!-- twin-contract: platform-proof -->
+| id | platform | required proof | cleanup | semantic_sha256 |
+| --- | --- | --- | --- | --- |
+| platform-macos | macos-15 native Homebrew PostgreSQL 17, pgvector, Redis 8.2; no Docker/shared service; raw SYS_PROC_INFO cgo-free identity; Seatbelt | formula JSON, vector, migrations, two nodes, ACL, signed executable/keyring/deny and final composition receipts | wait pg_ctl/Redis PIDs, close ports, remove owned roots | 5d7147a10b8f1840f871339b9811e55125c9dc53b5033875077ed6999c0a3863 |
+| platform-linux | ubuntu-24.04 owned Docker PostgreSQL/Redis 7 plus canonical bwrap v0.9.0 option surface | pidfd/procfs magic proof, namespaces, mounts, seccomp, SCM_RIGHTS/credentials, signed executable/keyring/deny and final composition receipts | direct/adopted wait owners, forced namespace teardown, restore prerequisites | 5b760d15b3d2401948b00a74256951e3182de73c7d25687339d93dc69dc6d052 |
+| platform-executable | descriptor-only frozen-stage copy, before/after source stability, private exclusive no-follow creation, fsync, 0500, staged/started device+inode+digest | exact updater-only threat boundary; no fd-path execution; pre-egress gate | immediate post-Start unlink, instance lock, orphan scavenging | 6fa4aa03fc722f71c54692e905f56802a23ab567e5dfc98336ddf4bc6936b299 |
+| platform-receipt-ownership | Todo 21 proves only interception/deny/no provider/effect/tool success; Todo 31/F2 proves real tool/provider/effect success | exact clean completion SHA and automatic hosted artifacts | remediation invalidates all stale receipts | cf1d1ccbc4c11424c68385c5193cff5221adc146c844fc6f6c4767fcf3bc6657 |
+
+<!-- twin-contract: refinement-rejections -->
+| id | scope | validator rejection contract | semantic_sha256 |
+| --- | --- | --- | --- |
+| round-14 | authority/index/WS/keyring/evidence | reject admin workspace deletion, wrong pending-file count, missing enqueue proof, process-local WS authorization, stale generation/lease, background keyring delete, residue without credential_residue_unknown, dependency-closure drift, keyring graph drift, missing hosted receipts, or invalid evidence root | 755691b64d29efcf74eb6620c164c7cdad854f34cf9ea12b4f9818343f8e50a2 |
+| round-15 | exchange/HTTP/workflow/docs | reject auth-cache exchange, missing post-lock reload, post-body callback auth, unbound TARGET_SHA/head_sha, no draft-PR authority, or misowned four Skill/source-map files | 54fac17b7ec80ca89fffc5b81b86e3bc4ea11d43f6b826b549d4e04990254374 |
+| round-16 | selectors/registration/chat/workflow/E2E | reject body/query selectors, malformed headers, wrong derivation, plaintext/replay gaps, wrong token/cache use, missing ordinary filter, partial registration mutation, unowned chat consumer, incomplete workflow, manual dispatch dependency, or weak Redis two-node fixture | 1c614dd52fb1028614ca6da487c2b66689f795442caa005de4e92d57dcd6815c |
+| round-17 | lifecycle | reject ambiguous logout/retire/abandon route/caller/request/idempotency/terminal/outbox/lease/reinvite behavior or owner-state resurrection | e51ea575d73eb94f3c483a7c41cc66ffe308211eaafdd39dfd0a278e283b2301 |
+| round-18 | locality/egress | reject linked central raw messages/session/workdir/usage/events, LocalOnly crossing, incomplete operation phases, or unspecified compensation | 11b3360280f70799b8c32199fb427e8a80baee37f2bcbe5562feae5a1602dd88 |
+| round-19 | Agent binding | reject non-user or hidden builder/system binding, preflight mutation, wrong runtime-Agent locks, missing locked revalidation/drift retry, partial 409 mutation, or missing winner/deadlock proof | 5e6e6049cab1f4cf8ff75eba50b09a99c5cea9e59aca5919f47dc17771c38ecb |
+| round-20 | isolation | reject any ordinary selector/dedup/activity/aggregate/sweeper seeing linked tasks or incomplete direct consumer classification | 1339f2ff77080c4707dbd2e037f2a7f25e3da395a7f1a98ddfc5ebd27dccc0e3 |
+| round-21 | topology/profile/ACP | reject missing topology/profile guards, builder lock inversion, incomplete FailedProfiles qtx, snapshot-before-guard, partial UpdateAgent qtx, unsafe GC, or ACP eligibility | b4310514f290e9267d7a2837b970feb1c701dfa9703f6698e0d45edb16133c92 |
+| round-22 | Claude control/GC/profile | reject missing typed handler/version/identity/flags/protocol/fallback, changed ordinary nil-handler behavior, global GC delete, unordered/multi-lock GC, or incomplete profile revision protocol | 980ee9f4de423ebb44f6a70896bd1c685df698346f7e0320d19336cf5a0272e2 |
+| round-23 | races/revisions | reject second/nonmonotonic revision, lossy timestamp helper, concurrent response owner gap, missing winner orders, or publication before commit | 6e9e3bcb01430003fef5851749e403909148130ba9fbae6ead79f6176544ad38 |
+| round-24 | executable/receipts/migrations/docs | reject pathname/fd-path execution, incomplete frozen lease, raw unvalidated Claude test, weak migration isolation/receipt, missing creating-agents docs, or early Todo 3 manifest | e71ec6ea480d6df7cfe13d55ed6a8ddc0ced096f68fecc49b6299dc1390afd2b |
+| round-25 | custody | reject missing start identity/digest/unlink/scavenge/cleanup or receipt run/pass/no-skip/no-test/version/SHA assertions | 1b18de352ffadd0c2750f2d82f61da4618512f4ab94f75b85a0450ac5187763b |
+| round-26 | post-start/dependency graph | reject no staged-started platform gate, incomplete negative fixtures, dirty/precommit SHA receipts, missing hosted proof/orphan matrix, graph drift/cycle, or dependency ancestry gaps | 54f426e164e9c9d821b5f381d484d58a8f87c8cb8fa64566285e8ccba2315257 |
+| round-27 | OS process identity | reject naive proc O_NOFOLLOW, missing pidfd/procfs or Darwin raw proof, daemon-direct child, inherited descriptors, disabled death monitoring, early return, or incomplete kill windows | 0d3ebf5937c1c5c6aa0841f0887f9120653c4dce530311cb6b87112a294ec8b9 |
+| round-28 | supervisor gate/network | reject execution before anchor ack, PID/PGID change, writable/inherited gate descriptors, host-network gateway, veth/route, addressable daemon, wrong socket ownership, or missing network attacks | f77e17e70a75350e94b2aab303f210fb258629954f52466a4fb768c01742bca6 |
+| round-29 | database identity | reject table without identity/index/PK migration sequence, wrong down order, or missing duplicate/singleton tests | 1122ac7a11b5cbb14a1a8be3e5ff497a53a2e246b7aa89ed825025e3f3505142 |
+| round-30 | migration receipts/Linux topology | reject cross-Todo receipt reads, dirty TARGET_SHA/order violations, writable/PATH bwrap, wrong options/topology, missing wait owners/args/mounts/attacks, or weak Darwin adoption proof | 5a222e5861832f3e39ccd114b2c960507bc30d68d831dce7f28cc166043057e4 |
+| round-31 | hosted completion | reject incomplete signed Claude control, platform artifacts, exact-sha draft PR automation, process/network/cleanup proof, or production success attributed to Todo 21 | 264d8912773420dbc3647f11da6fd7f0d647472e295187b8610fbdf39a6000ca |
+| round-32 | native macOS/Git/possession | reject Docker/shared macOS services, weak formula lifecycle, unsafe locator/config/private repo, ordinary cache edits, malformed S1/S2/S3, LocalOnly, collision, Git pollution, writable overlay, or cleanup leak | dbe94be14ab1712794f7ba5b0b8640494c8286c105024b92ad6935d37db6dcfb |
+| round-33 | evidence ownership/config/index | reject premature repository/OS claims, missing owner composition, cache/network before effective config gate, credential rewrite leakage, cache-origin mismatch, or Todo 20 pending-index ownership | 9adf84c27db210a8a1d8b388eaff4fda821a0e9ef9510e11a5a26bd0a5f85f9e |
+| round-34 | process/effect split | reject Todo 20 process/OS/effect claims, missing process-neutral zero-effect proof, or final composition before Todo 22 release evidence | f5c8352bfa9ba396a3bf0d6af84df1bbe7ae37a2b6fa1683e3b59c2da945c6ee |
+| round-35 | transport/effect split and F1 ledger | reject Todo 21 approvals/releases/success, missing Todo 22 fake reconciliation, missing Todo 31/F2 success, or incomplete read-only 32-row receipt ledger | fa413e9c291db47b164747b89d25167f1a043cc09cd9d4e1cb428d6f571387e1 |
+| round-36 | final closed schemas | reject bad final command/receipt/log parsing, wrong hosted tuple, Todo 21 success substitution, or Todo 31 missing approved idempotent delivery | 6492fd3c7d2fdb8e1307126448c001d025acc550a776ddc092a4f3b6b4b65c5b |
+| round-37 | final command ownership | reject Todo 32 completion commands in final set, wrong frozen cwd/env/repository proof, wrong module cwd/typechecks, or noncanonical/unhashed artifacts | 3b56d8501115e77702536db1a5ff2bbbd1c6963e5e630a2bb993c7721ee40668 |
+| round-38 | plan custody/runner/artifact closure | reject missing external 0444 plan, worktree .omo, non-runner execution, wrong 62-command extraction/order/env/streams/Go activity, unresolved span, weak rehearsal, or extra artifact entry | bbf947bf9339ec6156cc624c328ac0586b3e8556b24af51fe820af6ee2154663 |
+| round-39 | hosted byte custody | reject malformed validator/custody schema, wrong modes/digests/bytes/listings, missing fsync, or mutation before/during/after consumption | 6f24c8e96865cc8743b7ec22637be2a1f6523af67726d8bce5a2567396ca58b6 |
+| round-40 | repository custody | reject loose/packed object, ref, FETCH_HEAD, index, worktree, baseline, or snapshot/result/summary mutation across any command or final audit boundary | 8ebd46421acdca50dfecc16f6ef7c3a8adbc6b49c6ff374b64bd79c1557589f6 |
+| round-41 | internal tool projections | reject missing/extra/duplicate platform/caller/tool rows, unknown keys, incomplete locator schema/coverage, writable/ambient/multi-root projection, mutation, or child resolution outside sealed root | f5f3a1cef4ba25c756d6f4c0adb1c342f10270978369eb9ded59e7eea15d278f |
+| round-42 | final reconciliation | reject stale/unreachable internal-tool rows, missing representative nested tools, incomplete platform graph, or caller/tool changes after reconciliation without remediation | 9dd1de078dbbf13388a946e5213ca75bfe5814938693390be6b1b8012c82fb39 |
+
+<!-- twin-contract: final-custody -->
+| id | owner | invariant | semantic_sha256 |
+| --- | --- | --- | --- |
+| custody-plan | start-work | exact reviewed SHA/bytes/round, canonical external regular non-link 0444 plan and closed receipt before worktree creation | 14b9fbb0b4efa8d7c2f2782c09e1e73c1cb32796d9f4d13b0529f2ad830ed373 |
+| custody-runner | F1 | explicit `final:` spans stripped once, exact order, closed environment/cwd, actual streams/exits, Go JSON activity, repository snapshot after every command | 59e1fa4b99e32be9a8a45b6fa3cce89537d835e0061fcc1fccb3bd15f6302ceb |
+| custody-platform | F2 | exact draft PR/head/workflow/two artifact tuple, closed manifests and section hashes, 0444 files/0555 directories, custody receipt | 1c7556715acc1438711607b47eb5440366184e7032c22b54df0f748765731c3e |
+| custody-qa | F3 | read protected bytes only between pre/post custody checks; all screenshots/traces outside protected root | 90f33d1c73849e05ed3a92bba42091e39ab6f11499fec11119a0b903f1a2e057 |
+| custody-upstream | F4 | read-only rehearsal at frozen SHA; baseline/objects/refs/FETCH_HEAD/index/worktree unchanged | 340262ccaa34da75ddbc765587799e58fec0a2400796ff7704c0bd4cd4db27a3 |
+| custody-tools | Todo 31/42 | exact reachable platform/caller tool locator rows and sealed projections; no ambient PATH or mutable target | 0b842af3b36996f0d9d684de6c613161dd5af419684e6c7a932fe47e76674ce3 |

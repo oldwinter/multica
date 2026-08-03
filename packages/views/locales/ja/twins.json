@@ -1,0 +1,85 @@
+{
+  "page": {
+    "eyebrow": "レビュー可能なプロフィール",
+    "title": "Twin ワークスペース",
+    "description": "作業に反映する前に、根拠を確認します。",
+    "preview_badge": "プレビューデータ"
+  },
+  "actions": {
+    "open_issues": "Issue を開く",
+    "open_agents": "エージェントを開く",
+    "review_profile": "プロフィールを確認",
+    "try_again": "再試行",
+    "connect_evidence": "根拠を接続"
+  },
+  "status": {
+    "pending": {
+      "label": "承認待ち",
+      "title": "利用前に確認してください",
+      "description": "承認前は実行に使いません。"
+    },
+    "signed_off": {
+      "label": "承認済み",
+      "title": "作業に反映できます",
+      "description": "プロフィールは確認済みの根拠スナップショットと一致しています。"
+    },
+    "invalid": {
+      "label": "無効なパッケージ",
+      "title": "まずパッケージを修正してください",
+      "description": "元ファイルを修正するまでプロフィールは利用できません。"
+    }
+  },
+  "summary": {
+    "sources": "ソース",
+    "assertions": "主張",
+    "skills": "スキル",
+    "rules": "ルール",
+    "last_reviewed": "最終確認"
+  },
+  "review": {
+    "title": "レビューの流れ",
+    "description": "承認と実行完了は別の判断です。",
+    "steps": {
+      "import": { "label": "インポート", "description": "根拠を選択" },
+      "generate": { "label": "Twin を生成", "description": "主張の下書き" },
+      "topic": { "label": "トピックを開いて派遣", "description": "目的の範囲を定める" },
+      "coordinate": { "label": "実行を調整", "description": "進捗と例外を確認" },
+      "accept": { "label": "報告して承認", "description": "人が判断" },
+      "deposition": { "label": "デポジション", "description": "差分を保存" }
+    }
+  },
+  "tabs": {
+    "overview": "概要",
+    "evidence": "根拠",
+    "topics": "トピック"
+  },
+  "evidence": {
+    "title": "根拠スナップショット",
+    "description": "各主張は元の資料にリンクされています。",
+    "source_count": "件のソース",
+    "view_detail": "根拠を見る"
+  },
+  "topics": {
+    "title": "Issue ベースのトピック",
+    "description": "Issue の作業を依頼します。",
+    "open_issue": "Issue を開く",
+    "empty": "トピックはまだありません。"
+  },
+  "states": {
+    "loading": "Twin プロフィールを読み込み中",
+    "empty_title": "Twin プロフィールはまだありません",
+    "empty_description": "根拠を接続してレビュー可能なプロフィールを作成します。",
+    "error_title": "Twin プロフィールを利用できません",
+    "error_description": "プロフィールを読み込めませんでした。"
+  },
+  "state_labels": {
+    "complete": "完了",
+    "current": "確認中",
+    "upcoming": "予定"
+  },
+  "topic_states": {
+    "active": "進行中",
+    "waiting": "待機中",
+    "accepted": "承認済み"
+  }
+}
