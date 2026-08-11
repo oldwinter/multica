@@ -6,6 +6,7 @@ import {
   Clock,
   Copy,
   FileText,
+  GitBranch,
   Link2,
   Loader2,
   MessageSquare,
@@ -44,6 +45,7 @@ import { memberListOptions } from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { StatusIcon } from "../issues/components";
 import { resolvedThreadRootIds, rootCommentIds } from "../issues/components/thread-utils";
+import { buildIssueBranchName } from "../issues/utils/branch-name";
 import { ProjectIcon } from "../projects/components/project-icon";
 import { routeIconForPath } from "../layout/route-icon-components";
 import { PROJECT_STATUS_CONFIG } from "@multica/core/projects/config";
@@ -238,6 +240,7 @@ export function SearchCommand() {
 
     if (currentIssueId && currentIssue) {
       const identifier = currentIssue.identifier;
+      const branchName = buildIssueBranchName(identifier, currentIssue.title);
       items.push(
         {
           key: "copy-issue-link",
@@ -259,6 +262,31 @@ export function SearchCommand() {
           onSelect: () => {
             void copyText(identifier).then((ok) => {
               if (ok) toast.success(t(($) => $.toast.copied_identifier, { identifier }));
+            });
+            setOpen(false);
+          },
+        },
+        {
+          key: "copy-branch-name",
+          label: t(($) => $.commands.copy_branch_name),
+          icon: GitBranch,
+          keywords: [
+            "copy",
+            "git",
+            "branch",
+            "checkout",
+            identifier.toLowerCase(),
+            branchName,
+          ],
+          onSelect: () => {
+            void copyText(branchName).then((ok) => {
+              if (ok) {
+                toast.success(
+                  t(($) => $.toast.branch_name_copied, { branch: branchName }),
+                );
+              } else {
+                toast.error(t(($) => $.toast.branch_name_copy_failed));
+              }
             });
             setOpen(false);
           },

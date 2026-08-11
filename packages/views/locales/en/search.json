@@ -26,6 +26,7 @@
     "new_project": "New Project",
     "copy_issue_link": "Copy Issue Link",
     "copy_identifier": "Copy Identifier ({{identifier}})",
+    "copy_branch_name": "Copy Git Branch Name",
     "fold_all_comments": "Fold All Comments",
     "unfold_all_comments": "Unfold All Comments",
     "switch_to_light": "Switch to Light Theme",
@@ -34,7 +35,9 @@
   },
   "toast": {
     "link_copied": "Link copied",
-    "copied_identifier": "Copied {{identifier}}"
+    "copied_identifier": "Copied {{identifier}}",
+    "branch_name_copied": "Copied branch name: {{branch}}",
+    "branch_name_copy_failed": "Couldn't copy branch name"
   },
   "empty": {
     "no_results": "No results found.",

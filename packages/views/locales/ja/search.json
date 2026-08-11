@@ -26,6 +26,7 @@
     "new_project": "新規プロジェクト",
     "copy_issue_link": "イシューのリンクをコピー",
     "copy_identifier": "識別子をコピー ({{identifier}})",
+    "copy_branch_name": "Git ブランチ名をコピー",
     "fold_all_comments": "すべてのコメントを折りたたむ",
     "unfold_all_comments": "すべてのコメントを展開",
     "switch_to_light": "ライトテーマに切り替え",
@@ -34,7 +35,9 @@
   },
   "toast": {
     "link_copied": "リンクをコピーしました",
-    "copied_identifier": "{{identifier}}をコピーしました"
+    "copied_identifier": "{{identifier}}をコピーしました",
+    "branch_name_copied": "ブランチ名をコピーしました: {{branch}}",
+    "branch_name_copy_failed": "ブランチ名をコピーできませんでした"
   },
   "empty": {
     "no_results": "結果が見つかりませんでした。",

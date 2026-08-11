@@ -493,6 +493,41 @@ describe("SearchCommand", () => {
     writeSpy.mockRestore();
   });
 
+  it("copies a Git branch name for the current issue", async () => {
+    const user = userEvent.setup();
+    const writeSpy = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockImplementation(mockClipboardWrite);
+    mockPathname.current = "/ws-test/issues/issue-1";
+    mockAllIssues.current = [
+      {
+        id: "issue-1",
+        identifier: "MUL-42",
+        title: "Fix OAuth redirect",
+        status: "todo",
+      },
+    ];
+    renderSearch();
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "branch");
+    const branchItem = await screen.findByText(
+      (_, el) =>
+        el?.textContent === "Copy Git Branch Name" && el?.tagName === "SPAN",
+    );
+    await user.click(branchItem);
+
+    expect(mockClipboardWrite).toHaveBeenCalledWith(
+      "mul-42-fix-oauth-redirect",
+    );
+    expect(mockToastSuccess).toHaveBeenCalledWith(
+      "Copied branch name: mul-42-fix-oauth-redirect",
+    );
+    expect(useSearchStore.getState().open).toBe(false);
+
+    writeSpy.mockRestore();
+  });
+
   it("hides fold/unfold-all-comments commands off issue detail routes", async () => {
     const user = userEvent.setup();
     mockPathname.current = "/ws-test/projects";
