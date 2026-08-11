@@ -13,14 +13,19 @@
   padding-inline-end: var(--chat-launcher-clearance);
 }
 
+@utility pb-chat-launcher {
+  padding-block-end: var(--chat-launcher-clearance);
+}
+
 /* Twin copy is reviewed in four locales and often mixes CJK with issue IDs.
- * Keep short phrases together where the browser has enough room, and restore
- * Korean word boundaries without forcing unbreakable overflow on narrow views. */
+ * Keep CJK phrases together without forcing unbreakable overflow on narrow views. */
 [data-twin-copy] {
   text-wrap: pretty;
   line-break: strict;
 }
 
+html[lang|="zh"] [data-twin-copy],
+html[lang|="ja"] [data-twin-copy],
 html[lang|="ko"] [data-twin-copy] {
   word-break: keep-all;
   overflow-wrap: break-word;

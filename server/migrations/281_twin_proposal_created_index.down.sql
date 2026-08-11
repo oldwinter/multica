@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS twin_proposal_workspace_created_idx;

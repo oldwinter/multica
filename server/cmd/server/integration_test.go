@@ -423,7 +423,7 @@ func TestVerifyCodeNewUserHasNoWorkspace(t *testing.T) {
 }
 
 func TestProtectedRoutesRequireAuth(t *testing.T) {
-	paths := []string{"/api/me", "/api/issues", "/api/agents", "/api/inbox", "/api/workspaces"}
+	paths := []string{"/api/me", "/api/issues", "/api/agents", "/api/inbox", "/api/workspaces", "/api/twin/overview"}
 
 	for _, path := range paths {
 		resp, err := http.Get(testServer.URL + path)
@@ -433,6 +433,317 @@ func TestProtectedRoutesRequireAuth(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != 401 {
 			t.Fatalf("%s: expected 401, got %d", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestWikiPageCRUDThroughRouter(t *testing.T) {
+	// Create workspace-scoped markdown page.
+	createBody := map[string]any{
+		"scope":   "workspace",
+		"path":    "index.md",
+		"title":   "Home",
+		"content": "# Home\n\nIntegration wiki page.",
+	}
+	createResp := authRequest(t, "POST", "/api/wiki/pages", createBody)
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(createResp.Body)
+		t.Fatalf("create wiki page: status %d body %s", createResp.StatusCode, body)
+	}
+	var created struct {
+		ID      string `json:"id"`
+		Path    string `json:"path"`
+		Content string `json:"content"`
+		Scope   string `json:"scope"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if created.ID == "" || created.Path != "index.md" || created.Scope != "workspace" {
+		t.Fatalf("unexpected create payload: %+v", created)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM wiki_page WHERE id = $1`, created.ID)
+	})
+
+	listResp := authRequest(t, "GET", "/api/wiki/pages?scope=workspace", nil)
+	defer listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(listResp.Body)
+		t.Fatalf("list wiki pages: status %d body %s", listResp.StatusCode, body)
+	}
+	var listed []struct {
+		ID   string `json:"id"`
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	found := false
+	for _, p := range listed {
+		if p.ID == created.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("created page missing from list: %+v", listed)
+	}
+
+	getResp := authRequest(t, "GET", "/api/wiki/pages/"+created.ID, nil)
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(getResp.Body)
+		t.Fatalf("get wiki page: status %d body %s", getResp.StatusCode, body)
+	}
+	var got struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(getResp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode get: %v", err)
+	}
+	if !strings.Contains(got.Content, "Integration wiki page") {
+		t.Fatalf("unexpected content: %q", got.Content)
+	}
+
+	updateResp := authRequest(t, "PUT", "/api/wiki/pages/"+created.ID, map[string]any{
+		"content": "# Home\n\nUpdated.",
+	})
+	defer updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(updateResp.Body)
+		t.Fatalf("update wiki page: status %d body %s", updateResp.StatusCode, body)
+	}
+
+	// Personal wiki is private, cross-workspace (workspace_id null).
+	personalResp := authRequest(t, "POST", "/api/wiki/pages", map[string]any{
+		"scope":   "user",
+		"path":    "notes.md",
+		"title":   "Notes",
+		"content": "private",
+	})
+	defer personalResp.Body.Close()
+	if personalResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(personalResp.Body)
+		t.Fatalf("create personal wiki page: status %d body %s", personalResp.StatusCode, body)
+	}
+	var personal struct {
+		ID          string  `json:"id"`
+		WorkspaceID *string `json:"workspace_id"`
+		OwnerUserID *string `json:"owner_user_id"`
+	}
+	if err := json.NewDecoder(personalResp.Body).Decode(&personal); err != nil {
+		t.Fatalf("decode personal: %v", err)
+	}
+	if personal.WorkspaceID != nil {
+		t.Fatalf("personal page must have null workspace_id, got %v", *personal.WorkspaceID)
+	}
+	if personal.OwnerUserID == nil || *personal.OwnerUserID == "" {
+		t.Fatal("personal page must set owner_user_id")
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM wiki_page WHERE id = $1`, personal.ID)
+	})
+
+	// Same personal library is listed regardless of which workspace header is used.
+	listPersonal := authRequest(t, "GET", "/api/wiki/pages?scope=user", nil)
+	defer listPersonal.Body.Close()
+	if listPersonal.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(listPersonal.Body)
+		t.Fatalf("list personal: status %d body %s", listPersonal.StatusCode, body)
+	}
+	var personalList []struct {
+		ID          string  `json:"id"`
+		WorkspaceID *string `json:"workspace_id"`
+	}
+	if err := json.NewDecoder(listPersonal.Body).Decode(&personalList); err != nil {
+		t.Fatalf("decode personal list: %v", err)
+	}
+	foundPersonal := false
+	for _, p := range personalList {
+		if p.ID == personal.ID {
+			foundPersonal = true
+			if p.WorkspaceID != nil {
+				t.Fatalf("listed personal page should have null workspace_id")
+			}
+		}
+	}
+	if !foundPersonal {
+		t.Fatalf("personal page missing from list: %+v", personalList)
+	}
+
+	deleteResp := authRequest(t, "DELETE", "/api/wiki/pages/"+created.ID, nil)
+	defer deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(deleteResp.Body)
+		t.Fatalf("delete wiki page: status %d body %s", deleteResp.StatusCode, body)
+	}
+}
+
+func TestTwinOverviewThroughRouter(t *testing.T) {
+	resp := authRequest(t, "GET", "/api/twin/overview", nil)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected empty Twin overview to return 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Twin json.RawMessage `json:"twin"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode Twin overview: %v", err)
+	}
+	if string(result.Twin) != "null" {
+		t.Fatalf("expected empty Twin overview to contain null twin, got %s", result.Twin)
+	}
+}
+
+func TestTwinOverviewReturnsWorkspaceProfile(t *testing.T) {
+	ctx := context.Background()
+	_, err := testPool.Exec(ctx, `
+		INSERT INTO twin_profile (
+			workspace_id, name, state, review_digest,
+			source_count, assertion_count, skill_count, rule_count,
+			assertions, topics, review_steps
+		) VALUES (
+			$1, 'Integration Twin', 'pending-signoff', 'sha256:integration',
+			1, 1, 0, 1,
+			$2::jsonb, $3::jsonb, $4::jsonb
+		)
+	`, testWorkspaceID,
+		`[{"id":"a-1","text":"Keep changes reviewable.","sourceCount":1,"sourceRefs":["source-1"],"reviewed":false}]`,
+		`[{"id":"topic-1","issueIdentifier":"HAN-1","title":"Review import","state":"active","owner":"You","updatedAt":"Today"}]`,
+		`[{"id":"import","state":"complete"},{"id":"generate","state":"current"}]`,
+	)
+	if err != nil {
+		t.Fatalf("seed Twin profile: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(ctx, `DELETE FROM twin_profile WHERE workspace_id = $1`, testWorkspaceID)
+	})
+
+	resp := authRequest(t, "GET", "/api/twin/overview", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected Twin overview to return 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Twin struct {
+			Name         string `json:"name"`
+			ReviewDigest string `json:"reviewDigest"`
+			Assertions   []struct {
+				SourceRefs []string `json:"sourceRefs"`
+			} `json:"assertions"`
+		} `json:"twin"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode Twin profile: %v", err)
+	}
+	if result.Twin.Name != "Integration Twin" {
+		t.Fatalf("expected workspace Twin name, got %q", result.Twin.Name)
+	}
+	if result.Twin.ReviewDigest != "sha256:integration" {
+		t.Fatalf("expected review digest, got %q", result.Twin.ReviewDigest)
+	}
+	if len(result.Twin.Assertions) != 1 || len(result.Twin.Assertions[0].SourceRefs) != 1 {
+		t.Fatalf("expected one evidence-backed assertion, got %+v", result.Twin.Assertions)
+	}
+}
+
+func TestTwinOverviewRejectsNullMetadata(t *testing.T) {
+	ctx := context.Background()
+	_, err := testPool.Exec(ctx, `
+		INSERT INTO twin_profile (workspace_id, name, assertions, topics, review_steps)
+		VALUES ($1, 'Invalid Twin', 'null'::jsonb, '[]'::jsonb, '[]'::jsonb)
+	`, testWorkspaceID)
+	if err != nil {
+		t.Fatalf("seed invalid Twin profile: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(ctx, `DELETE FROM twin_profile WHERE workspace_id = $1`, testWorkspaceID)
+	})
+
+	resp := authRequest(t, "GET", "/api/twin/overview", nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected null Twin metadata to return 500, got %d: %s", resp.StatusCode, body)
+	}
+}
+
+func TestTwinOverviewIsWorkspaceScoped(t *testing.T) {
+	ctx := context.Background()
+	const slug = "integration-tests-twin-isolation"
+	_, _ = testPool.Exec(ctx, `DELETE FROM workspace WHERE slug = $1`, slug)
+
+	var otherWorkspaceID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO workspace (name, slug, description)
+		VALUES ($1, $2, $3)
+		RETURNING id
+	`, "Integration Tests Twin Isolation", slug, "Twin workspace isolation test").Scan(&otherWorkspaceID); err != nil {
+		t.Fatalf("create second workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM twin_profile WHERE workspace_id IN ($1, $2)`, testWorkspaceID, otherWorkspaceID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM workspace WHERE id = $1`, otherWorkspaceID)
+	})
+
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO member (workspace_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+	`, otherWorkspaceID, testUserID); err != nil {
+		t.Fatalf("create second workspace member: %v", err)
+	}
+	for _, profile := range []struct {
+		workspaceID string
+		name        string
+	}{
+		{testWorkspaceID, "Primary Twin"},
+		{otherWorkspaceID, "Secondary Twin"},
+	} {
+		if _, err := testPool.Exec(ctx, `
+			INSERT INTO twin_profile (workspace_id, name, review_digest)
+			VALUES ($1, $2, 'sha256:isolation')
+		`, profile.workspaceID, profile.name); err != nil {
+			t.Fatalf("seed %s: %v", profile.name, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		workspaceID string
+		wantName    string
+	}{
+		{testWorkspaceID, "Primary Twin"},
+		{otherWorkspaceID, "Secondary Twin"},
+	} {
+		req, err := http.NewRequest("GET", testServer.URL+"/api/twin/overview", nil)
+		if err != nil {
+			t.Fatalf("build request for %s: %v", tc.wantName, err)
+		}
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		req.Header.Set("X-Workspace-ID", tc.workspaceID)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request for %s failed: %v", tc.wantName, err)
+		}
+		var result struct {
+			Twin struct {
+				Name string `json:"name"`
+			} `json:"twin"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			t.Fatalf("decode %s: %v", tc.wantName, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || result.Twin.Name != tc.wantName {
+			t.Fatalf("expected %s Twin, got status %d and name %q", tc.wantName, resp.StatusCode, result.Twin.Name)
 		}
 	}
 }
@@ -775,6 +1086,61 @@ func TestDeleteWorkspaceRequiresOwner(t *testing.T) {
 	}
 	if !exists {
 		t.Fatal("workspace was deleted despite non-owner request")
+	}
+}
+
+func TestDeleteWorkspaceRemovesTwinProfile(t *testing.T) {
+	ctx := context.Background()
+	const slug = "integration-tests-delete-twin"
+	_, _ = testPool.Exec(ctx, `DELETE FROM workspace WHERE slug = $1`, slug)
+
+	var wsID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO workspace (name, slug, description)
+		VALUES ($1, $2, $3)
+		RETURNING id
+	`, "Integration Tests Delete Twin", slug, "DeleteWorkspace Twin cleanup test").Scan(&wsID); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM twin_profile WHERE workspace_id = $1`, wsID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM workspace WHERE id = $1`, wsID)
+	})
+
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO member (workspace_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+	`, wsID, testUserID); err != nil {
+		t.Fatalf("create owner member: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO twin_profile (workspace_id, name, review_digest)
+		VALUES ($1, 'Delete me', 'sha256:delete-test')
+	`, wsID); err != nil {
+		t.Fatalf("seed Twin profile: %v", err)
+	}
+
+	req, err := http.NewRequest("DELETE", testServer.URL+"/api/workspaces/"+wsID, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("X-Workspace-ID", wsID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204 for owner DELETE, got %d", resp.StatusCode)
+	}
+
+	var profileCount int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM twin_profile WHERE workspace_id = $1`, wsID).Scan(&profileCount); err != nil {
+		t.Fatalf("verify Twin profile cleanup: %v", err)
+	}
+	if profileCount != 0 {
+		t.Fatalf("expected Twin profile cleanup, found %d rows", profileCount)
 	}
 }
 

@@ -12,9 +12,10 @@ export type {
   PermissionContext,
 } from "./types";
 
-export { canAssignAgentToIssue, canEditAgent } from "./rules";
+export { canAssignAgentToIssue, canEditAgent, canManageWikiTwin } from "./rules";
 
 export {
   useAgentPermissions,
   useSkillPermissions,
 } from "./use-resource-permissions";
+export { useWikiTwinPermissions } from "./use-wiki-twin-permissions";

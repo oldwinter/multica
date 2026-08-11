@@ -169,8 +169,26 @@ import type {
   BillingCheckoutSessionStatus,
   CreateBillingPortalSessionResponse,
 } from "../types";
+import type { TwinOverviewResponse } from "../twins";
+import type {
+  CreateWikiPageInput,
+  ListWikiPagesParams,
+  UpdateWikiPageInput,
+  WikiPage,
+  WikiPageSummary,
+} from "../wiki";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type { CreateFeedbackResponse, FeedbackKind } from "../feedback/types";
+import type {
+  LMWikiDetail,
+  LMWikiOverview,
+  LMWikiRefreshResult,
+  TwinOverview,
+  TwinProposalDetail,
+  TwinProposalResult,
+  TwinVersionDetail,
+  TwinVersionResult,
+} from "../twins/types";
 import type {
   CloudRuntimeNode,
   CreateCloudRuntimeNodeRequest,
@@ -221,6 +239,9 @@ import {
   EMPTY_LIST_ISSUES_RESPONSE,
   EMPTY_SEARCH_ISSUES_RESPONSE,
   EMPTY_SEARCH_PROJECTS_RESPONSE,
+  EMPTY_TWIN_OVERVIEW_RESPONSE,
+  EMPTY_WIKI_PAGE,
+  EMPTY_WIKI_PAGE_LIST,
   EMPTY_SQUAD,
   EMPTY_SQUAD_LIST,
   EMPTY_SQUAD_MEMBER_STATUS_LIST,
@@ -249,6 +270,9 @@ import {
   RuntimeUsageListSchema,
   SearchIssuesResponseSchema,
   SearchProjectsResponseSchema,
+  TwinOverviewResponseSchema,
+  WikiPageListSchema,
+  WikiPageSchema,
   SquadSchema,
   SquadListSchema,
   SquadMemberStatusListResponseSchema,
@@ -311,6 +335,16 @@ import {
   EMPTY_LIST_GITHUB_REPOSITORIES_RESPONSE,
   RuntimeModelListRequestSchema,
   MALFORMED_RUNTIME_MODEL_LIST_REQUEST,
+  EMPTY_LM_WIKI_OVERVIEW,
+  EMPTY_TWIN_OVERVIEW,
+  LMWikiDetailSchema,
+  LMWikiOverviewSchema,
+  LMWikiRefreshResultSchema,
+  TwinOverviewSchema,
+  TwinProposalDetailSchema,
+  TwinProposalResultSchema,
+  TwinVersionDetailSchema,
+  TwinVersionResultSchema,
 } from "./schemas";
 
 /** Identifies the calling client to the server.
@@ -2529,6 +2563,55 @@ export class ApiClient {
     await this.fetch(`/api/projects/${id}`, { method: "DELETE" });
   }
 
+  async getTwinOverview(): Promise<TwinOverviewResponse> {
+    const raw = await this.fetch<unknown>("/api/twin/overview");
+    return parseWithFallback(raw, TwinOverviewResponseSchema, EMPTY_TWIN_OVERVIEW_RESPONSE, {
+      endpoint: "GET /api/twin/overview",
+    });
+  }
+
+  async listWikiPages(params: ListWikiPagesParams = {}): Promise<WikiPageSummary[]> {
+    const search = new URLSearchParams();
+    if (params.scope) search.set("scope", params.scope);
+    if (params.project_id) search.set("project_id", params.project_id);
+    const qs = search.toString();
+    const raw = await this.fetch<unknown>(`/api/wiki/pages${qs ? `?${qs}` : ""}`);
+    return parseWithFallback(raw, WikiPageListSchema, EMPTY_WIKI_PAGE_LIST, {
+      endpoint: "GET /api/wiki/pages",
+    });
+  }
+
+  async getWikiPage(id: string): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(`/api/wiki/pages/${encodeURIComponent(id)}`);
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "GET /api/wiki/pages/:id",
+    });
+  }
+
+  async createWikiPage(data: CreateWikiPageInput): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>("/api/wiki/pages", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "POST /api/wiki/pages",
+    });
+  }
+
+  async updateWikiPage(id: string, data: UpdateWikiPageInput): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(`/api/wiki/pages/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "PUT /api/wiki/pages/:id",
+    });
+  }
+
+  async deleteWikiPage(id: string): Promise<void> {
+    await this.fetch(`/api/wiki/pages/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
   // Project resources
   async listProjectResources(
     projectId: string,
@@ -2910,6 +2993,74 @@ export class ApiClient {
 
   async getAutopilot(id: string): Promise<GetAutopilotResponse> {
     return this.fetch(`/api/autopilots/${id}`);
+  }
+
+  async getLMWiki(): Promise<LMWikiOverview> {
+    const raw = await this.fetch<unknown>("/api/lm-wiki/");
+    return parseWithFallback(raw, LMWikiOverviewSchema, EMPTY_LM_WIKI_OVERVIEW, {
+      endpoint: "GET /api/lm-wiki",
+    });
+  }
+
+  async getLMWikiRevision(revisionId: string): Promise<LMWikiDetail> {
+    const raw = await this.fetch<unknown>(`/api/lm-wiki/revisions/${revisionId}`);
+    return LMWikiDetailSchema.parse(raw);
+  }
+
+  async refreshLMWiki(): Promise<LMWikiRefreshResult> {
+    const raw = await this.fetch<unknown>("/api/lm-wiki/refresh", { method: "POST" });
+    return LMWikiRefreshResultSchema.parse(raw);
+  }
+
+  async acceptLMWikiRevision(revisionId: string): Promise<LMWikiDetail> {
+    const raw = await this.fetch<unknown>(`/api/lm-wiki/revisions/${revisionId}/accept`, { method: "POST" });
+    return LMWikiDetailSchema.parse(raw);
+  }
+
+  async rejectLMWikiRevision(revisionId: string, reason?: string): Promise<LMWikiDetail> {
+    const raw = await this.fetch<unknown>(`/api/lm-wiki/revisions/${revisionId}/reject`, {
+      method: "POST",
+      body: JSON.stringify(reason === undefined ? {} : { reason }),
+    });
+    return LMWikiDetailSchema.parse(raw);
+  }
+
+  async getTwins(): Promise<TwinOverview> {
+    const raw = await this.fetch<unknown>("/api/twins/");
+    return parseWithFallback(raw, TwinOverviewSchema, EMPTY_TWIN_OVERVIEW, {
+      endpoint: "GET /api/twins",
+    });
+  }
+
+  async getTwinProposal(proposalId: string): Promise<TwinProposalDetail> {
+    const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}`);
+    return TwinProposalDetailSchema.parse(raw);
+  }
+
+  async getTwinVersion(versionId: string): Promise<TwinVersionDetail> {
+    const raw = await this.fetch<unknown>(`/api/twins/versions/${versionId}`);
+    return TwinVersionDetailSchema.parse(raw);
+  }
+
+  async ensureTwinProposal(wikiRevisionId: string): Promise<TwinProposalResult> {
+    const raw = await this.fetch<unknown>("/api/twins/proposals", {
+      method: "POST",
+      body: JSON.stringify({ wiki_revision_id: wikiRevisionId }),
+    });
+    return TwinProposalResultSchema.parse(raw);
+  }
+
+  async acceptTwinProposal(proposalId: string): Promise<TwinVersionResult> {
+    const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/accept`, { method: "POST" });
+    return TwinVersionResultSchema.parse(raw);
+  }
+
+  async rejectTwinProposal(proposalId: string, reason?: string): Promise<TwinProposalDetail> {
+    const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/reject`, {
+      method: "POST",
+      body: JSON.stringify(reason === undefined ? {} : { reason }),
+    });
+    return TwinProposalDetailSchema.parse(raw);
   }
 
   async createAutopilot(data: CreateAutopilotRequest): Promise<Autopilot> {

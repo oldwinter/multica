@@ -113,6 +113,4 @@ Strategy: mixed, constrained by the existing Multica system. The page canvas is 
 
 ### Accepted Debt
 
-| Item | Location | Why accepted | Owner / Exit |
-|---|---|---|---|
-| Preview data instead of a live Twin API | `packages/core/twins/preview.ts` | This UI slice must be inspectable before the backend contract exists; the boundary is explicit and removable. | Twin API contract work; replace the preview source without changing `packages/views/twins`. |
+The preview-data debt is resolved. The shared web/desktop surface now reads the parsed, workspace-scoped LM Wiki and Twin lifecycle contracts through React Query; no Twin-specific design debt is accepted.

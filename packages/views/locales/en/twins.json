@@ -1,85 +1,86 @@
 {
   "page": {
-    "eyebrow": "Reviewable profile",
-    "title": "Twin workspace",
-    "description": "Review evidence before it informs work in this workspace.",
-    "preview_badge": "Preview data"
+    "eyebrow": "Evidence review",
+    "title": "LM Wiki and Twin",
+    "description": "Inspect workspace knowledge and approve the Twin versions built from it."
+  },
+  "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder" },
+  "states": {
+    "loading": "Loading LM Wiki and Twin",
+    "loading_description": "Retrieving the latest review history.",
+    "error_title": "Review workspace unavailable",
+    "error_description": "The latest lifecycle data could not be loaded."
+  },
+  "permissions": {
+    "read_only": "Read-only access",
+    "read_only_description": "You can inspect history and citations. Workspace owners and admins make review decisions."
+  },
+  "status": { "pending": "Pending review", "accepted": "Accepted", "rejected": "Rejected" },
+  "wiki": {
+    "title": "Workspace knowledge",
+    "description": "Canonical source material collected from this workspace.",
+    "first_run": "The first Wiki refresh is in progress or has not produced a revision yet.",
+    "revision_title": "Revision r{{number}}",
+    "empty_content": "This revision contains no supported source items."
+  },
+  "twin": {
+    "current_title": "Current Twin v{{number}}",
+    "no_current": "No signed Twin yet",
+    "description": "Signed versions are immutable. Pending proposals remain separate until review.",
+    "proposal_title": "Selected proposal",
+    "version_title": "Version v{{number}}",
+    "no_proposal": "No Twin proposal is available for the accepted Wiki revision.",
+    "rejected_guidance": "Refresh the Wiki after its sources change to build another evolution proposal.",
+    "empty_assertions": "No assertions are present."
+  },
+  "selectors": {
+    "wiki_revision": "Wiki revision",
+    "twin_proposal": "Twin proposal",
+    "twin_version": "Twin version"
   },
   "actions": {
-    "open_issues": "Open issues",
-    "open_agents": "Open agents",
-    "review_profile": "Review profile",
     "try_again": "Try again",
-    "connect_evidence": "Connect evidence"
+    "refresh_wiki": "Refresh Wiki",
+    "refreshing": "Refreshing Wiki",
+    "accept_revision": "Accept revision",
+    "reject_revision": "Reject revision",
+    "build_proposal": "Build proposal",
+    "building": "Building proposal",
+    "sign_off": "Sign off proposal",
+    "reject_proposal": "Reject proposal",
+    "saving": "Saving decision",
+    "cancel": "Cancel"
   },
-  "status": {
-    "pending": {
-      "label": "Pending sign-off",
-      "title": "Review before use",
-      "description": "This profile cannot guide execution until a person signs off."
-    },
-    "signed_off": {
-      "label": "Signed off",
-      "title": "Ready to inform work",
-      "description": "The profile matches the reviewed evidence snapshot."
-    },
-    "invalid": {
-      "label": "Invalid package",
-      "title": "Fix the package first",
-      "description": "The profile is unavailable until its source files are repaired."
-    }
+  "dialog": {
+    "accept_wiki_title": "Accept this Wiki revision?",
+    "reject_wiki_title": "Reject this Wiki revision?",
+    "accept_twin_title": "Sign off this Twin proposal?",
+    "reject_twin_title": "Reject this Twin proposal?",
+    "description": "This records an explicit workspace review decision.",
+    "reason": "Reason",
+    "confirm_acceptance": "Confirm acceptance",
+    "confirm_rejection": "Confirm rejection",
+    "confirm_sign_off": "Confirm sign-off"
   },
-  "summary": {
-    "sources": "Sources",
-    "assertions": "Assertions",
-    "skills": "Skills",
-    "rules": "Rules",
-    "last_reviewed": "Last reviewed"
+  "diff": {
+    "title": "Assertion changes",
+    "added": "Added assertions",
+    "removed": "Removed assertions",
+    "unchanged": "Unchanged assertions"
   },
   "review": {
-    "title": "Review path",
-    "description": "The Twin loop keeps acceptance separate from runtime completion.",
+    "title": "Twin review progress",
+    "description": "The persisted review path from workspace evidence to signed Twin.",
     "steps": {
-      "import": { "label": "Import", "description": "Select evidence" },
-      "generate": { "label": "Generate Twin", "description": "Draft assertions" },
-      "topic": { "label": "Open topic and dispatch", "description": "Bound the objective" },
-      "coordinate": { "label": "Coordinate execution", "description": "Observe progress" },
-      "accept": { "label": "Report and accept", "description": "Human decision" },
-      "deposition": { "label": "Deposition", "description": "Archive a delta" }
-    }
+      "import": "Import workspace sources",
+      "generate": "Generate Twin",
+      "topic": "Open topic and dispatch",
+      "coordinate": "Coordinate execution",
+      "accept": "Report and accept",
+      "deposition": "Deposition"
+    },
+    "states": { "complete": "Complete", "current": "Current", "upcoming": "Upcoming" }
   },
-  "tabs": {
-    "overview": "Overview",
-    "evidence": "Evidence snapshot",
-    "topics": "Issue-backed topics"
-  },
-  "evidence": {
-    "title": "Evidence snapshot",
-    "description": "Assertions stay linked to their source material.",
-    "source_count": "sources",
-    "view_detail": "View evidence"
-  },
-  "topics": {
-    "title": "Issue-backed topics",
-    "description": "Dispatch bounded work through the workspace issue model.",
-    "open_issue": "Open issue",
-    "empty": "No topics yet."
-  },
-  "states": {
-    "loading": "Loading Twin profile",
-    "empty_title": "No Twin profile yet",
-    "empty_description": "Connect evidence to create a reviewable profile.",
-    "error_title": "Twin profile unavailable",
-    "error_description": "We could not load the profile."
-  },
-  "state_labels": {
-    "complete": "Complete",
-    "current": "In review",
-    "upcoming": "Upcoming"
-  },
-  "topic_states": {
-    "active": "Active",
-    "waiting": "Waiting",
-    "accepted": "Accepted"
-  }
+  "topics": { "title": "Issue-backed topics", "open_issue": "Open issue", "empty": "No active issue-backed topics." },
+  "citations": { "title": "Citations", "show": "Show citation", "empty": "No citations are attached." }
 }

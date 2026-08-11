@@ -303,6 +303,31 @@ WHERE agent_id IN (SELECT id FROM agent WHERE agent.workspace_id = $1)
    OR issue_id IN (SELECT id FROM issue WHERE issue.workspace_id = $1)
    OR runtime_id IN (SELECT id FROM agent_runtime WHERE agent_runtime.workspace_id = $1);
 
+-- name: DeleteWorkspaceWikiTwinData :exec
+WITH
+deleted_twin_reviews AS (
+    DELETE FROM twin_proposal_review WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_versions AS (
+    DELETE FROM twin_version WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_proposals AS (
+    DELETE FROM twin_proposal WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_reviews AS (
+    DELETE FROM lm_wiki_review WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_citations AS (
+    DELETE FROM lm_wiki_citation WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_revisions AS (
+    DELETE FROM lm_wiki_revision WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+)
+DELETE FROM sys_cron_executions
+WHERE job_name = 'lm_wiki_daily_reconcile'
+  AND scope_kind = 'workspace'
+  AND scope_id = sqlc.arg(workspace_id)::uuid::text;
+
 -- name: DeleteWorkspaceChatMessages :exec
 DELETE FROM chat_message
 WHERE chat_session_id IN (
@@ -388,6 +413,12 @@ deleted_profiles AS (
     DELETE FROM runtime_profile WHERE runtime_profile.workspace_id = $1
 )
 DELETE FROM project WHERE project.workspace_id = $1;
+
+-- name: DeleteWorkspaceTwinProfile :exec
+DELETE FROM twin_profile WHERE twin_profile.workspace_id = $1;
+
+-- name: DeleteWorkspaceWikiPages :exec
+DELETE FROM wiki_page WHERE wiki_page.workspace_id = $1;
 
 -- name: DeleteWorkspaceAdministration :exec
 WITH

@@ -1,0 +1,43 @@
+{
+  "page": {
+    "eyebrow": "Workspace Wiki",
+    "title": "Wiki",
+    "description": "Markdown knowledge base for the workspace, projects, and personal notes."
+  },
+  "scopes": {
+    "workspace": "Workspace",
+    "project": "Project",
+    "user": "Personal"
+  },
+  "scope_hints": {
+    "user": "Personal pages follow you across every workspace."
+  },
+  "actions": {
+    "new_page": "New page",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "preview": "Preview",
+    "cancel": "Cancel",
+    "create": "Create"
+  },
+  "fields": {
+    "path": "Path",
+    "path_hint": "Relative .md path, e.g. index.md or concepts/agents.md",
+    "title": "Title",
+    "content": "Content",
+    "project": "Project"
+  },
+  "empty": {
+    "title": "No wiki pages yet",
+    "description": "Create a markdown page to start capturing knowledge in this scope.",
+    "pick_project": "Select a project to browse its wiki."
+  },
+  "states": {
+    "loading": "Loading wiki…",
+    "error": "Could not load wiki pages.",
+    "saving": "Saving…",
+    "saved": "Saved"
+  },
+  "delete_confirm": "Delete this wiki page? This cannot be undone."
+}

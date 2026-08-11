@@ -53,6 +53,19 @@ import type {
 } from "../types";
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 import type { CreateFeedbackResponse } from "../feedback/types";
+import type { TwinOverviewResponse } from "../twins";
+export {
+  EMPTY_LM_WIKI_OVERVIEW,
+  EMPTY_TWIN_OVERVIEW,
+  LMWikiDetailSchema,
+  LMWikiOverviewSchema,
+  LMWikiRefreshResultSchema,
+  TwinOverviewSchema,
+  TwinProposalDetailSchema,
+  TwinProposalResultSchema,
+  TwinVersionDetailSchema,
+  TwinVersionResultSchema,
+} from "./lm-wiki-twin-schemas";
 
 export const GitHubInstallationSchema = z.object({
   id: z.string(),
@@ -768,6 +781,74 @@ const ProjectSchema = z.object({
   done_count: z.number().default(0),
   resource_count: z.number().default(0),
 }).loose();
+
+const TwinProfileAssertionSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  sourceCount: z.number().default(0),
+  sourceRefs: z.array(z.string()).default([]),
+  reviewed: z.boolean().default(false),
+}).loose();
+
+const TwinProfileTopicSchema = z.object({
+  id: z.string(),
+  issueIdentifier: z.string(),
+  title: z.string(),
+  state: z.string(),
+  owner: z.string(),
+  updatedAt: z.string(),
+}).loose();
+
+const TwinReviewStepSchema = z.object({
+  id: z.string(),
+  state: z.string(),
+}).loose();
+
+const TwinProfileOverviewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  state: z.string(),
+  reviewDigest: z.string(),
+  updatedAt: z.string(),
+  sourceCount: z.number().default(0),
+  assertionCount: z.number().default(0),
+  skillCount: z.number().default(0),
+  ruleCount: z.number().default(0),
+  assertions: z.array(TwinProfileAssertionSchema).default([]),
+  topics: z.array(TwinProfileTopicSchema).default([]),
+  reviewSteps: z.array(TwinReviewStepSchema).default([]),
+}).loose();
+
+export const TwinOverviewResponseSchema = z.object({
+  twin: TwinProfileOverviewSchema.nullable().default(null),
+}).loose();
+
+export const EMPTY_TWIN_OVERVIEW_RESPONSE: TwinOverviewResponse = { twin: null };
+
+const WikiPageSummarySchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().nullable().default(null),
+  scope: z.string(),
+  project_id: z.string().nullable().default(null),
+  owner_user_id: z.string().nullable().default(null),
+  path: z.string(),
+  title: z.string().default(""),
+  created_by: z.string().nullable().default(null),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+}).loose();
+
+export const WikiPageSchema = WikiPageSummarySchema.extend({
+  content: z.string().default(""),
+}).loose();
+
+export const WikiPageListSchema = z.array(WikiPageSummarySchema).default([]);
+export const EMPTY_WIKI_PAGE_LIST: import("../wiki").WikiPageSummary[] = [];
+export const EMPTY_WIKI_PAGE: import("../wiki").WikiPage = {
+  id: "", workspace_id: null, scope: "workspace", project_id: null,
+  owner_user_id: null, path: "", title: "", content: "", created_by: null,
+  created_at: "", updated_at: "",
+};
 
 const SearchProjectResultSchema = ProjectSchema.extend({
   match_source: z.string(),

@@ -393,6 +393,17 @@ func (q *Queries) LockWorkspaceForDelete(ctx context.Context, id pgtype.UUID) (p
 	return id_2, err
 }
 
+const lockWorkspaceForWikiArtifactCreate = `-- name: LockWorkspaceForWikiArtifactCreate :one
+SELECT id FROM workspace WHERE id = $1 FOR KEY SHARE
+`
+
+func (q *Queries) LockWorkspaceForWikiArtifactCreate(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockWorkspaceForWikiArtifactCreate, id)
+	var id_2 pgtype.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const updateWorkspace = `-- name: UpdateWorkspace :one
 UPDATE workspace SET
     name = COALESCE($2, name),

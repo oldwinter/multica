@@ -1,0 +1,43 @@
+{
+  "page": {
+    "eyebrow": "工作区 Wiki",
+    "title": "Wiki",
+    "description": "面向工作区、项目与个人的 Markdown 知识库。"
+  },
+  "scopes": {
+    "workspace": "工作区",
+    "project": "项目",
+    "user": "个人"
+  },
+  "scope_hints": {
+    "user": "个人库跨工作区共享，在任意工作区打开都能看到。"
+  },
+  "actions": {
+    "new_page": "新建页面",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "preview": "预览",
+    "cancel": "取消",
+    "create": "创建"
+  },
+  "fields": {
+    "path": "路径",
+    "path_hint": "相对 .md 路径，例如 index.md 或 concepts/agents.md",
+    "title": "标题",
+    "content": "内容",
+    "project": "项目"
+  },
+  "empty": {
+    "title": "还没有 Wiki 页面",
+    "description": "创建 Markdown 页面，开始在该范围内沉淀知识。",
+    "pick_project": "选择一个项目以浏览其 Wiki。"
+  },
+  "states": {
+    "loading": "正在加载 Wiki…",
+    "error": "无法加载 Wiki 页面。",
+    "saving": "保存中…",
+    "saved": "已保存"
+  },
+  "delete_confirm": "删除此 Wiki 页面？此操作无法撤销。"
+}

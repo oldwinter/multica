@@ -1,0 +1,43 @@
+{
+  "page": {
+    "eyebrow": "ワークスペース Wiki",
+    "title": "Wiki",
+    "description": "ワークスペース・プロジェクト・個人向けの Markdown 知識ベースです。"
+  },
+  "scopes": {
+    "workspace": "ワークスペース",
+    "project": "プロジェクト",
+    "user": "個人"
+  },
+  "scope_hints": {
+    "user": "個人ページはすべてのワークスペースで共有されます。"
+  },
+  "actions": {
+    "new_page": "新規ページ",
+    "save": "保存",
+    "delete": "削除",
+    "edit": "編集",
+    "preview": "プレビュー",
+    "cancel": "キャンセル",
+    "create": "作成"
+  },
+  "fields": {
+    "path": "パス",
+    "path_hint": "相対 .md パス（例: index.md / concepts/agents.md）",
+    "title": "タイトル",
+    "content": "本文",
+    "project": "プロジェクト"
+  },
+  "empty": {
+    "title": "Wiki ページがありません",
+    "description": "Markdown ページを作成して、このスコープに知識を蓄積しましょう。",
+    "pick_project": "プロジェクトを選択して Wiki を表示します。"
+  },
+  "states": {
+    "loading": "Wiki を読み込み中…",
+    "error": "Wiki ページを読み込めませんでした。",
+    "saving": "保存中…",
+    "saved": "保存しました"
+  },
+  "delete_confirm": "この Wiki ページを削除しますか？元に戻せません。"
+}

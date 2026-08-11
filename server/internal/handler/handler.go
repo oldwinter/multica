@@ -52,6 +52,20 @@ type txStarter interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
+type lmWikiTxStarter struct {
+	txStarter
+}
+
+func (s lmWikiTxStarter) BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	starter, ok := s.txStarter.(interface {
+		BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+	})
+	if !ok {
+		return nil, errors.New("lm wiki transaction starter does not support transaction options")
+	}
+	return starter.BeginTx(ctx, options)
+}
+
 type dbExecutor interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
@@ -162,6 +176,8 @@ type Handler struct {
 	TaskService            *service.TaskService
 	IssueService           *service.IssueService
 	AutopilotService       *service.AutopilotService
+	WikiService            *service.WikiService
+	TwinService            *service.TwinService
 	EmailService           *service.EmailService
 	UpdateStore            UpdateStore
 	ModelListStore         ModelListStore
@@ -325,6 +341,9 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	// backs auto-titling. A deployment with no MULTICA_LLM_* configuration gets
 	// a disabled client, which turns the feature off rather than failing.
 	taskSvc.QuickActions = llmClient
+	twinSvc := service.NewTwinService(queries, txStarter)
+	wikiSvc := service.NewWikiService(queries, lmWikiTxStarter{txStarter: txStarter})
+	wikiSvc.OnAccepted = twinSvc
 	h := &Handler{
 		Queries:                      queries,
 		DB:                           executor,
@@ -337,6 +356,8 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		TaskService:                  taskSvc,
 		IssueService:                 service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc),
 		AutopilotService:             service.NewAutopilotService(queries, txStarter, bus, taskSvc),
+		WikiService:                  wikiSvc,
+		TwinService:                  twinSvc,
 		EmailService:                 emailService,
 		UpdateStore:                  NewInMemoryUpdateStore(),
 		ModelListStore:               NewInMemoryModelListStore(),

@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY lm_wiki_citation_workspace_source_uidx;

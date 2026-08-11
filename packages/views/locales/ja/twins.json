@@ -1,85 +1,86 @@
 {
   "page": {
-    "eyebrow": "レビュー可能なプロフィール",
-    "title": "Twin ワークスペース",
-    "description": "作業に反映する前に、根拠を確認します。",
-    "preview_badge": "プレビューデータ"
+    "eyebrow": "根拠レビュー",
+    "title": "LM Wiki と Twin",
+    "description": "ワークスペースの知識を確認し、そこから構築された Twin バージョンを承認します。"
+  },
+  "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder" },
+  "states": {
+    "loading": "LM Wiki と Twin を読み込み中",
+    "loading_description": "最新のレビュー履歴を取得しています。",
+    "error_title": "レビューワークスペースを利用できません",
+    "error_description": "最新のライフサイクルデータを読み込めませんでした。"
+  },
+  "permissions": {
+    "read_only": "読み取り専用アクセス",
+    "read_only_description": "履歴と引用を確認できます。レビュー判断はワークスペースの owner と admin が行います。"
+  },
+  "status": { "pending": "レビュー待ち", "accepted": "承認済み", "rejected": "却下済み" },
+  "wiki": {
+    "title": "ワークスペースの知識",
+    "description": "このワークスペースから収集された正規のソース資料です。",
+    "first_run": "最初の Wiki 更新が進行中か、まだリビジョンが作成されていません。",
+    "revision_title": "リビジョン r{{number}}",
+    "empty_content": "このリビジョンには対応するソース項目がありません。"
+  },
+  "twin": {
+    "current_title": "現在の Twin v{{number}}",
+    "no_current": "署名済み Twin はまだありません",
+    "description": "署名済みバージョンは変更されません。保留中の提案はレビューまで分離されます。",
+    "proposal_title": "選択した提案",
+    "version_title": "バージョン v{{number}}",
+    "no_proposal": "承認済み Wiki リビジョンの Twin 提案はありません。",
+    "rejected_guidance": "ソースが変更された後に Wiki を更新すると、新しい進化提案を構築できます。",
+    "empty_assertions": "主張はありません。"
+  },
+  "selectors": {
+    "wiki_revision": "Wiki リビジョン",
+    "twin_proposal": "Twin 提案",
+    "twin_version": "Twin バージョン"
   },
   "actions": {
-    "open_issues": "Issue を開く",
-    "open_agents": "エージェントを開く",
-    "review_profile": "プロフィールを確認",
     "try_again": "再試行",
-    "connect_evidence": "根拠を接続"
+    "refresh_wiki": "Wiki を更新",
+    "refreshing": "Wiki を更新中",
+    "accept_revision": "リビジョンを承認",
+    "reject_revision": "リビジョンを却下",
+    "build_proposal": "提案を構築",
+    "building": "提案を構築中",
+    "sign_off": "提案に署名",
+    "reject_proposal": "提案を却下",
+    "saving": "判断を保存中",
+    "cancel": "キャンセル"
   },
-  "status": {
-    "pending": {
-      "label": "承認待ち",
-      "title": "利用前に確認してください",
-      "description": "承認前は実行に使いません。"
-    },
-    "signed_off": {
-      "label": "承認済み",
-      "title": "作業に反映できます",
-      "description": "プロフィールは確認済みの根拠スナップショットと一致しています。"
-    },
-    "invalid": {
-      "label": "無効なパッケージ",
-      "title": "まずパッケージを修正してください",
-      "description": "元ファイルを修正するまでプロフィールは利用できません。"
-    }
+  "dialog": {
+    "accept_wiki_title": "この Wiki リビジョンを承認しますか？",
+    "reject_wiki_title": "この Wiki リビジョンを却下しますか？",
+    "accept_twin_title": "この Twin 提案に署名しますか？",
+    "reject_twin_title": "この Twin 提案を却下しますか？",
+    "description": "ワークスペースの明示的なレビュー判断を記録します。",
+    "reason": "理由",
+    "confirm_acceptance": "承認を確定",
+    "confirm_rejection": "却下を確定",
+    "confirm_sign_off": "署名を確定"
   },
-  "summary": {
-    "sources": "ソース",
-    "assertions": "主張",
-    "skills": "スキル",
-    "rules": "ルール",
-    "last_reviewed": "最終確認"
+  "diff": {
+    "title": "主張の変更",
+    "added": "追加された主張",
+    "removed": "削除された主張",
+    "unchanged": "変更されていない主張"
   },
   "review": {
-    "title": "レビューの流れ",
-    "description": "承認と実行完了は別の判断です。",
+    "title": "Twin レビューの進捗",
+    "description": "ワークスペースの根拠から署名済み Twin までの永続化されたレビューフローです。",
     "steps": {
-      "import": { "label": "インポート", "description": "根拠を選択" },
-      "generate": { "label": "Twin を生成", "description": "主張の下書き" },
-      "topic": { "label": "トピックを開いて派遣", "description": "目的の範囲を定める" },
-      "coordinate": { "label": "実行を調整", "description": "進捗と例外を確認" },
-      "accept": { "label": "報告して承認", "description": "人が判断" },
-      "deposition": { "label": "デポジション", "description": "差分を保存" }
-    }
+      "import": "ワークスペースのソースを取り込む",
+      "generate": "Twin を生成",
+      "topic": "トピックを開いて割り当てる",
+      "coordinate": "実行を調整",
+      "accept": "報告して承認",
+      "deposition": "記録を確定"
+    },
+    "states": { "complete": "完了", "current": "現在", "upcoming": "今後" }
   },
-  "tabs": {
-    "overview": "概要",
-    "evidence": "根拠",
-    "topics": "トピック"
-  },
-  "evidence": {
-    "title": "根拠スナップショット",
-    "description": "各主張は元の資料にリンクされています。",
-    "source_count": "件のソース",
-    "view_detail": "根拠を見る"
-  },
-  "topics": {
-    "title": "Issue ベースのトピック",
-    "description": "Issue の作業を依頼します。",
-    "open_issue": "Issue を開く",
-    "empty": "トピックはまだありません。"
-  },
-  "states": {
-    "loading": "Twin プロフィールを読み込み中",
-    "empty_title": "Twin プロフィールはまだありません",
-    "empty_description": "根拠を接続してレビュー可能なプロフィールを作成します。",
-    "error_title": "Twin プロフィールを利用できません",
-    "error_description": "プロフィールを読み込めませんでした。"
-  },
-  "state_labels": {
-    "complete": "完了",
-    "current": "確認中",
-    "upcoming": "予定"
-  },
-  "topic_states": {
-    "active": "進行中",
-    "waiting": "待機中",
-    "accepted": "承認済み"
-  }
+  "topics": { "title": "Issue ベースのトピック", "open_issue": "Issue を開く", "empty": "アクティブな Issue トピックはありません。" },
+  "citations": { "title": "引用", "show": "引用を表示", "empty": "引用は添付されていません。" }
 }

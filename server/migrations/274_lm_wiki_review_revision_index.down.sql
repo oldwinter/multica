@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY lm_wiki_review_workspace_revision_uidx;

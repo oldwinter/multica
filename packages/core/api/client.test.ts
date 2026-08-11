@@ -1706,3 +1706,124 @@ describe("ApiClient unsubscribe endpoints", () => {
     ).rejects.toBeInstanceOf(ApiError);
   });
 });
+
+describe("ApiClient LM Wiki and Twin lifecycle contracts", () => {
+  const revision = {
+    id: "revision-1",
+    revision_number: 1,
+    schema_version: 1,
+    source_digest: "sha256:wiki",
+    content: { schema_version: 1 },
+    trigger_kind: "manual",
+    requested_by_id: null,
+    created_at: "2026-08-11T00:00:00Z",
+    review: null,
+  };
+  const proposal = {
+    id: "proposal-1",
+    kind: "initial",
+    source_wiki_revision_id: "revision-1",
+    base_twin_version_id: null,
+    schema_version: 1,
+    content: { schema_version: 1 },
+    content_digest: "sha256:twin",
+    requested_by_id: null,
+    created_at: "2026-08-11T00:00:00Z",
+    review: null,
+    signed_version: null,
+  };
+  const version = {
+    id: "version-1",
+    version_number: 1,
+    proposal_id: "proposal-1",
+    source_wiki_revision_id: "revision-1",
+    prior_version_id: null,
+    schema_version: 1,
+    content: { schema_version: 1 },
+    content_digest: "sha256:twin",
+    signed_off_by_id: "member-1",
+    signed_off_at: "2026-08-11T00:00:00Z",
+    created_at: "2026-08-11T00:00:00Z",
+  };
+
+  function json(body: unknown) {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("uses parsed endpoints for Wiki and Twin read/write contracts", async () => {
+    const detail = { revision, citations: [] };
+    const twinDetail = { proposal, source_revision: revision, citations: [] };
+    const versionDetail = { version, proposal, source_revision: revision, citations: [] };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ latest_revision: revision }))
+      .mockResolvedValueOnce(json(detail))
+      .mockResolvedValueOnce(json({ created: true, revision }))
+      .mockResolvedValueOnce(json(detail))
+      .mockResolvedValueOnce(json(detail))
+      .mockResolvedValueOnce(json({ current_version: version }))
+      .mockResolvedValueOnce(json(twinDetail))
+      .mockResolvedValueOnce(json(versionDetail))
+      .mockResolvedValueOnce(json({ created: true, proposal }))
+      .mockResolvedValueOnce(json({ created: true, version }))
+      .mockResolvedValueOnce(json(twinDetail));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    await expect(client.getLMWiki()).resolves.toMatchObject({ can_manage: false, revisions: [] });
+    await expect(client.getLMWikiRevision("revision-1")).resolves.toEqual(detail);
+    await expect(client.refreshLMWiki()).resolves.toMatchObject({ created: true });
+    await expect(client.acceptLMWikiRevision("revision-1")).resolves.toEqual(detail);
+    await expect(client.rejectLMWikiRevision("revision-1", "not ready")).resolves.toEqual(detail);
+    await expect(client.getTwins()).resolves.toMatchObject({ can_manage: false, proposals: [], versions: [] });
+    await expect(client.getTwinProposal("proposal-1")).resolves.toEqual(twinDetail);
+    await expect(client.getTwinVersion("version-1")).resolves.toEqual(versionDetail);
+    await expect(client.ensureTwinProposal("revision-1")).resolves.toMatchObject({ created: true });
+    await expect(client.acceptTwinProposal("proposal-1")).resolves.toMatchObject({ created: true });
+    await expect(client.rejectTwinProposal("proposal-1", "not ready")).resolves.toEqual(twinDetail);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.example.test/api/lm-wiki/",
+      "https://api.example.test/api/lm-wiki/revisions/revision-1",
+      "https://api.example.test/api/lm-wiki/refresh",
+      "https://api.example.test/api/lm-wiki/revisions/revision-1/accept",
+      "https://api.example.test/api/lm-wiki/revisions/revision-1/reject",
+      "https://api.example.test/api/twins/",
+      "https://api.example.test/api/twins/proposals/proposal-1",
+      "https://api.example.test/api/twins/versions/version-1",
+      "https://api.example.test/api/twins/proposals",
+      "https://api.example.test/api/twins/proposals/proposal-1/accept",
+      "https://api.example.test/api/twins/proposals/proposal-1/reject",
+    ]);
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ reason: "not ready" }),
+    });
+    expect(fetchMock.mock.calls[8]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ wiki_revision_id: "revision-1" }),
+    });
+    expect(fetchMock.mock.calls[10]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ reason: "not ready" }),
+    });
+  });
+
+  it("keeps overview fallbacks but rejects malformed lifecycle details", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(json({ latest_revision: { id: "" } }))
+      .mockResolvedValueOnce(json({ version: { id: "" } })));
+    const client = new ApiClient("https://api.example.test");
+
+    await expect(client.getLMWiki()).resolves.toEqual({
+      latest_revision: null,
+      accepted_revision: null,
+      pending_revision: null,
+      revisions: [],
+      can_manage: false,
+    });
+    await expect(client.getTwinVersion("version-1")).rejects.toThrow();
+  });
+});

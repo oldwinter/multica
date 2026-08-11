@@ -1114,6 +1114,40 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireWorkspaceMember(queries))
 
+			r.Get("/api/twin/overview", h.GetTwinOverview)
+			r.Route("/api/wiki/pages", func(r chi.Router) {
+				r.Get("/", h.ListWikiPages)
+				r.Post("/", h.CreateWikiPage)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetWikiPage)
+					r.Put("/", h.UpdateWikiPage)
+					r.Delete("/", h.DeleteWikiPage)
+				})
+			})
+
+			r.Route("/api/lm-wiki", func(r chi.Router) {
+				r.Get("/", h.GetLMWiki)
+				r.Get("/revisions/{revisionId}", h.GetLMWikiRevision)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceRole(queries, "owner", "admin"))
+					r.Post("/refresh", h.RefreshLMWiki)
+					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/accept", h.AcceptLMWikiRevision)
+					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/reject", h.RejectLMWikiRevision)
+				})
+			})
+
+			r.Route("/api/twins", func(r chi.Router) {
+				r.Get("/", h.GetTwins)
+				r.Get("/proposals/{proposalId}", h.GetTwinProposal)
+				r.Get("/versions/{versionId}", h.GetTwinVersion)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceRole(queries, "owner", "admin"))
+					r.Post("/proposals", h.CreateTwinProposal)
+					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/accept", h.AcceptTwinProposal)
+					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/reject", h.RejectTwinProposal)
+				})
+			})
+
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
 

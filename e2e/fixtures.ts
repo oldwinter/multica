@@ -19,6 +19,52 @@ interface TestWorkspace {
   slug: string;
 }
 
+export interface TestLMWikiRevision {
+  id: string;
+  revision_number: number;
+  source_digest: string;
+  review: { decision: string } | null;
+}
+
+export interface TestLMWikiOverview {
+  latest_revision: TestLMWikiRevision | null;
+  accepted_revision: TestLMWikiRevision | null;
+  pending_revision: TestLMWikiRevision | null;
+  revisions: TestLMWikiRevision[];
+  can_manage: boolean;
+}
+
+export interface TestTwinProposal {
+  id: string;
+  kind: string;
+  source_wiki_revision_id: string;
+  review: { decision: string } | null;
+}
+
+export interface TestTwinVersion {
+  id: string;
+  version_number: number;
+  proposal_id: string;
+  source_wiki_revision_id: string;
+}
+
+export interface TestTwinOverview {
+  current_version: TestTwinVersion | null;
+  pending_proposal: TestTwinProposal | null;
+  proposals: TestTwinProposal[];
+  versions: TestTwinVersion[];
+  can_manage: boolean;
+}
+
+export interface TestWikiTwinArtifactCounts {
+  wiki_revisions: number;
+  wiki_citations: number;
+  wiki_reviews: number;
+  twin_proposals: number;
+  twin_reviews: number;
+  twin_versions: number;
+}
+
 export type TestIssueStatus =
   | "backlog"
   | "todo"
@@ -316,6 +362,99 @@ export class TestApiClient {
     return res.json();
   }
 
+  async getLMWiki(): Promise<TestLMWikiOverview> {
+    return this.jsonRequest("/api/lm-wiki/");
+  }
+
+  async refreshLMWiki(): Promise<{ created: boolean; revision: TestLMWikiRevision }> {
+    return this.jsonRequest("/api/lm-wiki/refresh", { method: "POST" });
+  }
+
+  async acceptLMWikiRevision(
+    revisionId: string,
+  ): Promise<{ revision: TestLMWikiRevision }> {
+    return this.jsonRequest(`/api/lm-wiki/revisions/${revisionId}/accept`, {
+      method: "POST",
+    });
+  }
+
+  async rejectLMWikiRevision(
+    revisionId: string,
+    reason: string,
+  ): Promise<{ revision: TestLMWikiRevision }> {
+    return this.jsonRequest(`/api/lm-wiki/revisions/${revisionId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async getTwins(): Promise<TestTwinOverview> {
+    return this.jsonRequest("/api/twins/");
+  }
+
+  async ensureTwinProposal(
+    wikiRevisionId: string,
+  ): Promise<{ created: boolean; proposal: TestTwinProposal }> {
+    return this.jsonRequest("/api/twins/proposals", {
+      method: "POST",
+      body: JSON.stringify({ wiki_revision_id: wikiRevisionId }),
+    });
+  }
+
+  async acceptTwinProposal(
+    proposalId: string,
+  ): Promise<{ created: boolean; version: TestTwinVersion }> {
+    return this.jsonRequest(`/api/twins/proposals/${proposalId}/accept`, {
+      method: "POST",
+    });
+  }
+
+  async rejectTwinProposal(proposalId: string, reason: string): Promise<void> {
+    await this.jsonRequest(`/api/twins/proposals/${proposalId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  request(path: string, init?: RequestInit) {
+    return this.authedFetch(path, init);
+  }
+
+  async deleteWorkspace(id: string) {
+    const res = await this.authedFetch(`/api/workspaces/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      throw new Error(`delete workspace failed: ${res.status} ${await res.text()}`);
+    }
+    if (this.workspaceId === id) {
+      this.workspaceId = null;
+      this.workspaceSlug = null;
+    }
+  }
+
+  async getWikiTwinArtifactCounts(workspaceId: string): Promise<TestWikiTwinArtifactCounts> {
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      const result = await client.query<TestWikiTwinArtifactCounts>(
+        `
+          SELECT
+            (SELECT count(*)::int FROM lm_wiki_revision WHERE workspace_id = $1) AS wiki_revisions,
+            (SELECT count(*)::int FROM lm_wiki_citation WHERE workspace_id = $1) AS wiki_citations,
+            (SELECT count(*)::int FROM lm_wiki_review WHERE workspace_id = $1) AS wiki_reviews,
+            (SELECT count(*)::int FROM twin_proposal WHERE workspace_id = $1) AS twin_proposals,
+            (SELECT count(*)::int FROM twin_proposal_review WHERE workspace_id = $1) AS twin_reviews,
+            (SELECT count(*)::int FROM twin_version WHERE workspace_id = $1) AS twin_versions
+        `,
+        [workspaceId],
+      );
+      const counts = result.rows[0];
+      if (!counts) throw new Error(`No Wiki/Twin cleanup count returned for ${workspaceId}`);
+      return counts;
+    } finally {
+      await client.end();
+    }
+  }
+
   /** Clean up all issues created during this test. */
   async cleanup() {
     if (this.seededIssueIds.length > 0 && this.workspaceId) {
@@ -350,6 +489,15 @@ export class TestApiClient {
       throw new Error("Test API client is not logged in");
     }
     return this.email;
+  }
+
+  private async jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await this.authedFetch(path, init);
+    if (!res.ok) {
+      throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`);
+    }
+    const body: T = await res.json();
+    return body;
   }
 
   private async authedFetch(path: string, init?: RequestInit) {

@@ -113,6 +113,7 @@ type NavKey =
   | "autopilots"
   | "agents"
   | "twins"
+  | "wiki"
   | "squads"
   | "usage"
   | "runtimes"
@@ -130,6 +131,7 @@ type NavLabelKey =
   | "autopilots"
   | "agents"
   | "twins"
+  | "wiki"
   | "squads"
   | "usage"
   | "runtimes"
@@ -151,6 +153,7 @@ const workspaceNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "autopilots", labelKey: "autopilots" },
   { key: "agents", labelKey: "agents" },
   { key: "twins", labelKey: "twins" },
+  { key: "wiki", labelKey: "wiki" },
   { key: "squads", labelKey: "squads" },
   { key: "usage", labelKey: "usage" },
 ];

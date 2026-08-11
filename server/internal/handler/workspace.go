@@ -826,6 +826,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			run:  func() error { return qtx.DeleteWorkspaceLeafData(ctx, requester.WorkspaceID) },
 		},
 		{
+			name: "delete wiki and twin data",
+			run:  func() error { return qtx.DeleteWorkspaceWikiTwinData(ctx, requester.WorkspaceID) },
+		},
+		{
 			name: "delete autopilot runs",
 			run:  func() error { return qtx.DeleteWorkspaceAutopilotRuns(ctx, requester.WorkspaceID) },
 		},
@@ -876,6 +880,14 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		{
 			name: "delete runtimes and projects",
 			run:  func() error { return qtx.DeleteWorkspaceRuntimesAndProjects(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete Twin profile",
+			run:  func() error { return qtx.DeleteWorkspaceTwinProfile(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete wiki pages",
+			run:  func() error { return qtx.DeleteWorkspaceWikiPages(ctx, requester.WorkspaceID) },
 		},
 		{
 			name: "delete administration data",

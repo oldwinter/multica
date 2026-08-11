@@ -31,6 +31,20 @@ var (
 	commit  = "unknown"
 )
 
+const (
+	apiReadHeaderTimeout = 5 * time.Second
+	apiIdleTimeout       = 2 * time.Minute
+)
+
+func newAPIServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: apiReadHeaderTimeout,
+		IdleTimeout:       apiIdleTimeout,
+	}
+}
+
 func newNamedRedisClient(base *redis.Options, suffix string) *redis.Client {
 	opts := *base
 	if envBool("REDIS_DISABLE_CLIENT_NAME", false) {
@@ -399,10 +413,7 @@ func main() {
 		HeartbeatScheduler: heartbeatScheduler,
 	})
 
-	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: r,
-	}
+	srv := newAPIServer(":"+port, r)
 
 	// Start background workers.
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
@@ -479,6 +490,9 @@ func main() {
 	// — there is no separate goroutine for scheduled Autopilot anymore.
 	if err := schedulerMgr.Register(scheduler.AutopilotScheduleDispatchJob(pool, queries, autopilotSvc)); err != nil {
 		slog.Warn("scheduler: failed to register autopilot_schedule_dispatch job", "error", err)
+	}
+	if err := schedulerMgr.Register(scheduler.LMWikiDailyReconcileJob(queries, h.WikiService)); err != nil {
+		slog.Warn("scheduler: failed to register lm_wiki_daily_reconcile job", "error", err)
 	}
 	go func() {
 		_ = schedulerMgr.Run(sweepCtx)

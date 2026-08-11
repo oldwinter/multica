@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS twin_version_workspace_proposal_uidx;

@@ -11,8 +11,20 @@ import {
   canEditComment,
   canEditSkill,
   canManageMembers,
+  canManageWikiTwin,
   canUpdateWorkspaceSettings,
 } from "./rules";
+
+describe("canManageWikiTwin", () => {
+  it("mirrors the owner/admin lifecycle write gate", () => {
+    expect(canManageWikiTwin({ userId: ALICE, role: "owner" }).allowed).toBe(true);
+    expect(canManageWikiTwin({ userId: ALICE, role: "admin" }).allowed).toBe(true);
+    expect(canManageWikiTwin({ userId: ALICE, role: "member" })).toMatchObject({
+      allowed: false,
+      reason: "not_admin_role",
+    });
+  });
+});
 
 const ALICE = "user-alice";
 const BOB = "user-bob";

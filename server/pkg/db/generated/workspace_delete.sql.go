@@ -456,6 +456,55 @@ func (q *Queries) DeleteWorkspaceTasks(ctx context.Context, workspaceID pgtype.U
 	return err
 }
 
+const deleteWorkspaceTwinProfile = `-- name: DeleteWorkspaceTwinProfile :exec
+DELETE FROM twin_profile WHERE twin_profile.workspace_id = $1
+`
+
+func (q *Queries) DeleteWorkspaceTwinProfile(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkspaceTwinProfile, workspaceID)
+	return err
+}
+
+const deleteWorkspaceWikiPages = `-- name: DeleteWorkspaceWikiPages :exec
+DELETE FROM wiki_page WHERE wiki_page.workspace_id = $1
+`
+
+func (q *Queries) DeleteWorkspaceWikiPages(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkspaceWikiPages, workspaceID)
+	return err
+}
+
+const deleteWorkspaceWikiTwinData = `-- name: DeleteWorkspaceWikiTwinData :exec
+WITH
+deleted_twin_reviews AS (
+    DELETE FROM twin_proposal_review WHERE workspace_id = $1::uuid
+),
+deleted_twin_versions AS (
+    DELETE FROM twin_version WHERE workspace_id = $1::uuid
+),
+deleted_twin_proposals AS (
+    DELETE FROM twin_proposal WHERE workspace_id = $1::uuid
+),
+deleted_reviews AS (
+    DELETE FROM lm_wiki_review WHERE workspace_id = $1::uuid
+),
+deleted_citations AS (
+    DELETE FROM lm_wiki_citation WHERE workspace_id = $1::uuid
+),
+deleted_revisions AS (
+    DELETE FROM lm_wiki_revision WHERE workspace_id = $1::uuid
+)
+DELETE FROM sys_cron_executions
+WHERE job_name = 'lm_wiki_daily_reconcile'
+  AND scope_kind = 'workspace'
+  AND scope_id = $1::uuid::text
+`
+
+func (q *Queries) DeleteWorkspaceWikiTwinData(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkspaceWikiTwinData, workspaceID)
+	return err
+}
+
 const lockTaskUsageRollupForWorkspaceDelete = `-- name: LockTaskUsageRollupForWorkspaceDelete :exec
 SELECT pg_advisory_xact_lock(4246)
 `

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY twin_proposal_review_workspace_proposal_uidx ON twin_proposal_review (workspace_id, proposal_id);
