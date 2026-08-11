@@ -21,6 +21,7 @@ export interface UseIssueActionsResult {
   openInNewTab: () => void;
   togglePin: () => void;
   copyLink: () => Promise<void>;
+  copyMarkdownLink: () => Promise<void>;
   openCreateSubIssue: () => void;
   openSetParent: () => void;
   removeParent: () => void;
@@ -60,6 +61,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
 
   const issueId = issue?.id ?? null;
   const issueIdentifier = issue?.identifier ?? null;
+  const issueTitle = issue?.title ?? null;
   const issueProjectId = issue?.project_id ?? null;
   const issueStatus = issue?.status ?? null;
 
@@ -159,6 +161,18 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     }
   }, [paths, issueId, issueIdentifier, navigation, t]);
 
+  const copyMarkdownLink = useCallback(async () => {
+    if (!issueId || !issueTitle) return;
+    const identifier = issueIdentifier || issueId;
+    const label = `${identifier}: ${issueTitle}`.replace(/([\\[\]])/g, "\\$1");
+    const url = navigation.getShareableUrl(paths.issueDetail(identifier));
+    if (await copyText(`[${label}](${url})`)) {
+      toast.success(t(($) => $.detail.link_copied));
+    } else {
+      toast.error(t(($) => $.detail.link_copy_failed));
+    }
+  }, [paths, issueId, issueIdentifier, issueTitle, navigation, t]);
+
   const openCreateSubIssue = useCallback(() => {
     if (!issueId) return;
     openModal("create-issue", {
@@ -233,6 +247,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     openInNewTab,
     togglePin,
     copyLink,
+    copyMarkdownLink,
     openCreateSubIssue,
     openSetParent,
     removeParent,

@@ -9,6 +9,7 @@ import {
   Calendar,
   CalendarClock,
   ExternalLink,
+  FileText,
   FolderOpen,
   Link2,
   Network,
@@ -108,6 +109,7 @@ export function IssueActionsMenuItems({
     openInNewTab,
     togglePin,
     copyLink,
+    copyMarkdownLink,
     openCreateSubIssue,
     openSetParent,
     removeParent,
@@ -274,6 +276,10 @@ export function IssueActionsMenuItems({
       <P.Item onClick={copyLink}>
         <Link2 className="h-3.5 w-3.5" />
         {t(($) => $.actions.copy_link)}
+      </P.Item>
+      <P.Item onClick={copyMarkdownLink}>
+        <FileText className="h-3.5 w-3.5" />
+        {t(($) => $.actions.copy_markdown)}
       </P.Item>
       <P.Item onClick={handleCopyWorkdirPath}>
         <FolderOpen className="h-3.5 w-3.5" />

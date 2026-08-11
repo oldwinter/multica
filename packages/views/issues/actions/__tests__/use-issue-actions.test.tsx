@@ -215,6 +215,19 @@ describe("useIssueActions", () => {
     );
   });
 
+  it("copyMarkdownLink writes a labeled Markdown reference to the clipboard", async () => {
+    const issue = { ...mockIssue, title: "Review [agent] output" } as Issue;
+    const { result } = renderHook(() => useIssueActions(issue), { wrapper });
+
+    await act(async () => {
+      await result.current.copyMarkdownLink();
+    });
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "[TES-1: Review \\[agent\\] output](https://app.multica.com/test/issues/TES-1)",
+    );
+  });
+
   it("openSetParent / openAddChild / openDeleteConfirm / openCreateSubIssue open the correct modal with payload", () => {
     const { result } = renderHook(() => useIssueActions(mockIssue), { wrapper });
 

@@ -570,6 +570,7 @@
     "pin_to_sidebar": "Pin to sidebar",
     "unpin_from_sidebar": "Unpin from sidebar",
     "copy_link": "Copy link",
+    "copy_markdown": "Copy as Markdown",
     "copy_workdir_path": "Copy local workdir path",
     "relations": "Relations",
     "create_sub_issue": "Create sub-issue",
