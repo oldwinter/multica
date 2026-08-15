@@ -11,6 +11,87 @@ import (
 	"github.com/multica-ai/multica/server/internal/util"
 )
 
+func TestRoomMutationBodiesAreBounded(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("handler not available")
+	}
+	roomID := testWorkspaceID
+	payload := `{"status":"` + strings.Repeat("x", roomMutationBodyLimit) + `"}`
+	tests := []struct {
+		name string
+		path string
+		call func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "create", path: "/api/rooms", call: testHandler.CreateRoom},
+		{name: "message", path: "/api/rooms/" + roomID + "/messages", call: testHandler.PostRoomMessage},
+		{name: "wake", path: "/api/rooms/" + roomID + "/wake", call: testHandler.WakeRoom},
+		{name: "status", path: "/api/rooms/" + roomID + "/status", call: testHandler.SetRoomStatus},
+		{name: "promotion", path: "/api/rooms/" + roomID + "/promotions", call: testHandler.PromoteRoomArtifact},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(payload))
+			request.ContentLength = -1
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-User-ID", testUserID)
+			request.Header.Set("X-Workspace-ID", testWorkspaceID)
+			if test.name != "create" {
+				request = withURLParam(request, "id", roomID)
+			}
+			recorder := httptest.NewRecorder()
+
+			test.call(recorder, request)
+
+			if recorder.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusRequestEntityTooLarge, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestRoomMutationArraysAreBounded(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("handler not available")
+	}
+	roomID := testWorkspaceID
+	ids := make([]string, maxRoomAgentTargets+1)
+	for index := range ids {
+		ids[index] = testWorkspaceID
+	}
+	participants := make([]map[string]string, maxRoomParticipantRequests+1)
+	for index := range participants {
+		participants[index] = map[string]string{"type": "agent", "id": testWorkspaceID}
+	}
+	tests := []struct {
+		name string
+		path string
+		body map[string]any
+		call func(http.ResponseWriter, *http.Request)
+	}{
+		{name: "participants", path: "/api/rooms", body: map[string]any{"participants": participants}, call: testHandler.CreateRoom},
+		{name: "mentions", path: "/api/rooms/" + roomID + "/messages", body: map[string]any{"mention_agent_ids": ids}, call: testHandler.PostRoomMessage},
+		{name: "targets", path: "/api/rooms/" + roomID + "/wake", body: map[string]any{"target_agent_ids": ids}, call: testHandler.WakeRoom},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := newRequest(http.MethodPost, test.path, test.body)
+			if test.name != "participants" {
+				request = withURLParam(request, "id", roomID)
+			}
+			recorder := httptest.NewRecorder()
+
+			test.call(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), "too many") {
+				t.Fatalf("response does not explain array limit: %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestRoomHTTPWorkflowPersistsRefusalsAndHidesRuntimeState(t *testing.T) {
 	if testHandler == nil || testPool == nil {
 		t.Skip("database not available")
