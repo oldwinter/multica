@@ -1,7 +1,7 @@
 import { act, type ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { SearchCommand } from "./search-command";
 import { useSearchStore } from "./search-store";
@@ -33,12 +33,14 @@ const {
   mockSetTheme,
   mockTheme,
   mockPathname,
+  mockSearchParams,
   mockGetShareableUrl,
   mockMembers,
   mockAgents,
   mockSquads,
   mockOpenModal,
   mockToastSuccess,
+  mockToastError,
   mockClipboardWrite,
   mockTimeline,
   mockCommentCollapseAll,
@@ -54,6 +56,7 @@ const {
   mockSetTheme: vi.fn(),
   mockTheme: { current: "system" as "light" | "dark" | "system" },
   mockPathname: { current: "/ws-test/issues" as string },
+  mockSearchParams: { current: new URLSearchParams() },
   mockGetShareableUrl: vi.fn((p: string) => `https://app.multica/${p}`),
   mockMembers: {
     current: [] as Array<{
@@ -83,6 +86,7 @@ const {
   },
   mockOpenModal: vi.fn(),
   mockToastSuccess: vi.fn(),
+  mockToastError: vi.fn(),
   mockClipboardWrite: vi.fn(() => Promise.resolve()),
   mockTimeline: { current: [] as Array<Record<string, unknown>> },
   mockCommentCollapseAll: vi.fn(),
@@ -240,6 +244,7 @@ vi.mock("../navigation", () => ({
   useNavigation: () => ({
     push: mockPush,
     pathname: mockPathname.current,
+    searchParams: mockSearchParams.current,
     getShareableUrl: mockGetShareableUrl,
   }),
 }));
@@ -249,10 +254,14 @@ vi.mock("@multica/ui/components/common/theme-provider", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: mockToastSuccess, error: vi.fn() },
+  toast: { success: mockToastSuccess, error: mockToastError },
 }));
 
 describe("SearchCommand", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(document, "execCommand");
+  });
+
   beforeEach(() => {
     mockPush.mockReset();
     mockSearchIssues.mockReset().mockResolvedValue({ issues: [] });
@@ -264,10 +273,12 @@ describe("SearchCommand", () => {
     mockSetTheme.mockReset();
     mockTheme.current = "system";
     mockPathname.current = "/ws-test/issues";
+    mockSearchParams.current = new URLSearchParams();
     mockGetShareableUrl.mockReset().mockImplementation((p: string) => `https://app.multica/${p}`);
     mockMembers.current = [];
     mockOpenModal.mockReset();
     mockToastSuccess.mockReset();
+    mockToastError.mockReset();
     mockClipboardWrite.mockReset().mockResolvedValue(undefined);
     mockTimeline.current = [];
     mockCommentCollapseAll.mockReset();
@@ -439,16 +450,62 @@ describe("SearchCommand", () => {
     expect(useSearchStore.getState().open).toBe(false);
   });
 
-  it("hides copy-link commands when not on an issue detail route", async () => {
+  it("copies the current page link when not on an issue detail route", async () => {
     const user = userEvent.setup();
+    const writeSpy = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockImplementation(mockClipboardWrite);
+    mockPathname.current = "/ws-test/projects";
+    mockSearchParams.current = new URLSearchParams("view=board");
+    renderSearch();
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "copy page link");
+
+    const linkItem = await screen.findByText(
+      (_, el) => el?.textContent === "Copy Page Link" && el?.tagName === "SPAN",
+    );
+    await user.click(linkItem);
+
+    expect(mockGetShareableUrl).toHaveBeenCalledWith(
+      "/ws-test/projects?view=board",
+    );
+    expect(mockClipboardWrite).toHaveBeenCalledWith(
+      "https://app.multica//ws-test/projects?view=board",
+    );
+    expect(mockToastSuccess).toHaveBeenCalledWith("Link copied");
+    expect(useSearchStore.getState().open).toBe(false);
+    expect(screen.queryByText("Copy Issue Link")).not.toBeInTheDocument();
+
+    writeSpy.mockRestore();
+  });
+
+  it("reports when the current page link cannot be copied", async () => {
+    const user = userEvent.setup();
+    const execCommand = vi.fn(() => false);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+    const writeSpy = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockRejectedValue(new Error("clipboard unavailable"));
     mockPathname.current = "/ws-test/projects";
     renderSearch();
 
     const input = screen.getByPlaceholderText("Type a command or search...");
-    await user.type(input, "copy");
+    await user.type(input, "copy page link");
+    const linkItem = await screen.findByText(
+      (_, el) => el?.textContent === "Copy Page Link" && el?.tagName === "SPAN",
+    );
+    await user.click(linkItem);
 
-    // Commands section may still be empty / absent.
-    expect(screen.queryByText("Copy Issue Link")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Failed to copy link");
+    });
+    expect(execCommand).toHaveBeenCalledWith("copy");
+
+    writeSpy.mockRestore();
   });
 
   it("copies issue link and identifier when on an issue detail route", async () => {

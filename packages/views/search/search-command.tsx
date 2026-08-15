@@ -155,7 +155,7 @@ export function SearchCommand() {
     { key: "skills", label: t(($) => $.pages.skills), keywords: ["skills", "library"] },
     { key: "settings", label: t(($) => $.pages.settings), keywords: ["settings", "config", "preferences", "设置"] },
   ];
-  const { push, pathname, getShareableUrl } = useNavigation();
+  const { push, pathname, searchParams, getShareableUrl } = useNavigation();
   const open = useSearchStore((s) => s.open);
   const setOpen = useSearchStore((s) => s.setOpen);
   const wsId = useWorkspaceId();
@@ -200,6 +200,10 @@ export function SearchCommand() {
     const raw = match?.[1];
     return raw ? decodeURIComponent(raw) : null;
   }, [pathname]);
+  const currentPath = useMemo(() => {
+    const queryString = searchParams.toString();
+    return queryString ? `${pathname}?${queryString}` : pathname;
+  }, [pathname, searchParams]);
   const { data: currentIssue = null } = useQuery({
     ...issueDetailOptions(wsId, currentIssueId ?? ""),
     enabled: !!currentIssueId,
@@ -237,6 +241,25 @@ export function SearchCommand() {
         },
       },
     ];
+
+    if (!currentIssueId) {
+      items.push({
+        key: "copy-page-link",
+        label: t(($) => $.commands.copy_page_link),
+        icon: Link2,
+        keywords: ["copy", "page", "link", "share", "url"],
+        onSelect: () => {
+          void copyText(getShareableUrl(currentPath)).then((ok) => {
+            if (ok) {
+              toast.success(t(($) => $.toast.link_copied));
+            } else {
+              toast.error(t(($) => $.toast.link_copy_failed));
+            }
+          });
+          setOpen(false);
+        },
+      });
+    }
 
     if (currentIssueId && currentIssue) {
       const identifier = currentIssue.identifier;
@@ -371,7 +394,7 @@ export function SearchCommand() {
     );
 
     return items;
-  }, [currentIssue, currentIssueId, getShareableUrl, pathname, queryClient, setOpen, setTheme, theme, t]);
+  }, [currentIssue, currentIssueId, currentPath, getShareableUrl, pathname, queryClient, setOpen, setTheme, theme, t]);
 
   const filteredCommands = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -24,6 +24,7 @@
     "current_theme_aria": "현재 테마",
     "new_issue": "새 이슈",
     "new_project": "새 프로젝트",
+    "copy_page_link": "페이지 링크 복사",
     "copy_issue_link": "이슈 링크 복사",
     "copy_identifier": "식별자 복사 ({{identifier}})",
     "copy_branch_name": "Git 브랜치 이름 복사",
@@ -35,6 +36,7 @@
   },
   "toast": {
     "link_copied": "링크를 복사했습니다",
+    "link_copy_failed": "링크를 복사하지 못했습니다",
     "copied_identifier": "{{identifier}}를 복사했습니다",
     "branch_name_copied": "브랜치 이름을 복사했습니다: {{branch}}",
     "branch_name_copy_failed": "브랜치 이름을 복사하지 못했습니다"

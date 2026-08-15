@@ -24,6 +24,7 @@
     "current_theme_aria": "Current theme",
     "new_issue": "New Issue",
     "new_project": "New Project",
+    "copy_page_link": "Copy Page Link",
     "copy_issue_link": "Copy Issue Link",
     "copy_identifier": "Copy Identifier ({{identifier}})",
     "copy_branch_name": "Copy Git Branch Name",
@@ -35,6 +36,7 @@
   },
   "toast": {
     "link_copied": "Link copied",
+    "link_copy_failed": "Failed to copy link",
     "copied_identifier": "Copied {{identifier}}",
     "branch_name_copied": "Copied branch name: {{branch}}",
     "branch_name_copy_failed": "Couldn't copy branch name"
