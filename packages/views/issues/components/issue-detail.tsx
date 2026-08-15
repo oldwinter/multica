@@ -1387,12 +1387,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // a direct findIndex hit; for reply ids we look up the enclosing root.
   const targetIdx = useMemo(() => {
     if (!highlightCommentId) return -1;
-    const direct = items.findIndex((it) => it.id === highlightCommentId);
+    const direct = items.findIndex(
+      (it) => it.kind !== "activity-group" && it.id === highlightCommentId,
+    );
     if (direct >= 0) return direct;
     const rootId = replyToRoot.get(highlightCommentId);
     if (!rootId) return -1;
     return items.findIndex((it) => it.id === rootId);
   }, [items, highlightCommentId, replyToRoot]);
+  const hasCommentTarget = targetIdx >= 0;
 
   // Quick-jump minimap rail: one tick per comment thread (folded resolved
   // bars included), activity groups skipped. Derived from the same flat
@@ -1423,7 +1426,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
   // When the timeline renders flat (deep-link or in-page find), there is no
   // Virtuoso instance — minimap jumps drive the scroll container directly.
-  const isFlatTimeline = !!highlightCommentId || find.open;
+  const isFlatTimeline = hasCommentTarget || find.open;
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const jumpFlashTimerRef = useRef<number | null>(null);
   useEffect(
@@ -1562,19 +1565,20 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // ref populates only on the post-loading render, so it's the signal that
   // the timeline (and the deep-link target id) has actually rendered.
   useEffect(() => {
-    if (!highlightCommentId || items.length === 0) return;
+    if (!highlightCommentId || targetIdx < 0 || items.length === 0) return;
     if (didHighlightRef.current === highlightCommentId) return;
+
+    const targetItem = items[targetIdx];
+    if (targetItem?.kind === "resolved-bar") {
+      toggleResolvedExpand(targetItem.id, true);
+      return;
+    }
 
     const rootId = replyToRoot.get(highlightCommentId);
     if (rootId && rootId !== highlightCommentId) {
-      // Root resolved → the whole thread is a folded bar.
-      if (items[targetIdx]?.kind === "resolved-bar") {
-        toggleResolvedExpand(rootId, true);
-        return;
-      }
       // A reply is the resolution → the other replies fold behind the
       // "N comments" bar; expand if the target is one of those folded replies.
-      const rootItem = items[targetIdx];
+      const rootItem = targetItem;
       if (rootItem?.kind === "comment" && !expandedResolved.has(rootId)) {
         const resolution = deriveThreadResolution(
           rootItem.entry,
@@ -1805,7 +1809,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     restoreKey: `${wsId}:${id}`,
     scrollContainerEl,
     ready: !!issue && !loading && !timelineLoading,
-    disabled: !!highlightCommentId,
+    disabled: hasCommentTarget,
   });
 
   if (loading) {
@@ -2193,6 +2197,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         <div className="pb-3" id={`comment-${item.id}`}>
           <CommentCard
             issueId={id}
+            issueHref={paths.issueDetail(issue.identifier ?? id)}
             entry={item.entry}
             replies={timelineView.threadReplies.get(item.id) ?? EMPTY_REPLIES}
             currentUserId={user?.id}
@@ -2206,6 +2211,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             expandedResolvedIds={expandedResolved}
             onResolvedExpandChange={toggleResolvedExpand}
             highlightedCommentId={highlightedId}
+            targetCommentId={highlightCommentId}
           />
         </div>
       );
@@ -2725,7 +2731,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               <TimelineSkeleton />
             ) : (
               // Two render modes:
-              //   - `highlightCommentId` set (came from inbox deep-link) →
+              //   - a valid `highlightCommentId` (came from inbox deep-link) →
               //     render flat. Every comment mounts, every height is real,
               //     the target id is in the DOM the instant the useEffect
               //     above runs `scrollIntoView`. No virtualization estimate
@@ -2743,7 +2749,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               // on a target" have fundamentally opposed contracts (estimated
               // heights vs real heights). Trying to satisfy both in one
               // path is what produced the bug history this PR closes.
-              !highlightCommentId && !find.open ? (
+              !hasCommentTarget && !find.open ? (
                 !scrollContainerEl ? (
                   // Skeleton while the callback ref populates so the gap
                   // between IssueDetail mount and Virtuoso mount doesn't

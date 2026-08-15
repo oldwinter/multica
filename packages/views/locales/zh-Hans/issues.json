@@ -372,6 +372,7 @@
     "save_action": "保存",
     "cancel_edit": "取消",
     "copy_action": "复制",
+    "copy_link_action": "复制评论链接",
     "copied_toast": "已复制",
     "edit_action": "编辑",
     "update_failed": "更新评论失败",

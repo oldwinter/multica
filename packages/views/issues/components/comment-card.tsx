@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, ChevronRight, ListChevronsDownUp, Copy, Loader2, MoreHorizontal, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, ListChevronsDownUp, Copy, Link, Loader2, MoreHorizontal, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@multica/ui/components/ui/card";
 import { Button } from "@multica/ui/components/ui/button";
@@ -42,6 +42,7 @@ import { useCommentCollapseStore, useCommentDraftStore } from "@multica/core/iss
 import { useT } from "../../i18n";
 import { CommentsFoldBar } from "./resolved-thread-bar";
 import { deriveThreadResolution } from "./thread-utils";
+import { useNavigation } from "../../navigation";
 
 const highlightedCommentBackgroundClass =
   "bg-[color-mix(in_srgb,var(--card)_95%,var(--brand)_5%)]";
@@ -87,6 +88,7 @@ function StickyHeaderShell({
 
 interface CommentCardProps {
   issueId: string;
+  issueHref: string;
   entry: TimelineEntry;
   /**
    * Flat list of every nested reply under this thread root, in render order.
@@ -126,6 +128,7 @@ interface CommentCardProps {
   onResolvedExpandChange?: (rootId: string, expand: boolean) => void;
   /** ID of the comment to highlight (flash animation). */
   highlightedCommentId?: string | null;
+  targetCommentId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -531,6 +534,7 @@ function CommentRow({
   onDelete,
   onToggleReaction,
   onResolveToggle,
+  onCopyLink,
 }: {
   issueId: string;
   entry: TimelineEntry;
@@ -544,6 +548,7 @@ function CommentRow({
   onDelete: (commentId: string) => void;
   onToggleReaction: (commentId: string, emoji: string) => void;
   onResolveToggle?: (commentId: string, resolved: boolean) => void;
+  onCopyLink: (commentId: string) => void;
 }) {
   const { t } = useT("issues");
   const timeAgo = useTimeAgo();
@@ -609,6 +614,10 @@ function CommentRow({
               }}>
                 <Copy className="h-3.5 w-3.5" />
                 {t(($) => $.comment.copy_action)}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onCopyLink(entry.id)}>
+                <Link className="h-3.5 w-3.5" />
+                {t(($) => $.comment.copy_link_action)}
               </DropdownMenuItem>
               {onResolveToggle && (
                 <>
@@ -762,6 +771,7 @@ function CommentRow({
 
 function CommentCardImpl({
   issueId,
+  issueHref,
   entry,
   replies,
   currentUserId,
@@ -775,13 +785,18 @@ function CommentCardImpl({
   expandedResolvedIds,
   onResolvedExpandChange,
   highlightedCommentId,
+  targetCommentId,
 }: CommentCardProps) {
   const { t } = useT("issues");
+  const navigation = useNavigation();
   const timeAgo = useTimeAgo();
   const { getActorName } = useActorName();
   const isCollapsed = useCommentCollapseStore((s) => s.isCollapsed(issueId, entry.id));
   const toggleCollapse = useCommentCollapseStore((s) => s.toggle);
-  const open = !isCollapsed;
+  const open =
+    !isCollapsed ||
+    entry.id === targetCommentId ||
+    replies.some((reply) => reply.id === targetCommentId);
   const handleToggle = useCallback(
     () => toggleCollapse(issueId, entry.id),
     [toggleCollapse, issueId, entry.id],
@@ -793,6 +808,19 @@ function CommentCardImpl({
   const canEditEntry = isOwn || (canModerate && entry.actor_type === "member");
   const canDeleteEntry = isOwn || canModerate;
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const copyCommentLink = useCallback(
+    (commentId: string) => {
+      const url = navigation.getShareableUrl(
+        `${issueHref}?comment=${encodeURIComponent(commentId)}`,
+      );
+      void copyText(url).then((ok) => {
+        if (ok) toast.success(t(($) => $.detail.link_copied));
+        else toast.error(t(($) => $.detail.link_copy_failed));
+      });
+    },
+    [issueHref, navigation, t],
+  );
 
   const allNestedReplies = replies;
 
@@ -915,6 +943,10 @@ function CommentCardImpl({
                       }}>
                         <Copy className="h-3.5 w-3.5" />
                         {t(($) => $.comment.copy_action)}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => copyCommentLink(entry.id)}>
+                        <Link className="h-3.5 w-3.5" />
+                        {t(($) => $.comment.copy_link_action)}
                       </DropdownMenuItem>
                       {onResolveToggle && (
                         <>
@@ -1100,6 +1132,7 @@ function CommentCardImpl({
                     onDelete={onDelete}
                     onToggleReaction={onToggleReaction}
                     onResolveToggle={onResolveToggle}
+                    onCopyLink={copyCommentLink}
                   />
                 </div>
               )}
@@ -1139,6 +1172,7 @@ function CommentCardImpl({
                     onDelete={onDelete}
                     onToggleReaction={onToggleReaction}
                     onResolveToggle={onResolveToggle}
+                    onCopyLink={copyCommentLink}
                   />
                 </div>
               ))}

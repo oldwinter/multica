@@ -27,7 +27,11 @@ interface IssueDetailRouteProps {
 export function useCanonicalIssueUrl(routeId: string, identifier: string | undefined) {
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
-  const canonicalHref = identifier ? paths.issueDetail(identifier) : null;
+  const canonicalPath = identifier ? paths.issueDetail(identifier) : null;
+  const search = navigation.searchParams.toString();
+  const canonicalHref = canonicalPath
+    ? `${canonicalPath}${search ? `?${search}` : ""}`
+    : null;
   // `useWorkspacePaths()` and the navigation adapter are both rebuilt on
   // render, so this ref — not the dependency array — is what guarantees the
   // replace runs once per target instead of on every commit.
@@ -54,7 +58,9 @@ export function useCanonicalIssueUrl(routeId: string, identifier: string | undef
  */
 export function IssueDetailRoute({ routeId, onDelete }: IssueDetailRouteProps) {
   const wsId = useWorkspaceId();
+  const navigation = useNavigation();
   const { canonicalId, issue, isResolving, notFound } = useCanonicalIssue(wsId, routeId);
+  const highlightCommentId = navigation.searchParams.get("comment") || undefined;
 
   useCanonicalIssueUrl(routeId, issue?.identifier);
 
@@ -66,5 +72,11 @@ export function IssueDetailRoute({ routeId, onDelete }: IssueDetailRouteProps) {
   // unbounded request loop that never settles. See `CanonicalIssue.notFound`.
   if (notFound || !canonicalId) return <IssueNotFound showBackLink={!onDelete} />;
 
-  return <IssueDetail issueId={canonicalId} onDelete={onDelete} />;
+  return (
+    <IssueDetail
+      issueId={canonicalId}
+      onDelete={onDelete}
+      highlightCommentId={highlightCommentId}
+    />
+  );
 }

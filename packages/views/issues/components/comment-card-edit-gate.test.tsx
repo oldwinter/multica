@@ -160,6 +160,7 @@ function renderCard(onEdit = vi.fn().mockResolvedValue(undefined)) {
     <QueryClientProvider client={qc}>
       <CommentCard
         issueId="issue-1"
+        issueHref="/acme/issues/MUL-1"
         entry={entry}
         replies={[]}
         currentUserId="user-1"

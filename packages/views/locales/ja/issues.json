@@ -372,6 +372,7 @@
     "save_action": "保存",
     "cancel_edit": "キャンセル",
     "copy_action": "コピー",
+    "copy_link_action": "コメントリンクをコピー",
     "copied_toast": "コピーしました",
     "edit_action": "編集",
     "update_failed": "コメントを更新できませんでした",

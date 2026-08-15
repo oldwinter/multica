@@ -379,6 +379,7 @@
     "save_action": "Save",
     "cancel_edit": "Cancel",
     "copy_action": "Copy",
+    "copy_link_action": "Copy comment link",
     "copied_toast": "Copied",
     "edit_action": "Edit",
     "update_failed": "Failed to update comment",

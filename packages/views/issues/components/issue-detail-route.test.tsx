@@ -38,6 +38,18 @@ function wrapper({ children }: { children: ReactNode }) {
   return <NavigationProvider value={adapter}>{children}</NavigationProvider>;
 }
 
+function wrapperWithComment({ children }: { children: ReactNode }) {
+  const adapter: NavigationAdapter = {
+    push,
+    replace,
+    back: vi.fn(),
+    pathname: "/acme/issues/x",
+    searchParams: new URLSearchParams("comment=reply-1"),
+    getShareableUrl: (p: string) => `https://app.multica.com${p}`,
+  };
+  return <NavigationProvider value={adapter}>{children}</NavigationProvider>;
+}
+
 describe("useCanonicalIssueUrl", () => {
   beforeEach(() => {
     replace.mockClear();
@@ -83,6 +95,21 @@ describe("useCanonicalIssueUrl", () => {
   it("normalizes a differently-cased identifier segment", () => {
     renderHook(() => useCanonicalIssueUrl("trs-134", "TRS-134"), { wrapper });
     expect(replace).toHaveBeenCalledWith("/acme/issues/TRS-134");
+  });
+
+  it("preserves a comment target while canonicalizing the issue URL", () => {
+    renderHook(
+      () =>
+        useCanonicalIssueUrl(
+          "cb240efb-154c-42a8-ae92-42b02676feca",
+          "TRS-134",
+        ),
+      { wrapper: wrapperWithComment },
+    );
+
+    expect(replace).toHaveBeenCalledWith(
+      "/acme/issues/TRS-134?comment=reply-1",
+    );
   });
 });
 

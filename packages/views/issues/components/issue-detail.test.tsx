@@ -1309,6 +1309,32 @@ describe("IssueDetail (shared)", () => {
   });
 
   describe("highlightCommentId scroll-to-comment", () => {
+    it("keeps virtualization enabled for an unknown comment target", async () => {
+      renderIssueDetailWithHighlight("deleted-comment");
+
+      expect(await screen.findByTestId("virtuoso-mock")).toBeInTheDocument();
+      expect(hasHighlightedCommentBackground(document)).toBe(false);
+    });
+
+    it("keeps virtualization enabled when the target matches an activity ID", async () => {
+      mockApiObj.listTimeline.mockResolvedValue([
+        {
+          type: "activity",
+          id: "activity-1",
+          actor_type: "member",
+          actor_id: "user-1",
+          action: "status_changed",
+          details: { from: "todo", to: "in_progress" },
+          created_at: "2026-01-16T00:00:00Z",
+        } as TimelineEntry,
+      ]);
+
+      renderIssueDetailWithHighlight("activity-1");
+
+      expect(await screen.findByTestId("virtuoso-mock")).toBeInTheDocument();
+      expect(hasHighlightedCommentBackground(document)).toBe(false);
+    });
+
     it("scrolls to the highlighted comment after both issue and timeline finish loading", async () => {
       renderIssueDetailWithHighlight("comment-2");
 
@@ -1465,6 +1491,34 @@ describe("IssueDetail (shared)", () => {
         expect(
           document.getElementById("comment-reply-1")?.className,
         ).toContain("bg-[color-mix(in_srgb,var(--card)_95%,var(--brand)_5%)]");
+      });
+    });
+
+    it("auto-expands a folded resolved thread when its root is the target", async () => {
+      mockApiObj.listTimeline.mockResolvedValue([
+        {
+          type: "comment",
+          id: "resolved-root",
+          actor_type: "member",
+          actor_id: "user-1",
+          content: "Resolved root target",
+          parent_id: null,
+          created_at: "2026-01-18T00:00:00Z",
+          updated_at: "2026-01-18T00:00:00Z",
+          comment_type: "comment",
+          resolved_at: "2026-01-19T00:00:00Z",
+        } as TimelineEntry,
+      ]);
+
+      renderIssueDetailWithHighlight("resolved-root");
+
+      await waitFor(() => {
+        expect(screen.getByText("Resolved root target")).toBeVisible();
+      });
+      await waitFor(() => {
+        expect(
+          hasHighlightedCommentBackground(document.getElementById("comment-resolved-root")),
+        ).toBe(true);
       });
     });
   });
