@@ -39,6 +39,15 @@ export function useLeaveWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (workspaceId: string) => api.leaveWorkspace(workspaceId),
+    onMutate: (workspaceId) => {
+      const slug = qc
+        .getQueryData<Workspace[]>(workspaceKeys.list())
+        ?.find((workspace) => workspace.id === workspaceId)?.slug;
+      return { slug };
+    },
+    onSuccess: (_data, _workspaceId, ctx) => {
+      if (ctx?.slug) clearWorkspaceStorage(defaultStorage, ctx.slug);
+    },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: workspaceKeys.list() });
     },

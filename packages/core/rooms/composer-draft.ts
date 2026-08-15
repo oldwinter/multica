@@ -11,6 +11,33 @@ export type RoomComposerDrafts = Readonly<Record<string, RoomComposerDraft>>;
 
 export const EMPTY_ROOM_COMPOSER_DRAFTS: RoomComposerDrafts = {};
 
+export interface RoomComposerDraftScope {
+  readonly userId: string;
+  readonly workspaceId: string;
+}
+
+export interface ScopedRoomComposerDrafts {
+  readonly ownerUserId: string | null;
+  readonly ownerWorkspaceId: string | null;
+  readonly rooms: RoomComposerDrafts;
+}
+
+export const EMPTY_SCOPED_ROOM_COMPOSER_DRAFTS: ScopedRoomComposerDrafts = {
+  ownerUserId: null,
+  ownerWorkspaceId: null,
+  rooms: EMPTY_ROOM_COMPOSER_DRAFTS,
+};
+
+export function roomComposerDraftsForScope(
+  stored: ScopedRoomComposerDrafts,
+  scope: RoomComposerDraftScope,
+): RoomComposerDrafts {
+  return stored.ownerUserId === scope.userId &&
+    stored.ownerWorkspaceId === scope.workspaceId
+    ? stored.rooms
+    : EMPTY_ROOM_COMPOSER_DRAFTS;
+}
+
 export function createRoomComposerDraft(idempotencyKey: string): RoomComposerDraft {
   return {
     body: "",
