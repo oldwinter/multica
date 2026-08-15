@@ -66,22 +66,27 @@ export function TwinHistorySelectors({
   const { t } = useT("twins");
   const proposalItems = proposals.map((proposal) => ({ value: proposal.id, label: proposalLabel(proposal) }));
   const versionItems = versions.map((version) => ({ value: version.id, label: versionLabel(version) }));
+  if (proposalItems.length === 0 && versionItems.length === 0) return null;
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
-        {t(($) => $.selectors.twin_proposal)}
-        <Select items={proposalItems} value={proposalId} onValueChange={(next) => typeof next === "string" && onProposalChange(next)}>
-          <SelectTrigger disabled={disabled} className="w-full" aria-label={t(($) => $.selectors.twin_proposal)}><SelectValue /></SelectTrigger>
-          <SelectContent>{proposalItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
-        </Select>
-      </label>
-      <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
-        {t(($) => $.selectors.twin_version)}
-        <Select items={versionItems} value={versionId} onValueChange={(next) => typeof next === "string" && onVersionChange(next)}>
-          <SelectTrigger disabled={disabled} className="w-full" aria-label={t(($) => $.selectors.twin_version)}><SelectValue /></SelectTrigger>
-          <SelectContent>{versionItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
-        </Select>
-      </label>
+    <div className={`${proposalItems.length > 0 && versionItems.length > 0 ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"} pe-chat-launcher sm:pe-0`}>
+      {proposalItems.length > 0 ? (
+        <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
+          {t(($) => $.selectors.twin_proposal)}
+          <Select items={proposalItems} value={proposalId} onValueChange={(next) => typeof next === "string" && onProposalChange(next)}>
+            <SelectTrigger disabled={disabled} className="w-full" aria-label={t(($) => $.selectors.twin_proposal)}><SelectValue /></SelectTrigger>
+            <SelectContent>{proposalItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </label>
+      ) : null}
+      {versionItems.length > 0 ? (
+        <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
+          {t(($) => $.selectors.twin_version)}
+          <Select items={versionItems} value={versionId} onValueChange={(next) => typeof next === "string" && onVersionChange(next)}>
+            <SelectTrigger disabled={disabled} className="w-full" aria-label={t(($) => $.selectors.twin_version)}><SelectValue /></SelectTrigger>
+            <SelectContent>{versionItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </label>
+      ) : null}
     </div>
   );
 }

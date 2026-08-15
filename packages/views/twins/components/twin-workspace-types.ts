@@ -30,11 +30,11 @@ export interface TwinWorkspaceProps {
   onSelectProposal: (id: string) => void;
   onSelectVersion: (id: string) => void;
   onRefreshWiki: () => void;
-  onAcceptWiki: (id: string) => void;
-  onRejectWiki: (id: string, reason: string) => void;
+  onAcceptWiki: (id: string) => Promise<void>;
+  onRejectWiki: (id: string, reason: string) => Promise<void>;
   onEnsureTwin: (wikiRevisionId: string) => void;
-  onAcceptTwin: (id: string) => void;
-  onRejectTwin: (id: string, reason: string) => void;
+  onAcceptTwin: (id: string) => Promise<void>;
+  onRejectTwin: (id: string, reason: string) => Promise<void>;
   onRetry: () => void;
 }
 

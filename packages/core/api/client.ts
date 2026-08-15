@@ -3007,20 +3007,21 @@ export class ApiClient {
     return LMWikiDetailSchema.parse(raw);
   }
 
-  async refreshLMWiki(): Promise<LMWikiRefreshResult> {
-    const raw = await this.fetch<unknown>("/api/lm-wiki/refresh", { method: "POST" });
+  async refreshLMWiki(signal?: AbortSignal): Promise<LMWikiRefreshResult> {
+    const raw = await this.fetch<unknown>("/api/lm-wiki/refresh", { method: "POST", signal });
     return LMWikiRefreshResultSchema.parse(raw);
   }
 
-  async acceptLMWikiRevision(revisionId: string): Promise<LMWikiDetail> {
-    const raw = await this.fetch<unknown>(`/api/lm-wiki/revisions/${revisionId}/accept`, { method: "POST" });
+  async acceptLMWikiRevision(revisionId: string, signal?: AbortSignal): Promise<LMWikiDetail> {
+    const raw = await this.fetch<unknown>(`/api/lm-wiki/revisions/${revisionId}/accept`, { method: "POST", signal });
     return LMWikiDetailSchema.parse(raw);
   }
 
-  async rejectLMWikiRevision(revisionId: string, reason?: string): Promise<LMWikiDetail> {
+  async rejectLMWikiRevision(revisionId: string, reason?: string, signal?: AbortSignal): Promise<LMWikiDetail> {
     const raw = await this.fetch<unknown>(`/api/lm-wiki/revisions/${revisionId}/reject`, {
       method: "POST",
       body: JSON.stringify(reason === undefined ? {} : { reason }),
+      signal,
     });
     return LMWikiDetailSchema.parse(raw);
   }
@@ -3042,23 +3043,25 @@ export class ApiClient {
     return TwinVersionDetailSchema.parse(raw);
   }
 
-  async ensureTwinProposal(wikiRevisionId: string): Promise<TwinProposalResult> {
+  async ensureTwinProposal(wikiRevisionId: string, signal?: AbortSignal): Promise<TwinProposalResult> {
     const raw = await this.fetch<unknown>("/api/twins/proposals", {
       method: "POST",
       body: JSON.stringify({ wiki_revision_id: wikiRevisionId }),
+      signal,
     });
     return TwinProposalResultSchema.parse(raw);
   }
 
-  async acceptTwinProposal(proposalId: string): Promise<TwinVersionResult> {
-    const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/accept`, { method: "POST" });
+  async acceptTwinProposal(proposalId: string, signal?: AbortSignal): Promise<TwinVersionResult> {
+    const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/accept`, { method: "POST", signal });
     return TwinVersionResultSchema.parse(raw);
   }
 
-  async rejectTwinProposal(proposalId: string, reason?: string): Promise<TwinProposalDetail> {
+  async rejectTwinProposal(proposalId: string, reason?: string, signal?: AbortSignal): Promise<TwinProposalDetail> {
     const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/reject`, {
       method: "POST",
       body: JSON.stringify(reason === undefined ? {} : { reason }),
+      signal,
     });
     return TwinProposalDetailSchema.parse(raw);
   }

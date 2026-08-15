@@ -2,7 +2,7 @@
   "page": {
     "eyebrow": "根拠レビュー",
     "title": "LM Wiki と Twin",
-    "description": "ワークスペースの知識を確認し、そこから構築された Twin バージョンを承認します。"
+    "description": "ワークスペースの知識を確認し、Twin を承認します。"
   },
   "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder" },
   "states": {
@@ -19,17 +19,19 @@
   "wiki": {
     "title": "ワークスペースの知識",
     "description": "このワークスペースから収集された正規のソース資料です。",
-    "first_run": "最初の Wiki 更新が進行中か、まだリビジョンが作成されていません。",
+    "first_run_manager": "Wiki を更新して、最初の根拠リビジョンを作成します。",
+    "first_run_member": "Wiki リビジョンはまだありません。owner または admin が最初の更新を開始できます。",
     "revision_title": "リビジョン r{{number}}",
     "empty_content": "このリビジョンには対応するソース項目がありません。"
   },
   "twin": {
     "current_title": "現在の Twin v{{number}}",
     "no_current": "署名済み Twin はまだありません",
-    "description": "署名済みバージョンは変更されません。保留中の提案はレビューまで分離されます。",
+    "description": "署名済みバージョンは不変です。提案はレビューまで分離されます。",
     "proposal_title": "選択した提案",
     "version_title": "バージョン v{{number}}",
     "no_proposal": "承認済み Wiki リビジョンの Twin 提案はありません。",
+    "awaiting_wiki": "Wiki リビジョンを承認すると Twin\u00a0Builder を開始できます。",
     "rejected_guidance": "ソースが変更された後に Wiki を更新すると、新しい進化提案を構築できます。",
     "empty_assertions": "主張はありません。"
   },
@@ -49,7 +51,13 @@
     "sign_off": "提案に署名",
     "reject_proposal": "提案を却下",
     "saving": "判断を保存中",
+    "dismiss": "閉じる",
     "cancel": "キャンセル"
+  },
+  "errors": {
+    "request_timed_out": "リクエストがタイムアウトしました。もう一度お試しください。",
+    "request_failed": "判断を保存できませんでした。もう一度お試しください。",
+    "stale_review": "このレビューは古くなっています。最新版を確認して、もう一度お試しください。"
   },
   "dialog": {
     "accept_wiki_title": "この Wiki リビジョンを承認しますか？",
@@ -58,6 +66,7 @@
     "reject_twin_title": "この Twin 提案を却下しますか？",
     "description": "ワークスペースの明示的なレビュー判断を記録します。",
     "reason": "理由",
+    "reason_count": "{{count}} / 2000 文字",
     "confirm_acceptance": "承認を確定",
     "confirm_rejection": "却下を確定",
     "confirm_sign_off": "署名を確定"

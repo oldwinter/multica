@@ -148,7 +148,7 @@ test("reviews a live Wiki, signs initial and evolved Twins, and preserves member
       timeout: 120_000,
     });
 
-    const firstRun = page.getByText(/first Wiki refresh/i);
+    const firstRun = page.getByText(/first (?:Wiki refresh|evidence revision)/i);
     const refreshButton = page.getByRole("button", { name: "Refresh Wiki" });
     await expect(refreshButton).toBeVisible({ timeout: 30_000 });
     await capture(page, testInfo, "initial-wiki", 1280, 900);
@@ -193,14 +193,19 @@ test("reviews a live Wiki, signs initial and evolved Twins, and preserves member
     expect(latestRefresh.revision.revision_number).toBe(3);
     await page.getByRole("button", { name: "Accept revision" }).click();
     await page.getByRole("button", { name: "Confirm acceptance" }).click();
-    await expect(page.getByText("LM Wiki revision is stale")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByTestId("twin-workspace-content").getByRole("alert"))
+      .toHaveText("This review is out of date. Check the latest version and try again.");
     await expect(page.getByRole("heading", { name: "Revision r3" })).toBeVisible();
     actions.push("stale Wiki review surfaced and canonical revision reloaded");
 
     await page.getByRole("button", { name: "Accept revision" }).click();
     await page.getByRole("button", { name: "Confirm acceptance" }).click();
     await page.getByRole("tab", { name: "Twin Builder" }).click();
-    await expect(page.getByText(/^Added assertions/)).toBeVisible();
+    const selectedProposal = page.locator("section").filter({
+      has: page.getByRole("heading", { name: "Selected proposal" }),
+    });
+    await expect(selectedProposal.getByText(/^Added assertions/)).toBeVisible();
     await page.getByRole("button", { name: "Reject proposal" }).click();
     await page.getByLabel("Reason").fill("Evidence needs another revision");
     await page.getByRole("button", { name: "Confirm rejection" }).click();

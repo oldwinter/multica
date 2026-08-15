@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,6 +50,7 @@ describe("Wiki and Twin mutations", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     queryClient.clear();
     vi.restoreAllMocks();
   });
@@ -109,5 +110,66 @@ describe("Wiki and Twin mutations", () => {
 
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: wikiKeys.all(WORKSPACE_A) });
     expect(setQueryData).not.toHaveBeenCalled();
+  });
+
+  it("waits for dependent cache invalidation before accepting a review mutation", async () => {
+    vi.spyOn(client, "acceptLMWikiRevision").mockResolvedValue({ revision, citations: [] });
+    let releaseInvalidation: () => void = () => undefined;
+    const invalidation = new Promise<void>((resolve) => {
+      releaseInvalidation = resolve;
+    });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries").mockImplementation(() => invalidation);
+    const { result } = renderHook(() => useAcceptLMWikiRevision(WORKSPACE_A), {
+      wrapper: wrapper(queryClient),
+    });
+
+    let settled = false;
+    const mutation = result.current.mutateAsync("revision-1").then(() => {
+      settled = true;
+    });
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2));
+    expect(settled).toBe(false);
+    releaseInvalidation();
+    await act(async () => mutation);
+    expect(settled).toBe(true);
+  });
+
+  it("settles when a dependent cache refresh never returns", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(client, "acceptLMWikiRevision").mockResolvedValue({ revision, citations: [] });
+    vi.spyOn(queryClient, "invalidateQueries").mockImplementation(() => new Promise(() => undefined));
+    const { result } = renderHook(() => useAcceptLMWikiRevision(WORKSPACE_A), {
+      wrapper: wrapper(queryClient),
+    });
+
+    let settled = false;
+    const mutation = result.current.mutateAsync("revision-1").then(() => {
+      settled = true;
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(4_999));
+    expect(settled).toBe(false);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await mutation;
+    expect(settled).toBe(true);
+  });
+
+  it("aborts a stalled review request after the lifecycle deadline", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    vi.spyOn(client, "acceptLMWikiRevision").mockImplementation((_revisionId, signal) => (
+      new Promise((_resolve, reject) => {
+        requestSignal = signal;
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      })
+    ));
+    const { result } = renderHook(() => useAcceptLMWikiRevision(WORKSPACE_A), {
+      wrapper: wrapper(queryClient),
+    });
+
+    const mutation = result.current.mutateAsync("revision-1");
+    const rejection = expect(mutation).rejects.toThrow("Review request timed out");
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    await rejection;
+    expect(requestSignal?.aborted).toBe(true);
   });
 });

@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
-import { ApiClient } from "@multica/core/api/client";
+import { ApiClient, ApiError } from "@multica/core/api/client";
 import { setApiInstance } from "@multica/core/api";
+import type { LMWikiRevision } from "@multica/core/twins";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import enCommon from "../locales/en/common.json";
 import enTwins from "../locales/en/twins.json";
@@ -115,5 +117,102 @@ describe("TwinsPage", () => {
     const currentStep = await screen.findByText("Coordinate execution");
     expect(currentStep.closest("li")).toHaveAttribute("data-state", "current");
     expect(screen.getAllByTestId("twin-review-step")).toHaveLength(6);
+  });
+
+  it("shows the revision returned by a manual refresh while inspecting history", async () => {
+    const user = userEvent.setup();
+    const fixture = lifecycleFixture();
+    const revision3: LMWikiRevision = {
+      ...fixture.wikiDetail.revision,
+      id: "wiki-3",
+      revision_number: 3,
+      source_digest: "sha256:wiki-3",
+    };
+    let wiki = fixture.wiki;
+    vi.spyOn(client, "getLMWiki").mockImplementation(async () => wiki);
+    vi.spyOn(client, "getTwins").mockResolvedValue(fixture.twin);
+    vi.spyOn(client, "getTwinOverview").mockResolvedValue({ twin: null });
+    vi.spyOn(client, "getLMWikiRevision").mockImplementation(async (id) => {
+      const revision = wiki.revisions.find((item) => item.id === id);
+      if (!revision) throw new Error(`Missing test revision ${id}`);
+      return { ...fixture.wikiDetail, revision };
+    });
+    vi.spyOn(client, "getTwinProposal").mockResolvedValue(fixture.proposalDetail);
+    vi.spyOn(client, "getTwinVersion").mockResolvedValue(fixture.versionDetail);
+    vi.spyOn(client, "refreshLMWiki").mockImplementation(async () => {
+      wiki = {
+        ...wiki,
+        latest_revision: revision3,
+        pending_revision: revision3,
+        revisions: [revision3, ...wiki.revisions],
+      };
+      return { created: true, revision: revision3 };
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <I18nProvider locale="en" resources={resources}>
+        <WorkspaceSlugProvider slug="acme">
+          <QueryClientProvider client={queryClient}><TwinsPage /></QueryClientProvider>
+        </WorkspaceSlugProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Revision r2" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "Wiki revision" }));
+    await user.click(await screen.findByRole("option", { name: "r1 / manual" }));
+    expect(await screen.findByRole("heading", { name: "Revision r1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh Wiki" }));
+    expect(await screen.findByRole("heading", { name: "Revision r3" })).toBeInTheDocument();
+  });
+
+  it("follows the canonical revision after a stale review conflict", async () => {
+    const user = userEvent.setup();
+    const fixture = lifecycleFixture();
+    const revision3: LMWikiRevision = {
+      ...fixture.wikiDetail.revision,
+      id: "wiki-3",
+      revision_number: 3,
+      source_digest: "sha256:wiki-3",
+    };
+    let wiki = fixture.wiki;
+    vi.spyOn(client, "getLMWiki").mockImplementation(async () => wiki);
+    vi.spyOn(client, "getTwins").mockResolvedValue(fixture.twin);
+    vi.spyOn(client, "getTwinOverview").mockResolvedValue({ twin: null });
+    vi.spyOn(client, "getLMWikiRevision").mockImplementation(async (id) => {
+      const revision = wiki.revisions.find((item) => item.id === id);
+      if (!revision) throw new Error(`Missing test revision ${id}`);
+      return { ...fixture.wikiDetail, revision };
+    });
+    vi.spyOn(client, "getTwinProposal").mockResolvedValue(fixture.proposalDetail);
+    vi.spyOn(client, "getTwinVersion").mockResolvedValue(fixture.versionDetail);
+    vi.spyOn(client, "acceptLMWikiRevision").mockImplementation(async () => {
+      wiki = {
+        ...wiki,
+        latest_revision: revision3,
+        pending_revision: revision3,
+        revisions: [revision3, ...wiki.revisions],
+      };
+      throw new ApiError("LM Wiki revision is stale", 409, "Conflict");
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <I18nProvider locale="en" resources={resources}>
+        <WorkspaceSlugProvider slug="acme">
+          <QueryClientProvider client={queryClient}><TwinsPage /></QueryClientProvider>
+        </WorkspaceSlugProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Revision r2" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "Wiki revision" }));
+    await user.click(await screen.findByRole("option", { name: "r2 / manual" }));
+    await user.click(screen.getByRole("button", { name: "Accept revision" }));
+    await user.click(screen.getByRole("button", { name: "Confirm acceptance" }));
+
+    expect(await screen.findByText("This review is out of date. Check the latest version and try again."))
+      .toBeInTheDocument();
+    expect(screen.queryByText("Couldn't save the decision. Try again.")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Revision r3" })).toBeInTheDocument();
   });
 });

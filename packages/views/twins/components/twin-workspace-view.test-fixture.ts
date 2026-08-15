@@ -146,11 +146,11 @@ export function lifecycleFixture() {
     onSelectProposal: () => undefined,
     onSelectVersion: () => undefined,
     onRefreshWiki: () => undefined,
-    onAcceptWiki: () => undefined,
-    onRejectWiki: () => undefined,
+    onAcceptWiki: async () => undefined,
+    onRejectWiki: async () => undefined,
     onEnsureTwin: () => undefined,
-    onAcceptTwin: () => undefined,
-    onRejectTwin: () => undefined,
+    onAcceptTwin: async () => undefined,
+    onRejectTwin: async () => undefined,
     onRetry: () => undefined,
   };
 }

@@ -19,7 +19,8 @@
   "wiki": {
     "title": "Workspace knowledge",
     "description": "Canonical source material collected from this workspace.",
-    "first_run": "The first Wiki refresh is in progress or has not produced a revision yet.",
+    "first_run_manager": "Refresh Wiki to compile the first evidence revision.",
+    "first_run_member": "No Wiki revision yet. An owner or admin can start the first refresh.",
     "revision_title": "Revision r{{number}}",
     "empty_content": "This revision contains no supported source items."
   },
@@ -30,6 +31,7 @@
     "proposal_title": "Selected proposal",
     "version_title": "Version v{{number}}",
     "no_proposal": "No Twin proposal is available for the accepted Wiki revision.",
+    "awaiting_wiki": "Accept a Wiki revision to start Twin Builder.",
     "rejected_guidance": "Refresh the Wiki after its sources change to build another evolution proposal.",
     "empty_assertions": "No assertions are present."
   },
@@ -49,7 +51,13 @@
     "sign_off": "Sign off proposal",
     "reject_proposal": "Reject proposal",
     "saving": "Saving decision",
+    "dismiss": "Dismiss",
     "cancel": "Cancel"
+  },
+  "errors": {
+    "request_timed_out": "The request took too long. Try again.",
+    "request_failed": "Couldn't save the decision. Try again.",
+    "stale_review": "This review is out of date. Check the latest version and try again."
   },
   "dialog": {
     "accept_wiki_title": "Accept this Wiki revision?",
@@ -58,6 +66,7 @@
     "reject_twin_title": "Reject this Twin proposal?",
     "description": "This records an explicit workspace review decision.",
     "reason": "Reason",
+    "reason_count": "{{count}} / 2000 characters",
     "confirm_acceptance": "Confirm acceptance",
     "confirm_rejection": "Confirm rejection",
     "confirm_sign_off": "Confirm sign-off"

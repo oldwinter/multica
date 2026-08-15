@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ApiError } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWikiTwinPermissions } from "@multica/core/permissions";
 import {
@@ -21,6 +22,7 @@ import {
   type TwinOverview,
 } from "@multica/core/twins";
 import { TwinWorkspaceView, type TwinViewState } from "./components/twin-workspace-view";
+import { useT } from "../i18n";
 
 const EMPTY_WIKI: LMWikiOverview = {
   latest_revision: null,
@@ -38,21 +40,35 @@ const EMPTY_TWIN: TwinOverview = {
   can_manage: false,
 };
 
-function messageFrom(errors: readonly unknown[]): string | null {
+function messageFrom(
+  errors: readonly unknown[],
+  timeoutMessage: string,
+  staleMessage: string,
+  fallbackMessage: string,
+): string | null {
   for (const error of errors) {
-    if (error instanceof Error && error.message) return error.message;
+    if (error instanceof Error && error.name === "TimeoutError") return timeoutMessage;
+    if (isStaleConflict(error)) return staleMessage;
+    if (error instanceof Error) return fallbackMessage;
   }
   return null;
+}
+
+function isStaleConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409;
 }
 
 export type { TwinViewState } from "./components/twin-workspace-view";
 export { TwinWorkspaceView } from "./components/twin-workspace-view";
 
 export function TwinsPage() {
+  const { t } = useT("twins");
   const wsId = useWorkspaceId();
   const [revisionId, setRevisionId] = useState("");
   const [proposalId, setProposalId] = useState("");
   const [versionId, setVersionId] = useState("");
+  const actionSequence = useRef(0);
+  const [actionFailure, setActionFailure] = useState<{ attempt: number; error: unknown } | null>(null);
 
   const wikiQuery = useQuery(wikiOverviewOptions(wsId));
   const twinQuery = useQuery(twinOverviewOptions(wsId));
@@ -74,6 +90,17 @@ export function TwinsPage() {
   const ensureTwin = useEnsureTwinProposal(wsId);
   const acceptTwin = useAcceptTwinProposal(wsId);
   const rejectTwin = useRejectTwinProposal(wsId);
+  const beginLifecycleAction = () => {
+    const attempt = ++actionSequence.current;
+    setActionFailure(null);
+    return attempt;
+  };
+  const completeLifecycleAction = (attempt: number) => {
+    setActionFailure((current) => current?.attempt === attempt ? null : current);
+  };
+  const failLifecycleAction = (attempt: number, error: unknown) => {
+    setActionFailure((current) => current && current.attempt > attempt ? current : { attempt, error });
+  };
 
   const overviewLoading = wikiQuery.isPending || twinQuery.isPending || twinProfileQuery.isPending
     || wikiPermissions.isLoading || twinPermissions.isLoading;
@@ -82,17 +109,17 @@ export function TwinsPage() {
     : wikiQuery.isError || twinQuery.isError || twinProfileQuery.isError ? "error" : "ready";
   const wikiMutationPending = refreshWiki.isPending || acceptWiki.isPending || rejectWiki.isPending;
   const twinMutationPending = ensureTwin.isPending || acceptTwin.isPending || rejectTwin.isPending;
-  const actionError = messageFrom([
-    refreshWiki.error,
-    acceptWiki.error,
-    rejectWiki.error,
-    ensureTwin.error,
-    acceptTwin.error,
-    rejectTwin.error,
-    wikiDetailQuery.error,
-    proposalDetailQuery.error,
-    versionDetailQuery.error,
-  ]);
+  const actionError = messageFrom(
+    [
+      actionFailure?.error,
+      wikiDetailQuery.error,
+      proposalDetailQuery.error,
+      versionDetailQuery.error,
+    ],
+    t(($) => $.errors.request_timed_out),
+    t(($) => $.errors.stale_review),
+    t(($) => $.errors.request_failed),
+  );
 
   return (
     <TwinWorkspaceView
@@ -119,12 +146,72 @@ export function TwinsPage() {
       onSelectRevision={setRevisionId}
       onSelectProposal={setProposalId}
       onSelectVersion={setVersionId}
-      onRefreshWiki={() => refreshWiki.mutate()}
-      onAcceptWiki={(id) => acceptWiki.mutate(id)}
-      onRejectWiki={(id, reason) => rejectWiki.mutate({ revisionId: id, reason })}
-      onEnsureTwin={(id) => ensureTwin.mutate(id)}
-      onAcceptTwin={(id) => acceptTwin.mutate(id)}
-      onRejectTwin={(id, reason) => rejectTwin.mutate({ proposalId: id, reason })}
+      onRefreshWiki={() => {
+        const attempt = beginLifecycleAction();
+        refreshWiki.mutate(undefined, {
+          onSuccess: (result) => {
+            completeLifecycleAction(attempt);
+            setRevisionId(result.revision.id);
+          },
+          onError: (error) => failLifecycleAction(attempt, error),
+        });
+      }}
+      onAcceptWiki={async (id) => {
+        const attempt = beginLifecycleAction();
+        try {
+          await acceptWiki.mutateAsync(id);
+          completeLifecycleAction(attempt);
+          setProposalId("");
+        } catch (error) {
+          failLifecycleAction(attempt, error);
+          if (isStaleConflict(error)) return setRevisionId("");
+          throw error;
+        }
+      }}
+      onRejectWiki={async (id, reason) => {
+        const attempt = beginLifecycleAction();
+        try {
+          await rejectWiki.mutateAsync({ revisionId: id, reason });
+          completeLifecycleAction(attempt);
+        } catch (error) {
+          failLifecycleAction(attempt, error);
+          if (isStaleConflict(error)) return setRevisionId("");
+          throw error;
+        }
+      }}
+      onEnsureTwin={(id) => {
+        const attempt = beginLifecycleAction();
+        ensureTwin.mutate(id, {
+          onSuccess: (result) => {
+            completeLifecycleAction(attempt);
+            setProposalId(result.proposal.id);
+          },
+          onError: (error) => failLifecycleAction(attempt, error),
+        });
+      }}
+      onAcceptTwin={async (id) => {
+        const attempt = beginLifecycleAction();
+        try {
+          const result = await acceptTwin.mutateAsync(id);
+          completeLifecycleAction(attempt);
+          setVersionId(result.version.id);
+        } catch (error) {
+          failLifecycleAction(attempt, error);
+          if (isStaleConflict(error)) return setProposalId("");
+          throw error;
+        }
+      }}
+      onRejectTwin={async (id, reason) => {
+        const attempt = beginLifecycleAction();
+        try {
+          await rejectTwin.mutateAsync({ proposalId: id, reason });
+          completeLifecycleAction(attempt);
+        } catch (error) {
+          failLifecycleAction(attempt, error);
+          if (isStaleConflict(error)) return setProposalId("");
+          throw error;
+        }
+      }}
       onRetry={() => {
         wikiQuery.refetch();
         twinQuery.refetch();

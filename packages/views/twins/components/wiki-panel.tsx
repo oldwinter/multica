@@ -50,7 +50,13 @@ export function WikiPanel(props: TwinWorkspaceProps) {
 
       {props.wiki.revisions.length > 0 ? (
         <WikiRevisionSelector revisions={props.wiki.revisions} value={props.selectedRevisionId} onChange={props.onSelectRevision} disabled={props.detailLoading} />
-      ) : <p className="text-body text-muted-foreground">{t(($) => $.wiki.first_run)}</p>}
+      ) : (
+        <p className="text-body text-muted-foreground">
+          {props.canManageWiki
+            ? t(($) => $.wiki.first_run_manager)
+            : t(($) => $.wiki.first_run_member)}
+        </p>
+      )}
 
       {revision ? (
         <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
@@ -78,9 +84,9 @@ export function WikiPanel(props: TwinWorkspaceProps) {
       ) : null}
 
       <ReviewDialog open={dialog !== null} kind={dialog ?? "accept-wiki"} pending={props.wikiMutationPending} onOpenChange={(open) => !open && setDialog(null)} onConfirm={(reason) => {
-        if (!revision) return;
-        if (dialog === "reject-wiki") props.onRejectWiki(revision.id, reason);
-        else props.onAcceptWiki(revision.id);
+        if (!revision) return Promise.resolve();
+        if (dialog === "reject-wiki") return props.onRejectWiki(revision.id, reason);
+        return props.onAcceptWiki(revision.id);
       }} />
     </div>
   );

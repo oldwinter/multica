@@ -455,6 +455,19 @@ export class TestApiClient {
     }
   }
 
+  async deleteUser() {
+    if (!this.email) return;
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      await client.query(`DELETE FROM "user" WHERE email = $1`, [this.email]);
+      this.token = null;
+      this.email = null;
+    } finally {
+      await client.end();
+    }
+  }
+
   /** Clean up all issues created during this test. */
   async cleanup() {
     if (this.seededIssueIds.length > 0 && this.workspaceId) {

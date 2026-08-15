@@ -18,7 +18,9 @@ export function TwinPanel(props: TwinWorkspaceProps) {
   const { t } = useT("twins");
   const [dialog, setDialog] = useState<"accept-twin" | "reject-twin" | null>(null);
   const proposal = props.proposalDetail?.proposal ?? null;
-  const version = props.versionDetail?.version ?? props.twin.current_version;
+  const currentVersion = props.twin.current_version;
+  const selectedVersionIsCurrent = !props.selectedVersionId || props.selectedVersionId === currentVersion?.id;
+  const selectedVersion = props.versionDetail?.version ?? (selectedVersionIsCurrent ? currentVersion : null);
   const proposalPending = proposal !== null && proposal.review === null && proposal.signed_version === null;
   const acceptedWikiId = props.wiki.accepted_revision?.id ?? "";
   const acceptedWikiHasProposal = props.twin.proposals.some(
@@ -28,7 +30,7 @@ export function TwinPanel(props: TwinWorkspaceProps) {
   const canBuildProposal = props.canManageTwin && Boolean(acceptedWikiId)
     && !acceptedWikiHasProposal && !acceptedWikiIsCurrent;
   const proposalItems = proposal ? projectTwinAssertions(proposal.content) : [];
-  const versionItems = version ? projectTwinAssertions(version.content) : [];
+  const versionItems = selectedVersion ? projectTwinAssertions(selectedVersion.content) : [];
 
   return (
     <div className="space-y-6">
@@ -39,12 +41,12 @@ export function TwinPanel(props: TwinWorkspaceProps) {
           <div className="flex flex-wrap items-center gap-2">
             <ShieldCheck className="size-4 text-success" aria-hidden="true" />
             <h2 className="text-title font-medium text-foreground">
-              {version ? t(($) => $.twin.current_title, { number: version.version_number }) : t(($) => $.twin.no_current)}
+              {currentVersion ? t(($) => $.twin.current_title, { number: currentVersion.version_number }) : t(($) => $.twin.no_current)}
             </h2>
             {proposalPending ? <Badge variant="outline">{t(($) => $.status.pending)}</Badge> : null}
           </div>
           <p className="text-body text-muted-foreground">{t(($) => $.twin.description)}</p>
-          {version ? <p className="break-all font-mono text-caption text-muted-foreground">{version.content_digest}</p> : null}
+          {currentVersion ? <p className="break-all font-mono text-caption text-muted-foreground">{currentVersion.content_digest}</p> : null}
         </div>
         {canBuildProposal ? (
           <Button variant="outline" disabled={props.twinMutationPending} onClick={() => props.onEnsureTwin(acceptedWikiId)}>
@@ -97,26 +99,32 @@ export function TwinPanel(props: TwinWorkspaceProps) {
           <Separator />
           <CitationList citations={props.proposalDetail?.citations ?? []} />
         </section>
-      ) : <p className="text-body text-muted-foreground">{t(($) => $.twin.no_proposal)}</p>}
+      ) : (
+        <p className="text-body text-muted-foreground">
+          {acceptedWikiId
+            ? t(($) => $.twin.no_proposal)
+            : t(($) => $.twin.awaiting_wiki)}
+        </p>
+      )}
 
-      {version ? (
+      {selectedVersion ? (
         <section className="space-y-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="size-4 text-success" aria-hidden="true" />
-            <h3 className="text-title font-medium text-foreground">{t(($) => $.twin.version_title, { number: version.version_number })}</h3>
+            <h3 className="text-title font-medium text-foreground">{t(($) => $.twin.version_title, { number: selectedVersion.version_number })}</h3>
           </div>
           <ContentList items={versionItems} emptyLabel={t(($) => $.twin.empty_assertions)} />
           <Separator />
-          <TwinTopics topics={projectTwinTopics(version.content)} />
+          <TwinTopics topics={projectTwinTopics(selectedVersion.content)} />
           <Separator />
           <CitationList citations={props.versionDetail?.citations ?? []} />
         </section>
       ) : null}
 
       <ReviewDialog open={dialog !== null} kind={dialog ?? "accept-twin"} pending={props.twinMutationPending} onOpenChange={(open) => !open && setDialog(null)} onConfirm={(reason) => {
-        if (!proposal) return;
-        if (dialog === "reject-twin") props.onRejectTwin(proposal.id, reason);
-        else props.onAcceptTwin(proposal.id);
+        if (!proposal) return Promise.resolve();
+        if (dialog === "reject-twin") return props.onRejectTwin(proposal.id, reason);
+        return props.onAcceptTwin(proposal.id);
       }} />
     </div>
   );

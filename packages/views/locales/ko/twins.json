@@ -19,7 +19,8 @@
   "wiki": {
     "title": "워크스페이스 지식",
     "description": "이 워크스페이스에서 수집한 표준 소스 자료입니다.",
-    "first_run": "첫 Wiki 새로 고침이 진행 중이거나 아직 리비전이 생성되지 않았습니다.",
+    "first_run_manager": "Wiki를 새로 고쳐 첫 근거 리비전을 만드세요.",
+    "first_run_member": "Wiki 리비전이 아직 없습니다. owner 또는 admin이 첫 새로 고침을 시작할 수 있습니다.",
     "revision_title": "리비전 r{{number}}",
     "empty_content": "이 리비전에 지원되는 소스 항목이 없습니다."
   },
@@ -30,6 +31,7 @@
     "proposal_title": "선택한 제안",
     "version_title": "버전 v{{number}}",
     "no_proposal": "승인된 Wiki 리비전에 사용할 Twin 제안이 없습니다.",
+    "awaiting_wiki": "Wiki 리비전을 승인한 뒤 Twin\u00a0Builder를 시작하세요.",
     "rejected_guidance": "소스가 변경된 후 Wiki를 새로 고치면 새 진화 제안을 빌드할 수 있습니다.",
     "empty_assertions": "주장이 없습니다."
   },
@@ -49,7 +51,13 @@
     "sign_off": "제안 승인",
     "reject_proposal": "제안 거부",
     "saving": "결정 저장 중",
+    "dismiss": "닫기",
     "cancel": "취소"
+  },
+  "errors": {
+    "request_timed_out": "요청 시간이 초과되었습니다. 다시 시도하세요.",
+    "request_failed": "결정을 저장하지 못했습니다. 다시 시도하세요.",
+    "stale_review": "이 검토는 최신 상태가 아닙니다. 최신 버전을 확인한 뒤 다시 시도하세요."
   },
   "dialog": {
     "accept_wiki_title": "이 Wiki 리비전을 승인할까요?",
@@ -58,6 +66,7 @@
     "reject_twin_title": "이 Twin 제안을 거부할까요?",
     "description": "명시적인 워크스페이스 검토 결정을 기록합니다.",
     "reason": "이유",
+    "reason_count": "{{count}} / 2000자",
     "confirm_acceptance": "승인 확인",
     "confirm_rejection": "거부 확인",
     "confirm_sign_off": "승인 확인"

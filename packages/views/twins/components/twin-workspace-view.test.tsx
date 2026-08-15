@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { SidebarProvider } from "@multica/ui/components/ui/sidebar";
@@ -40,6 +40,7 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByRole("main")).toHaveAttribute("data-twin-copy");
     expect(screen.getByRole("main").firstElementChild).toHaveClass("border-b");
     expect(screen.getByTestId("twin-workspace-content")).toHaveClass("pb-chat-launcher");
+    expect(screen.getByTestId("twin-workspace-content")).not.toHaveClass("pe-chat-launcher");
   });
 
   it.each([
@@ -57,10 +58,10 @@ describe("TwinWorkspaceView", () => {
     }
   });
 
-  it("reviews a pending Wiki revision with history, content, citations, and a reason", () => {
-    const onAcceptWiki = vi.fn();
-    const onRejectWiki = vi.fn();
-    renderView({ onAcceptWiki, onRejectWiki });
+  it("reviews a pending Wiki revision with history, content, citations, and a reason", async () => {
+    const onAcceptWiki = vi.fn(async () => undefined);
+    const onRejectWiki = vi.fn(async () => undefined);
+    const accepted = renderView({ onAcceptWiki, onRejectWiki });
 
     expect(screen.getByRole("tab", { name: "LM Wiki" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Pending review")).toBeInTheDocument();
@@ -70,24 +71,30 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByText("Issue #42: Review the source model")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Accept revision" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm acceptance" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirm acceptance" })));
     expect(onAcceptWiki).toHaveBeenCalledWith("wiki-2");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    accepted.unmount();
+    renderView({ onAcceptWiki, onRejectWiki });
 
     fireEvent.click(screen.getByRole("button", { name: "Reject revision" }));
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Source is incomplete" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" })));
     expect(onRejectWiki).toHaveBeenCalledWith("wiki-2", "Source is incomplete");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("shows current Twin, proposal history, assertion diff, and sign-off", () => {
-    const onAcceptTwin = vi.fn();
-    const onRejectTwin = vi.fn();
-    renderView({ onAcceptTwin, onRejectTwin });
+  it("shows current Twin, proposal history, assertion diff, and sign-off", async () => {
+    const onAcceptTwin = vi.fn(async () => undefined);
+    const onRejectTwin = vi.fn(async () => undefined);
+    const accepted = renderView({ onAcceptTwin, onRejectTwin });
 
     fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
     expect(screen.getByText("Current Twin v1")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Twin proposal" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Twin version" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Twin version" }).closest("label")?.parentElement)
+      .toHaveClass("pe-chat-launcher", "sm:pe-0");
     expect(screen.getByText(/^Added assertions/)).toBeInTheDocument();
     expect(screen.getAllByText("assertion-new")).toHaveLength(2);
     expect(screen.getByText(/^Removed assertions/)).toBeInTheDocument();
@@ -96,14 +103,18 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByRole("link", { name: "Open issue" })).toHaveAttribute("href", "/acme/issues/issue-42");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign off proposal" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm sign-off" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirm sign-off" })));
     expect(onAcceptTwin).toHaveBeenCalledWith("proposal-2");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    accepted.unmount();
+    renderView({ onAcceptTwin, onRejectTwin });
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Reject proposal" }));
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Needs narrower evidence" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" })));
     expect(onRejectTwin).toHaveBeenCalledWith("proposal-2", "Needs narrower evidence");
-
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("renders the persisted six-step Twin review spine and its data states", () => {
@@ -115,6 +126,27 @@ describe("TwinWorkspaceView", () => {
     expect(within(spine).getByText("Import workspace sources")).toBeInTheDocument();
     expect(within(spine).getByText("Coordinate execution").closest("li")).toHaveAttribute("data-state", "current");
     expect(within(spine).getByText("Deposition").closest("li")).toHaveAttribute("data-state", "upcoming");
+  });
+
+  it("keeps the current Twin identity accurate while inspecting an older version", () => {
+    const fixture = lifecycleFixture();
+    const currentVersion = {
+      ...fixture.twin.current_version,
+      id: "version-2",
+      version_number: 2,
+      proposal_id: "proposal-2",
+    };
+    renderView({
+      twin: {
+        ...fixture.twin,
+        current_version: currentVersion,
+        versions: [currentVersion, ...fixture.twin.versions],
+      },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    expect(screen.getByRole("heading", { name: "Current Twin v2" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Version v1" })).toBeInTheDocument();
   });
 
   it("does not offer to reopen a rejected immutable proposal", () => {
@@ -166,7 +198,7 @@ describe("TwinWorkspaceView", () => {
     };
     const manager = renderView({ wiki: emptyWiki, wikiDetail: null, onRefreshWiki });
 
-    expect(screen.getByText("The first Wiki refresh is in progress or has not produced a revision yet.")).toBeInTheDocument();
+    expect(screen.getByText("Refresh Wiki to compile the first evidence revision.")).toBeInTheDocument();
     expect(screen.queryByText("Pending review")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Refresh Wiki" }));
     expect(onRefreshWiki).toHaveBeenCalledOnce();
@@ -174,13 +206,39 @@ describe("TwinWorkspaceView", () => {
 
     renderView({ wiki: emptyWiki, wikiDetail: null, canManageWiki: false });
     expect(screen.queryByRole("button", { name: "Refresh Wiki" })).not.toBeInTheDocument();
+    expect(screen.getByText("No Wiki revision yet. An owner or admin can start the first refresh.")).toBeInTheDocument();
   });
 
-  it("announces mutation progress and errors without removing review context", () => {
-    renderView({ wikiMutationPending: true, actionError: "Revision is stale" });
+  it("keeps the empty Twin Builder focused on its next prerequisite", () => {
+    const fixture = lifecycleFixture();
+    renderView({
+      wiki: {
+        ...fixture.wiki,
+        latest_revision: null,
+        accepted_revision: null,
+        pending_revision: null,
+        revisions: [],
+      },
+      wikiDetail: null,
+      twin: {
+        ...fixture.twin,
+        current_version: null,
+        pending_proposal: null,
+        proposals: [],
+        versions: [],
+      },
+      proposalDetail: null,
+      versionDetail: null,
+      selectedRevisionId: "",
+      selectedProposalId: "",
+      selectedVersionId: "",
+      reviewSteps: [],
+    });
 
-    expect(screen.getByRole("button", { name: "Saving decision" })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("Revision is stale");
-    expect(screen.getByText("Issue 42: Review the source model")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    expect(screen.queryByRole("combobox", { name: "Twin proposal" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Twin version" })).not.toBeInTheDocument();
+    expect(screen.getByText("Accept a Wiki revision to start Twin Builder.")).toBeInTheDocument();
   });
+
 });

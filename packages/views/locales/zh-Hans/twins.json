@@ -19,7 +19,8 @@
   "wiki": {
     "title": "工作区知识",
     "description": "从当前工作区收集的规范源材料。",
-    "first_run": "首次 Wiki 刷新正在进行，或尚未产生修订。",
+    "first_run_manager": "刷新 Wiki，生成第一版证据修订。",
+    "first_run_member": "还没有 Wiki 修订。owner 或 admin 可以发起首次刷新。",
     "revision_title": "修订 r{{number}}",
     "empty_content": "此修订不包含支持的源条目。"
   },
@@ -30,6 +31,7 @@
     "proposal_title": "所选提案",
     "version_title": "版本 v{{number}}",
     "no_proposal": "已接受的 Wiki 修订没有可用的 Twin 提案。",
+    "awaiting_wiki": "接受一个 Wiki 修订后即可开始构建 Twin。",
     "rejected_guidance": "源信息发生变化后刷新 Wiki，即可构建新的演进提案。",
     "empty_assertions": "没有论断。"
   },
@@ -49,7 +51,13 @@
     "sign_off": "签署提案",
     "reject_proposal": "拒绝提案",
     "saving": "正在保存决定",
+    "dismiss": "关闭",
     "cancel": "取消"
+  },
+  "errors": {
+    "request_timed_out": "请求超时，请重试。",
+    "request_failed": "无法保存决定，请重试。",
+    "stale_review": "此审核已过期，请查看最新版本后重试。"
   },
   "dialog": {
     "accept_wiki_title": "接受此 Wiki 修订？",
@@ -58,6 +66,7 @@
     "reject_twin_title": "拒绝此 Twin 提案？",
     "description": "此操作会记录明确的工作区审阅决定。",
     "reason": "原因",
+    "reason_count": "{{count}} / 2000 字",
     "confirm_acceptance": "确认接受",
     "confirm_rejection": "确认拒绝",
     "confirm_sign_off": "确认签署"
