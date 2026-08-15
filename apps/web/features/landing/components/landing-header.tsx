@@ -2,11 +2,29 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { Menu, Monitor, Moon, Palette, Sun, X } from "lucide-react";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
+import {
+  SKIN_IDS,
+  parseSkin,
+  useSkin,
+  useTheme,
+  type Skin,
+} from "@multica/ui/components/common/theme-provider";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@multica/ui/components/ui/dropdown-menu";
 import { cn } from "@multica/ui/lib/utils";
 import { useAuthStore } from "@multica/core/auth";
-import { docsHrefForLocale, useLocale } from "../i18n";
+import { docsHrefForLocale, useLocale, type Locale } from "../i18n";
 import { useDashboardCtaHref } from "../utils/use-dashboard-cta";
 import { formatStarCount, useGithubStars } from "../utils/use-github-stars";
 import { GitHubMark, githubUrl, headerButtonClassName } from "./shared";
@@ -36,7 +54,7 @@ export function LandingHeader({
         "relative inset-x-0 top-0 z-30",
         variant === "dark"
           ? "absolute bg-transparent"
-          : "border-b border-[#0a0d12]/8 bg-white",
+          : "border-b border-border bg-surface",
       )}
     >
       <div className="mx-auto flex h-[76px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -45,14 +63,14 @@ export function LandingHeader({
             <MulticaIcon
               className={cn(
                 "size-5",
-                variant === "dark" ? "text-white" : "text-[#0a0d12]",
+                variant === "dark" ? "text-white" : "text-foreground",
               )}
               noSpin
             />
             <span
               className={cn(
-                "text-title font-semibold tracking-[0.04em] lowercase sm:text-title-lg",
-                variant === "dark" ? "text-white/92" : "text-[#0a0d12]",
+                "text-title font-semibold tracking-normal lowercase sm:text-title-lg",
+                variant === "dark" ? "text-white/92" : "text-foreground",
               )}
             >
               multica
@@ -76,6 +94,7 @@ export function LandingHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+          <AppearancePicker locale={locale} variant={variant} />
           <button
             type="button"
             aria-label={isMenuOpen ? t.header.closeMenu : t.header.openMenu}
@@ -83,7 +102,7 @@ export function LandingHeader({
             onClick={() => setIsMenuOpen((open) => !open)}
             className={cn(
               headerButtonClassName("ghost", variant),
-              "px-3 md:hidden",
+              "size-11 px-0 md:hidden",
             )}
           >
             {isMenuOpen ? (
@@ -119,8 +138,8 @@ export function LandingHeader({
           className={cn(
             "absolute left-4 right-4 top-[calc(100%+8px)] z-50 rounded-[14px] border p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl md:hidden",
             variant === "dark"
-              ? "border-white/14 bg-[#070a10]/95 text-white"
-              : "border-[#0a0d12]/10 bg-white text-[#0a0d12]",
+              ? "border-white/14 bg-[var(--landing-night)] text-white"
+              : "border-border bg-surface text-foreground",
           )}
         >
           <nav aria-label={t.header.navigation} className="flex flex-col">
@@ -138,7 +157,7 @@ export function LandingHeader({
           <div
             className={cn(
               "mt-2 border-t pt-2",
-              variant === "dark" ? "border-white/10" : "border-[#0a0d12]/8",
+              variant === "dark" ? "border-white/10" : "border-border",
             )}
           >
             <Link
@@ -156,6 +175,125 @@ export function LandingHeader({
         </div>
       ) : null}
     </header>
+  );
+}
+
+const APPEARANCE_COPY: Record<
+  Locale,
+  {
+    title: string;
+    skin: string;
+    mode: string;
+    skins: Record<Skin, string>;
+    modes: Record<"system" | "light" | "dark", string>;
+  }
+> = {
+  en: {
+    title: "Appearance",
+    skin: "Skin",
+    mode: "Mode",
+    skins: { tension: "Tension", relay: "Relay", field: "Field" },
+    modes: { system: "System", light: "Light", dark: "Dark" },
+  },
+  "zh-Hans": {
+    title: "外观",
+    skin: "皮肤",
+    mode: "模式",
+    skins: { tension: "张力", relay: "中继", field: "场域" },
+    modes: { system: "跟随系统", light: "浅色", dark: "深色" },
+  },
+  ko: {
+    title: "화면 모양",
+    skin: "스킨",
+    mode: "모드",
+    skins: { tension: "텐션", relay: "릴레이", field: "필드" },
+    modes: { system: "시스템", light: "라이트", dark: "다크" },
+  },
+  ja: {
+    title: "外観",
+    skin: "スキン",
+    mode: "モード",
+    skins: { tension: "テンション", relay: "リレー", field: "フィールド" },
+    modes: { system: "システム", light: "ライト", dark: "ダーク" },
+  },
+};
+
+const APPEARANCE_MODES = [
+  { value: "system" as const, icon: Monitor },
+  { value: "light" as const, icon: Sun },
+  { value: "dark" as const, icon: Moon },
+];
+
+function AppearancePicker({
+  locale,
+  variant,
+}: {
+  locale: Locale;
+  variant: "dark" | "light";
+}) {
+  const { skin, setSkin } = useSkin();
+  const { theme, setTheme } = useTheme();
+  const copy = APPEARANCE_COPY[locale];
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            aria-label={copy.title}
+            title={copy.title}
+            className={cn(
+              headerButtonClassName("ghost", variant),
+              "size-11 px-0 sm:size-9",
+            )}
+          >
+            <Palette className="size-4" aria-hidden="true" />
+          </button>
+        }
+      />
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{copy.skin}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={skin}
+            onValueChange={(value) => setSkin(parseSkin(value))}
+          >
+            {SKIN_IDS.map((option) => (
+              <DropdownMenuRadioItem
+                key={option}
+                value={option}
+                className="min-h-11 sm:min-h-8"
+              >
+                {copy.skins[option]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{copy.mode}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={theme ?? "system"}
+            onValueChange={(value) => setTheme(value)}
+          >
+            {APPEARANCE_MODES.map((option) => {
+              const Icon = option.icon;
+              return (
+                <DropdownMenuRadioItem
+                  key={option.value}
+                  value={option.value}
+                  className="min-h-11 gap-2 sm:min-h-8"
+                >
+                  <Icon className="size-4 text-muted-foreground" />
+                  {copy.modes[option.value]}
+                </DropdownMenuRadioItem>
+              );
+            })}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -177,8 +315,8 @@ function navLinkClassName(variant: "dark" | "light") {
   return cn(
     "inline-flex h-9 items-center rounded-[9px] px-3 text-label font-medium transition-colors",
     variant === "dark"
-      ? "text-white/72 hover:bg-white/8 hover:text-white"
-      : "text-[#0a0d12]/62 hover:bg-[#0a0d12]/5 hover:text-[#0a0d12]",
+      ? "text-white/72 hover:bg-surface/8 hover:text-white"
+      : "text-muted-foreground hover:bg-muted hover:text-foreground",
   );
 }
 
@@ -186,7 +324,7 @@ function mobileNavLinkClassName(variant: "dark" | "light") {
   return cn(
     "flex min-h-11 items-center gap-2 rounded-[10px] px-3 text-body font-medium transition-colors",
     variant === "dark"
-      ? "text-white/76 hover:bg-white/8 hover:text-white"
-      : "text-[#0a0d12]/68 hover:bg-[#0a0d12]/5 hover:text-[#0a0d12]",
+      ? "text-white/76 hover:bg-surface/8 hover:text-white"
+      : "text-muted-foreground hover:bg-muted hover:text-foreground",
   );
 }

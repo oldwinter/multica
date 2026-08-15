@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type {
   Agent,
   Issue,
@@ -44,7 +44,6 @@ import {
   type MentionTargetType,
 } from "@/data/stores/mention-draft-store";
 import { useScrollToTopOnChange } from "@/lib/use-scroll-to-top-on-change";
-import { THEME } from "@/lib/theme";
 
 const AVATAR_SIZE = 36;
 
@@ -72,9 +71,9 @@ export function MentionPickerBody({ query, mode = "comment" }: Props) {
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
   const listRef = useScrollToTopOnChange(query);
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   const selected = useMentionDraftStore((s) => s.mentions);
   const toggle = useMentionDraftStore((s) => s.toggle);
@@ -209,7 +208,7 @@ export function MentionPickerBody({ query, mode = "comment" }: Props) {
         if (item.kind === "section") {
           return (
             <View className="px-4 pt-4 pb-1">
-              <Text className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <Text className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
                 {item.label}
               </Text>
             </View>

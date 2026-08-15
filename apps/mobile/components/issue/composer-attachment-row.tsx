@@ -31,7 +31,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { resolveAttachmentUrl } from "@/lib/attachment-url";
 import { useLightbox } from "@/lib/markdown/lightbox-provider";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { Text } from "@/components/ui/text";
 
 /** Mention chip data — composer-local state. No store, no cross-route
@@ -131,8 +130,7 @@ function MentionChipView({
   mention: MentionChip;
   onRemove: (type: MentionChipType, id: string) => void;
 }) {
-  const { colorScheme } = useColorScheme();
-  const theme = THEME[colorScheme];
+  const { theme } = useColorScheme();
 
   // Icon picks: @all → people; issue → git-branch (matches web's status icon
   // styling for issue mentions); else single-person glyph.
@@ -175,8 +173,7 @@ interface AttachmentChipProps {
 }
 
 function AttachmentChipView({ item, onRemove, onRetry }: AttachmentChipProps) {
-  const { colorScheme } = useColorScheme();
-  const theme = THEME[colorScheme];
+  const { theme } = useColorScheme();
   const { open } = useLightbox();
 
   const isImage = useMemo(

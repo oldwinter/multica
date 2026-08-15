@@ -370,3 +370,27 @@ html[data-sidebar-resizing="true"] * {
   background-color: var(--find-match-active);
   color: var(--find-match-foreground);
 }
+html[data-theme-transition="reveal"]::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html[data-theme-transition="reveal"]::view-transition-new(root) {
+  animation: multica-theme-reveal 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  mix-blend-mode: normal;
+}
+
+@keyframes multica-theme-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-reveal-x) var(--theme-reveal-y));
+  }
+  to {
+    clip-path: circle(150vmax at var(--theme-reveal-x) var(--theme-reveal-y));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme-transition="reveal"]::view-transition-new(root) {
+    animation: none;
+  }
+}

@@ -23,13 +23,16 @@ const mockToastWarning = vi.hoisted(() => vi.fn());
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
 const mockSetTheme = vi.hoisted(() => vi.fn());
+const mockSetSkin = vi.hoisted(() => vi.fn());
 const mockSetUser = vi.hoisted(() => vi.fn());
 const userRef = vi.hoisted(() => ({
   current: null as { id: string; timezone?: string | null } | null,
 }));
 
 vi.mock("@multica/ui/components/common/theme-provider", () => ({
+  SKIN_IDS: ["tension", "relay", "field"],
   useTheme: () => ({ theme: "light", setTheme: mockSetTheme }),
+  useSkin: () => ({ skin: "tension", setSkin: mockSetSkin }),
 }));
 
 vi.mock("@multica/core/i18n/react", async () => {
@@ -130,15 +133,36 @@ describe("PreferencesTab — Language switcher", () => {
     expect(mockReload).not.toHaveBeenCalled();
   });
 
-  it("shows a confirmation toast when the theme is saved locally", async () => {
+  it("shows a confirmation toast when the appearance is saved locally", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
 
-    await user.click(screen.getByRole("combobox", { name: "Theme" }));
-    await user.click(await screen.findByRole("option", { name: "Dark" }));
+    await user.click(screen.getByRole("radio", { name: "Dark" }));
 
     expect(mockSetTheme).toHaveBeenCalledWith("dark");
     expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists a named skin independently from appearance", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    await user.click(screen.getByRole("radio", { name: /Relay/ }));
+
+    expect(mockSetSkin).toHaveBeenCalledWith("relay");
+    expect(mockSetTheme).not.toHaveBeenCalled();
+    expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports arrow-key navigation between named skins", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    screen.getByRole("radio", { name: /Tension/ }).focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(mockSetSkin).toHaveBeenCalledWith("relay");
+    expect(screen.getByRole("radio", { name: /Relay/ })).toHaveFocus();
   });
 
   it("when not logged in: persists + reloads, no PATCH", async () => {

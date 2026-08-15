@@ -130,6 +130,9 @@ export default async function RootLayout({
       className={cn("antialiased font-sans h-full", inter.variable, geistMono.variable, sourceSerif.variable)}
     >
       <body className="h-full overflow-hidden">
+        <Script id="multica-skin" strategy="beforeInteractive">
+          {`try{var s=localStorage.getItem("multica-skin");document.documentElement.dataset.skin=["tension","relay","field"].includes(s)?s:"tension"}catch(e){document.documentElement.dataset.skin="tension"}`}
+        </Script>
         {/*
           react-grab: dev-only element inspector. Hold ⌘C (Mac) / Ctrl+C and click
           any element to copy its source path + line + component stack for pasting
@@ -148,6 +151,14 @@ export default async function RootLayout({
             strategy="beforeInteractive"
           />
         )}
+        {process.env.NODE_ENV === "development" &&
+          process.env.NEXT_PUBLIC_REACT_SCAN === "true" && (
+            <Script
+              src="//unpkg.com/react-scan/dist/auto.global.js"
+              crossOrigin="anonymous"
+              strategy="afterInteractive"
+            />
+          )}
         <ThemeProvider>
           <WebProviders
             locale={locale}

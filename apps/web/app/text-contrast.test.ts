@@ -425,19 +425,38 @@ describe("text contrast", () => {
     });
   });
 
-  // The landing route tree re-declares the light palette so token-driven
-  // components stay light under next-themes' `.dark` class. That copy is only
-  // correct while it matches the source, so drift here is a bug in itself — a
-  // tone missing from the copy silently inherits its `.dark` value on a white
-  // surface.
-  it.each(["--muted-foreground", "--faint-foreground"])(
-    "keeps the landing-light copy of %s in sync with the light token",
-    (tone) => {
-      expect(resolveToken(readBlock(landingCss(), ".landing-light"), tone)).toBe(
-        resolveToken(readBlock(tokensCss(), ":root"), tone),
+  it.each(["relay", "field"])(
+    "keeps the %s dark sidebar selection readable",
+    (skin) => {
+      const declarations = readBlock(tokensCss(), `.dark[data-skin="${skin}"]`);
+      const background = oklchToRgb(resolveToken(declarations, "--sidebar-accent"));
+      const foreground = oklchToRgb(
+        resolveToken(declarations, "--sidebar-accent-foreground"),
+      );
+
+      expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(
+        WCAG_AA_NORMAL_TEXT,
       );
     },
   );
+
+  it("lets the landing shell inherit the active skin and appearance tokens", () => {
+    const declarations = readBlock(landingCss(), ".landing-shell");
+
+    for (const token of [
+      "--background",
+      "--foreground",
+      "--surface",
+      "--muted-foreground",
+      "--faint-foreground",
+      "--primary",
+      "--brand",
+    ]) {
+      expect(declarations.has(token), `${token} must inherit from tokens.css`).toBe(false);
+    }
+
+    expect(landingCss()).not.toMatch(/\.landing-shell\s*\*[^}]*color-scheme/s);
+  });
 
   /**
    * The detector is the part of this guard most likely to rot, because every

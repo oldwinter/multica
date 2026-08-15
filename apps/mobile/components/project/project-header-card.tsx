@@ -64,7 +64,7 @@ function ProgressSection({ done, total }: { done: number; total: number }) {
   return (
     <View className="w-full pt-2 gap-1.5">
       <View className="flex-row items-center justify-between">
-        <Text className="text-xs uppercase tracking-wider text-muted-foreground">
+        <Text className="text-xs uppercase tracking-normalr text-muted-foreground">
           Progress
         </Text>
         <Text className="text-xs text-muted-foreground">

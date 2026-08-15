@@ -19,12 +19,12 @@ export function CliSection() {
   const d = t.download.cli;
 
   return (
-    <section id="cli" className="bg-[#f7f7f5] py-20 text-[#0a0d12] sm:py-24">
+    <section id="cli" className="bg-background py-20 text-foreground sm:py-24">
       <div className="mx-auto max-w-[820px] px-4 sm:px-6 lg:px-8">
-        <h2 className="landing-serif text-[2.2rem] leading-[1.1] tracking-[-0.03em] sm:text-[2.6rem]">
+        <h2 className="landing-serif text-[2.2rem] leading-[1.1] tracking-normal sm:text-[2.6rem]">
           {d.title}
         </h2>
-        <p className="mt-4 max-w-[620px] text-body-lg leading-7 text-[#0a0d12]/72">
+        <p className="mt-4 max-w-[620px] text-body-lg leading-7 text-muted-foreground">
           {d.sub}
         </p>
 
@@ -43,7 +43,7 @@ export function CliSection() {
           />
         </div>
 
-        <p className="mt-6 text-label text-[#0a0d12]/60">{d.sshNote}</p>
+        <p className="mt-6 text-label text-muted-foreground">{d.sshNote}</p>
       </div>
     </section>
   );
@@ -71,12 +71,12 @@ function CommandBlock({
 
   return (
     <div>
-      <p className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-[#0a0d12]/55">
+      <p className="mb-2 text-caption font-medium uppercase tracking-normal text-muted-foreground">
         {label}
       </p>
-      <div className="flex items-start gap-3 rounded-xl border border-[#0a0d12]/10 bg-white px-4 py-3 font-mono text-label">
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 font-mono text-label">
         <Terminal
-          className="mt-0.5 size-4 shrink-0 text-[#0a0d12]/55"
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
           aria-hidden
         />
         <code className="min-w-0 flex-1 whitespace-pre-wrap break-all">
@@ -86,7 +86,7 @@ function CommandBlock({
           type="button"
           onClick={onCopy}
           aria-label={copied ? copiedLabel : copyLabel}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-caption font-medium text-[#0a0d12]/70 transition-colors hover:bg-[#0a0d12]/5 hover:text-[#0a0d12]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-caption font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {copied ? (
             <>

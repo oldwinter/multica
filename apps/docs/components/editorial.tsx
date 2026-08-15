@@ -43,17 +43,17 @@ export function NumberedCard({
       href={prefixLocale(href, lang)}
       className="group flex flex-col gap-2.5 border-r border-border px-0 py-5 pr-4 no-underline last:border-r-0 md:px-4 md:first:pl-0 md:last:pr-0"
     >
-      <div className="font-mono text-[0.6875rem] uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="font-mono text-[0.6875rem] uppercase tracking-normal text-muted-foreground">
         {number ? `No. ${number}` : null}
       </div>
-      <div className="font-[family-name:var(--font-serif)] text-[1.375rem] leading-[1.25] tracking-[-0.015em] text-foreground transition-colors group-hover:text-[var(--primary)]">
+      <div className="font-[family-name:var(--font-serif)] text-[1.375rem] leading-[1.25] tracking-normal text-foreground transition-colors group-hover:text-[var(--primary)]">
         {title}
       </div>
       <div className="text-[0.84375rem] leading-[1.55] text-muted-foreground">
         {children}
       </div>
       {tag ? (
-        <div className="mt-1 font-mono text-[0.625rem] uppercase tracking-[0.06em] text-[var(--primary)]">
+        <div className="mt-1 font-mono text-[0.625rem] uppercase tracking-normal text-[var(--primary)]">
           {tag}
         </div>
       ) : null}
@@ -80,11 +80,11 @@ export function Step({
 }) {
   return (
     <div className="grid grid-cols-[3.5rem_1fr] gap-5 border-b border-border py-5">
-      <div className="font-[family-name:var(--font-serif)] text-[2rem] font-normal leading-none tracking-[-0.02em] text-[var(--primary)]">
+      <div className="font-[family-name:var(--font-serif)] text-[2rem] font-normal leading-none tracking-normal text-[var(--primary)]">
         {number}
       </div>
       <div>
-        <div className="mb-1 font-[family-name:var(--font-serif)] text-[1.25rem] leading-[1.3] tracking-[-0.01em] text-foreground">
+        <div className="mb-1 font-[family-name:var(--font-serif)] text-[1.25rem] leading-[1.3] tracking-normal text-foreground">
           {title}
         </div>
         <div className="text-[0.9375rem] leading-[1.6] text-muted-foreground">

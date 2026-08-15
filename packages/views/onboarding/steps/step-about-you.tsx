@@ -205,10 +205,10 @@ export function StepAboutYou({
         className="min-h-0 flex-1 overflow-y-auto"
       >
         <div className="mx-auto w-full max-w-[920px] px-6 py-10 sm:px-10 md:px-14 lg:py-14">
-          <div className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          <div className="mb-2 text-caption font-medium uppercase tracking-normal text-muted-foreground">
             {t(($) => $.questions.eyebrow_about_you)}
           </div>
-          <h1 className="text-balance font-serif text-display font-medium leading-[1.15] tracking-tight text-foreground">
+          <h1 className="text-balance font-serif text-display font-medium leading-[1.15] tracking-normal text-foreground">
             {t(($) => $.questions.about_you.question)}
           </h1>
 

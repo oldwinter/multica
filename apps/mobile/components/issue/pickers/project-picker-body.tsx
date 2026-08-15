@@ -10,7 +10,7 @@ import { useMemo } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type { Project } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ProjectIcon } from "@/components/ui/project-icon";
@@ -18,7 +18,6 @@ import { MOBILE_PLACEHOLDER_COLOR } from "@/components/ui/input-tokens";
 import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useScrollToTopOnChange } from "@/lib/use-scroll-to-top-on-change";
-import { THEME } from "@/lib/theme";
 
 type Row = { kind: "none" } | { kind: "project"; project: Project };
 
@@ -32,9 +31,9 @@ export function ProjectPickerBody({ value, query, onChange }: Props) {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
   const listRef = useScrollToTopOnChange(query);
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   const rows = useMemo<Row[]>(() => {
     const q = query.trim().toLowerCase();

@@ -21,7 +21,7 @@ export const CODE_BLOCK_TEXT_CLASS =
 // `<View className="gap-3">` in `markdown.tsx`, not per-child margin.
 export const CODE_BLOCK_CONTAINER_CLASS =
   "bg-code-surface border border-border rounded-lg px-3 py-2";
-// No `uppercase tracking-wide` — those turn "ts" into "T S" which reads as
+// No `uppercase tracking-normal` — those turn "ts" into "T S" which reads as
 // a label-strip / advertising banner and competes with the code itself for
 // attention. Lowercase muted text is the GitHub Mobile / Notion iOS pattern.
 export const CODE_BLOCK_LANG_LABEL_CLASS =

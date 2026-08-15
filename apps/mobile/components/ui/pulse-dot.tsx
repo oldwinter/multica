@@ -27,7 +27,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 interface Props {
   /** Diameter in pt. Default 8 (matches the in-card row). */
@@ -35,7 +34,7 @@ interface Props {
 }
 
 export function PulseDot({ size = 8 }: Props) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const opacity = useSharedValue(0.3);
   useEffect(() => {
     opacity.value = withRepeat(
@@ -54,7 +53,7 @@ export function PulseDot({ size = 8 }: Props) {
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: THEME[colorScheme].brand,
+          backgroundColor: theme.brand,
         },
         style,
       ]}

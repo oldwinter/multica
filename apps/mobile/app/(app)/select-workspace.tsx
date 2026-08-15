@@ -24,7 +24,7 @@ export default function SelectWorkspace() {
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView contentContainerClassName="px-6 py-6 gap-6">
         <View className="gap-1">
-          <Text className="text-xs uppercase tracking-wider text-muted-foreground">
+          <Text className="text-xs uppercase tracking-normalr text-muted-foreground">
             Signed in as
           </Text>
           <Text className="text-base text-foreground">{user?.email}</Text>

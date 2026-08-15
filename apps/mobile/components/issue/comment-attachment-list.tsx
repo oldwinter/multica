@@ -29,7 +29,6 @@ import { standaloneAttachments } from "@/lib/attachment-dedup";
 import { MarkdownImage } from "@/lib/markdown/markdown-image";
 import { resolveAttachmentUrl } from "@/lib/attachment-url";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { Text } from "@/components/ui/text";
 
 interface Props {
@@ -43,8 +42,7 @@ interface Props {
 }
 
 export function CommentAttachmentList({ attachments, content }: Props) {
-  const { colorScheme } = useColorScheme();
-  const theme = THEME[colorScheme];
+  const { theme } = useColorScheme();
 
   // Only render attachments not already referenced inline in the body. The
   // dedup lives in a pure helper (lib/attachment-dedup) so it can be unit
@@ -88,7 +86,7 @@ function FileCard({
   theme,
 }: {
   attachment: Attachment;
-  theme: typeof THEME["light"];
+  theme: import("@/lib/theme").AppTheme;
 }) {
   const sizeLabel = formatBytes(attachment.size_bytes);
   return (

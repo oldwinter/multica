@@ -17,14 +17,13 @@ import { useMemo } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type { Label } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { labelListOptions } from "@/data/queries/labels";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useScrollToTopOnChange } from "@/lib/use-scroll-to-top-on-change";
 import { pickInlineColor } from "@/lib/inline-color";
-import { THEME } from "@/lib/theme";
 
 type Row =
   | { kind: "create"; name: string }
@@ -49,9 +48,9 @@ export function LabelPickerBody({
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { data: labels = [] } = useQuery(labelListOptions(wsId));
   const listRef = useScrollToTopOnChange(query);
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   const attachedIds = useMemo(
     () => new Set(attached.map((l) => l.id)),

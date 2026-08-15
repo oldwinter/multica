@@ -27,7 +27,6 @@ import { useToggleCommentReaction } from "@/data/mutations/issues";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 export default function CommentEmojiPickerRoute() {
   const { id, commentId } = useLocalSearchParams<{
@@ -37,7 +36,7 @@ export default function CommentEmojiPickerRoute() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const userId = useAuthStore((s) => s.user?.id);
   const toggle = useToggleCommentReaction(id);
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
 
   const { data: timeline = [] } = useQuery(issueTimelineOptions(wsId, id));
   const entry = useMemo(
@@ -64,7 +63,6 @@ export default function CommentEmojiPickerRoute() {
     [reactions, userId, toggle, commentId],
   );
 
-  const theme = THEME[colorScheme];
 
   return (
     <View className="flex-1">

@@ -1,8 +1,42 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY } from "./client";
+import type { Logger } from "../logger";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("ApiClient error logging", () => {
+  it("logs an unauthorized response as an expected session state", async () => {
+    // Given
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } satisfies Logger;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "missing authorization" }), {
+          status: 401,
+          statusText: "Unauthorized",
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    // When
+    const request = new ApiClient("https://api.example.test", { logger }).getMe();
+
+    // Then
+    await expect(request).rejects.toMatchObject({ status: 401 });
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("401 /api/me"),
+      expect.objectContaining({ error: "missing authorization" }),
+    );
+    expect(logger.error).not.toHaveBeenCalled();
+  });
 });
 
 describe("ApiClient pull-request response schema", () => {

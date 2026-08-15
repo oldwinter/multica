@@ -54,8 +54,26 @@
   },
   "preferences": {
     "general_title": "General",
+    "appearance_title": "Appearance",
+    "appearance_hint": "Choose a visual material and how it responds to ambient light.",
+    "skin": {
+      "title": "Skin",
+      "tension": {
+        "name": "Tension",
+        "description": "Concrete, carbon, and signal red"
+      },
+      "relay": {
+        "name": "Relay",
+        "description": "Cool mineral, teal, and coral"
+      },
+      "field": {
+        "name": "Field",
+        "description": "Mineral, moss, and survey amber"
+      }
+    },
     "theme": {
-      "title": "Theme",
+      "title": "Mode",
+      "hint": "Follow your device or keep this appearance fixed.",
       "light": "Light",
       "dark": "Dark",
       "system": "System"

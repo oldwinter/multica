@@ -231,7 +231,7 @@ export function MentionSuggestionBar({
                   index > 0 && "border-t border-border/60 mt-1",
                 )}
               >
-                <Text className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-medium">
+                <Text className="text-[10px] uppercase tracking-normalr text-muted-foreground/80 font-medium">
                   {item.label}
                 </Text>
               </View>
@@ -386,7 +386,7 @@ function Badge({
     >
       <Text
         className={cn(
-          "text-[10px] uppercase tracking-wide",
+          "text-[10px] uppercase tracking-normal",
           tone === "brand" ? "text-brand" : "text-muted-foreground",
         )}
       >

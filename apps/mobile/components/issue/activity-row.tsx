@@ -34,7 +34,6 @@ import { formatActivity } from "@/lib/format-activity";
 import { timeAgo } from "@/lib/time-ago";
 import { useActorLookup } from "@/data/use-actor-name";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 function CalendarGlyph({
   size = 14,
@@ -108,8 +107,8 @@ function LeadIcon({
 
 export function ActivityRow({ entry }: { entry: TimelineEntry }) {
   const { getName } = useActorLookup();
-  const { colorScheme } = useColorScheme();
-  const mutedFg = THEME[colorScheme].mutedForeground;
+  const { theme } = useColorScheme();
+  const mutedFg = theme.mutedForeground;
   const resolveName = (
     type: string | null | undefined,
     id: string | null | undefined,

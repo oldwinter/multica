@@ -12,12 +12,12 @@ export function HowItWorksSection() {
   const ctaHref = useDashboardCtaHref();
 
   return (
-    <section id="how-it-works" className="bg-[#05070b] text-white">
+    <section id="how-it-works" className="bg-[var(--landing-night)] text-white">
       <div className="mx-auto max-w-[1320px] px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-40">
-        <p className="text-micro font-semibold uppercase tracking-[0.16em] text-white/40">
+        <p className="text-micro font-semibold uppercase tracking-normal text-white/40">
           {t.howItWorks.label}
         </p>
-        <h2 className="mt-4 landing-serif text-[2.6rem] leading-[1.05] tracking-[-0.03em] sm:text-[3.4rem] lg:text-[4.2rem]">
+        <h2 className="mt-4 landing-serif text-[2.6rem] leading-[1.05] tracking-normal sm:text-[3.4rem] lg:text-[4.2rem]">
           {t.howItWorks.headlineMain}
           <br />
           <span className="text-white/40">{t.howItWorks.headlineFaded}</span>
@@ -27,7 +27,7 @@ export function HowItWorksSection() {
           {t.howItWorks.steps.map((step, i) => (
             <div
               key={i}
-              className="flex flex-col bg-[#05070b] p-8 lg:p-10"
+              className="flex flex-col bg-[var(--landing-night)] p-8 lg:p-10"
             >
               <span className="text-label font-semibold tabular-nums text-white/28">
                 {String(i + 1).padStart(2, "0")}

@@ -1,7 +1,6 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Monitor, Moon, Palette, Sun } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@multica/ui/components/ui/button";
@@ -9,9 +8,18 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { cn } from "@multica/ui/lib/utils";
+import {
+  SKIN_IDS,
+  parseSkin,
+  useSkin,
+  useTheme,
+  type Skin,
+} from "@multica/ui/components/common/theme-provider";
 import { i18n } from "@/lib/i18n";
 import { localeLabels } from "@/lib/translations";
 
@@ -43,10 +51,17 @@ const THEME_OPTIONS: { value: string; label: string; icon: ReactNode }[] = [
   { value: "system", label: "System", icon: <Monitor className="size-4" /> },
 ];
 
+const SKIN_LABELS: Record<Skin, string> = {
+  tension: "Tension",
+  relay: "Relay",
+  field: "Field",
+};
+
 export function DocsSettings({ locale }: { locale: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { skin, setSkin } = useSkin();
 
   // Gate theme reads until mount — next-themes is SSR-incompatible and
   // would otherwise cause a hydration flash of the wrong icon.
@@ -74,7 +89,7 @@ export function DocsSettings({ locale }: { locale: string }) {
             <Button
               variant="ghost"
               size="sm"
-              className="font-normal text-muted-foreground"
+              className="min-h-11 px-3 font-normal text-muted-foreground md:min-h-7"
               aria-label="Switch language"
             >
               {localeLabels[locale as keyof typeof localeLabels] ?? locale}
@@ -94,6 +109,37 @@ export function DocsSettings({ locale }: { locale: string }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-11 shrink-0 text-muted-foreground md:size-7"
+              aria-label={`Switch skin. Current: ${SKIN_LABELS[skin]}`}
+            >
+              <Palette className="size-4" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" side="top" className="min-w-[140px]">
+          <DropdownMenuRadioGroup
+            value={skin}
+            onValueChange={(value) => setSkin(parseSkin(value))}
+          >
+            {SKIN_IDS.map((option) => (
+              <DropdownMenuRadioItem
+                key={option}
+                value={option}
+                className="min-h-11 md:min-h-8"
+              >
+                {SKIN_LABELS[option]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       {/* Theme — right icon button. Matched height to the sm pill via
           the icon-sm size token; without this the icon variant defaults
           to 32px while size="sm" is 28px, misaligning them. */}
@@ -103,7 +149,7 @@ export function DocsSettings({ locale }: { locale: string }) {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="shrink-0 text-muted-foreground"
+              className="size-11 shrink-0 text-muted-foreground md:size-7"
               aria-label="Switch theme"
             >
               {activeThemeOption.icon}
@@ -111,19 +157,21 @@ export function DocsSettings({ locale }: { locale: string }) {
           }
         />
         <DropdownMenuContent align="end" side="top" className="min-w-[140px]">
-          {THEME_OPTIONS.map((opt) => (
-            <DropdownMenuItem
-              key={opt.value}
-              onClick={() => setTheme(opt.value)}
-              className={cn(
-                "gap-2",
-                opt.value === activeTheme && "bg-accent",
-              )}
-            >
-              {opt.icon}
-              {opt.label}
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuRadioGroup
+            value={activeTheme}
+            onValueChange={(value) => setTheme(value)}
+          >
+            {THEME_OPTIONS.map((opt) => (
+              <DropdownMenuRadioItem
+                key={opt.value}
+                value={opt.value}
+                className="min-h-11 gap-2 md:min-h-8"
+              >
+                {opt.icon}
+                {opt.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

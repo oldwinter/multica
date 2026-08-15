@@ -163,7 +163,7 @@ function Section({
   return (
     <View className="gap-2">
       <View className="px-1">
-        <Text className="text-xs uppercase tracking-wider text-muted-foreground">
+        <Text className="text-xs uppercase tracking-normalr text-muted-foreground">
           {title}
         </Text>
         {description ? (

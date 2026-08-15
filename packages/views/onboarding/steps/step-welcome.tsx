@@ -79,12 +79,12 @@ export function StepWelcome({
           <div className="flex w-full max-w-[540px] flex-col gap-8">
             <div className="flex items-center gap-2.5">
               <MulticaIcon className="size-5 text-foreground" noSpin />
-              <span className="font-serif text-title-lg font-medium tracking-tight">
+              <span className="font-serif text-title-lg font-medium tracking-normal">
                 {t(($) => $.welcome.wordmark)}
               </span>
             </div>
 
-            <h1 className="text-balance font-serif text-5xl font-medium leading-[1.04] tracking-tight sm:text-6xl">
+            <h1 className="text-balance font-serif text-5xl font-medium leading-[1.04] tracking-normal sm:text-6xl">
               {t(($) => $.welcome.headline_line1)}
               <br />
               {t(($) => $.welcome.headline_line2)}{" "}

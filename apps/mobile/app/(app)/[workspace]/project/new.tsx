@@ -261,7 +261,7 @@ function Field({
 }) {
   return (
     <View className="gap-1.5">
-      <Text className="text-xs uppercase tracking-wider text-muted-foreground">
+      <Text className="text-xs uppercase tracking-normalr text-muted-foreground">
         {label}
       </Text>
       {children}

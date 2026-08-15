@@ -14,7 +14,7 @@ import { useMemo } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type { Agent, MemberWithUser } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
@@ -23,7 +23,6 @@ import { agentListOptions } from "@/data/queries/agents";
 import { memberListOptions } from "@/data/queries/members";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useScrollToTopOnChange } from "@/lib/use-scroll-to-top-on-change";
-import { THEME } from "@/lib/theme";
 
 const AVATAR_SIZE = 36;
 
@@ -56,9 +55,9 @@ export function ProjectLeadPickerBody({ value, query, onChange }: Props) {
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const listRef = useScrollToTopOnChange(query);
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   const rows = useMemo<Row[]>(() => {
     const q = query.trim().toLowerCase();

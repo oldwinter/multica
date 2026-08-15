@@ -9,13 +9,13 @@ export function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="bg-[#f8f8f8] text-[#0a0d12]">
+    <section id="faq" className="bg-page-canvas text-foreground">
       <div className="mx-auto max-w-[860px] px-4 py-24 sm:px-6 sm:py-32 lg:py-40">
         <div className="text-center">
-          <p className="text-micro font-semibold uppercase tracking-[0.16em] text-[#0a0d12]/40">
+          <p className="text-micro font-semibold uppercase tracking-normal text-muted-foreground">
             {t.faq.label}
           </p>
-          <h2 className="mt-4 landing-serif text-[2.6rem] leading-[1.05] tracking-[-0.03em] sm:text-[3.4rem] lg:text-[4.2rem]">
+          <h2 className="mt-4 landing-serif text-[2.6rem] leading-[1.05] tracking-normal sm:text-[3.4rem] lg:text-[4.2rem]">
             {t.faq.headline}
           </h2>
         </div>
@@ -28,12 +28,12 @@ export function FAQSection() {
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
                 className="flex w-full items-start justify-between gap-4 py-6 text-left"
               >
-                <span className="text-title-sm font-semibold leading-snug text-[#0a0d12] sm:text-title">
+                <span className="text-title-sm font-semibold leading-snug text-foreground sm:text-title">
                   {faq.question}
                 </span>
                 <span
                   className={cn(
-                    "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-[#0a0d12]/12 text-[#0a0d12]/40 transition-transform",
+                    "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-transform",
                     openIndex === i && "rotate-45",
                   )}
                 >
@@ -57,7 +57,7 @@ export function FAQSection() {
                 )}
               >
                 <div className="overflow-hidden">
-                  <p className="pb-6 pr-12 text-body leading-[1.7] text-[#0a0d12]/56 sm:text-body-lg">
+                  <p className="pb-6 pr-12 text-body leading-[1.7] text-muted-foreground sm:text-body-lg">
                     {faq.answer}
                   </p>
                 </div>

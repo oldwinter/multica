@@ -4,12 +4,11 @@
  */
 import { Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type { IssuePriority } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { PriorityIcon } from "@/components/ui/priority-icon";
 import { PRIORITY_LABEL } from "@/lib/issue-status";
-import { THEME } from "@/lib/theme";
 
 // Display order: severity descending (urgent → none).
 const PRIORITY_OPTIONS: IssuePriority[] = [
@@ -26,9 +25,9 @@ interface Props {
 }
 
 export function PriorityPickerBody({ value, onChange }: Props) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>

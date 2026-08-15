@@ -36,7 +36,6 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import Svg, { Path, Rect } from "react-native-svg";
 import { Text } from "@/components/ui/text";
-import { THEME } from "@/lib/theme";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import {
   CODE_BLOCK_CONTAINER_CLASS,
@@ -148,8 +147,7 @@ function HighlightedCode({
 }
 
 function CodeBlockHeader({ code, lang }: Props) {
-  const { isDarkColorScheme } = useColorScheme();
-  const t = isDarkColorScheme ? THEME.dark : THEME.light;
+  const { theme: t } = useColorScheme();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

@@ -308,7 +308,7 @@ export function StepWorkspace({
           className="min-h-0 flex-1 overflow-y-auto"
         >
           <div className="mx-auto w-full max-w-[620px] px-6 py-10 sm:px-10 md:px-14 lg:px-0 lg:py-14">
-            <div className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="mb-2 text-caption font-medium uppercase tracking-normal text-muted-foreground">
               {reusing
                 ? workspaceCreationAllowed
                   ? t(($) => $.step_workspace.eyebrow_resume)
@@ -317,7 +317,7 @@ export function StepWorkspace({
                   ? t(($) => $.step_workspace.eyebrow_first)
                   : t(($) => $.step_workspace.creation_disabled_eyebrow)}
             </div>
-            <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-tight text-foreground">
+            <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-normal text-foreground">
               {reusing
                 ? workspaceCreationAllowed
                   ? t(($) => $.step_workspace.headline_resume, { name: reusing.name })
@@ -516,7 +516,7 @@ function CreateWorkspaceSide() {
   const { t } = useT("onboarding");
   return (
     <div className="flex flex-col gap-6">
-      <div className="text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="text-caption font-medium uppercase tracking-normal text-muted-foreground">
         {t(($) => $.step_workspace.side_create_eyebrow)}
       </div>
 
@@ -525,7 +525,7 @@ function CreateWorkspaceSide() {
         slug={t(($) => $.step_workspace.side_preview_slug)}
       />
 
-      <div className="mt-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mt-2 text-caption font-medium uppercase tracking-normal text-muted-foreground">
         {t(($) => $.step_workspace.side_things_eyebrow)}
       </div>
       <div className="flex flex-col gap-3.5">
@@ -542,13 +542,13 @@ function ExistingWorkspaceSide({ workspace }: { workspace: Workspace }) {
   const { t } = useT("onboarding");
   return (
     <div className="flex flex-col gap-6">
-      <div className="text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="text-caption font-medium uppercase tracking-normal text-muted-foreground">
         {t(($) => $.step_workspace.side_existing_eyebrow)}
       </div>
 
       <WorkspacePreviewCard name={workspace.name} slug={workspace.slug} />
 
-      <div className="mt-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mt-2 text-caption font-medium uppercase tracking-normal text-muted-foreground">
         {t(($) => $.step_workspace.side_next_eyebrow)}
       </div>
       <div className="flex flex-col gap-3.5">

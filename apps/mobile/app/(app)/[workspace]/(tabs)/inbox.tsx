@@ -27,13 +27,12 @@ import {
 } from "@/data/mutations/inbox";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { deduplicateInboxItems } from "@/lib/inbox-display";
 
 export default function Inbox() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const { data: rawItems, isLoading, error, refetch, isRefetching } = useQuery(
     inboxListOptions(wsId),
   );
@@ -140,7 +139,7 @@ export default function Inbox() {
           </Button>
         </View>
       ) : !data || data.length === 0 ? (
-        <InboxEmpty iconColor={THEME[colorScheme].mutedForeground} />
+        <InboxEmpty iconColor={theme.mutedForeground} />
       ) : (
         <FlatList
           data={data}

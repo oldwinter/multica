@@ -34,13 +34,12 @@ import { WorkspaceAvatar } from "@/components/workspace/workspace-avatar";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 export default function SwitchWorkspaceRoute() {
   const activeSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
-  const { colorScheme } = useColorScheme();
-  const t = THEME[colorScheme];
+  const { theme } = useColorScheme();
+  const t = theme;
   const { data, isLoading } = useQuery(workspaceListOptions());
 
   const onSelect = (ws: Workspace) => {

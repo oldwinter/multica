@@ -98,7 +98,6 @@ import { useLastViewedStore } from "@/data/stores/last-viewed-store";
 import { coalesceTimeline } from "@/lib/timeline-coalesce";
 import { buildTimelineRows, type TimelineRow } from "@/lib/timeline-thread";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { useCommentSelectStore } from "@/data/comment-select-store";
 
 interface Props {
@@ -330,7 +329,7 @@ export function TimelineList({
       <IssueDescription issueId={issue.id} description={issue.description} />
       <IssueReactionRow issue={issue} />
       <View className="px-4 pt-4 pb-2 border-t border-border">
-        <Text className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+        <Text className="text-xs uppercase tracking-normalr text-muted-foreground font-medium">
           Activity
         </Text>
       </View>
@@ -468,7 +467,7 @@ function UnreadDivider() {
   return (
     <View className="flex-row items-center gap-2 px-4">
       <View className="flex-1 h-px bg-destructive/40" />
-      <Text className="text-[10px] uppercase tracking-wider font-medium text-destructive">
+      <Text className="text-[10px] uppercase tracking-normalr font-medium text-destructive">
         New
       </Text>
       <View className="flex-1 h-px bg-destructive/40" />
@@ -494,8 +493,8 @@ function NewCommentChip({
   count: number;
   onPress: () => void;
 }) {
-  const { colorScheme } = useColorScheme();
-  const fg = THEME[colorScheme].primaryForeground;
+  const { theme } = useColorScheme();
+  const fg = theme.primaryForeground;
   return (
     <Pressable
       onPress={onPress}

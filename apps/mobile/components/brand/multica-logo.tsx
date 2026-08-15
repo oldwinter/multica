@@ -7,7 +7,6 @@
  * `THEME` token from `@/lib/theme`.
  */
 import Svg, { Polygon } from "react-native-svg";
-import { THEME } from "@/lib/theme";
 import { useColorScheme } from "@/lib/use-color-scheme";
 
 interface MulticaLogoProps {
@@ -16,9 +15,8 @@ interface MulticaLogoProps {
 }
 
 export function MulticaLogo({ size = 48, color }: MulticaLogoProps) {
-  const { isDarkColorScheme } = useColorScheme();
-  const resolvedColor =
-    color ?? (isDarkColorScheme ? THEME.dark.foreground : THEME.light.foreground);
+  const { theme } = useColorScheme();
+  const resolvedColor = color ?? theme.foreground;
 
   return (
     <Svg width={size} height={size} viewBox="0 0 80 80">

@@ -27,6 +27,24 @@
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI",
     "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Apple SD Gothic Neo",
     "Malgun Gothic", "Noto Sans CJK KR", sans-serif;
+  --landing-night: oklch(0.14 0.012 25);
+  --landing-night-hover: oklch(0.2 0.018 25);
+  --landing-on-night: oklch(0.98 0.004 25);
+  --landing-on-night-muted: oklch(0.78 0.018 25);
+}
+
+:root[data-skin="relay"] {
+  --landing-night: oklch(0.14 0.025 210);
+  --landing-night-hover: oklch(0.2 0.035 210);
+  --landing-on-night: oklch(0.98 0.008 195);
+  --landing-on-night-muted: oklch(0.79 0.025 195);
+}
+
+:root[data-skin="field"] {
+  --landing-night: oklch(0.14 0.03 145);
+  --landing-night-hover: oklch(0.2 0.04 145);
+  --landing-on-night: oklch(0.98 0.008 120);
+  --landing-on-night-muted: oklch(0.8 0.025 120);
 }
 
 /* Japanese: Kanji are Han ideographs sharing the same Unicode block as Chinese,

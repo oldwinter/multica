@@ -22,7 +22,6 @@ import {
 } from "@/lib/project-status";
 import { useActorLookup } from "@/data/use-actor-name";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 interface Props {
   project: Project;
@@ -129,12 +128,12 @@ function Separator() {
 }
 
 function Chevron() {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   return (
     <Ionicons
       name="chevron-forward"
       size={14}
-      color={THEME[colorScheme].mutedForeground}
+      color={theme.mutedForeground}
     />
   );
 }

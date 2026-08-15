@@ -34,7 +34,6 @@ import * as Haptics from "expo-haptics";
 import { MessageComposer } from "@/components/composer/message-composer";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 interface Props {
   /** Current draft text (controlled). Empty string = no draft. */
@@ -120,8 +119,7 @@ export function ChatComposer({
 }
 
 function StopButton({ onPress }: { onPress: () => void }) {
-  const { colorScheme } = useColorScheme();
-  const theme = THEME[colorScheme];
+  const { theme } = useColorScheme();
   return (
     <Animated.View
       key="stop"

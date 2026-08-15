@@ -56,7 +56,6 @@ import { api, MAX_FILE_SIZE } from "@/data/api";
 import { useMentionDraftStore } from "@/data/stores/mention-draft-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { stripMarkdown } from "@/lib/strip-markdown";
-import { THEME } from "@/lib/theme";
 import { Text } from "@/components/ui/text";
 import { IconButton } from "@/components/ui/icon-button";
 import {
@@ -172,8 +171,7 @@ export function MessageComposer({
   disabledReason,
   manageKeyboard = true,
 }: Props) {
-  const { colorScheme } = useColorScheme();
-  const theme = THEME[colorScheme];
+  const { theme } = useColorScheme();
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const [expanded, setExpanded] = useState(false);

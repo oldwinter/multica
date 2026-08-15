@@ -29,10 +29,10 @@ export function DownloadHero({
   const content = resolveContent(detected, assets, versionUnavailable, d);
 
   return (
-    <section className="relative overflow-hidden bg-[#05070b] text-white">
+    <section className="relative overflow-hidden bg-[var(--landing-night)] text-white">
       <BackdropGradient />
       <div className="relative z-10 mx-auto max-w-[1120px] px-4 pb-24 pt-32 text-center sm:px-6 sm:pt-40 lg:px-8 lg:pb-28">
-        <h1 className="mx-auto max-w-[880px] landing-serif text-[3rem] leading-[1.02] tracking-[-0.035em] drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4rem] lg:text-[5rem]">
+        <h1 className="mx-auto max-w-[880px] landing-serif text-[3rem] leading-[1.02] tracking-normal drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4rem] lg:text-[5rem]">
           {content.title}
         </h1>
         <p className="mx-auto mt-6 max-w-[620px] text-body-lg leading-7 text-white/84 sm:text-title">
@@ -69,7 +69,7 @@ export function DownloadHero({
         ) : null}
 
         {versionUnavailable ? (
-          <p className="mx-auto mt-6 max-w-[520px] text-caption uppercase tracking-[0.14em] text-white/50">
+          <p className="mx-auto mt-6 max-w-[520px] text-caption uppercase tracking-normal text-white/50">
             {t.download.footer.versionUnavailable}
           </p>
         ) : null}

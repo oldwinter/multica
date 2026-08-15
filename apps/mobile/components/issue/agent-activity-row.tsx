@@ -25,7 +25,6 @@ import {
 } from "@/data/queries/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 interface Props {
   issueId: string;
@@ -34,8 +33,8 @@ interface Props {
 export function AgentActivityRow({ issueId }: Props) {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
-  const { colorScheme } = useColorScheme();
-  const mutedFg = THEME[colorScheme].mutedForeground;
+  const { theme } = useColorScheme();
+  const mutedFg = theme.mutedForeground;
 
   const { data: activeTasks = [] } = useQuery(
     issueActiveTasksOptions(wsId, issueId),

@@ -54,8 +54,26 @@
   },
   "preferences": {
     "general_title": "常规",
+    "appearance_title": "外观",
+    "appearance_hint": "选择界面材质，以及它如何响应环境明暗。",
+    "skin": {
+      "title": "皮肤",
+      "tension": {
+        "name": "张力",
+        "description": "混凝土、碳黑与信号红"
+      },
+      "relay": {
+        "name": "中继",
+        "description": "冷矿物灰、青绿与珊瑚色"
+      },
+      "field": {
+        "name": "场域",
+        "description": "矿物白、苔绿与测量琥珀"
+      }
+    },
     "theme": {
-      "title": "主题",
+      "title": "模式",
+      "hint": "跟随设备外观，或固定使用浅色/深色。",
       "light": "浅色",
       "dark": "深色",
       "system": "跟随系统"

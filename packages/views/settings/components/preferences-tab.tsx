@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -10,7 +11,17 @@ import {
   SelectValue,
 } from "@multica/ui/components/ui/select";
 import { Switch } from "@multica/ui/components/ui/switch";
-import { useTheme } from "@multica/ui/components/common/theme-provider";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@multica/ui/components/ui/radio-group";
+import {
+  SKIN_IDS,
+  useSkin,
+  useTheme,
+  type Skin,
+} from "@multica/ui/components/common/theme-provider";
+import { cn } from "@multica/ui/lib/utils";
 import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
@@ -34,6 +45,7 @@ import {
 
 export function PreferencesTab() {
   const { theme, setTheme } = useTheme();
+  const { skin, setSkin } = useSkin();
   const { t, i18n } = useT("settings");
   const localeAdapter = useLocaleAdapter();
   const user = useAuthStore((s) => s.user);
@@ -48,10 +60,29 @@ export function PreferencesTab() {
     : DEFAULT_LOCALE;
 
   const themeOptions = [
-    { value: "light" as const, label: t(($) => $.preferences.theme.light) },
-    { value: "dark" as const, label: t(($) => $.preferences.theme.dark) },
-    { value: "system" as const, label: t(($) => $.preferences.theme.system) },
+    {
+      value: "system" as const,
+      label: t(($) => $.preferences.theme.system),
+      icon: Monitor,
+    },
+    {
+      value: "light" as const,
+      label: t(($) => $.preferences.theme.light),
+      icon: Sun,
+    },
+    {
+      value: "dark" as const,
+      label: t(($) => $.preferences.theme.dark),
+      icon: Moon,
+    },
   ];
+
+  const skinOptions: Array<{ value: Skin; label: string; description: string }> =
+    SKIN_IDS.map((value) => ({
+      value,
+      label: t(($) => $.preferences.skin[value].name),
+      description: t(($) => $.preferences.skin[value].description),
+    }));
 
   const languageOptions: { value: SupportedLocale; label: string }[] = [
     { value: "en", label: t(($) => $.preferences.language.english) },
@@ -97,42 +128,115 @@ export function PreferencesTab() {
 
   return (
     <SettingsTab title={t(($) => $.page.tabs.preferences)}>
-      <SettingsSection title={t(($) => $.preferences.general_title)}>
+      <SettingsSection
+        title={t(($) => $.preferences.appearance_title)}
+        description={t(($) => $.preferences.appearance_hint)}
+        className="@container"
+      >
+        <RadioGroup
+          aria-label={t(($) => $.preferences.skin.title)}
+          value={skin}
+          onValueChange={(value) => {
+            setSkin(value as Skin);
+            toast.success(t(($) => $.auto_save.toast_saved), {
+              id: "settings-auto-save",
+            });
+          }}
+          className="grid gap-2 @xl:grid-cols-3"
+        >
+          {skinOptions.map((option) => {
+            const selected = option.value === skin;
+            return (
+              <RadioGroupItem
+                key={option.value}
+                value={option.value}
+                aria-label={`${option.label}. ${option.description}`}
+                className={cn(
+                  "group cursor-pointer overflow-hidden rounded-lg border bg-surface text-left outline-none transition-colors",
+                  "hover:border-faint-foreground focus-visible:ring-3 focus-visible:ring-ring/40",
+                  selected
+                    ? "border-primary ring-1 ring-primary"
+                    : "border-surface-border",
+                )}
+              >
+                <span
+                  data-skin-preview={option.value}
+                  className="relative flex h-16 items-center justify-center overflow-hidden border-b border-inherit bg-[var(--skin-preview-canvas)]"
+                  aria-hidden="true"
+                >
+                  <span className="absolute inset-x-3 top-3 h-px bg-[var(--skin-preview-line)]" />
+                  <span className="size-7 rounded-full bg-[var(--skin-preview-signal)]" />
+                  <span className="absolute bottom-3 left-3 h-px w-10 bg-[var(--skin-preview-ink)]" />
+                  <span className="absolute bottom-3 right-3 size-2 rounded-full bg-[var(--skin-preview-secondary)]" />
+                </span>
+                <span className="flex min-h-16 items-start gap-2 px-3 py-2.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body font-semibold text-foreground">
+                      {option.label}
+                    </span>
+                    <span className="mt-0.5 block text-caption leading-4 text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </span>
+                  <Check
+                    className={cn(
+                      "mt-0.5 size-4 shrink-0 text-primary",
+                      !selected && "invisible",
+                    )}
+                    aria-hidden="true"
+                  />
+                </span>
+              </RadioGroupItem>
+            );
+          })}
+        </RadioGroup>
+
         <SettingsCard>
           <SettingsRow
             label={t(($) => $.preferences.theme.title)}
-            size="select"
+            description={t(($) => $.preferences.theme.hint)}
+            size="none"
+            className="sm:flex-col sm:items-stretch sm:gap-3 @xl:flex-row @xl:items-center @xl:gap-8"
           >
-            <Select
-              items={themeOptions}
+            <RadioGroup
+              aria-label={t(($) => $.preferences.theme.title)}
               value={theme}
-              onValueChange={(next) => {
-                if (!next || next === theme) return;
-                setTheme(next as (typeof themeOptions)[number]["value"]);
+              onValueChange={(value) => {
+                setTheme(value);
                 toast.success(t(($) => $.auto_save.toast_saved), {
                   id: "settings-auto-save",
                 });
               }}
+              className="grid grid-cols-3 gap-1 rounded-lg bg-secondary p-1"
             >
-              <SelectTrigger
-                size="sm"
-                className="w-full"
-                aria-label={t(($) => $.preferences.theme.title)}
-              >
-                <SelectValue>
-                  {themeOptions.find((option) => option.value === theme)?.label}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent align="end">
-                {themeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {themeOptions.map((option) => {
+                const Icon = option.icon;
+                const selected = option.value === theme;
+                return (
+                  <RadioGroupItem
+                    key={option.value}
+                    value={option.value}
+                    aria-label={option.label}
+                    className={cn(
+                      "flex h-8 min-w-20 items-center justify-center gap-1.5 rounded-md px-2 text-caption font-medium outline-none transition-colors",
+                      "focus-visible:ring-2 focus-visible:ring-ring",
+                      selected
+                        ? "bg-surface text-foreground shadow-[var(--surface-shadow)]"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-3.5" aria-hidden="true" />
+                    <span>{option.label}</span>
+                  </RadioGroupItem>
+                );
+              })}
+            </RadioGroup>
           </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
 
+      <SettingsSection title={t(($) => $.preferences.general_title)}>
+        <SettingsCard>
           <SettingsRow
             label={t(($) => $.preferences.language.title)}
             size="select"

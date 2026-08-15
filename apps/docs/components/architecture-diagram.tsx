@@ -34,7 +34,7 @@ export function ArchitectureDiagram() {
 function YourSide() {
   return (
     <div className="rounded-lg border border-brand/30 bg-brand/[0.03] p-6 flex flex-col">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand mb-5">
+      <div className="text-[11px] font-semibold uppercase tracking-normal text-brand mb-5">
         Your side
       </div>
 
@@ -82,7 +82,7 @@ function YourSide() {
 function MulticaSide() {
   return (
     <div className="rounded-lg border border-border/70 bg-muted/25 p-6 flex flex-col">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-5">
+      <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-foreground mb-5">
         Multica
       </div>
 
@@ -100,7 +100,7 @@ function MulticaSide() {
         </div>
       </div>
 
-      <div className="mt-6 pt-4 border-t border-border/60 text-[11px] text-muted-foreground text-center uppercase tracking-[0.08em]">
+      <div className="mt-6 pt-4 border-t border-border/60 text-[11px] text-muted-foreground text-center uppercase tracking-normal">
         No AI execution here.
       </div>
     </div>
@@ -130,7 +130,7 @@ function Connector({ horizontal }: { horizontal: boolean }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/70 mb-1.5">
+    <div className="text-[10px] font-medium uppercase tracking-normal text-muted-foreground/70 mb-1.5">
       {children}
     </div>
   );

@@ -50,7 +50,6 @@ import { useWorkspaceStore } from "@/data/workspace-store";
 import { issueAttachmentsOptions } from "@/data/queries/issues";
 import { useFailedCommentsStore } from "@/data/stores/failed-comments-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { ReactionBar } from "./reaction-bar";
 import { useCommentLongPress } from "./comment-context-menu";
@@ -211,8 +210,8 @@ function ResolvedThreadBar({
   onExpand: () => void;
 }) {
   const { getName } = useActorLookup();
-  const { colorScheme } = useColorScheme();
-  const mutedFg = THEME[colorScheme].mutedForeground;
+  const { theme } = useColorScheme();
+  const mutedFg = theme.mutedForeground;
 
   // Unique participant set across root + replies, preserving chronological
   // order of first appearance. Up to two authors are named; the rest are
@@ -279,8 +278,8 @@ function ResolvedIndicator({
   onCollapse: () => void;
 }) {
   const { getName } = useActorLookup();
-  const { colorScheme } = useColorScheme();
-  const mutedFg = THEME[colorScheme].mutedForeground;
+  const { theme } = useColorScheme();
+  const mutedFg = theme.mutedForeground;
   const resolverName = getName(
     entry.resolved_by_type as "member" | "agent" | null | undefined,
     entry.resolved_by_id,
@@ -544,8 +543,8 @@ function FailedActions({
   onRetry: () => void;
   onDiscard: () => void;
 }) {
-  const { colorScheme } = useColorScheme();
-  const destructive = THEME[colorScheme].destructive;
+  const { theme } = useColorScheme();
+  const destructive = theme.destructive;
   return (
     <View className="flex-row items-center gap-2 mt-0.5">
       <Ionicons name="alert-circle" size={14} color={destructive} />

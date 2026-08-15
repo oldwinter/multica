@@ -124,10 +124,10 @@ export function StepPlatformFork({
           className="min-h-0 flex-1 overflow-y-auto"
         >
           <div className="mx-auto w-full max-w-[620px] px-6 py-10 sm:px-10 md:px-14 lg:px-0 lg:py-14">
-            <div className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="mb-2 text-caption font-medium uppercase tracking-normal text-muted-foreground">
               {t(($) => $.step_platform.eyebrow)}
             </div>
-            <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-tight text-foreground">
+            <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-normal text-foreground">
               {t(($) => $.step_platform.headline)}
             </h1>
             <p className="mt-4 max-w-[560px] text-body-lg leading-[1.55] text-muted-foreground">
@@ -219,7 +219,7 @@ function ForkPrimary({
       )}
     >
       <div className="min-w-0">
-        <div className="flex items-center gap-2 text-title font-medium tracking-tight">
+        <div className="flex items-center gap-2 text-title font-medium tracking-normal">
           <Download className="h-4 w-4" aria-hidden />
           {downloaded
             ? t(($) => $.step_platform.download_title_after)

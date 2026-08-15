@@ -40,7 +40,6 @@ import type { AgentAvailability } from "@multica/core/agents";
 import { Text } from "@/components/ui/text";
 import { formatElapsedSecs } from "@/lib/format-elapsed";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 interface Props {
   pendingTask: ChatPendingTask | null | undefined;
@@ -199,8 +198,8 @@ function useTick(enabled: boolean, intervalMs: number) {
 // setTimeout (150ms / 300ms) so the wave reads as motion rather than
 // flicker.
 function BreathingDots() {
-  const { colorScheme } = useColorScheme();
-  const tint = THEME[colorScheme].mutedForeground;
+  const { theme } = useColorScheme();
+  const tint = theme.mutedForeground;
   const d1 = useSharedValue(0.3);
   const d2 = useSharedValue(0.3);
   const d3 = useSharedValue(0.3);

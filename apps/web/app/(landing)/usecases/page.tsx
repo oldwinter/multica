@@ -47,9 +47,9 @@ export default async function UseCasesIndexPage() {
     <>
       <div className="relative">
         <LandingHeader variant="dark" />
-        <section className="relative overflow-hidden bg-[#05070b] text-white">
+        <section className="relative overflow-hidden bg-[var(--landing-night)] text-white">
           <div className="relative z-10 mx-auto max-w-[1120px] px-4 pb-20 pt-32 text-center sm:px-6 sm:pt-40 lg:px-8 lg:pb-24">
-            <h1 className="mx-auto max-w-[880px] landing-serif text-[3rem] leading-[1.02] tracking-[-0.035em] drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4rem] lg:text-[5rem]">
+            <h1 className="mx-auto max-w-[880px] landing-serif text-[3rem] leading-[1.02] tracking-normal drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4rem] lg:text-[5rem]">
               {text.indexTitle}
             </h1>
             <p className="mx-auto mt-6 max-w-[620px] text-body-lg leading-7 text-white/84 sm:text-title">
@@ -59,7 +59,7 @@ export default async function UseCasesIndexPage() {
         </section>
       </div>
 
-      <section className="bg-white py-20 text-[#0a0d12] sm:py-24">
+      <section className="bg-background py-20 text-foreground sm:py-24">
         <div className="mx-auto max-w-[1120px] px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-x-6 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
             {pages.map((page) => {
@@ -73,7 +73,7 @@ export default async function UseCasesIndexPage() {
 
               return (
                 <Link key={href} href={href} className="group flex flex-col">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-[#f5f5f5]">
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
                     {heroImage ? (
                       <Image
                         src={heroImage}
@@ -85,19 +85,19 @@ export default async function UseCasesIndexPage() {
                     ) : null}
                   </div>
                   {category ? (
-                    <div className="mt-5 text-caption uppercase tracking-[0.14em] text-[#0a0d12]/50">
+                    <div className="mt-5 text-caption uppercase tracking-normal text-muted-foreground">
                       {category}
                     </div>
                   ) : null}
-                  <h3 className="mt-2 text-title font-semibold leading-[1.35] text-[#0a0d12] sm:text-title-lg">
+                  <h3 className="mt-2 text-title font-semibold leading-[1.35] text-foreground sm:text-title-lg">
                     {page.data.title}
                   </h3>
                   {page.data.description ? (
-                    <p className="mt-2 text-body leading-[1.6] text-[#0a0d12]/60">
+                    <p className="mt-2 text-body leading-[1.6] text-muted-foreground">
                       {page.data.description}
                     </p>
                   ) : null}
-                  <span className="mt-3 text-label text-[#0a0d12]/70 transition-colors group-hover:text-[#0a0d12]">
+                  <span className="mt-3 text-label text-muted-foreground transition-colors group-hover:text-foreground">
                     {text.cardReadMore}
                   </span>
                 </Link>

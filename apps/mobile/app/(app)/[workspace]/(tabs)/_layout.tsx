@@ -27,7 +27,6 @@ import { View } from "react-native";
 import type { TriggerRef } from "@rn-primitives/dropdown-menu";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import {
   useInboxUnreadCount,
   useChatUnreadMessageCount,
@@ -39,13 +38,10 @@ import { MoreTabDropdownAnchor } from "@/components/nav/more-tab-dropdown";
 // character renders as a perfect circle. Overriding minWidth/fontSize here
 // breaks that geometry. Text color is auto-derived from backgroundColor
 // luminance by Badge itself (white on brand blue).
-const BADGE_STYLE = {
-  backgroundColor: THEME.light.brand,
-};
-
 export default function TabsLayout() {
-  const { colorScheme } = useColorScheme();
-  const t = THEME[colorScheme];
+  const { theme } = useColorScheme();
+  const t = theme;
+  const badgeStyle = { backgroundColor: theme.brand };
 
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const inboxUnread = useInboxUnreadCount(wsId);
@@ -79,7 +75,7 @@ export default function TabsLayout() {
           options={{
             title: "Inbox",
             tabBarBadge: inboxBadge,
-            tabBarBadgeStyle: BADGE_STYLE,
+            tabBarBadgeStyle: badgeStyle,
             tabBarIcon: ({ color, size, focused }) => (
               <Image
                 source={focused ? "sf:tray.fill" : "sf:tray"}
@@ -107,7 +103,7 @@ export default function TabsLayout() {
           options={{
             title: "Chat",
             tabBarBadge: chatBadge,
-            tabBarBadgeStyle: BADGE_STYLE,
+            tabBarBadgeStyle: badgeStyle,
             tabBarIcon: ({ color, size, focused }) => (
               <Image
                 source={focused ? "sf:bubble.left.fill" : "sf:bubble.left"}

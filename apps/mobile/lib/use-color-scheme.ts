@@ -1,62 +1,92 @@
-/**
- * Wraps NativeWind's useColorScheme with persistence in expo-secure-store.
- *
- * RNR's template uses NativeWind's hook directly (no persistence) — we extend
- * it so the user's Settings → Appearance choice survives app restarts.
- *
- * - `colorScheme` — the resolved scheme ('light' | 'dark'). Tracks either the
- *   saved preference or the OS appearance when preference is 'system'.
- * - `preference` — what the user explicitly picked ('light' | 'dark' | 'system').
- *   'system' is the default for a fresh install.
- * - `setPreference(p)` — switches the scheme and persists in one step.
- *
- * On first mount we async-read the saved preference; before the read
- * completes NativeWind's default behaviour applies (follow OS). This means
- * a kill-and-relaunch on a user who picked 'dark' on a light OS may briefly
- * flash light before the saved preference applies. Acceptable for now —
- * the alternative is a synchronous storage backend, which secure-store isn't.
- */
 import { useColorScheme as useNativewindColorScheme } from "nativewind";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import * as SecureStore from "expo-secure-store";
+import { create } from "zustand";
+import {
+  NAV_THEMES,
+  SKIN_IDS,
+  THEMES,
+  type AppColorScheme,
+  type AppSkin,
+} from "@/lib/theme";
+import {
+  readStoredAppearance,
+  SKIN_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  type ThemePreference,
+} from "@/lib/appearance-preferences";
 
-const STORAGE_KEY = "theme-preference";
+export type { ThemePreference } from "@/lib/appearance-preferences";
 
-export type ThemePreference = "light" | "dark" | "system";
+type AppearanceState = {
+  preference: ThemePreference;
+  skin: AppSkin;
+  setPreference: (preference: ThemePreference) => void;
+  setSkin: (skin: AppSkin) => void;
+};
+
+const useAppearanceState = create<AppearanceState>((set) => ({
+  preference: "system",
+  skin: "tension",
+  setPreference: (preference) => set({ preference }),
+  setSkin: (skin) => set({ skin }),
+}));
+
+let hydrationStarted = false;
 
 export function useColorScheme() {
   const { colorScheme, setColorScheme: applyScheme } =
     useNativewindColorScheme();
-  const [preference, setPreferenceState] = useState<ThemePreference>("system");
+  const preference = useAppearanceState((state) => state.preference);
+  const skin = useAppearanceState((state) => state.skin);
+  const setPreferenceState = useAppearanceState((state) => state.setPreference);
+  const setSkinState = useAppearanceState((state) => state.setSkin);
 
   useEffect(() => {
-    let cancelled = false;
-    SecureStore.getItemAsync(STORAGE_KEY)
-      .then((saved) => {
-        if (cancelled) return;
-        if (saved === "light" || saved === "dark" || saved === "system") {
-          setPreferenceState(saved);
-          applyScheme(saved);
+    if (hydrationStarted) return;
+    hydrationStarted = true;
+    void readStoredAppearance(SecureStore.getItemAsync)
+      .then(({ preference: savedTheme, skin: savedSkin, shouldRetry }) => {
+        if (savedTheme) {
+          setPreferenceState(savedTheme);
+          applyScheme(savedTheme);
         }
+        if (savedSkin) setSkinState(savedSkin);
+        if (shouldRetry) hydrationStarted = false;
       })
       .catch(() => {
-        // Read failures are non-fatal; keep default 'system'.
+        hydrationStarted = false;
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [applyScheme]);
+  }, [applyScheme, setPreferenceState, setSkinState]);
 
-  const setPreference = (p: ThemePreference) => {
-    setPreferenceState(p);
-    applyScheme(p);
-    void SecureStore.setItemAsync(STORAGE_KEY, p);
-  };
+  const setPreference = useCallback(
+    (next: ThemePreference) => {
+      setPreferenceState(next);
+      applyScheme(next);
+      void SecureStore.setItemAsync(THEME_STORAGE_KEY, next);
+    },
+    [applyScheme, setPreferenceState],
+  );
+
+  const setSkin = useCallback(
+    (next: AppSkin) => {
+      setSkinState(next);
+      void SecureStore.setItemAsync(SKIN_STORAGE_KEY, next);
+    },
+    [setSkinState],
+  );
+
+  const resolvedScheme: AppColorScheme = colorScheme === "dark" ? "dark" : "light";
 
   return {
-    colorScheme: colorScheme ?? "light",
+    colorScheme: resolvedScheme,
     preference,
     setPreference,
-    isDarkColorScheme: colorScheme === "dark",
+    skin,
+    setSkin,
+    skins: SKIN_IDS,
+    theme: THEMES[skin][resolvedScheme],
+    navigationTheme: NAV_THEMES[skin][resolvedScheme],
+    isDarkColorScheme: resolvedScheme === "dark",
   };
 }

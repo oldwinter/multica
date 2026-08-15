@@ -18,14 +18,13 @@
  */
 import { Image, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import { Text } from "@/components/ui/text";
 import { cn } from "@/lib/utils";
 import { useActorLookup, getInitials } from "@/data/use-actor-name";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useAgentPresence } from "@/lib/use-agent-presence";
 import { PresenceDot } from "@/components/ui/presence-dot";
-import { THEME } from "@/lib/theme";
 
 // `system` actors are server-side automation (state changes triggered by the
 // platform itself, not a member or an agent). InboxItem.actor_type carries
@@ -67,13 +66,10 @@ function BareAvatar({
   size: number;
 }) {
   const { getName, getAvatarUrl } = useActorLookup();
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   // Ionicons takes a hex string, not a className — go through THEME so the
   // glyph follows light/dark instead of locking to a single hardcoded zinc.
-  const iconColor =
-    colorScheme === "dark"
-      ? THEME.dark.mutedForeground
-      : THEME.light.mutedForeground;
+  const iconColor = theme.mutedForeground;
 
   // Squad gets a soft-square tile (matches web actor-avatar.tsx:42 which uses
   // rounded-md) so a group never reads as a single person at a glance.

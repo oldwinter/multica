@@ -300,10 +300,10 @@ function SourceBackfillDialogBody({
   return (
     <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
       <div className="px-6 pt-6 pb-2">
-        <div className="text-micro font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="text-micro font-medium uppercase tracking-normal text-muted-foreground">
           {t(($) => $.source_backfill.eyebrow)}
         </div>
-        <h2 className="mt-1 text-balance font-serif text-display-sm font-medium leading-tight tracking-tight text-foreground">
+        <h2 className="mt-1 text-balance font-serif text-display-sm font-medium leading-tight tracking-normal text-foreground">
           {t(($) => $.questions.source.question)}
         </h2>
         <p className="mt-2 text-body text-muted-foreground">

@@ -1,120 +1,243 @@
-/**
- * TypeScript mirror of the CSS variables defined in apps/mobile/global.css.
- *
- * - `THEME` is the raw token object for inline styles, animations, and
- *   anywhere a Tailwind class can't reach.
- * - `NAV_THEME` is the React Navigation theme — passed into <ThemeProvider />
- *   in app/_layout.tsx so headers, modals, and the back button match.
- *
- * If you change a variable in global.css, update the matching key here.
- * See apps/mobile/docs/rnr-migration.md §5 for the sync rule.
- */
 import { DarkTheme, DefaultTheme, type Theme } from "@react-navigation/native";
 
-export const THEME = {
-  light: {
-    background: "hsl(0 0% 100%)",
-    foreground: "hsl(0 0% 3.9%)",
-    card: "hsl(0 0% 100%)",
-    cardForeground: "hsl(0 0% 3.9%)",
-    popover: "hsl(0 0% 100%)",
-    popoverForeground: "hsl(0 0% 3.9%)",
-    primary: "hsl(0 0% 9%)",
-    primaryForeground: "hsl(0 0% 98%)",
-    secondary: "hsl(0 0% 96.1%)",
-    secondaryForeground: "hsl(0 0% 9%)",
-    muted: "hsl(0 0% 96.1%)",
-    mutedForeground: "hsl(0 0% 45.1%)",
-    accent: "hsl(0 0% 96.1%)",
-    accentForeground: "hsl(0 0% 9%)",
-    destructive: "hsl(0 84.2% 60.2%)",
-    destructiveForeground: "hsl(0 0% 98%)",
-    border: "hsl(0 0% 84%)",
-    input: "hsl(0 0% 84%)",
-    ring: "hsl(0 0% 63%)",
-    radius: "0.625rem",
-    chart1: "hsl(12 76% 61%)",
-    chart2: "hsl(173 58% 39%)",
-    chart3: "hsl(197 37% 24%)",
-    chart4: "hsl(43 74% 66%)",
-    chart5: "hsl(27 87% 67%)",
+export const SKIN_IDS = ["tension", "relay", "field"] as const;
+export type AppSkin = (typeof SKIN_IDS)[number];
+export type AppColorScheme = "light" | "dark";
 
-    // Multica custom
-    brand: "hsl(225 71% 58%)",
-    brandForeground: "hsl(0 0% 98%)",
-    success: "hsl(142 71% 45%)",
-    warning: "hsl(48 89% 47%)",
-    info: "hsl(217 91% 60%)",
-    priority: "hsl(25 95% 53%)",
-    codeSurface: "hsl(240 4% 92%)",
-    // Surface elevation tiers — see global.css for the full scale.
-    surface1: "hsl(0 0% 98%)",
-    surface2: "hsl(0 0% 90%)",
-  },
-  dark: {
-    background: "hsl(0 0% 3.9%)",
-    foreground: "hsl(0 0% 98%)",
-    card: "hsl(0 0% 3.9%)",
-    cardForeground: "hsl(0 0% 98%)",
-    popover: "hsl(0 0% 3.9%)",
-    popoverForeground: "hsl(0 0% 98%)",
-    primary: "hsl(0 0% 98%)",
-    primaryForeground: "hsl(0 0% 9%)",
-    secondary: "hsl(0 0% 14.9%)",
-    secondaryForeground: "hsl(0 0% 98%)",
-    muted: "hsl(0 0% 14.9%)",
-    mutedForeground: "hsl(0 0% 63.9%)",
-    accent: "hsl(0 0% 14.9%)",
-    accentForeground: "hsl(0 0% 98%)",
-    destructive: "hsl(0 70.9% 59.4%)",
-    destructiveForeground: "hsl(0 0% 98%)",
-    border: "hsl(0 0% 25%)",
-    input: "hsl(0 0% 25%)",
-    ring: "hsl(300 0% 45%)",
-    radius: "0.625rem",
-    chart1: "hsl(220 70% 50%)",
-    chart2: "hsl(160 60% 45%)",
-    chart3: "hsl(30 80% 55%)",
-    chart4: "hsl(280 65% 60%)",
-    chart5: "hsl(340 75% 55%)",
-
-    // Multica custom — dark mirrors light until demand
-    brand: "hsl(225 71% 58%)",
-    brandForeground: "hsl(0 0% 98%)",
-    success: "hsl(142 71% 45%)",
-    warning: "hsl(48 89% 47%)",
-    info: "hsl(217 91% 60%)",
-    priority: "hsl(25 95% 53%)",
-    // code-surface is the ONE exception that needs a real dark value —
-    // see global.css for rationale. Keep this in sync with .dark:root.
-    codeSurface: "hsl(240 4% 18%)",
-    // Dark elevation tiers — lightness INCREASES with elevation. See global.css.
-    surface1: "hsl(0 0% 8%)",
-    surface2: "hsl(0 0% 19%)",
-  },
+export type AppTheme = {
+  background: string;
+  foreground: string;
+  card: string;
+  cardForeground: string;
+  popover: string;
+  popoverForeground: string;
+  primary: string;
+  primaryForeground: string;
+  secondary: string;
+  secondaryForeground: string;
+  muted: string;
+  mutedForeground: string;
+  accent: string;
+  accentForeground: string;
+  destructive: string;
+  destructiveForeground: string;
+  border: string;
+  input: string;
+  ring: string;
+  radius: string;
+  chart1: string;
+  chart2: string;
+  chart3: string;
+  chart4: string;
+  chart5: string;
+  brand: string;
+  brandForeground: string;
+  success: string;
+  warning: string;
+  info: string;
+  priority: string;
+  codeSurface: string;
+  surface1: string;
+  surface2: string;
 };
 
-export const NAV_THEME: Record<"light" | "dark", Theme> = {
-  light: {
-    ...DefaultTheme,
+const tensionLight: AppTheme = {
+  background: "hsl(20 14% 98%)",
+  foreground: "hsl(20 10% 8%)",
+  card: "hsl(0 0% 100%)",
+  cardForeground: "hsl(20 10% 8%)",
+  popover: "hsl(0 0% 100%)",
+  popoverForeground: "hsl(20 10% 8%)",
+  primary: "hsl(5 72% 49%)",
+  primaryForeground: "hsl(20 20% 99%)",
+  secondary: "hsl(20 8% 95%)",
+  secondaryForeground: "hsl(20 10% 12%)",
+  muted: "hsl(20 8% 95%)",
+  mutedForeground: "hsl(20 6% 42%)",
+  accent: "hsl(8 48% 94%)",
+  accentForeground: "hsl(5 62% 34%)",
+  destructive: "hsl(356 67% 48%)",
+  destructiveForeground: "hsl(0 0% 98%)",
+  border: "hsl(20 7% 84%)",
+  input: "hsl(20 7% 84%)",
+  ring: "hsl(5 72% 49%)",
+  radius: "0.5rem",
+  chart1: "hsl(5 72% 49%)",
+  chart2: "hsl(178 48% 37%)",
+  chart3: "hsl(42 68% 48%)",
+  chart4: "hsl(286 38% 48%)",
+  chart5: "hsl(143 42% 38%)",
+  brand: "hsl(5 72% 49%)",
+  brandForeground: "hsl(20 20% 99%)",
+  success: "hsl(143 52% 36%)",
+  warning: "hsl(42 76% 45%)",
+  info: "hsl(206 70% 46%)",
+  priority: "hsl(24 82% 49%)",
+  codeSurface: "hsl(20 7% 92%)",
+  surface1: "hsl(20 10% 97%)",
+  surface2: "hsl(20 7% 90%)",
+};
+
+const tensionDark: AppTheme = {
+  ...tensionLight,
+  background: "hsl(20 12% 7%)",
+  foreground: "hsl(20 10% 96%)",
+  card: "hsl(20 10% 10%)",
+  cardForeground: "hsl(20 10% 96%)",
+  popover: "hsl(20 10% 12%)",
+  popoverForeground: "hsl(20 10% 96%)",
+  primary: "hsl(6 80% 65%)",
+  primaryForeground: "hsl(20 15% 8%)",
+  secondary: "hsl(20 8% 15%)",
+  secondaryForeground: "hsl(20 10% 96%)",
+  muted: "hsl(20 8% 15%)",
+  mutedForeground: "hsl(20 6% 66%)",
+  accent: "hsl(5 30% 20%)",
+  accentForeground: "hsl(6 70% 82%)",
+  destructive: "hsl(356 72% 66%)",
+  border: "hsl(20 7% 25%)",
+  input: "hsl(20 7% 25%)",
+  ring: "hsl(6 80% 65%)",
+  chart1: "hsl(6 80% 65%)",
+  chart2: "hsl(178 48% 58%)",
+  chart3: "hsl(42 68% 62%)",
+  chart4: "hsl(286 42% 66%)",
+  chart5: "hsl(143 42% 58%)",
+  brand: "hsl(6 80% 65%)",
+  codeSurface: "hsl(20 8% 18%)",
+  surface1: "hsl(20 9% 10%)",
+  surface2: "hsl(20 8% 19%)",
+};
+
+function withPalette(base: AppTheme, values: Partial<AppTheme>): AppTheme {
+  return { ...base, ...values };
+}
+
+const relayLight = withPalette(tensionLight, {
+  background: "hsl(195 18% 98%)",
+  foreground: "hsl(205 20% 8%)",
+  cardForeground: "hsl(205 20% 8%)",
+  popoverForeground: "hsl(205 20% 8%)",
+  primary: "hsl(174 55% 34%)",
+  primaryForeground: "hsl(180 25% 99%)",
+  secondary: "hsl(195 14% 95%)",
+  secondaryForeground: "hsl(205 20% 12%)",
+  muted: "hsl(195 14% 95%)",
+  mutedForeground: "hsl(205 8% 42%)",
+  accent: "hsl(174 35% 93%)",
+  accentForeground: "hsl(174 55% 28%)",
+  ring: "hsl(174 55% 34%)",
+  chart1: "hsl(174 55% 34%)",
+  chart2: "hsl(10 72% 58%)",
+  brand: "hsl(174 55% 34%)",
+  codeSurface: "hsl(195 10% 92%)",
+  surface1: "hsl(195 16% 97%)",
+  surface2: "hsl(195 10% 90%)",
+});
+
+const relayDark = withPalette(tensionDark, {
+  background: "hsl(205 20% 7%)",
+  foreground: "hsl(195 14% 96%)",
+  card: "hsl(205 18% 10%)",
+  cardForeground: "hsl(195 14% 96%)",
+  popover: "hsl(205 18% 12%)",
+  popoverForeground: "hsl(195 14% 96%)",
+  primary: "hsl(172 56% 58%)",
+  primaryForeground: "hsl(205 24% 8%)",
+  secondary: "hsl(205 14% 15%)",
+  secondaryForeground: "hsl(195 14% 96%)",
+  muted: "hsl(205 14% 15%)",
+  mutedForeground: "hsl(195 8% 66%)",
+  accent: "hsl(174 34% 20%)",
+  accentForeground: "hsl(172 50% 82%)",
+  ring: "hsl(172 56% 58%)",
+  chart1: "hsl(172 56% 58%)",
+  chart2: "hsl(10 76% 68%)",
+  brand: "hsl(172 56% 58%)",
+  codeSurface: "hsl(205 14% 18%)",
+  surface1: "hsl(205 16% 10%)",
+  surface2: "hsl(205 14% 19%)",
+});
+
+const fieldLight = withPalette(tensionLight, {
+  background: "hsl(120 10% 98%)",
+  foreground: "hsl(145 15% 8%)",
+  cardForeground: "hsl(145 15% 8%)",
+  popoverForeground: "hsl(145 15% 8%)",
+  primary: "hsl(143 42% 34%)",
+  primaryForeground: "hsl(120 18% 99%)",
+  secondary: "hsl(125 10% 95%)",
+  secondaryForeground: "hsl(145 15% 12%)",
+  muted: "hsl(125 10% 95%)",
+  mutedForeground: "hsl(145 7% 42%)",
+  accent: "hsl(138 24% 93%)",
+  accentForeground: "hsl(143 42% 28%)",
+  ring: "hsl(143 42% 34%)",
+  chart1: "hsl(143 42% 34%)",
+  chart2: "hsl(42 74% 48%)",
+  brand: "hsl(143 42% 34%)",
+  warning: "hsl(42 74% 45%)",
+  codeSurface: "hsl(125 8% 92%)",
+  surface1: "hsl(125 10% 97%)",
+  surface2: "hsl(125 8% 90%)",
+});
+
+const fieldDark = withPalette(tensionDark, {
+  background: "hsl(145 18% 7%)",
+  foreground: "hsl(120 10% 96%)",
+  card: "hsl(145 16% 10%)",
+  cardForeground: "hsl(120 10% 96%)",
+  popover: "hsl(145 16% 12%)",
+  popoverForeground: "hsl(120 10% 96%)",
+  primary: "hsl(142 45% 58%)",
+  primaryForeground: "hsl(145 20% 8%)",
+  secondary: "hsl(145 12% 15%)",
+  secondaryForeground: "hsl(120 10% 96%)",
+  muted: "hsl(145 12% 15%)",
+  mutedForeground: "hsl(130 6% 66%)",
+  accent: "hsl(143 28% 20%)",
+  accentForeground: "hsl(142 38% 82%)",
+  ring: "hsl(142 45% 58%)",
+  chart1: "hsl(142 45% 58%)",
+  chart2: "hsl(42 74% 62%)",
+  brand: "hsl(142 45% 58%)",
+  warning: "hsl(42 74% 60%)",
+  codeSurface: "hsl(145 12% 18%)",
+  surface1: "hsl(145 14% 10%)",
+  surface2: "hsl(145 12% 19%)",
+});
+
+export const THEMES: Record<AppSkin, Record<AppColorScheme, AppTheme>> = {
+  tension: { light: tensionLight, dark: tensionDark },
+  relay: { light: relayLight, dark: relayDark },
+  field: { light: fieldLight, dark: fieldDark },
+};
+
+function navigationTheme(palette: AppTheme, scheme: AppColorScheme): Theme {
+  return {
+    ...(scheme === "dark" ? DarkTheme : DefaultTheme),
     colors: {
-      background: THEME.light.background,
-      border: THEME.light.border,
-      card: THEME.light.card,
-      notification: THEME.light.destructive,
-      primary: THEME.light.primary,
-      text: THEME.light.foreground,
+      background: palette.background,
+      border: palette.border,
+      card: palette.card,
+      notification: palette.destructive,
+      primary: palette.primary,
+      text: palette.foreground,
     },
+  };
+}
+
+export const NAV_THEMES: Record<AppSkin, Record<AppColorScheme, Theme>> = {
+  tension: {
+    light: navigationTheme(tensionLight, "light"),
+    dark: navigationTheme(tensionDark, "dark"),
   },
-  dark: {
-    ...DarkTheme,
-    colors: {
-      background: THEME.dark.background,
-      border: THEME.dark.border,
-      card: THEME.dark.card,
-      notification: THEME.dark.destructive,
-      primary: THEME.dark.primary,
-      text: THEME.dark.foreground,
-    },
+  relay: {
+    light: navigationTheme(relayLight, "light"),
+    dark: navigationTheme(relayDark, "dark"),
+  },
+  field: {
+    light: navigationTheme(fieldLight, "light"),
+    dark: navigationTheme(fieldDark, "dark"),
   },
 };

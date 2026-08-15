@@ -55,7 +55,6 @@ import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 // iOS bottom tab bar default height (above safe-area). React Navigation
@@ -88,8 +87,8 @@ export function MoreTabDropdownAnchor({
   const slug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const user = useAuthStore((s) => s.user);
   const pathname = usePathname();
-  const { colorScheme } = useColorScheme();
-  const t = THEME[colorScheme];
+  const { theme } = useColorScheme();
+  const t = theme;
   const currentWorkspace = useCurrentWorkspace(slug);
 
   const isActive = (path: string) => {

@@ -160,7 +160,7 @@ function useScopedFilters(
 function SectionLabel({ children }: { children: string }) {
   return (
     <View className="px-4 pt-3 pb-1.5">
-      <Text className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+      <Text className="text-xs uppercase tracking-normalr text-muted-foreground font-medium">
         {children}
       </Text>
     </View>

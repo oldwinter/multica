@@ -54,8 +54,26 @@
   },
   "preferences": {
     "general_title": "일반",
+    "appearance_title": "화면 모양",
+    "appearance_hint": "화면의 재질과 주변 밝기에 반응하는 방식을 선택하세요.",
+    "skin": {
+      "title": "스킨",
+      "tension": {
+        "name": "텐션",
+        "description": "콘크리트, 카본, 시그널 레드"
+      },
+      "relay": {
+        "name": "릴레이",
+        "description": "쿨 미네랄, 틸, 코랄"
+      },
+      "field": {
+        "name": "필드",
+        "description": "미네랄, 모스, 측량 앰버"
+      }
+    },
     "theme": {
-      "title": "테마",
+      "title": "모드",
+      "hint": "기기 설정을 따르거나 라이트/다크 모드로 고정합니다.",
       "light": "라이트",
       "dark": "다크",
       "system": "시스템"

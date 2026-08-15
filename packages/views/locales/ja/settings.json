@@ -54,8 +54,26 @@
   },
   "preferences": {
     "general_title": "一般",
+    "appearance_title": "外観",
+    "appearance_hint": "画面の素材感と、周囲の明るさへの反応を選びます。",
+    "skin": {
+      "title": "スキン",
+      "tension": {
+        "name": "テンション",
+        "description": "コンクリート、カーボン、シグナルレッド"
+      },
+      "relay": {
+        "name": "リレー",
+        "description": "クールミネラル、ティール、コーラル"
+      },
+      "field": {
+        "name": "フィールド",
+        "description": "ミネラル、モス、測量アンバー"
+      }
+    },
     "theme": {
-      "title": "テーマ",
+      "title": "モード",
+      "hint": "デバイスに合わせるか、ライト／ダークに固定します。",
       "light": "ライト",
       "dark": "ダーク",
       "system": "システム"

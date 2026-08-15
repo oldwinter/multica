@@ -5,7 +5,7 @@
  */
 import { Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type { ProjectStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ProjectStatusIcon } from "@/components/ui/project-status-icon";
@@ -13,7 +13,6 @@ import {
   PROJECT_STATUSES,
   PROJECT_STATUS_LABEL,
 } from "@/lib/project-status";
-import { THEME } from "@/lib/theme";
 
 interface Props {
   value: ProjectStatus | string;
@@ -21,9 +20,9 @@ interface Props {
 }
 
 export function ProjectStatusPickerBody({ value, onChange }: Props) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>

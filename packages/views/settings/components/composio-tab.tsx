@@ -308,7 +308,7 @@ function ToolkitCard({
                 : t(($) => $.composio.last_used_never)}
             </p>
           ) : toolkit.category ? (
-            <p className="truncate text-micro uppercase tracking-wide text-muted-foreground">
+            <p className="truncate text-micro uppercase tracking-normal text-muted-foreground">
               {toolkit.category}
             </p>
           ) : null}

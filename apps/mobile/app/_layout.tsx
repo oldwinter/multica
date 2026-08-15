@@ -14,7 +14,6 @@ import { queryClient } from "@/data/query-client";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { LightboxProvider, prewarmHighlighter } from "@/lib/markdown";
-import { NAV_THEME } from "@/lib/theme";
 import { useColorScheme } from "@/lib/use-color-scheme";
 
 // Kick off Shiki highlighter init at module load — fires once per process,
@@ -58,13 +57,22 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const { colorScheme, isDarkColorScheme } = useColorScheme();
+  const { colorScheme, isDarkColorScheme, navigationTheme, skin } =
+    useColorScheme();
+  const skinClass = {
+    tension: {
+      light: "skin-tension-light",
+      dark: "skin-tension-dark",
+    },
+    relay: { light: "skin-relay-light", dark: "skin-relay-dark" },
+    field: { light: "skin-field-light", dark: "skin-field-dark" },
+  }[skin][colorScheme];
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }} className={skinClass}>
       <SafeAreaProvider>
         <KeyboardProvider>
           <QueryClientProvider client={queryClient}>
-            <ThemeProvider value={NAV_THEME[colorScheme]}>
+            <ThemeProvider value={navigationTheme}>
               <AuthInitializer>
                 <LightboxProvider>
                   <StatusBar style={isDarkColorScheme ? "light" : "dark"} />

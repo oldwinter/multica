@@ -174,7 +174,7 @@ function TeammatesVisual() {
       <div className="flex h-[calc(100%-40px)]">
         {/* Main content area */}
         <div className="flex-1 overflow-hidden px-8 py-5">
-          <h3 className="text-title font-bold leading-snug tracking-tight">
+          <h3 className="text-title font-bold leading-snug tracking-normal">
             Refactor API error handling middleware
           </h3>
           <p className="mt-2 text-body text-muted-foreground">
@@ -341,7 +341,7 @@ function TeammatesVisual() {
                   </button>
                 </div>
                 <div className="px-3 py-0.5">
-                  <span className="text-micro font-medium uppercase tracking-wider text-muted-foreground">Members</span>
+                  <span className="text-micro font-medium uppercase tracking-normalr text-muted-foreground">Members</span>
                 </div>
                 <div className="p-1 pt-0">
                   {allAssignees.filter((a) => a.type === "member").map((m) => (
@@ -361,7 +361,7 @@ function TeammatesVisual() {
                   ))}
                 </div>
                 <div className="px-3 py-0.5">
-                  <span className="text-micro font-medium uppercase tracking-wider text-muted-foreground">Agents</span>
+                  <span className="text-micro font-medium uppercase tracking-normalr text-muted-foreground">Agents</span>
                 </div>
                 <div className="p-1 pt-0">
                   {allAssignees.filter((a) => a.type === "agent").map((a) => (
@@ -592,7 +592,7 @@ function SkillsVisual() {
             {/* File tree */}
             <div className="w-44 shrink-0 border-r">
               <div className="flex items-center justify-between border-b px-3 py-1.5">
-                <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">Files</span>
+                <span className="text-micro font-semibold uppercase tracking-normalr text-muted-foreground">Files</span>
               </div>
               <div className="py-1">
                 {mockFileTree.map((f) => (
@@ -1003,7 +1003,7 @@ export function FeaturesSection() {
   };
 
   return (
-    <section id="features" className="bg-white text-[#0a0d12]">
+    <section id="features" className="bg-surface text-foreground">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         <div className="relative lg:flex lg:gap-20">
           {/* Sticky left nav */}
@@ -1015,16 +1015,16 @@ export function FeaturesSection() {
                   key={f.label}
                   onClick={() => scrollToPanel(i)}
                   className={cn(
-                    "group flex items-center gap-3 rounded-lg px-4 py-3 text-left text-micro font-semibold tracking-[0.12em] transition-colors",
+                    "group flex items-center gap-3 rounded-lg px-4 py-3 text-left text-micro font-semibold tracking-normal transition-colors",
                     i === activeIndex
-                      ? "text-[#0a0d12]"
-                      : "text-[#0a0d12]/36 hover:text-[#0a0d12]/60",
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-muted-foreground",
                   )}
                 >
                   <span
                     className={cn(
                       "size-2 shrink-0 rounded-full transition-colors",
-                      i === activeIndex ? "bg-[#0a0d12]" : "bg-transparent",
+                      i === activeIndex ? "bg-[var(--landing-night)]" : "bg-transparent",
                     )}
                   />
                   {f.label}
@@ -1044,14 +1044,14 @@ export function FeaturesSection() {
                 data-index={i}
                 className={cn(
                   "py-20 lg:py-28",
-                  i < features.length - 1 && "border-b border-[#0a0d12]/8",
+                  i < features.length - 1 && "border-b border-border",
                 )}
               >
                 {/* Title + description */}
-                <h2 className="landing-serif text-[2.6rem] leading-[1.05] tracking-[-0.03em] text-[#0a0d12] sm:text-[3.4rem] lg:text-[4.2rem]">
+                <h2 className="landing-serif text-[2.6rem] leading-[1.05] tracking-normal text-foreground sm:text-[3.4rem] lg:text-[4.2rem]">
                   {feature.title}
                 </h2>
-                <p className="mt-5 max-w-[640px] text-body-lg leading-7 text-[#0a0d12]/60 sm:text-title-sm">
+                <p className="mt-5 max-w-[640px] text-body-lg leading-7 text-muted-foreground sm:text-title-sm">
                   {feature.description}
                 </p>
 
@@ -1072,14 +1072,14 @@ export function FeaturesSection() {
                       </div>
                     </div>
                   ) : (
-                    <div className="relative overflow-hidden border border-[#0a0d12]/8 bg-[#f5f5f5]">
+                    <div className="relative overflow-hidden border border-border bg-muted">
                       <div className="aspect-[16/9] w-full" />
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="flex flex-col items-center gap-4 text-center">
-                          <div className="grid size-14 place-items-center rounded-2xl border border-[#0a0d12]/8 bg-white shadow-sm">
-                            <ImageIcon className="size-6 text-[#0a0d12]/30" />
+                          <div className="grid size-14 place-items-center rounded-2xl border border-border bg-surface shadow-sm">
+                            <ImageIcon className="size-6 text-muted-foreground" />
                           </div>
-                          <p className="text-label text-[#0a0d12]/36">
+                          <p className="text-label text-muted-foreground">
                             {feature.label.toLowerCase()} visual
                           </p>
                         </div>
@@ -1092,10 +1092,10 @@ export function FeaturesSection() {
                 <div className="mt-14 grid gap-8 sm:mt-18 md:grid-cols-3 md:gap-10">
                   {feature.cards.map((card) => (
                     <div key={card.title}>
-                      <h3 className="text-body-lg font-semibold leading-snug text-[#0a0d12] sm:text-title-sm">
+                      <h3 className="text-body-lg font-semibold leading-snug text-foreground sm:text-title-sm">
                         {card.title}
                       </h3>
-                      <p className="mt-2.5 text-body leading-[1.7] text-[#0a0d12]/56 sm:text-body-lg">
+                      <p className="mt-2.5 text-body leading-[1.7] text-muted-foreground sm:text-body-lg">
                         {card.description}
                       </p>
                     </div>

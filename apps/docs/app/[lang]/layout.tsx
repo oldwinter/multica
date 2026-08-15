@@ -4,7 +4,9 @@ import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { Inter, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
+import Script from "next/script";
 import { cn } from "@multica/ui/lib/utils";
+import { SkinProvider } from "@multica/ui/components/common/theme-provider";
 import { baseOptions } from "@/app/layout.config";
 import { source } from "@/lib/source";
 import { i18n, type Lang } from "@/lib/i18n";
@@ -85,28 +87,29 @@ export default async function Layout({
       )}
     >
       <body className="font-sans">
-        <RootProvider
-          i18n={{
-            locale: lang,
-            locales,
-            translations: uiTranslations[lang],
-          }}
-          search={{ options: { api: "/docs/api/search" } }}
-        >
-          <DocsLayout
-            tree={source.getPageTree(lang)}
-            // Suppress Fumadocs's default sidebar-footer icons (theme +
-            // language + search). Our custom <DocsSettings> is mounted as
-            // the sidebar footer instead — two labelled buttons, not three
-            // icons.
-            themeSwitch={{ enabled: false }}
-            searchToggle={{ enabled: false }}
-            sidebar={{ footer: <DocsSettings locale={lang} /> }}
-            {...baseOptions}
+        <Script id="multica-docs-skin" strategy="beforeInteractive">
+          {`try{var s=localStorage.getItem("multica-skin");document.documentElement.dataset.skin=["tension","relay","field"].includes(s)?s:"tension"}catch(e){document.documentElement.dataset.skin="tension"}`}
+        </Script>
+        <SkinProvider>
+          <RootProvider
+            i18n={{
+              locale: lang,
+              locales,
+              translations: uiTranslations[lang],
+            }}
+            search={{ options: { api: "/docs/api/search" } }}
           >
-            {children}
-          </DocsLayout>
-        </RootProvider>
+            <DocsLayout
+              tree={source.getPageTree(lang)}
+              themeSwitch={{ enabled: false }}
+              searchToggle={{ enabled: false }}
+              sidebar={{ footer: <DocsSettings locale={lang} /> }}
+              {...baseOptions}
+            >
+              {children}
+            </DocsLayout>
+          </RootProvider>
+        </SkinProvider>
       </body>
     </html>
   );

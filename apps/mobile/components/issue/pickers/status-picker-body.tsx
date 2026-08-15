@@ -10,12 +10,11 @@
  */
 import { Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useColorScheme } from "nativewind";
+import { useColorScheme } from "@/lib/use-color-scheme";
 import type { IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { StatusIcon } from "@/components/ui/status-icon";
 import { BOARD_STATUSES, STATUS_LABEL } from "@/lib/issue-status";
-import { THEME } from "@/lib/theme";
 
 const ALL_STATUSES: IssueStatus[] = [...BOARD_STATUSES, "cancelled"];
 
@@ -25,9 +24,9 @@ interface Props {
 }
 
 export function StatusPickerBody({ value, onChange }: Props) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const checkColor =
-    colorScheme === "dark" ? THEME.dark.primary : THEME.light.primary;
+    theme.primary;
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>

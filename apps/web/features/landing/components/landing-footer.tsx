@@ -22,7 +22,7 @@ export function LandingFooter() {
   const groups = Object.values(t.footer.groups);
 
   return (
-    <footer className="bg-[#0a0d12] text-white">
+    <footer className="bg-[var(--landing-night)] text-white">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         {/* Top: CTA + link columns */}
         <div className="flex flex-col gap-12 border-b border-white/10 py-16 sm:py-20 lg:flex-row lg:gap-20">
@@ -30,7 +30,7 @@ export function LandingFooter() {
           <div className="lg:w-[340px] lg:shrink-0">
             <Link href="#product" className="flex items-center gap-3">
               <MulticaIcon className="size-5 text-white" noSpin />
-              <span className="text-title font-semibold tracking-[0.04em] lowercase">
+              <span className="text-title font-semibold tracking-normal lowercase">
                 multica
               </span>
             </Link>
@@ -67,7 +67,7 @@ export function LandingFooter() {
             <div className="mt-6">
               <Link
                 href={ctaHref}
-                className="inline-flex items-center justify-center rounded-[11px] bg-white px-5 py-2.5 text-label font-semibold text-[#0a0d12] transition-colors hover:bg-white/88"
+                className="inline-flex items-center justify-center rounded-[11px] bg-white px-5 py-2.5 text-label font-semibold text-foreground transition-colors hover:bg-white/88"
               >
                 {user ? t.header.dashboard : t.footer.cta}
               </Link>
@@ -78,7 +78,7 @@ export function LandingFooter() {
           <div className="grid flex-1 grid-cols-2 gap-8 sm:grid-cols-4">
             {groups.map((group) => (
               <div key={group.label}>
-                <h4 className="text-caption font-semibold uppercase tracking-[0.1em] text-white/40">
+                <h4 className="text-caption font-semibold uppercase tracking-normal text-white/40">
                   {group.label}
                 </h4>
                 <ul className="mt-4 flex flex-col gap-2.5">
@@ -136,7 +136,7 @@ export function LandingFooter() {
               className="size-[clamp(4rem,12vw,10rem)] shrink-0 text-white"
               noSpin
             />
-            <span className="landing-serif text-[clamp(6rem,22vw,16rem)] font-normal leading-[0.82] tracking-[-0.04em] text-white lowercase">
+            <span className="landing-serif text-[clamp(6rem,22vw,16rem)] font-normal leading-[0.82] tracking-normal text-white lowercase">
               multica
             </span>
           </div>

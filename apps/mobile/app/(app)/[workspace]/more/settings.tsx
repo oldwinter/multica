@@ -29,7 +29,7 @@ import {
   useColorScheme,
   type ThemePreference,
 } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
+import { SKIN_IDS, THEMES, type AppSkin } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
@@ -37,6 +37,17 @@ const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: "dark", label: "Dark" },
   { value: "system", label: "System" },
 ];
+
+const SKIN_LABELS: Record<AppSkin, { name: string; description: string }> = {
+  tension: { name: "Tension", description: "Concrete, carbon, signal red" },
+  relay: { name: "Relay", description: "Cool mineral, teal, coral" },
+  field: { name: "Field", description: "Mineral, moss, survey amber" },
+};
+
+function parseThemePreference(value: string): ThemePreference {
+  if (value === "light" || value === "dark" || value === "system") return value;
+  return "system";
+}
 
 function initialsOf(name: string | undefined): string {
   if (!name) return "?";
@@ -56,8 +67,8 @@ export default function SettingsPage() {
   const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
   const clearWorkspace = useWorkspaceStore((s) => s.clear);
   const { data, isLoading, error } = useQuery(workspaceListOptions());
-  const { preference, setPreference, colorScheme } = useColorScheme();
-  const mutedFg = THEME[colorScheme].mutedForeground;
+  const { preference, setPreference, skin, setSkin, theme } = useColorScheme();
+  const mutedFg = theme.mutedForeground;
 
   const onSwitch = async (ws: Workspace) => {
     if (ws.slug === currentSlug) return;
@@ -151,6 +162,52 @@ export default function SettingsPage() {
         )}
       </SectionGroup>
 
+      <SectionGroup title="Skin">
+        {SKIN_IDS.map((option, idx) => {
+          const selected = option === skin;
+          const isLast = idx === SKIN_IDS.length - 1;
+          const label = SKIN_LABELS[option];
+          return (
+            <View key={option}>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={`${label.name}. ${label.description}`}
+                onPress={() => setSkin(option)}
+                className="flex-row items-center gap-3 px-4 py-3.5 active:bg-secondary"
+              >
+                <View className="flex-row overflow-hidden rounded-md border border-border">
+                  <View
+                    className="h-8 w-3"
+                    style={{ backgroundColor: THEMES[option].light.background }}
+                  />
+                  <View
+                    className="h-8 w-3"
+                    style={{ backgroundColor: THEMES[option].light.primary }}
+                  />
+                  <View
+                    className="h-8 w-3"
+                    style={{ backgroundColor: THEMES[option].dark.background }}
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-medium text-foreground">
+                    {label.name}
+                  </Text>
+                  <Text className="mt-0.5 text-sm text-muted-foreground">
+                    {label.description}
+                  </Text>
+                </View>
+                {selected ? (
+                  <Ionicons name="checkmark" size={18} color={theme.primary} />
+                ) : null}
+              </Pressable>
+              {!isLast ? <Separator /> : null}
+            </View>
+          );
+        })}
+      </SectionGroup>
+
       <SectionGroup title="Appearance">
         {/* Two converging entry points by design, NOT a double-fire:
               - Tap on small radio circle  → RadioGroupItem (Pressable, inner) consumes → onValueChange fires
@@ -161,7 +218,7 @@ export default function SettingsPage() {
             extend the tap target to the full row (iOS standard). */}
         <RadioGroup
           value={preference}
-          onValueChange={(v) => setPreference(v as ThemePreference)}
+          onValueChange={(v) => setPreference(parseThemePreference(v))}
           className="gap-0"
         >
           {THEME_OPTIONS.map((opt, idx) => {
@@ -236,7 +293,7 @@ function SectionGroup({
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-xs uppercase tracking-wider text-muted-foreground px-1">
+      <Text className="text-xs uppercase tracking-normalr text-muted-foreground px-1">
         {title}
       </Text>
       <View className="rounded-md border border-border bg-card overflow-hidden">

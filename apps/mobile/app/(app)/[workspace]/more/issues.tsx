@@ -49,7 +49,6 @@ import {
 } from "@/lib/issue-status";
 import { filterIssues } from "@/lib/filter-issues";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 type IssueSection = { status: IssueStatus; data: Issue[] };
 
@@ -216,7 +215,7 @@ function FilterButton({
   onPress: () => void;
   hasActiveFilters: boolean;
 }) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   return (
     <View style={{ position: "relative" }} className="ml-2">
       <Button
@@ -229,7 +228,7 @@ function FilterButton({
         <Ionicons
           name="options-outline"
           size={16}
-          color={THEME[colorScheme].mutedForeground}
+          color={theme.mutedForeground}
         />
       </Button>
       {hasActiveFilters ? (
@@ -327,7 +326,7 @@ function ActiveFilterChips({
 }
 
 function Chip({ label, onClear }: { label: string; onClear: () => void }) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   return (
     <Pressable
       onPress={onClear}
@@ -337,7 +336,7 @@ function Chip({ label, onClear }: { label: string; onClear: () => void }) {
       <Ionicons
         name="close"
         size={12}
-        color={THEME[colorScheme].mutedForeground}
+        color={theme.mutedForeground}
       />
     </Pressable>
   );
@@ -353,7 +352,7 @@ function SectionHeader({
   return (
     <View className="flex-row items-center gap-2 px-4 py-2 bg-background">
       <StatusIcon status={status} size={14} />
-      <Text className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+      <Text className="text-xs uppercase tracking-normalr text-muted-foreground font-medium">
         {STATUS_LABEL[status]}
       </Text>
       <Text className="text-xs text-muted-foreground/60">{count}</Text>

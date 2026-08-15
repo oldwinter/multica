@@ -344,7 +344,7 @@ function ScanningView() {
   const { t } = useT("onboarding");
   return (
     <div>
-      <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-tight text-foreground">
+      <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-normal text-foreground">
         {t(($) => $.step_runtime.scanning_headline)}
       </h1>
       <p className="mt-4 max-w-[560px] text-body-lg leading-[1.55] text-muted-foreground">
@@ -392,7 +392,7 @@ function FoundView({
 
   return (
     <div>
-      <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-tight text-foreground">
+      <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-normal text-foreground">
         {t(($) => $.step_runtime.found_headline)}
       </h1>
       <p className="mt-4 max-w-[560px] text-body-lg leading-[1.55] text-muted-foreground">
@@ -449,7 +449,7 @@ function EmptyView({
   return (
     <div>
       <div className="flex items-start justify-between gap-4">
-        <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-tight text-foreground">
+        <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-normal text-foreground">
           {t(($) => $.step_runtime.empty_headline)}
         </h1>
         <RefreshButton
@@ -514,7 +514,7 @@ function ComingSoonCard({
       </div>
       <span
         aria-hidden
-        className="inline-flex shrink-0 items-center rounded-full border bg-background px-3 py-1.5 text-caption font-medium uppercase tracking-wide text-muted-foreground"
+        className="inline-flex shrink-0 items-center rounded-full border bg-background px-3 py-1.5 text-caption font-medium uppercase tracking-normal text-muted-foreground"
       >
         {badgeLabel}
       </span>

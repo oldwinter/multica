@@ -46,7 +46,6 @@ import { projectDetailOptions } from "@/data/queries/projects";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { THEME } from "@/lib/theme";
 
 export default function PinsPage() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -214,7 +213,7 @@ function MissingPinRow({
   itemType: "issue" | "project";
   itemId: string;
 }) {
-  const { colorScheme } = useColorScheme();
+  const { theme } = useColorScheme();
   const deletePin = useDeletePin();
   return (
     <Pressable
@@ -225,7 +224,7 @@ function MissingPinRow({
       <Ionicons
         name="alert-circle-outline"
         size={18}
-        color={THEME[colorScheme].mutedForeground}
+        color={theme.mutedForeground}
       />
       <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
         Unavailable {itemType} — tap to unpin

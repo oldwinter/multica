@@ -20,7 +20,6 @@
  * code incident.
  */
 import { useMemo } from "react";
-import { THEME } from "@/lib/theme";
 import { useColorScheme } from "@/lib/use-color-scheme";
 
 /**
@@ -94,8 +93,7 @@ const MD_GAP = {
 // → 2026-05-19 reverted to subtle surface-2 chip + foreground text).
 
 export function useMarkdownStyle() {
-  const { isDarkColorScheme } = useColorScheme();
-  const t = isDarkColorScheme ? THEME.dark : THEME.light;
+  const { theme: t } = useColorScheme();
 
   return useMemo(
     () => ({
