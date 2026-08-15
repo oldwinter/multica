@@ -166,6 +166,38 @@ test("runs a durable Room from paused message through result promotion", async (
     await expect(page.getByTestId(`room-list-item-${roomId}`)).toContainText(roomTitle);
     actions.push("created Room through shared UI");
 
+    await expect(page.locator('[data-sonner-toast]')).toBeHidden({ timeout: 10_000 });
+    await capture(page, testInfo, "room-starters-desktop", 1280, 800);
+    await capture(page, testInfo, "room-starters-tablet", 768, 900);
+    await capture(page, testInfo, "room-starters-mobile", 375, 812);
+    const mobileStarterHeight = await page
+      .getByTestId("room-starter-unblock")
+      .evaluate((element) => element.getBoundingClientRect().height);
+    expect(mobileStarterHeight).toBeGreaterThanOrEqual(44);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await capture(page, testInfo, "room-starters-dark-desktop", 1280, 800);
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.context().addCookies([
+      { name: "multica-locale", value: "zh-Hans", url: APP_URL },
+    ]);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("room-starter-unblock")).toBeVisible({ timeout: 30_000 });
+    await capture(page, testInfo, "room-starters-zh-mobile", 375, 812);
+    await page.context().addCookies([
+      { name: "multica-locale", value: "en", url: APP_URL },
+    ]);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("room-starter-unblock")).toBeVisible({ timeout: 30_000 });
+    const starter = page.getByTestId("room-starter-unblock");
+    await expect(page.locator('[data-testid^="room-starter-"]')).toHaveCount(3);
+    await starter.click();
+    await expect(page.getByTestId("room-message-input")).not.toHaveValue("");
+    await expect(page.getByTestId("room-message-input")).toBeFocused();
+    await expect(starter).toBeHidden();
+    await page.getByTestId("room-message-input").fill("");
+    await page.setViewportSize({ width: 1440, height: 960 });
+    actions.push("prefilled a focused draft from a Room starter without posting");
+
     await test.step("restore an unsent Room draft after reload", async () => {
       const messageInput = page.getByTestId("room-message-input");
       await messageInput.fill(unsentDraft);

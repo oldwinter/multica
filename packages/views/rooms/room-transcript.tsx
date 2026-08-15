@@ -155,6 +155,7 @@ export function RoomTranscript({
         participants={detail.participants}
         agents={agents}
         draft={draft}
+        showStarters={detail.entries.length === 0 && draft.body.length === 0}
         onBodyChange={onBodyChange}
         onMentionChange={onMentionChange}
         onPost={onPost}

@@ -72,7 +72,13 @@
     "mentions": "Notify agents",
     "mentions_selected": "{{count}} selected",
     "paused_notice": "Messages are saved while execution is paused.",
-    "archived_notice": "Archived rooms are read-only."
+    "archived_notice": "Archived rooms are read-only.",
+    "starters_label": "Start with a useful question",
+    "starters": {
+      "unblock": "What is the biggest blocker right now, and what should we do next?",
+      "plan": "Turn our current priorities into a short, ordered action plan.",
+      "challenge": "Challenge our riskiest assumption and propose a way to test it."
+    }
   },
   "create": {
     "title": "Create room",

@@ -5,7 +5,7 @@
   "status": { "active": "稼働中", "paused": "一時停止", "archived": "アーカイブ", "unknown": "不明" },
   "list": { "participants": "参加者 {{count}} 人", "updated": "{{time}} に更新" },
   "detail": { "participants": "参加者", "transcript": "会話記録", "memory": "共有メモリ", "cycles": "アクティビティ", "artifacts": "成果物", "instructions": "指示", "schedule": "スケジュール", "budget": "1日の予算", "unlimited": "無制限", "disabled": "無効", "minutes": "{{count}}分", "next_wake": "次回実行 {{time}}", "memory_version": "バージョン {{version}}", "facts": "事実", "decisions": "決定", "open_questions": "未解決の問い", "recent_contributions": "最近の貢献", "empty_memory": "ターンが完了するとメモリが更新されます。", "empty_transcript": "ルームは静かです。", "empty_artifacts": "昇格された成果物はありません。", "facilitator": "進行役", "participant": "参加者", "observer": "オブザーバー", "system": "システム", "turns_used": "{{limit}} ターン中 {{count}} 使用" },
-  "composer": { "placeholder": "ルームにメッセージを送信", "mentions": "エージェントに通知", "mentions_selected": "{{count}} 件選択", "paused_notice": "一時停止中もメッセージは保存されます。", "archived_notice": "アーカイブされたルームは読み取り専用です。" },
+  "composer": { "placeholder": "ルームにメッセージを送信", "mentions": "エージェントに通知", "mentions_selected": "{{count}} 件選択", "paused_notice": "一時停止中もメッセージは保存されます。", "archived_notice": "アーカイブされたルームは読み取り専用です。", "starters_label": "役立つ問いから始める", "starters": { "unblock": "今いちばん大きな障害は何ですか？次に何をすべきですか？", "plan": "現在の優先事項を、短く順序立てた行動計画にまとめてください。", "challenge": "最もリスクの高い仮説を問い直し、検証方法を提案してください。" } },
   "create": {
     "title": "ルームを作成", "description": "進行役と参加者を選択します。",
     "fields": { "title": "名前", "instructions": "指示", "facilitator": "進行役", "agent": "エージェント", "squad": "スクワッド", "participants": "参加者", "agent_participants": "エージェント", "member_participants": "メンバー", "daily_turn_limit": "1日のターン上限", "schedule_interval": "実行間隔" },

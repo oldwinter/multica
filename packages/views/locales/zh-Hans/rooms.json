@@ -5,7 +5,7 @@
   "status": { "active": "运行中", "paused": "已暂停", "archived": "已归档", "unknown": "未知" },
   "list": { "participants": "{{count}} 位参与者", "updated": "更新于 {{time}}" },
   "detail": { "participants": "参与者", "transcript": "讨论记录", "memory": "共享记忆", "cycles": "运行动态", "artifacts": "沉淀产物", "instructions": "指令", "schedule": "调度", "budget": "每日预算", "unlimited": "不限", "disabled": "关闭", "minutes": "{{count}} 分钟", "next_wake": "下次运行 {{time}}", "memory_version": "版本 {{version}}", "facts": "事实", "decisions": "决策", "open_questions": "待解问题", "recent_contributions": "近期贡献", "empty_memory": "智能体完成轮次后，共享记忆会在这里生长。", "empty_transcript": "房间里还很安静。", "empty_artifacts": "还没有沉淀产物。", "facilitator": "主持者", "participant": "参与者", "observer": "观察者", "system": "系统", "turns_used": "已使用 {{count}} / {{limit}} 轮" },
-  "composer": { "placeholder": "给房间发消息", "mentions": "通知智能体", "mentions_selected": "已选 {{count}} 个", "paused_notice": "暂停期间消息仍会保存，但不会触发执行。", "archived_notice": "已归档的房间为只读。" },
+  "composer": { "placeholder": "给房间发消息", "mentions": "通知智能体", "mentions_selected": "已选 {{count}} 个", "paused_notice": "暂停期间消息仍会保存，但不会触发执行。", "archived_notice": "已归档的房间为只读。", "starters_label": "从一个有用的问题开始", "starters": { "unblock": "当前最大的阻塞是什么？下一步该怎么做？", "plan": "把当前优先事项整理成简短的行动计划。", "challenge": "挑战我们风险最高的假设，并提出一种验证方法。" } },
   "create": {
     "title": "创建房间", "description": "选择主持者和参与者。",
     "fields": { "title": "名称", "instructions": "指令", "facilitator": "主持者", "agent": "智能体", "squad": "小队", "participants": "参与者", "agent_participants": "智能体", "member_participants": "人类", "daily_turn_limit": "每日轮次上限", "schedule_interval": "运行间隔" },
