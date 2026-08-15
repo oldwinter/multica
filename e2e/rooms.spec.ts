@@ -90,6 +90,7 @@ test("runs a durable Room from paused message through result promotion", async (
   const workspaceSlug = `room-e2e-${runId}`;
   const roomTitle = `Research council ${runId}`;
   const agentName = `Room analyst ${runId}`;
+  const unsentDraft = `Unsent Room draft ${runId}`;
   const pausedMessage = `Captured while paused ${runId}`;
   const activeMessage = `Investigate the durable Room boundary ${runId}`;
   const completedOutput = `Decision: keep Room orchestration isolated ${runId}.`;
@@ -164,6 +165,15 @@ test("runs a durable Room from paused message through result promotion", async (
     roomId = created.room.id;
     await expect(page.getByTestId(`room-list-item-${roomId}`)).toContainText(roomTitle);
     actions.push("created Room through shared UI");
+
+    await test.step("restore an unsent Room draft after reload", async () => {
+      const messageInput = page.getByTestId("room-message-input");
+      await messageInput.fill(unsentDraft);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page.locator("[data-room-workspace]")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("room-message-input")).toHaveValue(unsentDraft);
+    });
+    actions.push("restored unsent Room draft after reload");
 
     await test.step("pause the room and persist a refused message", async () => {
       const statusToggle = page.getByTestId("room-status-toggle");

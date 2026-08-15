@@ -26,6 +26,23 @@ export {
   useWakeRoom,
 } from "./mutations";
 export { roomDetailOptions, roomKeys, roomListOptions } from "./queries";
+export {
+  EMPTY_ROOM_COMPOSER_DRAFTS,
+  completeRoomComposerDraft,
+  createRoomComposerDraft,
+  ensureRoomComposerDraft,
+  markRoomComposerFailed,
+  markRoomComposerPending,
+  updateRoomComposerBody,
+  updateRoomComposerMention,
+  type RoomComposerDraft,
+  type RoomComposerDraftStatus,
+  type RoomComposerDrafts,
+} from "./composer-draft";
+export {
+  ROOM_COMPOSER_DRAFT_STORAGE_KEY,
+  useRoomComposerDraftStore,
+} from "./composer-draft-store";
 export type {
   CreateRoomInput,
   PostRoomMessageInput,

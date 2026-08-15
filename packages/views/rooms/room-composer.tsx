@@ -3,6 +3,7 @@
 import { AtSign, Loader2, RotateCw, Send } from "lucide-react";
 import type {
   PostRoomMessageInput,
+  RoomComposerDraft,
   RoomParticipant,
   RoomStatus,
 } from "@multica/core/rooms";
@@ -18,7 +19,6 @@ import {
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { ActorAvatar } from "../common/actor-avatar";
 import { useT } from "../i18n/use-t";
-import type { RoomComposerDraft } from "./room-composer-draft";
 
 interface RoomComposerProps {
   readonly roomStatus: RoomStatus;

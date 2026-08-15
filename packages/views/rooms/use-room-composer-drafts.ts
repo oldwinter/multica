@@ -1,48 +1,53 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { createSafeId } from "@multica/core/utils";
 import {
-  EMPTY_ROOM_COMPOSER_DRAFTS,
   completeRoomComposerDraft,
   ensureRoomComposerDraft,
   markRoomComposerFailed,
   markRoomComposerPending,
   updateRoomComposerBody,
   updateRoomComposerMention,
+  useRoomComposerDraftStore,
   type RoomComposerDrafts,
-} from "./room-composer-draft";
+} from "@multica/core/rooms";
+
+function updateDrafts(update: (drafts: RoomComposerDrafts) => RoomComposerDrafts) {
+  const store = useRoomComposerDraftStore.getState();
+  const next = update(store.draft);
+  if (next !== store.draft) store.setDraft(next);
+}
 
 export function useRoomComposerDrafts(activeRoomId: string) {
-  const [drafts, setDrafts] = useState<RoomComposerDrafts>(
-    EMPTY_ROOM_COMPOSER_DRAFTS,
-  );
+  const draft = useRoomComposerDraftStore((state) => state.draft[activeRoomId]);
 
   useEffect(() => {
     if (!activeRoomId) return;
-    const idempotencyKey = createSafeId();
-    setDrafts((current) =>
-      ensureRoomComposerDraft(current, activeRoomId, idempotencyKey),
-    );
+    const ensureDraft = () => {
+      updateDrafts((current) =>
+        ensureRoomComposerDraft(current, activeRoomId, createSafeId()),
+      );
+    };
+    ensureDraft();
+    return useRoomComposerDraftStore.persist.onFinishHydration(ensureDraft);
   }, [activeRoomId]);
 
   const updateBody = useCallback((roomId: string, body: string) => {
-    const idempotencyKey = createSafeId();
-    setDrafts((current) =>
-      updateRoomComposerBody(current, roomId, body, idempotencyKey),
+    updateDrafts((current) =>
+      updateRoomComposerBody(current, roomId, body, createSafeId()),
     );
   }, []);
 
   const updateMention = useCallback(
     (roomId: string, agentId: string, selected: boolean) => {
-      const idempotencyKey = createSafeId();
-      setDrafts((current) =>
+      updateDrafts((current) =>
         updateRoomComposerMention(
           current,
           roomId,
           agentId,
           selected,
-          idempotencyKey,
+          createSafeId(),
         ),
       );
     },
@@ -50,22 +55,21 @@ export function useRoomComposerDrafts(activeRoomId: string) {
   );
 
   const markPending = useCallback((roomId: string) => {
-    setDrafts((current) => markRoomComposerPending(current, roomId));
+    updateDrafts((current) => markRoomComposerPending(current, roomId));
   }, []);
 
   const markFailed = useCallback((roomId: string) => {
-    setDrafts((current) => markRoomComposerFailed(current, roomId));
+    updateDrafts((current) => markRoomComposerFailed(current, roomId));
   }, []);
 
   const complete = useCallback((roomId: string) => {
-    const idempotencyKey = createSafeId();
-    setDrafts((current) =>
-      completeRoomComposerDraft(current, roomId, idempotencyKey),
+    updateDrafts((current) =>
+      completeRoomComposerDraft(current, roomId, createSafeId()),
     );
   }, []);
 
   return {
-    draft: drafts[activeRoomId],
+    draft,
     updateBody,
     updateMention,
     markPending,

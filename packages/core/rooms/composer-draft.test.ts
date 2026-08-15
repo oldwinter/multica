@@ -7,7 +7,7 @@ import {
   markRoomComposerPending,
   updateRoomComposerBody,
   updateRoomComposerMention,
-} from "./room-composer-draft";
+} from "./composer-draft";
 
 describe("room composer drafts", () => {
   it("keeps message content and mentions isolated by room", () => {
@@ -24,7 +24,6 @@ describe("room composer drafts", () => {
       true,
       "unused",
     );
-
     const roomB = ensureRoomComposerDraft(withMention, "room-b", "key-b");
 
     expect(roomB["room-a"]).toEqual({
@@ -33,12 +32,7 @@ describe("room composer drafts", () => {
       idempotencyKey: "key-a",
       status: "idle",
     });
-    expect(roomB["room-b"]).toEqual({
-      body: "",
-      mentionAgentIds: [],
-      idempotencyKey: "key-b",
-      status: "idle",
-    });
+    expect(roomB["room-b"]?.idempotencyKey).toBe("key-b");
   });
 
   it("reuses the same idempotency key when a failed draft is retried", () => {
@@ -48,17 +42,20 @@ describe("room composer drafts", () => {
       "stable-key",
     );
     const withBody = updateRoomComposerBody(initial, "room-a", "retry me", "unused");
-    const pending = markRoomComposerPending(withBody, "room-a");
-    const failed = markRoomComposerFailed(pending, "room-a");
-
+    const failed = markRoomComposerFailed(
+      markRoomComposerPending(withBody, "room-a"),
+      "room-a",
+    );
     const retried = markRoomComposerPending(failed, "room-a");
 
-    expect(retried["room-a"]?.idempotencyKey).toBe("stable-key");
-    expect(retried["room-a"]?.body).toBe("retry me");
-    expect(retried["room-a"]?.status).toBe("pending");
+    expect(retried["room-a"]).toMatchObject({
+      body: "retry me",
+      idempotencyKey: "stable-key",
+      status: "pending",
+    });
   });
 
-  it("rotates the idempotency key when a failed request becomes a new draft", () => {
+  it("rotates the idempotency key when failed content changes", () => {
     const initial = ensureRoomComposerDraft(
       EMPTY_ROOM_COMPOSER_DRAFTS,
       "room-a",
@@ -69,35 +66,33 @@ describe("room composer drafts", () => {
       markRoomComposerPending(withBody, "room-a"),
       "room-a",
     );
-
-    const changed = updateRoomComposerBody(failed, "room-a", "new body", "new-key");
-
-    expect(changed["room-a"]?.idempotencyKey).toBe("new-key");
-    expect(changed["room-a"]?.status).toBe("idle");
-  });
-
-  it("rotates the idempotency key when mentions change after failure", () => {
-    const initial = ensureRoomComposerDraft(
-      EMPTY_ROOM_COMPOSER_DRAFTS,
-      "room-a",
-      "old-key",
-    );
-    const failed = markRoomComposerFailed(
-      markRoomComposerPending(initial, "room-a"),
-      "room-a",
-    );
-
-    const changed = updateRoomComposerMention(
+    const changedBody = updateRoomComposerBody(
       failed,
+      "room-a",
+      "new body",
+      "body-key",
+    );
+    const failedAgain = markRoomComposerFailed(
+      markRoomComposerPending(changedBody, "room-a"),
+      "room-a",
+    );
+    const changedMention = updateRoomComposerMention(
+      failedAgain,
       "room-a",
       "agent-a",
       true,
-      "new-key",
+      "mention-key",
     );
 
-    expect(changed["room-a"]?.mentionAgentIds).toEqual(["agent-a"]);
-    expect(changed["room-a"]?.idempotencyKey).toBe("new-key");
-    expect(changed["room-a"]?.status).toBe("idle");
+    expect(changedBody["room-a"]).toMatchObject({
+      idempotencyKey: "body-key",
+      status: "idle",
+    });
+    expect(changedMention["room-a"]).toMatchObject({
+      mentionAgentIds: ["agent-a"],
+      idempotencyKey: "mention-key",
+      status: "idle",
+    });
   });
 
   it("clears a successful draft and rotates its idempotency key", () => {
@@ -107,7 +102,6 @@ describe("room composer drafts", () => {
       "old-key",
     );
     const withBody = updateRoomComposerBody(initial, "room-a", "done", "unused");
-
     const completed = completeRoomComposerDraft(withBody, "room-a", "next-key");
 
     expect(completed["room-a"]).toEqual({

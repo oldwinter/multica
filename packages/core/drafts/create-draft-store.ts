@@ -1,4 +1,9 @@
-import { create, type StoreApi, type UseBoundStore } from "zustand";
+import {
+  create,
+  type Mutate,
+  type StoreApi,
+  type UseBoundStore,
+} from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
   createWorkspaceAwareStorage,
@@ -51,9 +56,13 @@ export interface DraftStore<TData> {
   hasDraft: () => boolean;
 }
 
+type PersistedDraftStore<TData> = UseBoundStore<
+  Mutate<StoreApi<DraftStore<TData>>, [["zustand/persist", unknown]]>
+>;
+
 export function createDraftStore<TData extends object>(
   config: DraftStoreConfig<TData>,
-): UseBoundStore<StoreApi<DraftStore<TData>>> {
+): PersistedDraftStore<TData> {
   const workspaceScoped = config.workspaceScoped ?? true;
   const empty = () => structuredCloneData(config.emptyData);
 

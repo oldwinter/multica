@@ -2,7 +2,11 @@
 
 import { ArrowDown, Sparkles } from "lucide-react";
 import type { Agent } from "@multica/core/types";
-import type { PostRoomMessageInput, RoomDetail } from "@multica/core/rooms";
+import type {
+  PostRoomMessageInput,
+  RoomComposerDraft,
+  RoomDetail,
+} from "@multica/core/rooms";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { Markdown } from "@multica/ui/markdown";
 import { Button } from "@multica/ui/components/ui/button";
@@ -10,7 +14,6 @@ import { cn } from "@multica/ui/lib/utils";
 import { useT, useTimeAgo } from "../i18n";
 import { ActorAvatar } from "../common/actor-avatar";
 import { RoomComposer } from "./room-composer";
-import type { RoomComposerDraft } from "./room-composer-draft";
 import { useRoomTranscriptScroll } from "./use-room-transcript-scroll";
 
 interface RoomTranscriptProps {
