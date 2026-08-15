@@ -25,6 +25,7 @@ import {
   issueKeys,
   issueTableRowPageOptions,
   projectGanttIssuesOptions,
+  randomUnresolvedIssueOptions,
 } from "./queries";
 
 const WS_ID = "ws-1";
@@ -85,6 +86,47 @@ function installFakeSearchApi(
 function makeSearchResult(idx: number, identifier: string) {
   return { ...makeIssue(idx), identifier, match_source: "title" as const };
 }
+
+describe("randomUnresolvedIssueOptions", () => {
+  it("selects one issue from the complete unresolved result window", async () => {
+    const issue = makeIssue(4);
+    const listIssues = vi
+      .fn()
+      .mockResolvedValueOnce({ issues: [], total: 5 })
+      .mockResolvedValueOnce({ issues: [issue], total: 5 });
+    installFakeApi(listIssues);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const result = await qc.fetchQuery(
+      randomUnresolvedIssueOptions(WS_ID, () => 0.6),
+    );
+
+    expect(result).toBe(issue);
+    expect(listIssues).toHaveBeenNthCalledWith(1, {
+      workspace_id: WS_ID,
+      statuses: ["backlog", "todo", "in_progress", "in_review", "blocked"],
+      limit: 1,
+      offset: 0,
+    });
+    expect(listIssues).toHaveBeenNthCalledWith(2, {
+      workspace_id: WS_ID,
+      statuses: ["backlog", "todo", "in_progress", "in_review", "blocked"],
+      limit: 1,
+      offset: 3,
+    });
+  });
+
+  it("returns null without a second request when every issue is resolved", async () => {
+    const listIssues = vi.fn().mockResolvedValue({ issues: [], total: 0 });
+    installFakeApi(listIssues);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const result = await qc.fetchQuery(randomUnresolvedIssueOptions(WS_ID));
+
+    expect(result).toBeNull();
+    expect(listIssues).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("childIssuesOptions", () => {
   it("refetches a cached snapshot when the parent issue is opened again", async () => {

@@ -25,6 +25,7 @@
     "new_issue": "New Issue",
     "new_project": "New Project",
     "copy_page_link": "Copy Page Link",
+    "surprise_issue": "Surprise Me with an Issue",
     "copy_issue_link": "Copy Issue Link",
     "copy_identifier": "Copy Identifier ({{identifier}})",
     "copy_branch_name": "Copy Git Branch Name",
@@ -39,7 +40,9 @@
     "link_copy_failed": "Failed to copy link",
     "copied_identifier": "Copied {{identifier}}",
     "branch_name_copied": "Copied branch name: {{branch}}",
-    "branch_name_copy_failed": "Couldn't copy branch name"
+    "branch_name_copy_failed": "Couldn't copy branch name",
+    "no_unresolved_issues": "No unresolved issues to pick from",
+    "random_issue_failed": "Couldn't pick an issue"
   },
   "empty": {
     "no_results": "No results found.",

@@ -5,6 +5,7 @@ import {
   Check,
   Clock,
   Copy,
+  Dices,
   FileText,
   GitBranch,
   Link2,
@@ -35,7 +36,11 @@ import {
   useRecentIssuesStore,
   useResolvedExpandStore,
 } from "@multica/core/issues/stores";
-import { issueDetailOptions, issueTimelineOptions } from "@multica/core/issues/queries";
+import {
+  issueDetailOptions,
+  issueTimelineOptions,
+  randomUnresolvedIssueOptions,
+} from "@multica/core/issues/queries";
 import { useWorkspaceId } from "@multica/core";
 import { useWorkspacePaths } from "@multica/core/paths";
 import type { WorkspacePaths } from "@multica/core/paths";
@@ -135,6 +140,7 @@ interface CommandItem {
   icon: LucideIcon;
   keywords: string[];
   trailing?: React.ReactNode;
+  isLoading?: boolean;
   onSelect: () => void;
 }
 
@@ -180,6 +186,7 @@ export function SearchCommand() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults>({ issues: [], projects: [] });
   const [isLoading, setIsLoading] = useState(false);
+  const [isPickingIssue, setIsPickingIssue] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -238,6 +245,35 @@ export function SearchCommand() {
         onSelect: () => {
           useModalStore.getState().open("create-project");
           setOpen(false);
+        },
+      },
+      {
+        key: "surprise-issue",
+        label: t(($) => $.commands.surprise_issue),
+        icon: isPickingIssue ? Loader2 : Dices,
+        keywords: ["surprise", "random", "issue", "pick", "choose", "shuffle"],
+        isLoading: isPickingIssue,
+        onSelect: () => {
+          setIsPickingIssue(true);
+          void (async () => {
+            try {
+              const issue = await queryClient.fetchQuery(
+                randomUnresolvedIssueOptions(wsId),
+              );
+              if (!issue) {
+                toast.info(t(($) => $.toast.no_unresolved_issues));
+                return;
+              }
+
+              setOpen(false);
+              push(p.issueDetail(issue.id));
+            } catch (error) {
+              if (!(error instanceof Error)) throw error;
+              toast.error(t(($) => $.toast.random_issue_failed));
+            } finally {
+              setIsPickingIssue(false);
+            }
+          })();
         },
       },
     ];
@@ -394,7 +430,22 @@ export function SearchCommand() {
     );
 
     return items;
-  }, [currentIssue, currentIssueId, currentPath, getShareableUrl, pathname, queryClient, setOpen, setTheme, theme, t]);
+  }, [
+    currentIssue,
+    currentIssueId,
+    currentPath,
+    getShareableUrl,
+    isPickingIssue,
+    p,
+    pathname,
+    push,
+    queryClient,
+    setOpen,
+    setTheme,
+    theme,
+    t,
+    wsId,
+  ]);
 
   const filteredCommands = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -617,9 +668,12 @@ export function SearchCommand() {
                     key={cmd.key}
                     value={`command:${cmd.key}`}
                     onSelect={cmd.onSelect}
+                    disabled={cmd.isLoading}
                     className="flex cursor-default select-none items-center gap-2.5 rounded-lg px-3 py-2.5 text-body outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent"
                   >
-                    <cmd.icon className="size-4 shrink-0 text-muted-foreground" />
+                    <cmd.icon
+                      className={`size-4 shrink-0 text-muted-foreground${cmd.isLoading ? " animate-spin" : ""}`}
+                    />
                     <span className="truncate">
                       <HighlightText text={cmd.label} query={query} />
                     </span>

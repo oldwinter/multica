@@ -28,6 +28,7 @@ const {
   mockPush,
   mockSearchIssues,
   mockSearchProjects,
+  mockFetchQuery,
   mockRecentItems,
   mockAllIssues,
   mockSetTheme,
@@ -40,6 +41,7 @@ const {
   mockSquads,
   mockOpenModal,
   mockToastSuccess,
+  mockToastInfo,
   mockToastError,
   mockClipboardWrite,
   mockTimeline,
@@ -51,6 +53,7 @@ const {
   mockPush: vi.fn(),
   mockSearchIssues: vi.fn(),
   mockSearchProjects: vi.fn(),
+  mockFetchQuery: vi.fn(),
   mockRecentItems: { current: [] as Array<{ id: string; visitedAt: number }> },
   mockAllIssues: { current: [] as Array<Record<string, unknown>> },
   mockSetTheme: vi.fn(),
@@ -86,6 +89,7 @@ const {
   },
   mockOpenModal: vi.fn(),
   mockToastSuccess: vi.fn(),
+  mockToastInfo: vi.fn(),
   mockToastError: vi.fn(),
   mockClipboardWrite: vi.fn(() => Promise.resolve()),
   mockTimeline: { current: [] as Array<Record<string, unknown>> },
@@ -192,6 +196,9 @@ vi.mock("@multica/core/issues/queries", () => ({
   issueTimelineOptions: (id: string) => ({
     queryKey: ["issues", "timeline", id],
   }),
+  randomUnresolvedIssueOptions: () => ({
+    queryKey: ["issues", "ws-test", "random-unresolved"],
+  }),
 }));
 
 vi.mock("@multica/core/workspace/queries", () => ({
@@ -233,6 +240,7 @@ vi.mock("@tanstack/react-query", () => ({
   useQueries: (opts: { queries: Array<{ queryKey: readonly unknown[] }> }) =>
     opts.queries.map((q) => ({ data: resolveIssue(q.queryKey) })),
   useQueryClient: () => ({
+    fetchQuery: mockFetchQuery,
     ensureQueryData: (opts: { queryKey: readonly unknown[] }) =>
       opts.queryKey[1] === "timeline"
         ? Promise.resolve(mockTimeline.current)
@@ -254,7 +262,11 @@ vi.mock("@multica/ui/components/common/theme-provider", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: mockToastSuccess, error: mockToastError },
+  toast: {
+    success: mockToastSuccess,
+    info: mockToastInfo,
+    error: mockToastError,
+  },
 }));
 
 describe("SearchCommand", () => {
@@ -266,6 +278,7 @@ describe("SearchCommand", () => {
     mockPush.mockReset();
     mockSearchIssues.mockReset().mockResolvedValue({ issues: [] });
     mockSearchProjects.mockReset().mockResolvedValue({ projects: [] });
+    mockFetchQuery.mockReset();
     mockRecentItems.current = [];
     mockAllIssues.current = [];
     mockAgents.current = [];
@@ -278,6 +291,7 @@ describe("SearchCommand", () => {
     mockMembers.current = [];
     mockOpenModal.mockReset();
     mockToastSuccess.mockReset();
+    mockToastInfo.mockReset();
     mockToastError.mockReset();
     mockClipboardWrite.mockReset().mockResolvedValue(undefined);
     mockTimeline.current = [];
@@ -448,6 +462,66 @@ describe("SearchCommand", () => {
 
     expect(mockOpenModal).toHaveBeenCalledWith("quick-create-issue", null);
     expect(useSearchStore.getState().open).toBe(false);
+  });
+
+  it("opens a random unresolved issue from the whole workspace", async () => {
+    const user = userEvent.setup();
+    mockFetchQuery.mockResolvedValue({
+      id: "issue-4",
+      identifier: "MUL-4",
+      title: "Picked issue",
+    });
+    renderSearch();
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "surprise");
+    await user.click(
+      await screen.findByRole("option", { name: "Surprise Me with an Issue" }),
+    );
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/ws-test/issues/issue-4");
+    });
+    expect(mockFetchQuery).toHaveBeenCalledWith({
+      queryKey: ["issues", "ws-test", "random-unresolved"],
+    });
+    expect(useSearchStore.getState().open).toBe(false);
+  });
+
+  it("keeps the palette open when there are no unresolved issues", async () => {
+    const user = userEvent.setup();
+    mockFetchQuery.mockResolvedValue(null);
+    renderSearch();
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "surprise");
+    await user.click(
+      await screen.findByRole("option", { name: "Surprise Me with an Issue" }),
+    );
+
+    await waitFor(() => {
+      expect(mockToastInfo).toHaveBeenCalledWith("No unresolved issues to pick from");
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(useSearchStore.getState().open).toBe(true);
+  });
+
+  it("keeps the palette open when the random issue cannot be loaded", async () => {
+    const user = userEvent.setup();
+    mockFetchQuery.mockRejectedValue(new Error("network unavailable"));
+    renderSearch();
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    await user.type(input, "surprise");
+    await user.click(
+      await screen.findByRole("option", { name: "Surprise Me with an Issue" }),
+    );
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Couldn't pick an issue");
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(useSearchStore.getState().open).toBe(true);
   });
 
   it("copies the current page link when not on an issue detail route", async () => {

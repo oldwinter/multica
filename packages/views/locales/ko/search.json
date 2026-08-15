@@ -25,6 +25,7 @@
     "new_issue": "새 이슈",
     "new_project": "새 프로젝트",
     "copy_page_link": "페이지 링크 복사",
+    "surprise_issue": "무작위 이슈 열기",
     "copy_issue_link": "이슈 링크 복사",
     "copy_identifier": "식별자 복사 ({{identifier}})",
     "copy_branch_name": "Git 브랜치 이름 복사",
@@ -39,7 +40,9 @@
     "link_copy_failed": "링크를 복사하지 못했습니다",
     "copied_identifier": "{{identifier}}를 복사했습니다",
     "branch_name_copied": "브랜치 이름을 복사했습니다: {{branch}}",
-    "branch_name_copy_failed": "브랜치 이름을 복사하지 못했습니다"
+    "branch_name_copy_failed": "브랜치 이름을 복사하지 못했습니다",
+    "no_unresolved_issues": "선택할 수 있는 미해결 이슈가 없습니다",
+    "random_issue_failed": "이슈를 선택하지 못했습니다"
   },
   "empty": {
     "no_results": "검색 결과가 없습니다.",

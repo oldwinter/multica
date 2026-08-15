@@ -25,6 +25,7 @@
     "new_issue": "新規イシュー",
     "new_project": "新規プロジェクト",
     "copy_page_link": "ページのリンクをコピー",
+    "surprise_issue": "ランダムなイシューを開く",
     "copy_issue_link": "イシューのリンクをコピー",
     "copy_identifier": "識別子をコピー ({{identifier}})",
     "copy_branch_name": "Git ブランチ名をコピー",
@@ -39,7 +40,9 @@
     "link_copy_failed": "リンクをコピーできませんでした",
     "copied_identifier": "{{identifier}}をコピーしました",
     "branch_name_copied": "ブランチ名をコピーしました: {{branch}}",
-    "branch_name_copy_failed": "ブランチ名をコピーできませんでした"
+    "branch_name_copy_failed": "ブランチ名をコピーできませんでした",
+    "no_unresolved_issues": "選択できる未解決のイシューはありません",
+    "random_issue_failed": "イシューを選択できませんでした"
   },
   "empty": {
     "no_results": "結果が見つかりませんでした。",

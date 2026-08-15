@@ -25,6 +25,7 @@
     "new_issue": "新建 issue",
     "new_project": "新建项目",
     "copy_page_link": "复制页面链接",
+    "surprise_issue": "随机打开一个 issue",
     "copy_issue_link": "复制 issue 链接",
     "copy_identifier": "复制标识符 ({{identifier}})",
     "copy_branch_name": "复制 Git 分支名",
@@ -39,7 +40,9 @@
     "link_copy_failed": "复制链接失败",
     "copied_identifier": "已复制 {{identifier}}",
     "branch_name_copied": "已复制分支名：{{branch}}",
-    "branch_name_copy_failed": "无法复制分支名"
+    "branch_name_copy_failed": "无法复制分支名",
+    "no_unresolved_issues": "没有可供选择的未完成 issue",
+    "random_issue_failed": "无法选择 issue"
   },
   "empty": {
     "no_results": "未找到结果。",

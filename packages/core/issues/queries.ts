@@ -109,6 +109,8 @@ export const issueKeys = {
     [...issueKeys.projectGanttAll(wsId), projectId] as const,
   detail: (wsId: string, id: string) =>
     [...issueKeys.all(wsId), "detail", id] as const,
+  randomUnresolved: (wsId: string) =>
+    [...issueKeys.all(wsId), "random-unresolved"] as const,
   /** Resolve a bare issue identifier (e.g. "MUL-123") to an issue. */
   identifier: (wsId: string, identifier: string) =>
     [...issueKeys.all(wsId), "identifier", identifier] as const,
@@ -217,6 +219,44 @@ export const ISSUE_FLAT_PAGE_SIZE = 100;
  * fetch/cache membership.
  */
 export const PAGINATED_STATUSES: readonly IssueStatus[] = ALL_STATUSES;
+
+const UNRESOLVED_ISSUE_STATUSES = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "in_review",
+  "blocked",
+] as const satisfies readonly IssueStatus[];
+
+export function randomUnresolvedIssueOptions(
+  wsId: string,
+  random: () => number = Math.random,
+) {
+  return queryOptions({
+    queryKey: issueKeys.randomUnresolved(wsId),
+    queryFn: async (): Promise<Issue | null> => {
+      const statuses = [...UNRESOLVED_ISSUE_STATUSES];
+      const { total } = await api.listIssues({
+        workspace_id: wsId,
+        statuses,
+        limit: 1,
+        offset: 0,
+      });
+      if (total === 0) return null;
+
+      const offset = Math.floor(random() * total);
+      const { issues } = await api.listIssues({
+        workspace_id: wsId,
+        statuses,
+        limit: 1,
+        offset,
+      });
+      return issues[0] ?? null;
+    },
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
 
 /** Flatten a bucketed response to a single Issue[] for consumers that want the whole list. */
 export function flattenIssueBuckets(data: ListIssuesCache) {
