@@ -388,8 +388,10 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		if err != nil {
 			return WakeResult{}, err
 		}
-		if err := authorizeWakeReplay(ctx, queries, roomRow, invokerID, targetIDs, result.Turns); err != nil {
-			return WakeResult{}, err
+		if input.Source != "schedule" {
+			if err := authorizeWakeReplay(ctx, queries, roomRow, invokerID, targetIDs, result.Turns); err != nil {
+				return WakeResult{}, err
+			}
 		}
 		result.replayed = true
 		return result, nil
@@ -397,6 +399,7 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		return WakeResult{}, fmt.Errorf("check room wake identity: %w", existingErr)
 	}
 	unavailable := errors.Is(memberErr, pgx.ErrNoRows)
+	invocationDenied := unavailable && input.Source == "schedule"
 	agents := make([]db.Agent, 0, len(targetIDs))
 	for _, targetID := range targetIDs {
 		agent, agentErr := queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{ID: targetID, WorkspaceID: roomRow.WorkspaceID})
@@ -408,7 +411,11 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 			return WakeResult{}, fmt.Errorf("load room target agent: %w", agentErr)
 		}
 		if !canMemberInvokeAgent(ctx, queries, agent, invokerID, roomRow.WorkspaceID) {
-			return WakeResult{}, ErrInvocationNotAllowed
+			if input.Source != "schedule" {
+				return WakeResult{}, ErrInvocationNotAllowed
+			}
+			invocationDenied = true
+			continue
 		}
 		ready, readyErr := roomAgentReady(ctx, queries, agent)
 		if readyErr != nil {
@@ -430,6 +437,9 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		if roomRow.ActiveCycleID.Valid {
 			reason = "cycle_active"
 		}
+	}
+	if reason == "" && invocationDenied {
+		reason = "invocation_not_allowed"
 	}
 	if reason == "" && unavailable {
 		reason = "no_targets"

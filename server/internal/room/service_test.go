@@ -877,6 +877,82 @@ func TestDispatchDueAdvancesOnceAndPersistsPausedRefusal(t *testing.T) {
 	}
 }
 
+func TestDispatchDueIsolatesRevokedAgentAccess(t *testing.T) {
+	fixture := newServiceFixture(t)
+	ctx := context.Background()
+	interval := int32(5)
+	now := time.Date(2026, 8, 13, 5, 0, 0, 0, time.UTC)
+
+	denied, err := fixture.service.Create(ctx, CreateInput{
+		WorkspaceID: fixture.workspaceID, ActorUserID: fixture.userID,
+		Title: "Revoked schedule", FacilitatorAgentID: fixture.leaderID,
+		ScheduleIntervalMinutes: &interval,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthy, err := fixture.service.Create(ctx, CreateInput{
+		WorkspaceID: fixture.workspaceID, ActorUserID: fixture.userID,
+		Title: "Healthy schedule", FacilitatorAgentID: fixture.workerID,
+		ScheduleIntervalMinutes: &interval,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var otherUserID pgtype.UUID
+	if err := fixture.pool.QueryRow(ctx, `
+		INSERT INTO "user" (name, email)
+		VALUES ('Room Agent Owner', 'room-owner-' || gen_random_uuid()::text || '@example.com')
+		RETURNING id
+	`).Scan(&otherUserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `UPDATE agent SET owner_id = $2 WHERE id = $1`, fixture.leaderID, otherUserID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		fixture.pool.Exec(context.Background(), `UPDATE agent SET owner_id = $2 WHERE id = $1`, fixture.leaderID, fixture.userID)
+		fixture.pool.Exec(context.Background(), `DELETE FROM "user" WHERE id = $1`, otherUserID)
+	})
+
+	deniedPlan := now.Add(-2 * time.Minute)
+	healthyPlan := now.Add(-time.Minute)
+	if _, err := fixture.pool.Exec(ctx, `
+		UPDATE room
+		SET next_wake_at = CASE id WHEN $1 THEN $2::timestamptz ELSE $3::timestamptz END
+		WHERE id IN ($1, $4)
+	`, denied.Room.ID, deniedPlan, healthyPlan, healthy.Room.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := fixture.service.DispatchDue(ctx, now, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RoomsAdvanced != 2 || result.CyclesRefused != 1 || result.CyclesQueued != 1 || result.TasksQueued != 1 {
+		t.Fatalf("isolated due result = %+v", result)
+	}
+
+	var refusal string
+	var deniedNext, healthyNext time.Time
+	if err := fixture.pool.QueryRow(ctx, `
+		SELECT cycle.refusal_reason,
+		       (SELECT next_wake_at FROM room WHERE id = $1),
+		       (SELECT next_wake_at FROM room WHERE id = $2)
+		FROM room_cycle cycle
+		WHERE cycle.room_id = $1
+	`, denied.Room.ID, healthy.Room.ID).Scan(&refusal, &deniedNext, &healthyNext); err != nil {
+		t.Fatal(err)
+	}
+	if refusal != "invocation_not_allowed" || !deniedNext.After(now) || !healthyNext.After(now) {
+		t.Fatalf("isolated schedule state = refusal %q denied %s healthy %s", refusal, deniedNext, healthyNext)
+	}
+	if fixture.notifier.count() != 1 {
+		t.Fatalf("isolated schedule notifications = %d, want 1", fixture.notifier.count())
+	}
+}
+
 func TestSyncTaskCompletionPersistsOneEntryAndAdvancesMemoryOnce(t *testing.T) {
 	fixture := newServiceFixture(t)
 	created, err := fixture.service.Create(context.Background(), CreateInput{

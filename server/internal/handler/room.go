@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -12,6 +13,12 @@ import (
 	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+)
+
+const (
+	roomMutationBodyLimit      = 1 << 20
+	maxRoomParticipantRequests = 100
+	maxRoomAgentTargets        = 100
 )
 
 type roomParticipantRequest struct {
@@ -195,8 +202,11 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request createRoomRequest
-	if json.NewDecoder(r.Body).Decode(&request) != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	if len(request.Participants) > maxRoomParticipantRequests {
+		writeError(w, http.StatusBadRequest, "too many room participants")
 		return
 	}
 	facilitatorAgentID, ok := optionalRoomUUID(w, request.FacilitatorAgentID, "facilitator_agent_id")
@@ -238,8 +248,11 @@ func (h *Handler) PostRoomMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request roomMessageRequest
-	if json.NewDecoder(r.Body).Decode(&request) != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	if len(request.MentionAgents) > maxRoomAgentTargets {
+		writeError(w, http.StatusBadRequest, "too many mentioned agents")
 		return
 	}
 	mentions, valid := parseRoomUUIDs(w, request.MentionAgents, "mention_agent_ids")
@@ -272,8 +285,11 @@ func (h *Handler) WakeRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request roomWakeRequest
-	if json.NewDecoder(r.Body).Decode(&request) != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	if len(request.TargetAgents) > maxRoomAgentTargets {
+		writeError(w, http.StatusBadRequest, "too many target agents")
 		return
 	}
 	if strings.TrimSpace(request.IdempotencyKey) == "" {
@@ -308,8 +324,7 @@ func (h *Handler) SetRoomStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request roomStatusRequest
-	if json.NewDecoder(r.Body).Decode(&request) != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeRoomMutationRequest(w, r, &request) {
 		return
 	}
 	roomRow, err := h.Rooms.SetStatus(r.Context(), workspaceID, roomID, request.Status)
@@ -330,8 +345,7 @@ func (h *Handler) PromoteRoomArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request roomPromotionRequest
-	if json.NewDecoder(r.Body).Decode(&request) != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeRoomMutationRequest(w, r, &request) {
 		return
 	}
 	entryID, valid := optionalRoomUUID(w, request.EntryID, "entry_id")
@@ -396,6 +410,30 @@ func parseRoomUUIDs(w http.ResponseWriter, values []string, field string) ([]pgt
 		result = append(result, parsed)
 	}
 	return result, true
+}
+
+func decodeRoomMutationRequest(w http.ResponseWriter, r *http.Request, destination any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, roomMutationBodyLimit)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(destination); err != nil {
+		writeRoomMutationBodyError(w, err)
+		return false
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeRoomMutationBodyError(w, err)
+		return false
+	}
+	return true
+}
+
+func writeRoomMutationBodyError(w http.ResponseWriter, err error) {
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body is too large")
+		return
+	}
+	writeError(w, http.StatusBadRequest, "invalid request body")
 }
 
 func roomTaskIDs(tasks []db.AgentTaskQueue) []string {

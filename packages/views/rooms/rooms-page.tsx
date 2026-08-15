@@ -166,19 +166,20 @@ export function RoomsPage() {
               statusPending={setStatus.isPending}
               onPost={(input) => {
                 const submittedRoomId = activeRoomId;
-                composer.markPending(submittedRoomId);
+                const submittedIdempotencyKey = input.idempotency_key;
+                composer.markPending(submittedRoomId, submittedIdempotencyKey);
                 void postMessage
                   .mutateAsync(input)
                   .then(() => {
-                    composer.complete(submittedRoomId);
+                    composer.complete(submittedRoomId, submittedIdempotencyKey);
                     toast.success(t(($) => $.toast.message_posted));
                   })
                   .catch((error: Error) => {
                     if (error instanceof ApiError && error.status === 409) {
-                      composer.complete(submittedRoomId);
+                      composer.complete(submittedRoomId, submittedIdempotencyKey);
                       toast.warning(t(($) => $.toast.message_saved_no_execution));
                     } else {
-                      composer.markFailed(submittedRoomId);
+                      composer.markFailed(submittedRoomId, submittedIdempotencyKey);
                       reportFailure(t(($) => $.toast.message_failed), error);
                     }
                   });

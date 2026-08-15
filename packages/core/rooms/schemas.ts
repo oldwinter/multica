@@ -37,7 +37,7 @@ const RoomTurnStatusSchema = z
   .enum(["refused", "queued", "dispatched", "running", "completed", "failed", "cancelled"])
   .or(z.string().transform(() => "unknown" as const));
 const RoomRefusalReasonSchema = z
-  .enum(["room_paused", "room_archived", "budget_exhausted", "cycle_active", "no_targets"])
+  .enum(["room_paused", "room_archived", "budget_exhausted", "cycle_active", "no_targets", "invocation_not_allowed"])
   .or(z.string().transform(() => "unknown" as const));
 
 export const RoomMemorySchema = z.object({

@@ -15,7 +15,7 @@
   },
   "promote": { "title": "結果を昇格", "description": "完了したルームの作業をワークスペースの成果物に変換します。", "fields": { "kind": "保存先", "title": "タイトル", "rationale": "理由" }, "placeholders": { "title": "成果物のタイトル", "rationale": "昇格する理由" }, "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "決定" }, "source_entry": "会話エントリ", "source_cycle": "完了したサイクル" },
   "cycle": { "status": { "refused": "拒否", "queued": "待機中", "running": "実行中", "completed": "完了", "failed": "失敗", "cancelled": "キャンセル", "unknown": "不明" }, "source": { "message": "メッセージ", "mention": "メンション", "manual": "手動", "schedule": "スケジュール", "agent": "エージェント", "unknown": "不明" } },
-  "refusal": { "room_paused": "ルームは一時停止中です", "room_archived": "ルームはアーカイブ済みです", "budget_exhausted": "1日の予算を使い切りました", "cycle_active": "別のサイクルが実行中です", "no_targets": "実行可能なエージェントがいません", "unknown": "実行は拒否されました" },
+  "refusal": { "room_paused": "ルームは一時停止中です", "room_archived": "ルームはアーカイブ済みです", "budget_exhausted": "1日の予算を使い切りました", "cycle_active": "別のサイクルが実行中です", "no_targets": "実行可能なエージェントがいません", "invocation_not_allowed": "エージェントへのアクセス権が取り消されました", "unknown": "実行は拒否されました" },
   "artifact": { "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "決定", "unknown": "成果物" } },
   "toast": { "created": "ルームを作成しました", "message_posted": "メッセージを送信しました", "status_updated": "ルームの状態を更新しました", "wake_queued": "サイクルをキューに追加しました", "promoted": "成果物を昇格しました", "create_failed": "ルームを作成できません", "message_saved_no_execution": "メッセージは保存されましたが実行は開始されませんでした", "message_failed": "メッセージを送信できませんでした", "status_failed": "ルームの状態を更新できません", "wake_failed": "サイクルを開始できません", "promote_failed": "成果物を昇格できません" }
 }

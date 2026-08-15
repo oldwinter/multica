@@ -33,6 +33,7 @@ export type RoomRefusalReason =
   | "budget_exhausted"
   | "cycle_active"
   | "no_targets"
+  | "invocation_not_allowed"
   | "unknown";
 
 export interface RoomMemoryContribution {

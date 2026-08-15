@@ -15,7 +15,7 @@
   },
   "promote": { "title": "沉淀结果", "description": "把已完成的房间内容转成工作区产物。", "fields": { "kind": "目标", "title": "标题", "rationale": "理由" }, "placeholders": { "title": "产物标题", "rationale": "为什么值得沉淀" }, "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "决策" }, "source_entry": "讨论记录", "source_cycle": "已完成轮次" },
   "cycle": { "status": { "refused": "已拒绝", "queued": "排队中", "running": "执行中", "completed": "已完成", "failed": "失败", "cancelled": "已取消", "unknown": "未知" }, "source": { "message": "消息", "mention": "提及", "manual": "手动", "schedule": "调度", "agent": "智能体", "unknown": "未知" } },
-  "refusal": { "room_paused": "房间已暂停", "room_archived": "房间已归档", "budget_exhausted": "今日预算已用完", "cycle_active": "已有轮次正在执行", "no_targets": "没有可运行的智能体", "unknown": "本次执行被拒绝" },
+  "refusal": { "room_paused": "房间已暂停", "room_archived": "房间已归档", "budget_exhausted": "今日预算已用完", "cycle_active": "已有轮次正在执行", "no_targets": "没有可运行的智能体", "invocation_not_allowed": "智能体访问权限已撤销", "unknown": "本次执行被拒绝" },
   "artifact": { "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "决策", "unknown": "产物" } },
   "toast": { "created": "房间已创建", "message_posted": "消息已发送", "status_updated": "房间状态已更新", "wake_queued": "轮次已排队", "promoted": "产物已沉淀", "create_failed": "无法创建房间", "message_saved_no_execution": "消息已保存，但未启动执行", "message_failed": "消息发送失败", "status_failed": "无法更新房间状态", "wake_failed": "无法启动轮次", "promote_failed": "无法沉淀产物" }
 }

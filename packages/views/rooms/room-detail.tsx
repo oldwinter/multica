@@ -2,7 +2,10 @@
 
 import { Loader2, Pause, Play, RotateCw } from "lucide-react";
 import type { Agent } from "@multica/core/types";
-import type { RoomDetail as RoomDetailModel } from "@multica/core/rooms";
+import type {
+  RoomComposerDraft,
+  RoomDetail as RoomDetailModel,
+} from "@multica/core/rooms";
 import { createSafeId } from "@multica/core/utils";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
@@ -13,7 +16,6 @@ import { countTodayTurns, roomStatusClass } from "./room-display";
 import { RoomTranscript } from "./room-transcript";
 import { RoomInspector } from "./room-inspector";
 import type { PromotionSource } from "./promote-room-dialog";
-import type { RoomComposerDraft } from "./room-composer-draft";
 
 interface RoomDetailProps {
   readonly detail: RoomDetailModel;

@@ -150,6 +150,7 @@
     "budget_exhausted": "Daily budget exhausted",
     "cycle_active": "A cycle is already active",
     "no_targets": "No runnable agents",
+    "invocation_not_allowed": "Agent access was revoked",
     "unknown": "Execution refused"
   },
   "artifact": {

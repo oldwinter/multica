@@ -25,6 +25,7 @@ func (s *Service) DispatchDue(ctx context.Context, now time.Time, limit int32) (
 		return DueResult{}, fmt.Errorf("list due Rooms: %w", err)
 	}
 	result := DueResult{}
+	var firstErr error
 	for _, roomRow := range rooms {
 		plannedAt := roomRow.NextWakeAt.Time.UTC()
 		wake, wakeErr := s.Wake(ctx, WakeInput{
@@ -33,7 +34,16 @@ func (s *Service) DispatchDue(ctx context.Context, now time.Time, limit int32) (
 			PlannedAt: pgtype.Timestamptz{Time: plannedAt, Valid: true},
 		})
 		if wakeErr != nil {
-			return result, fmt.Errorf("dispatch due Room %s: %w", util.UUIDToString(roomRow.ID), wakeErr)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("dispatch due Room %s: %w", util.UUIDToString(roomRow.ID), wakeErr)
+			}
+			continue
+		}
+		if wake.Cycle.Status == "refused" {
+			result.CyclesRefused++
+		} else {
+			result.CyclesQueued++
+			result.TasksQueued += len(wake.Tasks)
 		}
 		nextWake := nextRoomWake(plannedAt, now, roomRow.ScheduleIntervalMinutes.Int32)
 		if advanced, advanceErr := s.queries.AdvanceRoomSchedule(ctx, db.AdvanceRoomScheduleParams{
@@ -43,16 +53,12 @@ func (s *Service) DispatchDue(ctx context.Context, now time.Time, limit int32) (
 			result.RoomsAdvanced++
 			s.publish("room:updated", advanced, pgtype.UUID{}, map[string]any{"room": advanced})
 		} else if !errors.Is(advanceErr, pgx.ErrNoRows) {
-			return result, fmt.Errorf("advance due Room %s: %w", util.UUIDToString(roomRow.ID), advanceErr)
-		}
-		if wake.Cycle.Status == "refused" {
-			result.CyclesRefused++
-		} else {
-			result.CyclesQueued++
-			result.TasksQueued += len(wake.Tasks)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("advance due Room %s: %w", util.UUIDToString(roomRow.ID), advanceErr)
+			}
 		}
 	}
-	return result, nil
+	return result, firstErr
 }
 
 func nextRoomWake(plannedAt, now time.Time, intervalMinutes int32) time.Time {
