@@ -8,6 +8,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { WSClient } from "../api/ws-client";
 import { defaultStorage } from "../platform/storage";
 import { issueKeys } from "../issues/queries";
+import { roomKeys } from "../rooms";
 import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import {
@@ -113,12 +114,7 @@ describe("useRealtimeSync — ws instance change", () => {
     const ws2 = createMockWs();
     rerender({ ws: ws2 });
 
-    // Should have called invalidateQueries for all workspace-scoped keys
-    // (16 workspace-scoped [incl. property definitions] + 6 per-issue
-    // prefixes + the workspace working-agents projection + 5 per-chat
-    // prefixes + 1 workspaceKeys.list() + 1 cross-workspace inbox unread
-    // summary = 30 calls)
-    expect(invalidateSpy).toHaveBeenCalledTimes(30);
+    expect(invalidateSpy).toHaveBeenCalledTimes(31);
   });
 
   it("does not re-invalidate when rerendered with the same ws instance", () => {
@@ -152,6 +148,7 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(["chat", "ws-1"]);
     expect(calls).toContainEqual(["labels", "ws-1"]);
     expect(calls).toContainEqual(["workspaces", "ws-1", "invitations"]);
+    expect(calls).toContainEqual(roomKeys.all("ws-1"));
   });
 
   it("invalidates per-issue caches (no wsId in key) on ws instance change", () => {
@@ -233,6 +230,24 @@ describe("useRealtimeSync — Table server membership invalidation", () => {
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: workspaceWorkingAgentsKeys.all("ws-1"),
+    });
+  });
+
+  it("invalidates Room queries after a Room event", () => {
+    vi.useFakeTimers();
+    const ws = createMockWs();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]?.[0];
+    expect(onAny).toBeDefined();
+
+    onAny!({ type: "room:entry", payload: {} });
+    vi.advanceTimersByTime(100);
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: roomKeys.all("ws-1"),
     });
   });
 

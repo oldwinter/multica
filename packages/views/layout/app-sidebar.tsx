@@ -107,6 +107,7 @@ const EMPTY_INBOX_SUMMARY: Awaited<ReturnType<typeof api.getInboxUnreadSummary>>
 type NavKey =
   | "inbox"
   | "chat"
+  | "rooms"
   | "myIssues"
   | "issues"
   | "projects"
@@ -125,6 +126,7 @@ type NavKey =
 type NavLabelKey =
   | "inbox"
   | "chat"
+  | "rooms"
   | "my_issues"
   | "issues"
   | "projects"
@@ -151,6 +153,7 @@ const workspaceNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
   { key: "autopilots", labelKey: "autopilots" },
+  { key: "rooms", labelKey: "rooms" },
   { key: "agents", labelKey: "agents" },
   { key: "twins", labelKey: "twins" },
   { key: "wiki", labelKey: "wiki" },

@@ -24,6 +24,7 @@ import { AgentCreationStudio } from "@multica/views/agents";
 import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
+import { RoomsPage } from "@multica/views/rooms";
 import { SettingsPage } from "@multica/views/settings";
 import { TwinsPage } from "@multica/views/twins";
 import { WikiDetailPage, WikiListPage } from "./pages/wiki-page";
@@ -207,6 +208,7 @@ export const appRoutes: RouteObject[] = [
           },
           { path: "inbox", element: <InboxPage />, handle: { title: "Inbox" } },
           { path: "chat", element: <ChatPage />, handle: { title: "Chat" } },
+          { path: "rooms", element: <RoomsPage />, handle: { title: "Rooms" } },
           {
             path: "attachments/:id/preview",
             element: <AttachmentPreviewRoute />,

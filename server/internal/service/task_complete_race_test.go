@@ -241,6 +241,17 @@ func TestProviderNetworkRetrySchedule(t *testing.T) {
 			t.Errorf("%s: retryEligible(%q, attempt=%d/max=%d) = %v, want %v", tc.name, tc.reason, tc.attempt, tc.max, got, tc.want)
 		}
 	}
+	roomTask := db.AgentTaskQueue{
+		Attempt: 1, MaxAttempts: 2,
+		RoomTurnID: pgtype.UUID{Bytes: [16]byte{2}, Valid: true},
+	}
+	if !retryEligible("timeout", roomTask) {
+		t.Error("Room task infrastructure failure must use the shared retry path")
+	}
+	roomTask.AutopilotRunID = pgtype.UUID{Bytes: [16]byte{3}, Valid: true}
+	if retryEligible("timeout", roomTask) {
+		t.Error("autopilot exclusion must take precedence over a Room link")
+	}
 }
 
 func TestTaskFailureClassifiers(t *testing.T) {

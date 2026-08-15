@@ -1151,6 +1151,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
 
+			r.Route("/api/rooms", func(r chi.Router) {
+				r.Get("/", h.ListRooms)
+				r.With(handler.RequireHumanActor).Post("/", h.CreateRoom)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetRoom)
+					r.With(handler.RequireHumanActor).Post("/messages", h.PostRoomMessage)
+					r.With(handler.RequireHumanActor).Post("/wake", h.WakeRoom)
+					r.With(handler.RequireHumanActor).Put("/status", h.SetRoomStatus)
+					r.With(handler.RequireHumanActor).Post("/promotions", h.PromoteRoomArtifact)
+				})
+			})
+
 			// Issues
 			r.Route("/api/issues", func(r chi.Router) {
 				r.Post("/table/groups", h.ListIssueTableGroups)

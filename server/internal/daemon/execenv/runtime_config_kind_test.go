@@ -15,6 +15,7 @@ func TestClassifyTask(t *testing.T) {
 		want taskKind
 	}{
 		{"chat", TaskContextForEnv{ChatSessionID: "c"}, kindChat},
+		{"room", TaskContextForEnv{RoomID: "r"}, kindRoom},
 		{"quick-create", TaskContextForEnv{QuickCreatePrompt: "p"}, kindQuickCreate},
 		{"autopilot", TaskContextForEnv{AutopilotRunID: "r"}, kindAutopilotRunOnly},
 		{"issue-comment-triggered", TaskContextForEnv{IssueID: "i", TriggerCommentID: "c"}, kindIssue},
@@ -47,6 +48,7 @@ func TestTaskKindHasIssueContext(t *testing.T) {
 		{kindAutopilotRunOnly, false},
 		{kindQuickCreate, false},
 		{kindChat, false},
+		{kindRoom, false},
 	}
 	for _, tc := range cases {
 		if got := tc.kind.hasIssueContext(); got != tc.want {
@@ -124,7 +126,7 @@ func TestBuildMetaSkillContentSlimKindMatrix(t *testing.T) {
 	}
 	allKinds := map[taskKind]bool{
 		kindIssue: true, kindAutopilotRunOnly: true,
-		kindQuickCreate: true, kindChat: true,
+		kindQuickCreate: true, kindChat: true, kindRoom: true,
 	}
 	issueKinds := map[taskKind]bool{kindIssue: true}
 	checks := []sectionCheck{
@@ -138,7 +140,7 @@ func TestBuildMetaSkillContentSlimKindMatrix(t *testing.T) {
 		{"## Output", allKinds},
 		{"## Comment Formatting", issueKinds},
 		{"## Repositories", map[taskKind]bool{
-			kindIssue: true, kindAutopilotRunOnly: true, kindChat: true,
+			kindIssue: true, kindAutopilotRunOnly: true, kindChat: true, kindRoom: true,
 		}},
 		{"## Issue Metadata", issueKinds},
 		{"## Instruction Precedence", issueKinds},
@@ -158,6 +160,8 @@ func TestBuildMetaSkillContentSlimKindMatrix(t *testing.T) {
 		kindAutopilotRunOnly: {AutopilotRunID: "r-1", AgentName: "Eve", AgentID: "eve-1",
 			Repos: baseRepo, AgentSkills: baseSkill},
 		kindIssue: {IssueID: "i-1", AgentName: "Eve", AgentID: "eve-1",
+			Repos: baseRepo, AgentSkills: baseSkill},
+		kindRoom: {RoomID: "r-1", AgentName: "Eve", AgentID: "eve-1",
 			Repos: baseRepo, AgentSkills: baseSkill},
 	}
 

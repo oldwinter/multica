@@ -31,6 +31,7 @@
     "./dashboard": "./dashboard/index.ts",
     "./twins": "./twins/index.tsx",
     "./wiki": "./wiki/index.tsx",
+    "./rooms": "./rooms/index.ts",
     "./squads": "./squads/index.ts",
     "./squads/components": "./squads/components/index.ts",
     "./workspace/workspace-avatar": "./workspace/workspace-avatar.tsx",

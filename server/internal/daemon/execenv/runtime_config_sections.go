@@ -443,6 +443,14 @@ func writeWorkflowAutopilot(b *strings.Builder, ctx TaskContextForEnv) {
 	b.WriteString("- Do not run `multica issue get`, `multica issue comment add`, or `multica issue status` for this run unless the autopilot instructions explicitly tell you to create or update an issue\n\n")
 }
 
+func writeWorkflowRoom(b *strings.Builder) {
+	b.WriteString("**This task is one participant turn in a persistent Multica Room.** There is no assigned Multica issue or Autopilot run for this turn.\n\n")
+	b.WriteString("- Use the Room instructions, shared memory, and recent transcript in the user message as the collaboration context\n")
+	b.WriteString("- Contribute a concrete response for this turn; state conclusions, evidence, disagreements, and useful next questions\n")
+	b.WriteString("- Do not create or modify an Issue or Wiki page unless the Room instructions explicitly require it\n")
+	b.WriteString("- Your final assistant output is appended to the Room transcript automatically\n\n")
+}
+
 // writeWorkflowIssue emits the single issue workflow used by BOTH
 // assignment-triggered and comment-triggered runs.
 //
@@ -662,6 +670,9 @@ func writeOutput(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 		} else {
 			b.WriteString("**Delivering files here:** run `multica attachment upload <local-path>` — it binds the file to your reply and it renders as an attachment card. That command is the ONLY way a file reaches the user; a path written into your reply text is not.\n")
 		}
+	case kindRoom:
+		b.WriteString("This is a persistent Room collaboration turn. Your final assistant output is captured automatically and appended to the Room transcript. Keep it self-contained and useful to the other participants.\n\n")
+		b.WriteString("**Delivering files here:** the Room transcript is text-only in this MVP. Describe produced artifacts and promote the Room entry later when it should become an Issue, Wiki page, or Decision.\n")
 	default:
 		if ctx.IsSquadLeader {
 			b.WriteString("⚠️ **Final results MUST be delivered via `multica issue comment add`** — unless your outcome is `no_action`. When you evaluate a trigger and decide no action is needed, calling `multica squad activity <issue-id> no_action --reason \"...\"` alone is sufficient; you MUST exit without posting any comment. DO NOT post a comment that announces no_action, acknowledges another agent, or says you are exiting silently — such comments are noise. For all other outcomes (`action`, `failed`), a comment is still mandatory.\n\n")
@@ -745,6 +756,8 @@ func buildMetaSkillContentSlim(provider string, ctx TaskContextForEnv) string {
 	switch kind {
 	case kindChat:
 		writeWorkflowChat(&b)
+	case kindRoom:
+		writeWorkflowRoom(&b)
 	case kindQuickCreate:
 		writeWorkflowQuickCreate(&b)
 	case kindAutopilotRunOnly:

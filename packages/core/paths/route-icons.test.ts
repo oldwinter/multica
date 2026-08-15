@@ -47,6 +47,7 @@ describe("pageForSegment", () => {
     expect(pageForSegment("my-issues")).toBe("myIssues");
     expect(pageForSegment("settings")).toBe("settings");
     expect(pageForSegment("twins")).toBe("twins");
+    expect(pageForSegment("rooms")).toBe("rooms");
   });
 
   it("returns null for an unknown segment", () => {
@@ -60,6 +61,7 @@ describe("resolveRouteIconName", () => {
     expect(resolveRouteIconName("/acme/projects")).toBe("FolderKanban");
     expect(resolveRouteIconName("/acme/autopilots")).toBe("Zap");
     expect(resolveRouteIconName("/acme/chat")).toBe("MessageSquare");
+    expect(resolveRouteIconName("/acme/rooms")).toBe("RadioTower");
     expect(resolveRouteIconName("/acme/squads")).toBe("Users");
     expect(resolveRouteIconName("/acme/usage")).toBe("BarChart3");
     expect(resolveRouteIconName("/acme/my-issues")).toBe("CircleUser");

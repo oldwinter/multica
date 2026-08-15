@@ -320,6 +320,62 @@ VALUES ($1, 'delete-test', 'workspace-delete', 10, 5)
 		t.Fatalf("create workspace task usage: %v", err)
 	}
 
+	var roomID, roomEntryID, roomCycleID, roomTurnID string
+	if err := testPool.QueryRow(ctx, `
+INSERT INTO room (workspace_id, title, created_by_user_id, facilitator_agent_id)
+VALUES ($1, 'Workspace delete Room', $2, $3)
+RETURNING id
+`, wsID, testUserID, agentID).Scan(&roomID); err != nil {
+		t.Fatalf("create workspace Room: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `
+INSERT INTO room_participant (workspace_id, room_id, participant_type, participant_id, role)
+VALUES ($1, $2, 'agent', $3, 'facilitator')
+`, wsID, roomID, agentID); err != nil {
+		t.Fatalf("create workspace Room participant: %v", err)
+	}
+	if err := testPool.QueryRow(ctx, `
+INSERT INTO room_entry (workspace_id, room_id, ordinal, author_type, author_id, body)
+VALUES ($1, $2, 1, 'member', $3, 'Delete this Room atomically.')
+RETURNING id
+`, wsID, roomID, testUserID).Scan(&roomEntryID); err != nil {
+		t.Fatalf("create workspace Room entry: %v", err)
+	}
+	if err := testPool.QueryRow(ctx, `
+INSERT INTO room_cycle (workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status)
+VALUES ($1, $2, 1, 'message', 'workspace-delete', $3, 'running')
+RETURNING id
+`, wsID, roomID, roomEntryID).Scan(&roomCycleID); err != nil {
+		t.Fatalf("create workspace Room cycle: %v", err)
+	}
+	if err := testPool.QueryRow(ctx, `
+INSERT INTO room_turn (workspace_id, room_id, cycle_id, agent_id, status)
+VALUES ($1, $2, $3, $4, 'running')
+RETURNING id
+`, wsID, roomID, roomCycleID, agentID).Scan(&roomTurnID); err != nil {
+		t.Fatalf("create workspace Room turn: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE room SET active_cycle_id = $2 WHERE id = $1`, roomID, roomCycleID); err != nil {
+		t.Fatalf("link workspace Room active cycle: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE room_entry SET cycle_id = $2, turn_id = $3 WHERE id = $1`, roomEntryID, roomCycleID, roomTurnID); err != nil {
+		t.Fatalf("link workspace Room entry: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE agent_task_queue SET room_turn_id = $2 WHERE id = $1`, taskID, roomTurnID); err != nil {
+		t.Fatalf("link workspace Room task: %v", err)
+	}
+	if _, err := testPool.Exec(ctx, `
+INSERT INTO room_artifact (
+	workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key,
+	title, body, source_digest, created_by_user_id
+)
+VALUES ($1, $2, $3, $4, $5, 'decision', 'workspace-delete',
+	'Delete Room decision', 'Delete this decision.',
+	'sha256:1111111111111111111111111111111111111111111111111111111111111111', $6)
+`, wsID, roomID, roomCycleID, roomTurnID, roomEntryID, testUserID); err != nil {
+		t.Fatalf("link workspace Room data: %v", err)
+	}
+
 	var rollupRuntimeID, rollupAgentID string
 	if err := testPool.QueryRow(ctx, `SELECT gen_random_uuid(), gen_random_uuid()`).Scan(&rollupRuntimeID, &rollupAgentID); err != nil {
 		t.Fatalf("create rollup fixture IDs: %v", err)
@@ -428,6 +484,12 @@ VALUES ($1, $2, gen_random_uuid(), 's3://workspace-delete/pending-object')
 		"task_usage_hourly",
 		"runtime_profile",
 		"autopilot_rule_version",
+		"room_artifact",
+		"room_turn",
+		"room_cycle",
+		"room_entry",
+		"room_participant",
+		"room",
 	} {
 		var count int
 		if err := testPool.QueryRow(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = $1`, wsID).Scan(&count); err != nil {

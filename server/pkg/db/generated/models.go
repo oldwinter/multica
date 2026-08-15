@@ -154,6 +154,7 @@ type AgentTaskQueue struct {
 	RetiredSessionID          pgtype.Text `json:"retired_session_id"`
 	QuickActionsDisabled      bool        `json:"quick_actions_disabled"`
 	RegenerateQuickActionsFor pgtype.UUID `json:"regenerate_quick_actions_for"`
+	RoomTurnID                pgtype.UUID `json:"room_turn_id"`
 }
 
 type AgentToLabel struct {
@@ -920,6 +921,105 @@ type QuickAction struct {
 	CreatedByID   pgtype.UUID        `json:"created_by_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Room struct {
+	ID                      pgtype.UUID        `json:"id"`
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	Title                   string             `json:"title"`
+	Instructions            string             `json:"instructions"`
+	CreatedByUserID         pgtype.UUID        `json:"created_by_user_id"`
+	FacilitatorAgentID      pgtype.UUID        `json:"facilitator_agent_id"`
+	FacilitatorSquadID      pgtype.UUID        `json:"facilitator_squad_id"`
+	Status                  string             `json:"status"`
+	DailyTurnLimit          pgtype.Int4        `json:"daily_turn_limit"`
+	ScheduleIntervalMinutes pgtype.Int4        `json:"schedule_interval_minutes"`
+	NextWakeAt              pgtype.Timestamptz `json:"next_wake_at"`
+	ActiveCycleID           pgtype.UUID        `json:"active_cycle_id"`
+	Memory                  []byte             `json:"memory"`
+	MemoryVersion           int64              `json:"memory_version"`
+	LastEntryOrdinal        int64              `json:"last_entry_ordinal"`
+	LastCycleSequence       int64              `json:"last_cycle_sequence"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RoomArtifact struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	RoomID          pgtype.UUID        `json:"room_id"`
+	CycleID         pgtype.UUID        `json:"cycle_id"`
+	TurnID          pgtype.UUID        `json:"turn_id"`
+	EntryID         pgtype.UUID        `json:"entry_id"`
+	Kind            string             `json:"kind"`
+	IdempotencyKey  string             `json:"idempotency_key"`
+	TargetID        pgtype.UUID        `json:"target_id"`
+	Title           string             `json:"title"`
+	Body            string             `json:"body"`
+	Rationale       pgtype.Text        `json:"rationale"`
+	SourceDigest    string             `json:"source_digest"`
+	CreatedByUserID pgtype.UUID        `json:"created_by_user_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type RoomCycle struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	RoomID            pgtype.UUID        `json:"room_id"`
+	Sequence          int64              `json:"sequence"`
+	Source            string             `json:"source"`
+	WakeKey           string             `json:"wake_key"`
+	TriggeringEntryID pgtype.UUID        `json:"triggering_entry_id"`
+	Status            string             `json:"status"`
+	RefusalReason     pgtype.Text        `json:"refusal_reason"`
+	PlannedAt         pgtype.Timestamptz `json:"planned_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	StartedAt         pgtype.Timestamptz `json:"started_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+}
+
+type RoomEntry struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	RoomID      pgtype.UUID        `json:"room_id"`
+	CycleID     pgtype.UUID        `json:"cycle_id"`
+	TurnID      pgtype.UUID        `json:"turn_id"`
+	Ordinal     int64              `json:"ordinal"`
+	EntryType   string             `json:"entry_type"`
+	AuthorType  string             `json:"author_type"`
+	AuthorID    pgtype.UUID        `json:"author_id"`
+	Body        string             `json:"body"`
+	Mentions    []byte             `json:"mentions"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type RoomParticipant struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	RoomID          pgtype.UUID        `json:"room_id"`
+	ParticipantType string             `json:"participant_type"`
+	ParticipantID   pgtype.UUID        `json:"participant_id"`
+	Role            string             `json:"role"`
+	SourceSquadID   pgtype.UUID        `json:"source_squad_id"`
+	JoinedAt        pgtype.Timestamptz `json:"joined_at"`
+	LeftAt          pgtype.Timestamptz `json:"left_at"`
+}
+
+type RoomTurn struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	RoomID        pgtype.UUID        `json:"room_id"`
+	CycleID       pgtype.UUID        `json:"cycle_id"`
+	AgentID       pgtype.UUID        `json:"agent_id"`
+	SquadID       pgtype.UUID        `json:"squad_id"`
+	Status        string             `json:"status"`
+	RefusalReason pgtype.Text        `json:"refusal_reason"`
+	SessionID     pgtype.Text        `json:"session_id"`
+	WorkDir       pgtype.Text        `json:"work_dir"`
+	Result        []byte             `json:"result"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
 }
 
 type RuntimeProfile struct {

@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS room_turn_id_uidx;

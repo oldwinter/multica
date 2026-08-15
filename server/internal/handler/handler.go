@@ -31,6 +31,7 @@ import (
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -175,6 +176,9 @@ type Handler struct {
 	Bus                    *events.Bus
 	TaskService            *service.TaskService
 	IssueService           *service.IssueService
+	Rooms                  roomdomain.Rooms
+	RoomRuntime            roomdomain.Runtime
+	RoomMaintenance        roomdomain.Maintenance
 	AutopilotService       *service.AutopilotService
 	WikiService            *service.WikiService
 	TwinService            *service.TwinService
@@ -341,6 +345,9 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	// backs auto-titling. A deployment with no MULTICA_LLM_* configuration gets
 	// a disabled client, which turns the feature off rather than failing.
 	taskSvc.QuickActions = llmClient
+	issueSvc := service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc)
+	roomTargets := service.NewRoomArtifactTargets(issueSvc)
+	roomService := roomdomain.NewService(queries, txStarter, taskSvc, roomTargets, bus)
 	twinSvc := service.NewTwinService(queries, txStarter)
 	wikiSvc := service.NewWikiService(queries, lmWikiTxStarter{txStarter: txStarter})
 	wikiSvc.OnAccepted = twinSvc
@@ -354,7 +361,10 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		DaemonWorkspaceRefresh:       daemonWorkspaceRefresh,
 		Bus:                          bus,
 		TaskService:                  taskSvc,
-		IssueService:                 service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc),
+		IssueService:                 issueSvc,
+		Rooms:                        roomService,
+		RoomRuntime:                  roomService,
+		RoomMaintenance:              roomService,
 		AutopilotService:             service.NewAutopilotService(queries, txStarter, bus, taskSvc),
 		WikiService:                  wikiSvc,
 		TwinService:                  twinSvc,

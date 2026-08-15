@@ -978,6 +978,9 @@ func writeSkillFiles(skillsDir string, skills []SkillContextForEnv, manifest *si
 
 // renderIssueContext builds the markdown content for issue_context.md.
 func renderIssueContext(provider string, ctx TaskContextForEnv) string {
+	if ctx.RoomID != "" {
+		return renderRoomContext(ctx)
+	}
 	if ctx.AutopilotRunID != "" {
 		return renderAutopilotContext(ctx)
 	}
@@ -1008,6 +1011,19 @@ func renderIssueContext(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("## Quick Start\n\n")
 	fmt.Fprintf(&b, "Run `multica issue get %s --output json` to fetch the full issue details.\n\n", ctx.IssueID)
 
+	return b.String()
+}
+
+func renderRoomContext(ctx TaskContextForEnv) string {
+	var b strings.Builder
+	b.WriteString("# Room Collaboration Turn\n\n")
+	fmt.Fprintf(&b, "**Room:** %s\n\n**Room ID:** %s\n\n**Cycle ID:** %s\n\n**Turn ID:** %s\n\n", ctx.RoomTitle, ctx.RoomID, ctx.RoomCycleID, ctx.RoomTurnID)
+	if strings.TrimSpace(ctx.RoomInstructions) != "" {
+		b.WriteString("## Room Instructions\n\n")
+		b.WriteString(ctx.RoomInstructions)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("Your final output is appended to the Room transcript. This turn has no assigned Issue.\n")
 	return b.String()
 }
 

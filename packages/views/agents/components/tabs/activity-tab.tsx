@@ -556,6 +556,8 @@ function TaskRow({
         : t(($) => $.tab_body.activity.source_creating_issue)
       : task.chat_session_id
         ? t(($) => $.tab_body.activity.source_chat_session)
+        : task.kind === "room"
+          ? "Room"
         : task.autopilot_run_id
           ? t(($) => $.tab_body.activity.source_autopilot_run)
           : t(($) => $.tab_body.activity.source_untracked)
@@ -565,6 +567,8 @@ function TaskRow({
     ? Hash
     : task.chat_session_id
       ? MessageSquare
+      : task.kind === "room"
+        ? MessageSquare
       : task.autopilot_run_id
         ? Workflow
         : CircleHelp;
@@ -572,6 +576,8 @@ function TaskRow({
     ? t(($) => $.tab_body.activity.source_issue)
     : task.chat_session_id
       ? t(($) => $.tab_body.activity.source_chat)
+      : task.kind === "room"
+        ? "Room"
       : task.autopilot_run_id
         ? t(($) => $.tab_body.activity.source_autopilot)
         : t(($) => $.tab_body.activity.source_untracked);

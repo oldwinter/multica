@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/multica-ai/multica/server/internal/events"
+	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -115,5 +116,38 @@ func TestBroadcastIssueUpdated_NoStatusChange(t *testing.T) {
 	}
 	if payload["status_changed"] != false {
 		t.Errorf("expected status_changed=false, got %v", payload["status_changed"])
+	}
+}
+
+func TestRoomTaskLifecycleEventStaysInternal(t *testing.T) {
+	bus := events.New()
+	var got []events.Event
+	bus.SubscribeAll(func(event events.Event) { got = append(got, event) })
+	svc := &TaskService{Queries: db.New(noRowsDBTX{}), Bus: bus}
+	task := db.AgentTaskQueue{
+		ID: testUUID(11), AgentID: testUUID(12), RoomTurnID: testUUID(13), Status: "completed",
+	}
+	svc.broadcastTaskEvent(context.Background(), protocol.EventTaskCompleted, task)
+	if len(got) != 1 {
+		t.Fatalf("Room task events = %d, want 1", len(got))
+	}
+	if got[0].WorkspaceID != "" {
+		t.Fatalf("Room task event workspace = %q, want internal-only", got[0].WorkspaceID)
+	}
+	if got[0].Type != roomdomain.EventTaskLifecycle {
+		t.Fatalf("Room task event type = %q, want %q", got[0].Type, roomdomain.EventTaskLifecycle)
+	}
+	payload, ok := got[0].Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("Room task payload type = %T", got[0].Payload)
+	}
+	if payload["task_id"] != util.UUIDToString(task.ID) || payload["room_turn_id"] != util.UUIDToString(task.RoomTurnID) {
+		t.Fatalf("Room task payload = %+v", payload)
+	}
+	if payload["task_event"] != protocol.EventTaskCompleted {
+		t.Fatalf("Room task transition = %v", payload["task_event"])
+	}
+	if _, exposed := payload["agent_id"]; exposed {
+		t.Fatalf("Room task payload exposed agent_id: %+v", payload)
 	}
 }

@@ -71,6 +71,7 @@
     "./agents/stores": "./agents/stores/index.ts",
     "./squads": "./squads/index.ts",
     "./squads/stores": "./squads/stores/index.ts",
+    "./rooms": "./rooms/index.ts",
     "./permissions": "./permissions/index.ts",
     "./projects": "./projects/index.ts",
     "./projects/queries": "./projects/queries.ts",

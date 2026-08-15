@@ -423,6 +423,7 @@ func main() {
 	taskSvc.Metrics = businessMetrics
 	autopilotSvc := service.NewAutopilotService(queries, pool, bus, taskSvc)
 	registerAutopilotListeners(bus, autopilotSvc)
+	registerRoomListeners(bus, h.RoomRuntime)
 
 	// Construct a LivenessStore that mirrors the one wired into the HTTP
 	// handler. Both the heartbeat write path (handler) and the sweeper read
@@ -493,6 +494,9 @@ func main() {
 	}
 	if err := schedulerMgr.Register(scheduler.LMWikiDailyReconcileJob(queries, h.WikiService)); err != nil {
 		slog.Warn("scheduler: failed to register lm_wiki_daily_reconcile job", "error", err)
+	}
+	if err := schedulerMgr.Register(scheduler.RoomMaintenanceJob(h.RoomMaintenance)); err != nil {
+		slog.Warn("scheduler: failed to register room_maintenance job", "error", err)
 	}
 	go func() {
 		_ = schedulerMgr.Run(sweepCtx)

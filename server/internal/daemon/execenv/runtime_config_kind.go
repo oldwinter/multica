@@ -32,6 +32,8 @@ const (
 	kindQuickCreate
 	// kindChat: interactive chat session, no issue.
 	kindChat
+	// kindRoom: persistent Room collaboration turn, no issue.
+	kindRoom
 )
 
 // classifyTask maps a TaskContextForEnv to the single taskKind the slim
@@ -46,6 +48,8 @@ func classifyTask(ctx TaskContextForEnv) taskKind {
 	switch {
 	case ctx.ChatSessionID != "":
 		return kindChat
+	case ctx.RoomID != "":
+		return kindRoom
 	case ctx.QuickCreatePrompt != "":
 		return kindQuickCreate
 	case ctx.AutopilotRunID != "":

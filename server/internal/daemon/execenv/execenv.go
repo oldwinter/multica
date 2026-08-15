@@ -139,6 +139,13 @@ type TaskContextForEnv struct {
 	AutopilotDescription    string
 	AutopilotSource         string
 	AutopilotTriggerPayload string
+	RoomID                  string
+	RoomCycleID             string
+	RoomTurnID              string
+	RoomTitle               string
+	RoomInstructions        string
+	RoomMemory              string
+	RoomTranscript          string
 	QuickCreatePrompt       string // non-empty for quick-create tasks
 	HandoffNote             string // assignment handoff instruction; rendered into issue_context.md (MUL-3375)
 	IsSquadLeader           bool   // true when the agent is acting as a squad leader (may exit silently on no_action)

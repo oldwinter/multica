@@ -1309,6 +1309,23 @@ func requestHasClientCapability(r *http.Request, capability string) bool {
 	return false
 }
 
+func daemonCanClaimTask(r *http.Request, task db.AgentTaskQueue) bool {
+	return !task.RoomTurnID.Valid || requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
+}
+
+func (h *Handler) requeueUnsupportedRoomTask(ctx context.Context, task db.AgentTaskQueue) error {
+	requeued, err := h.Queries.RequeueAgentTaskAfterClaimFailure(ctx, db.RequeueAgentTaskAfterClaimFailureParams{
+		TaskID:       task.ID,
+		RuntimeID:    task.RuntimeID,
+		DispatchedAt: task.DispatchedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("requeue unsupported Room task: %w", err)
+	}
+	h.TaskService.ReconcileAgentStatus(ctx, requeued.AgentID)
+	return nil
+}
+
 func parseRuntimeConnectedAppsForClaim(raw []byte, taskID pgtype.UUID) []runtimeapps.ConnectedApp {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
@@ -1481,7 +1498,8 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claimed, err := h.TaskService.ClaimTasksForRuntimes(r.Context(), authorized, maxTasks)
+	includeRoomTasks := requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
+	claimed, err := h.TaskService.ClaimTasksForRuntimesCapabilities(r.Context(), authorized, maxTasks, includeRoomTasks)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to claim tasks: "+err.Error())
 		return
@@ -1498,6 +1516,13 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		rtWorkspaceID := uuidToString(rt.WorkspaceID)
+		if !daemonCanClaimTask(r, task) {
+			if err := h.requeueUnsupportedRoomTask(r.Context(), task); err != nil {
+				slog.Error("batch claim: requeue unsupported Room task failed",
+					"task_id", uuidToString(task.ID), "error", err)
+			}
+			continue
+		}
 		// Stale comment-plan repair must run for the batch path too: otherwise a
 		// task whose trigger was deleted (only coalesced survive) would be
 		// finalized+dispatched with no comment input, silently dropping the
@@ -2309,6 +2334,49 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 	}
 
+	hasRoom := false
+	if task.RoomTurnID.Valid {
+		roomContext, roomContextErr := protocol.ParseRoomTaskContextV1(task.Context)
+		if roomContextErr == nil && roomContext.TurnID == uuidToString(task.RoomTurnID) {
+			transcript, transcriptErr := json.Marshal(roomContext.Transcript)
+			if transcriptErr != nil {
+				roomContextErr = fmt.Errorf("encode Room transcript for claim: %w", transcriptErr)
+			} else {
+				hasRoom = true
+				resp.WorkspaceID = roomContext.WorkspaceID
+				resp.ThreadName = roomContext.Title
+				resp.RoomID = roomContext.RoomID
+				resp.RoomCycleID = roomContext.CycleID
+				resp.RoomTurnID = roomContext.TurnID
+				resp.RoomTitle = roomContext.Title
+				resp.RoomInstructions = roomContext.Instructions
+				resp.RoomMemory = roomContext.Memory
+				resp.RoomTranscript = transcript
+				if task.SessionID.Valid {
+					resp.PriorSessionID = task.SessionID.String
+				}
+				if task.WorkDir.Valid {
+					resp.PriorWorkDir = task.WorkDir.String
+				}
+			}
+		} else if roomContextErr == nil {
+			roomContextErr = fmt.Errorf("Room task context turn %s does not match queue turn %s", roomContext.TurnID, uuidToString(task.RoomTurnID))
+		}
+		if roomContextErr != nil {
+			slog.Error("task claim: invalid Room context; cancelling task",
+				"task_id", uuidToString(task.ID), "error", roomContextErr)
+			if _, err := h.TaskService.CancelTask(r.Context(), task.ID); err != nil {
+				slog.Error("task claim: cancel after invalid Room context failed",
+					"task_id", uuidToString(task.ID), "error", err)
+			}
+			return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+				outcome: "error_room_context",
+				status:  http.StatusInternalServerError,
+				message: "invalid Room task context",
+			}
+		}
+	}
+
 	// Handoff note (MUL-3375) is populated by taskToResponse (the shared mapper
 	// resp came from above), so the daemon's prompt + issue_context.md render the
 	// assignment-handoff branch. Empty for all other task kinds.
@@ -2466,6 +2534,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 			"has_issue", task.IssueID.Valid,
 			"has_chat", task.ChatSessionID.Valid,
 			"has_autopilot_run", task.AutopilotRunID.Valid,
+			"has_room", hasRoom,
 			"has_quick_create", hasQuickCreate,
 		)
 		if _, cerr := h.TaskService.CancelTask(r.Context(), task.ID); cerr != nil {
@@ -2538,7 +2607,8 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	authMs = time.Since(start).Milliseconds()
 
 	claimStart := time.Now()
-	task, err := h.TaskService.ClaimTaskForRuntime(r.Context(), parseUUID(runtimeID))
+	includeRoomTasks := requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
+	task, err := h.TaskService.ClaimTaskForRuntimeCapabilities(r.Context(), parseUUID(runtimeID), includeRoomTasks)
 	claimMs = time.Since(claimStart).Milliseconds()
 	if err != nil {
 		outcome = "error_claim"
@@ -2550,6 +2620,18 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("no task to claim", "runtime_id", runtimeID)
 		payloadBytes, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"task": nil})
 		outcome = "no_task"
+		return
+	}
+	if !daemonCanClaimTask(r, *task) {
+		if err := h.requeueUnsupportedRoomTask(r.Context(), *task); err != nil {
+			outcome = "error_room_capability_requeue"
+			slog.Error("task claim: requeue unsupported Room task failed",
+				"task_id", uuidToString(task.ID), "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to requeue unsupported Room task")
+			return
+		}
+		outcome = "unsupported_room_task"
+		payloadBytes, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"task": nil})
 		return
 	}
 	if !task.TriggerCommentID.Valid && len(task.CoalescedCommentIds) > 0 {
@@ -3898,6 +3980,16 @@ func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request)
 	// Verify the task belongs to the caller's workspace.
 	wsID := h.TaskService.ResolveTaskWorkspaceID(r.Context(), task)
 	if wsID == "" || wsID != middleware.WorkspaceIDFromContext(r.Context()) {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+	agent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{ID: task.AgentID, WorkspaceID: parseUUID(wsID)})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+	actorType, actorID := h.resolveActor(r, requestUserID(r), wsID)
+	if !h.canAccessPrivateAgent(r.Context(), agent, actorType, actorID, wsID) {
 		writeError(w, http.StatusNotFound, "task not found")
 		return
 	}

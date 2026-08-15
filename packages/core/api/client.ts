@@ -194,10 +194,32 @@ import type {
   CreateCloudRuntimeNodeRequest,
   ListCloudRuntimeNodesParams,
 } from "../runtimes/cloud-runtime";
+import type {
+  CreateRoomInput,
+  PostRoomMessageInput,
+  PromoteRoomArtifactInput,
+  Room,
+  RoomArtifact,
+  RoomDetail,
+  RoomMessageResult,
+  RoomWakeResult,
+  SetRoomStatusInput,
+  WakeRoomInput,
+} from "../rooms/types";
 import { type Logger, noopLogger } from "../logger";
 import { createRequestId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
 import { parseWithFallback } from "./schema";
+import {
+  EMPTY_ROOM_DETAIL,
+  EMPTY_ROOM_LIST,
+  RoomArtifactSchema,
+  RoomDetailSchema,
+  RoomMessageResultSchema,
+  RoomListSchema,
+  RoomSchema,
+  RoomWakeResultSchema,
+} from "../rooms/schemas";
 import {
   AgentTaskListSchema,
   AgentTemplateSchema,
@@ -2976,6 +2998,60 @@ export class ApiClient {
     return parseWithFallback(raw, SquadMemberStatusListResponseSchema, EMPTY_SQUAD_MEMBER_STATUS_LIST, {
       endpoint: "GET /api/squads/:id/members/status",
     }) as SquadMemberStatusListResponse;
+  }
+
+  async listRooms(): Promise<readonly Room[]> {
+    const raw = await this.fetch<unknown>("/api/rooms");
+    return parseWithFallback(raw, RoomListSchema, EMPTY_ROOM_LIST, {
+      endpoint: "GET /api/rooms",
+    });
+  }
+
+  async getRoom(roomId: string): Promise<RoomDetail> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}`);
+    return parseWithFallback(raw, RoomDetailSchema, EMPTY_ROOM_DETAIL, {
+      endpoint: "GET /api/rooms/:id",
+    });
+  }
+
+  async createRoom(input: CreateRoomInput): Promise<RoomDetail> {
+    const raw = await this.fetch<unknown>("/api/rooms", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return RoomDetailSchema.parse(raw);
+  }
+
+  async postRoomMessage(roomId: string, input: PostRoomMessageInput): Promise<RoomMessageResult> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return RoomMessageResultSchema.parse(raw);
+  }
+
+  async wakeRoom(roomId: string, input: WakeRoomInput): Promise<RoomWakeResult> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/wake`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return RoomWakeResultSchema.parse(raw);
+  }
+
+  async setRoomStatus(roomId: string, input: SetRoomStatusInput): Promise<Room> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/status`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+    return RoomSchema.parse(raw);
+  }
+
+  async promoteRoomArtifact(roomId: string, input: PromoteRoomArtifactInput): Promise<RoomArtifact> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/promotions`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return RoomArtifactSchema.parse(raw);
   }
 
   // Autopilots

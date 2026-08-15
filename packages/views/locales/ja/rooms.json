@@ -1,0 +1,21 @@
+{
+  "page": { "title": "ルーム", "description": "人、エージェント、スクワッドの継続的なコラボレーション" },
+  "actions": { "new_room": "新しいルーム", "create": "ルームを作成", "cancel": "キャンセル", "post": "送信", "posting": "送信中", "pause": "一時停止", "resume": "再開", "wake": "今すぐ実行", "waking": "開始中", "promote": "昇格", "promoting": "昇格中", "retry": "再試行", "new_activity": "新着 {{count}} 件", "show_new_activity": "新着 {{count}} 件を表示", "new_activity_announcement": "新着 {{count}} 件があります" },
+  "states": { "loading": "ルームを読み込み中", "error_title": "ルームを読み込めません", "error_description": "接続を確認して再試行してください。", "empty_title": "ルームはまだありません", "empty_description": "ルームを作成して継続的な会話を始めます。", "detail_loading": "ルームを読み込み中", "no_room_title": "ルームを選択", "no_room_description": "リストからルームを選んで会話を開きます。" },
+  "status": { "active": "稼働中", "paused": "一時停止", "archived": "アーカイブ", "unknown": "不明" },
+  "list": { "participants": "参加者 {{count}} 人", "updated": "{{time}} に更新" },
+  "detail": { "participants": "参加者", "transcript": "会話記録", "memory": "共有メモリ", "cycles": "アクティビティ", "artifacts": "成果物", "instructions": "指示", "schedule": "スケジュール", "budget": "1日の予算", "unlimited": "無制限", "disabled": "無効", "minutes": "{{count}}分", "next_wake": "次回実行 {{time}}", "memory_version": "バージョン {{version}}", "facts": "事実", "decisions": "決定", "open_questions": "未解決の問い", "recent_contributions": "最近の貢献", "empty_memory": "ターンが完了するとメモリが更新されます。", "empty_transcript": "ルームは静かです。", "empty_artifacts": "昇格された成果物はありません。", "facilitator": "進行役", "participant": "参加者", "observer": "オブザーバー", "system": "システム", "turns_used": "{{limit}} ターン中 {{count}} 使用" },
+  "composer": { "placeholder": "ルームにメッセージを送信", "mentions": "エージェントに通知", "mentions_selected": "{{count}} 件選択", "paused_notice": "一時停止中もメッセージは保存されます。", "archived_notice": "アーカイブされたルームは読み取り専用です。" },
+  "create": {
+    "title": "ルームを作成", "description": "進行役と参加者を選択します。",
+    "fields": { "title": "名前", "instructions": "指示", "facilitator": "進行役", "agent": "エージェント", "squad": "スクワッド", "participants": "参加者", "agent_participants": "エージェント", "member_participants": "メンバー", "daily_turn_limit": "1日のターン上限", "schedule_interval": "実行間隔" },
+    "placeholders": { "title": "リサーチ会議", "instructions": "問い、制約、期待する成果を入力", "select_agent": "エージェントを選択", "select_squad": "スクワッドを選択", "optional": "任意" },
+    "hints": { "daily_turn_limit": "空欄の場合は無制限です。", "schedule_interval": "最小5分。空欄の場合は手動実行です。" },
+    "facilitator_modes": { "agent": "エージェント", "squad": "スクワッド" }
+  },
+  "promote": { "title": "結果を昇格", "description": "完了したルームの作業をワークスペースの成果物に変換します。", "fields": { "kind": "保存先", "title": "タイトル", "rationale": "理由" }, "placeholders": { "title": "成果物のタイトル", "rationale": "昇格する理由" }, "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "決定" }, "source_entry": "会話エントリ", "source_cycle": "完了したサイクル" },
+  "cycle": { "status": { "refused": "拒否", "queued": "待機中", "running": "実行中", "completed": "完了", "failed": "失敗", "cancelled": "キャンセル", "unknown": "不明" }, "source": { "message": "メッセージ", "mention": "メンション", "manual": "手動", "schedule": "スケジュール", "agent": "エージェント", "unknown": "不明" } },
+  "refusal": { "room_paused": "ルームは一時停止中です", "room_archived": "ルームはアーカイブ済みです", "budget_exhausted": "1日の予算を使い切りました", "cycle_active": "別のサイクルが実行中です", "no_targets": "実行可能なエージェントがいません", "unknown": "実行は拒否されました" },
+  "artifact": { "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "決定", "unknown": "成果物" } },
+  "toast": { "created": "ルームを作成しました", "message_posted": "メッセージを送信しました", "status_updated": "ルームの状態を更新しました", "wake_queued": "サイクルをキューに追加しました", "promoted": "成果物を昇格しました", "create_failed": "ルームを作成できません", "message_saved_no_execution": "メッセージは保存されましたが実行は開始されませんでした", "message_failed": "メッセージを送信できませんでした", "status_failed": "ルームの状態を更新できません", "wake_failed": "サイクルを開始できません", "promote_failed": "成果物を昇格できません" }
+}

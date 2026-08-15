@@ -89,6 +89,9 @@ func buildPromptBody(task Task, provider string) string {
 	if task.AutopilotRunID != "" {
 		return buildAutopilotPrompt(task)
 	}
+	if task.RoomID != "" {
+		return buildRoomPrompt(task)
+	}
 	if task.QuickCreatePrompt != "" {
 		return buildQuickCreatePrompt(task)
 	}
@@ -105,6 +108,23 @@ func buildPromptBody(task Task, provider string) string {
 	}
 	fmt.Fprintf(&b, "Start by running `multica issue get %s --output json` to understand your task, then complete it.\n", task.IssueID)
 	fmt.Fprintf(&b, "For comment history, follow the rule in your runtime workflow file (assignment-triggered tasks treat the read as mandatory). Scan the threads first with `multica issue comment list %s --roots-only --summary --output json`, then expand only what matters with `--thread <thread-id> --tail 30`. Your runtime workflow file documents the rest of the read surface, including pagination and `--since` for incremental polling.\n", task.IssueID)
+	return b.String()
+}
+
+func buildRoomPrompt(task Task) string {
+	var b strings.Builder
+	b.WriteString("You are participating in a persistent Multica Room. This is a collaboration turn, not an Issue assignment or a direct Chat reply.\n\n")
+	fmt.Fprintf(&b, "Room: %s\nRoom ID: %s\nCycle ID: %s\nTurn ID: %s\n\n", task.RoomTitle, task.RoomID, task.RoomCycleID, task.RoomTurnID)
+	if strings.TrimSpace(task.RoomInstructions) != "" {
+		fmt.Fprintf(&b, "Room instructions:\n%s\n\n", task.RoomInstructions)
+	}
+	if len(task.RoomMemory) > 0 {
+		fmt.Fprintf(&b, "Shared Room memory:\n%s\n\n", strings.TrimSpace(string(task.RoomMemory)))
+	}
+	if len(task.RoomTranscript) > 0 {
+		fmt.Fprintf(&b, "Recent Room transcript:\n%s\n\n", strings.TrimSpace(string(task.RoomTranscript)))
+	}
+	b.WriteString("Contribute a concrete response to the latest Room context. State conclusions, evidence, disagreements, and useful next questions. Do not create or modify an Issue or Wiki page unless the Room instructions explicitly require it. Your final response is appended to the Room transcript and used to advance shared memory.\n")
 	return b.String()
 }
 

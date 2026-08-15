@@ -22,6 +22,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/featureflags"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	"github.com/multica-ai/multica/server/internal/runtimeapps"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -99,6 +100,26 @@ type ComposioOverlayBuilder interface {
 
 type TaskWakeupNotifier interface {
 	NotifyTaskAvailable(runtimeID, taskID string)
+}
+
+func (s *TaskService) EnqueueRoomTurn(ctx context.Context, queries *db.Queries, input roomdomain.RoomTaskEnqueueInput) (db.AgentTaskQueue, error) {
+	ready, reason, err := AgentReadiness(ctx, s.Queries, input.Agent)
+	if err != nil {
+		return db.AgentTaskQueue{}, fmt.Errorf("check room agent readiness: %w", err)
+	}
+	if !ready {
+		return db.AgentTaskQueue{}, fmt.Errorf("room agent unavailable: %s", reason)
+	}
+	overlay := s.buildRuntimeMCPOverlay(ctx, input.OriginatorUserID, input.Agent)
+	return queries.CreateRoomTask(ctx, db.CreateRoomTaskParams{
+		AgentID: input.Agent.ID, RuntimeID: input.Agent.RuntimeID, Priority: 0, Context: input.Context,
+		SquadID: input.SquadID, OriginatorUserID: input.OriginatorUserID, AccountableUserID: input.AccountableUserID,
+		RuntimeMcpOverlay: overlay.Overlay, RuntimeConnectedApps: overlay.ConnectedApps,
+		OriginatorSource:     pgtype.Text{String: input.OriginatorSource, Valid: true},
+		TriggerEvidenceKind:  pgtype.Text{String: input.TriggerEvidenceKind, Valid: true},
+		TriggerEvidenceRefID: input.TriggerEvidenceID, RoomTurnID: input.RoomTurnID,
+		SessionID: input.SessionID, WorkDir: input.WorkDir,
+	})
 }
 
 // triggerSummaryMaxLen caps the snapshot length so the row stays cheap to
@@ -789,6 +810,8 @@ func (s *TaskService) taskMetricsContext(ctx context.Context, task db.AgentTaskQ
 	switch {
 	case task.ChatSessionID.Valid:
 		source = "chat"
+	case task.RoomTurnID.Valid:
+		source = "room"
 	case task.IssueID.Valid:
 		if tc.Source == analytics.SourceAutopilot {
 			source = "autopilot_issue"
@@ -826,6 +849,11 @@ func (s *TaskService) taskAnalyticsContext(ctx context.Context, task db.AgentTas
 	if task.AutopilotRunID.Valid {
 		tc.AutopilotRunID = util.UUIDToString(task.AutopilotRunID)
 		tc.Source = analytics.SourceAutopilot
+	}
+	if task.RoomTurnID.Valid {
+		if turn, err := s.Queries.GetRoomTurnByTask(ctx, task.ID); err == nil {
+			tc.WorkspaceID = util.UUIDToString(turn.WorkspaceID)
+		}
 	}
 
 	if task.RuntimeID.Valid {
@@ -2273,6 +2301,10 @@ func (s *TaskService) broadcastChatCancelFinalized(ctx context.Context, task db.
 // ClaimTask atomically claims the next queued task for an agent,
 // respecting max_concurrent_tasks.
 func (s *TaskService) ClaimTask(ctx context.Context, agentID pgtype.UUID) (*db.AgentTaskQueue, error) {
+	return s.claimTask(ctx, agentID, true)
+}
+
+func (s *TaskService) claimTask(ctx context.Context, agentID pgtype.UUID, includeRoomTasks bool) (*db.AgentTaskQueue, error) {
 	start := time.Now()
 	var (
 		outcome                                                              = "unknown"
@@ -2308,6 +2340,7 @@ func (s *TaskService) ClaimTask(ctx context.Context, agentID pgtype.UUID) (*db.A
 		t0 = time.Now()
 		task, err := qtx.ClaimAgentTask(ctx, db.ClaimAgentTaskParams{
 			AgentID:          agentID,
+			IncludeRoomTasks: includeRoomTasks,
 			PrepareLeaseSecs: prepareLeaseDuration.Seconds(),
 		})
 		claimAgentMs = time.Since(t0).Milliseconds()
@@ -2364,6 +2397,10 @@ func (s *TaskService) ClaimTask(ctx context.Context, agentID pgtype.UUID) (*db.A
 // every enqueue (notifyTaskAvailable), so a queued task becomes
 // claimable on the next call rather than waiting for the TTL.
 func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.UUID) (*db.AgentTaskQueue, error) {
+	return s.ClaimTaskForRuntimeCapabilities(ctx, runtimeID, true)
+}
+
+func (s *TaskService) ClaimTaskForRuntimeCapabilities(ctx context.Context, runtimeID pgtype.UUID, includeRoomTasks bool) (*db.AgentTaskQueue, error) {
 	start := time.Now()
 	var (
 		outcome          = "no_task"
@@ -2400,6 +2437,7 @@ func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.
 		RuntimeID:         runtimeID,
 		ClaimRecoverySecs: claimResponseRecoveryWindow.Seconds(),
 		PrepareLeaseSecs:  prepareLeaseDuration.Seconds(),
+		IncludeRoomTasks:  includeRoomTasks,
 	})
 	if err == nil {
 		outcome = "reclaimed_dispatched"
@@ -2416,7 +2454,7 @@ func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.
 		return nil, fmt.Errorf("reclaim stale dispatched task: %w", err)
 	}
 
-	if s.EmptyClaim.IsEmpty(ctx, runtimeKey) {
+	if includeRoomTasks && s.EmptyClaim.IsEmpty(ctx, runtimeKey) {
 		outcome = "empty_cache_hit"
 		return nil, nil
 	}
@@ -2430,7 +2468,9 @@ func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.
 	preSelectVersion := s.EmptyClaim.CurrentVersion(ctx, runtimeKey)
 
 	t0 := time.Now()
-	tasks, err := s.Queries.ListQueuedClaimCandidatesByRuntime(ctx, runtimeID)
+	tasks, err := s.Queries.ListQueuedClaimCandidatesByRuntime(ctx, db.ListQueuedClaimCandidatesByRuntimeParams{
+		RuntimeID: runtimeID, IncludeRoomTasks: includeRoomTasks,
+	})
 	listMs = time.Since(t0).Milliseconds()
 	listCount = len(tasks)
 	if err != nil {
@@ -2439,7 +2479,9 @@ func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.
 	}
 
 	if len(tasks) == 0 {
-		s.EmptyClaim.MarkEmpty(ctx, runtimeKey, preSelectVersion)
+		if includeRoomTasks {
+			s.EmptyClaim.MarkEmpty(ctx, runtimeKey, preSelectVersion)
+		}
 		outcome = "empty_db"
 		return nil, nil
 	}
@@ -2455,7 +2497,7 @@ func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.
 		triedAgents[agentKey] = struct{}{}
 		tried++
 
-		task, err := s.ClaimTask(ctx, candidate.AgentID)
+		task, err := s.claimTask(ctx, candidate.AgentID, includeRoomTasks)
 		if err != nil {
 			loopMs = time.Since(loopStart).Milliseconds()
 			outcome = "error_claim"
@@ -2560,6 +2602,10 @@ func (s *TaskService) RequeueTaskAfterClaimFailure(ctx context.Context, task db.
 // already carrying its runtime_id so the daemon routes it to the matching
 // runtime locally.
 func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pgtype.UUID, maxTasks int) ([]db.AgentTaskQueue, error) {
+	return s.ClaimTasksForRuntimesCapabilities(ctx, runtimeIDs, maxTasks, true)
+}
+
+func (s *TaskService) ClaimTasksForRuntimesCapabilities(ctx context.Context, runtimeIDs []pgtype.UUID, maxTasks int, includeRoomTasks bool) ([]db.AgentTaskQueue, error) {
 	if len(runtimeIDs) == 0 || maxTasks <= 0 {
 		return nil, nil
 	}
@@ -2610,6 +2656,7 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 		ClaimRecoverySecs: claimResponseRecoveryWindow.Seconds(),
 		PrepareLeaseSecs:  prepareLeaseDuration.Seconds(),
 		MaxTasks:          int32(maxTasks),
+		IncludeRoomTasks:  includeRoomTasks,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reclaim stale dispatched tasks: %w", err)
@@ -2631,7 +2678,7 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 	versions := make(map[string]int64, len(uniqueIDs))
 	for _, rid := range uniqueIDs {
 		key := util.UUIDToString(rid)
-		if s.EmptyClaim.IsEmpty(ctx, key) {
+		if includeRoomTasks && s.EmptyClaim.IsEmpty(ctx, key) {
 			continue
 		}
 		versions[key] = s.EmptyClaim.CurrentVersion(ctx, key)
@@ -2642,7 +2689,9 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 	}
 
 	// 4. One candidate SELECT across the non-empty set.
-	candidates, err := s.Queries.ListQueuedClaimCandidatesByRuntimes(ctx, nonEmpty)
+	candidates, err := s.Queries.ListQueuedClaimCandidatesByRuntimes(ctx, db.ListQueuedClaimCandidatesByRuntimesParams{
+		RuntimeIds: nonEmpty, IncludeRoomTasks: includeRoomTasks,
+	})
 	if err != nil {
 		// Steps 2/6 commit reclaimed/claimed tasks in their own transactions,
 		// so `claimed` may already hold tasks dispatched server-side. Dropping
@@ -2670,7 +2719,10 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 	}
 	for _, rid := range nonEmpty {
 		key := util.UUIDToString(rid)
-		if _, ok := withCandidates[key]; !ok {
+		if includeRoomTasks {
+			if _, ok := withCandidates[key]; ok {
+				continue
+			}
 			s.EmptyClaim.MarkEmpty(ctx, key, versions[key])
 		}
 	}
@@ -2689,7 +2741,7 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 		}
 		triedAgents[agentKey] = struct{}{}
 
-		task, err := s.ClaimTask(ctx, candidates[i].AgentID)
+		task, err := s.claimTask(ctx, candidates[i].AgentID, includeRoomTasks)
 		if err != nil {
 			// Each ClaimTask commits in its own transaction, so earlier
 			// iterations (and step-2 reclaims) are already dispatched
@@ -3278,6 +3330,7 @@ func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg, 
 		retryOverlay     runtimeMCPOverlayData
 		retryFireAt      pgtype.Timestamptz
 		retryMaxAttempts pgtype.Int4
+		retryWorkspaceID pgtype.UUID
 	)
 	if retryableReasons[failureReason] {
 		if parent, perr := s.Queries.GetAgentTask(ctx, taskID); perr != nil {
@@ -3285,6 +3338,13 @@ func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg, 
 				"task_id", util.UUIDToString(taskID), "error", perr)
 		} else if retryEligible(failureReason, parent) {
 			wantRetry = true
+			if parent.RoomTurnID.Valid {
+				if turn, turnErr := s.Queries.GetRoomTurnByTask(ctx, parent.ID); turnErr == nil {
+					retryWorkspaceID = turn.WorkspaceID
+				} else {
+					return nil, fmt.Errorf("resolve Room retry workspace: %w", turnErr)
+				}
+			}
 			// Persist the reason-aware effective budget into the child so the
 			// retry chain self-describes (e.g. provider_network → max_attempts=3),
 			// rather than leaking a contradictory attempt=N/max_attempts=2 row.
@@ -3310,6 +3370,11 @@ func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg, 
 	var task db.AgentTaskQueue
 	var retried *db.AgentTaskQueue
 	if err := s.runInTx(ctx, func(qtx *db.Queries) error {
+		if wantRetry && retryWorkspaceID.Valid {
+			if _, err := qtx.LockRoomWorkspaceForWrite(ctx, retryWorkspaceID); err != nil {
+				return err
+			}
+		}
 		t, err := qtx.FailAgentTask(ctx, db.FailAgentTaskParams{
 			ID:                    taskID,
 			Error:                 pgtype.Text{String: errMsg, Valid: true},
@@ -3624,7 +3689,7 @@ func retryEligible(failureReason string, t db.AgentTaskQueue) bool {
 	return retryableReasons[failureReason] &&
 		t.Attempt < retryAttemptCeiling(failureReason, t.MaxAttempts) &&
 		!t.AutopilotRunID.Valid &&
-		(t.IssueID.Valid || t.ChatSessionID.Valid)
+		(t.IssueID.Valid || t.ChatSessionID.Valid || t.RoomTurnID.Valid)
 }
 
 // MaybeRetryFailedTask spawns a fresh queued attempt for a recently-failed
@@ -3691,13 +3756,32 @@ func (s *TaskService) MaybeRetryFailedTask(ctx context.Context, parent db.AgentT
 	if delay := retryDelayForAttempt(reason, parent.Attempt); delay > 0 {
 		retryFireAt = pgtype.Timestamptz{Time: time.Now().Add(delay), Valid: true}
 	}
-	child, err := s.Queries.CreateRetryTask(ctx, db.CreateRetryTaskParams{
-		ID:                   parent.ID,
-		FireAt:               retryFireAt,
+	params := db.CreateRetryTaskParams{
+		ID: parent.ID, FireAt: retryFireAt,
 		MaxAttempts:          pgtype.Int4{Int32: retryAttemptCeiling(reason, parent.MaxAttempts), Valid: true},
 		RuntimeMcpOverlay:    runtimeMCPOverlay.Overlay,
 		RuntimeConnectedApps: runtimeMCPOverlay.ConnectedApps,
-	})
+	}
+	var child db.AgentTaskQueue
+	var err error
+	if parent.RoomTurnID.Valid {
+		turn, turnErr := s.Queries.GetRoomTurnByTask(ctx, parent.ID)
+		if errors.Is(turnErr, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		if turnErr != nil {
+			return nil, turnErr
+		}
+		err = s.runInTx(ctx, func(qtx *db.Queries) error {
+			if _, lockErr := qtx.LockRoomWorkspaceForWrite(ctx, turn.WorkspaceID); lockErr != nil {
+				return lockErr
+			}
+			child, turnErr = qtx.CreateRetryTask(ctx, params)
+			return turnErr
+		})
+	} else {
+		child, err = s.Queries.CreateRetryTask(ctx, params)
+	}
 	if err != nil {
 		slog.Warn("task auto-retry failed",
 			"parent_task_id", util.UUIDToString(parent.ID),
@@ -4039,7 +4123,9 @@ func (s *TaskService) HandleFailedTasks(ctx context.Context, tasks []db.AgentTas
 			workspaceID = s.ResolveTaskWorkspaceID(ctx, t)
 		}
 
-		if workspaceID != "" {
+		if t.RoomTurnID.Valid {
+			s.broadcastTaskEvent(ctx, protocol.EventTaskFailed, t)
+		} else if workspaceID != "" {
 			s.Bus.Publish(events.Event{
 				Type:        protocol.EventTaskFailed,
 				WorkspaceID: workspaceID,
@@ -4367,6 +4453,9 @@ func (s *TaskService) notifyRuntimeMayHaveWork(runtimeID pgtype.UUID, taskID str
 }
 
 func (s *TaskService) broadcastTaskDispatch(ctx context.Context, task db.AgentTaskQueue) {
+	if task.RoomTurnID.Valid {
+		return
+	}
 	var payload map[string]any
 	if task.Context != nil {
 		json.Unmarshal(task.Context, &payload)
@@ -4384,6 +4473,9 @@ func (s *TaskService) broadcastTaskDispatch(ctx context.Context, task db.AgentTa
 	if task.ChatSessionID.Valid {
 		payload["chat_session_id"] = util.UUIDToString(task.ChatSessionID)
 	}
+	if task.RoomTurnID.Valid {
+		payload["room_turn_id"] = util.UUIDToString(task.RoomTurnID)
+	}
 
 	workspaceID := s.ResolveTaskWorkspaceID(ctx, task)
 	if workspaceID == "" {
@@ -4399,6 +4491,18 @@ func (s *TaskService) broadcastTaskDispatch(ctx context.Context, task db.AgentTa
 }
 
 func (s *TaskService) broadcastTaskEvent(ctx context.Context, eventType string, task db.AgentTaskQueue) {
+	if task.RoomTurnID.Valid {
+		s.Bus.Publish(events.Event{
+			Type: roomdomain.EventTaskLifecycle, ActorType: "system",
+			Payload: map[string]any{
+				"task_id":      util.UUIDToString(task.ID),
+				"room_turn_id": util.UUIDToString(task.RoomTurnID),
+				"task_event":   eventType,
+				"status":       task.Status,
+			},
+		})
+		return
+	}
 	workspaceID := s.ResolveTaskWorkspaceID(ctx, task)
 	if workspaceID == "" {
 		return
@@ -4441,6 +4545,11 @@ func (s *TaskService) ResolveTaskWorkspaceID(ctx context.Context, task db.AgentT
 			if ap, err := s.Queries.GetAutopilot(ctx, run.AutopilotID); err == nil {
 				return util.UUIDToString(ap.WorkspaceID)
 			}
+		}
+	}
+	if task.RoomTurnID.Valid {
+		if turn, err := s.Queries.GetRoomTurnByTask(ctx, task.ID); err == nil {
+			return util.UUIDToString(turn.WorkspaceID)
 		}
 	}
 	// Quick-create tasks have no issue / chat / autopilot link — workspace
@@ -4652,7 +4761,7 @@ func issueToMap(issue db.Issue, issuePrefix string) map[string]any {
 // autopilot are never quick-create even if they happen to carry a
 // context blob, so those are filtered up front.
 func (s *TaskService) parseQuickCreateContext(task db.AgentTaskQueue) (QuickCreateContext, bool) {
-	if task.IssueID.Valid || task.ChatSessionID.Valid || task.AutopilotRunID.Valid {
+	if task.IssueID.Valid || task.ChatSessionID.Valid || task.AutopilotRunID.Valid || task.RoomTurnID.Valid {
 		return QuickCreateContext{}, false
 	}
 	if len(task.Context) == 0 {

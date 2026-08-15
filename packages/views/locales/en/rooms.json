@@ -1,0 +1,176 @@
+{
+  "page": {
+    "title": "Rooms",
+    "description": "Durable collaboration for people, agents, and squads"
+  },
+  "actions": {
+    "new_room": "New room",
+    "create": "Create room",
+    "cancel": "Cancel",
+    "post": "Send",
+    "posting": "Sending",
+    "pause": "Pause",
+    "resume": "Resume",
+    "wake": "Run now",
+    "waking": "Starting",
+    "promote": "Promote",
+    "promoting": "Promoting",
+    "retry": "Retry",
+    "new_activity": "{{count}} new",
+    "show_new_activity": "Show {{count}} new updates",
+    "new_activity_announcement": "{{count}} new updates available"
+  },
+  "states": {
+    "loading": "Loading rooms",
+    "error_title": "Rooms could not be loaded",
+    "error_description": "Check the connection and try again.",
+    "empty_title": "No rooms yet",
+    "empty_description": "Create a room to start a durable conversation.",
+    "detail_loading": "Loading room",
+    "no_room_title": "Select a room",
+    "no_room_description": "Choose a room from the list to open its conversation."
+  },
+  "status": {
+    "active": "Active",
+    "paused": "Paused",
+    "archived": "Archived",
+    "unknown": "Unknown"
+  },
+  "list": {
+    "participants": "{{count}} participants",
+    "updated": "Updated {{time}}"
+  },
+  "detail": {
+    "participants": "Participants",
+    "transcript": "Transcript",
+    "memory": "Shared memory",
+    "cycles": "Activity",
+    "artifacts": "Artifacts",
+    "instructions": "Instructions",
+    "schedule": "Schedule",
+    "budget": "Daily budget",
+    "unlimited": "Unlimited",
+    "disabled": "Disabled",
+    "minutes": "{{count}} min",
+    "next_wake": "Next run {{time}}",
+    "memory_version": "Version {{version}}",
+    "facts": "Facts",
+    "decisions": "Decisions",
+    "open_questions": "Open questions",
+    "recent_contributions": "Recent contributions",
+    "empty_memory": "Memory will grow as agents complete turns.",
+    "empty_transcript": "The room is quiet.",
+    "empty_artifacts": "No promoted artifacts.",
+    "facilitator": "Facilitator",
+    "participant": "Participant",
+    "observer": "Observer",
+    "system": "System",
+    "turns_used": "{{count}} of {{limit}} turns used"
+  },
+  "composer": {
+    "placeholder": "Write to the room",
+    "mentions": "Notify agents",
+    "mentions_selected": "{{count}} selected",
+    "paused_notice": "Messages are saved while execution is paused.",
+    "archived_notice": "Archived rooms are read-only."
+  },
+  "create": {
+    "title": "Create room",
+    "description": "Choose who facilitates and who joins the room.",
+    "fields": {
+      "title": "Name",
+      "instructions": "Instructions",
+      "facilitator": "Facilitator",
+      "agent": "Agent",
+      "squad": "Squad",
+      "participants": "Participants",
+      "agent_participants": "Agents",
+      "member_participants": "People",
+      "daily_turn_limit": "Daily turn limit",
+      "schedule_interval": "Schedule interval"
+    },
+    "placeholders": {
+      "title": "Research council",
+      "instructions": "Set the question, constraints, and expected outcome",
+      "select_agent": "Select an agent",
+      "select_squad": "Select a squad",
+      "optional": "Optional"
+    },
+    "hints": {
+      "daily_turn_limit": "Leave blank for unlimited turns.",
+      "schedule_interval": "Minimum 5 minutes; leave blank for manual runs."
+    },
+    "facilitator_modes": {
+      "agent": "Agent",
+      "squad": "Squad"
+    }
+  },
+  "promote": {
+    "title": "Promote result",
+    "description": "Turn completed Room work into a durable workspace artifact.",
+    "fields": {
+      "kind": "Destination",
+      "title": "Title",
+      "rationale": "Rationale"
+    },
+    "placeholders": {
+      "title": "Artifact title",
+      "rationale": "Why this should be promoted"
+    },
+    "kinds": {
+      "issue": "Issue",
+      "wiki": "Wiki",
+      "decision": "Decision"
+    },
+    "source_entry": "Transcript entry",
+    "source_cycle": "Completed cycle"
+  },
+  "cycle": {
+    "status": {
+      "refused": "Refused",
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "unknown": "Unknown"
+    },
+    "source": {
+      "message": "Message",
+      "mention": "Mention",
+      "manual": "Manual",
+      "schedule": "Schedule",
+      "agent": "Agent",
+      "unknown": "Unknown"
+    }
+  },
+  "refusal": {
+    "room_paused": "Room is paused",
+    "room_archived": "Room is archived",
+    "budget_exhausted": "Daily budget exhausted",
+    "cycle_active": "A cycle is already active",
+    "no_targets": "No runnable agents",
+    "unknown": "Execution refused"
+  },
+  "artifact": {
+    "kinds": {
+      "issue": "Issue",
+      "wiki": "Wiki",
+      "decision": "Decision",
+      "unknown": "Artifact"
+    }
+  },
+  "toast": {
+    "created": "Room created",
+    "message_posted": "Message sent",
+    "status_updated": "Room status updated",
+    "wake_queued": "Cycle queued",
+    "promoted": "Artifact promoted",
+    "create_failed": "Room could not be created",
+    "message_saved_no_execution": "Message was saved, but execution did not start",
+    "message_failed": "Message could not be sent",
+    "status_failed": "Room status could not be updated",
+    "wake_failed": "Cycle could not be started",
+    "promote_failed": "Artifact could not be promoted"
+  }
+}

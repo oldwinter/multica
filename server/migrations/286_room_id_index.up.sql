@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY room_id_uidx ON room (id);

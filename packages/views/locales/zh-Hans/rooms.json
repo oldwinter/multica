@@ -1,0 +1,21 @@
+{
+  "page": { "title": "房间", "description": "让人类、智能体和小队持续协作" },
+  "actions": { "new_room": "新建房间", "create": "创建房间", "cancel": "取消", "post": "发送", "posting": "发送中", "pause": "暂停", "resume": "恢复", "wake": "立即运行", "waking": "启动中", "promote": "沉淀", "promoting": "沉淀中", "retry": "重试", "new_activity": "{{count}} 条新动态", "show_new_activity": "查看 {{count}} 条新动态", "new_activity_announcement": "有 {{count}} 条新动态" },
+  "states": { "loading": "正在加载房间", "error_title": "无法加载房间", "error_description": "请检查连接后重试。", "empty_title": "还没有房间", "empty_description": "创建一个房间，开始可持续的讨论。", "detail_loading": "正在加载房间", "no_room_title": "选择一个房间", "no_room_description": "从列表中选择房间以打开讨论。" },
+  "status": { "active": "运行中", "paused": "已暂停", "archived": "已归档", "unknown": "未知" },
+  "list": { "participants": "{{count}} 位参与者", "updated": "更新于 {{time}}" },
+  "detail": { "participants": "参与者", "transcript": "讨论记录", "memory": "共享记忆", "cycles": "运行动态", "artifacts": "沉淀产物", "instructions": "指令", "schedule": "调度", "budget": "每日预算", "unlimited": "不限", "disabled": "关闭", "minutes": "{{count}} 分钟", "next_wake": "下次运行 {{time}}", "memory_version": "版本 {{version}}", "facts": "事实", "decisions": "决策", "open_questions": "待解问题", "recent_contributions": "近期贡献", "empty_memory": "智能体完成轮次后，共享记忆会在这里生长。", "empty_transcript": "房间里还很安静。", "empty_artifacts": "还没有沉淀产物。", "facilitator": "主持者", "participant": "参与者", "observer": "观察者", "system": "系统", "turns_used": "已使用 {{count}} / {{limit}} 轮" },
+  "composer": { "placeholder": "给房间发消息", "mentions": "通知智能体", "mentions_selected": "已选 {{count}} 个", "paused_notice": "暂停期间消息仍会保存，但不会触发执行。", "archived_notice": "已归档的房间为只读。" },
+  "create": {
+    "title": "创建房间", "description": "选择主持者和参与者。",
+    "fields": { "title": "名称", "instructions": "指令", "facilitator": "主持者", "agent": "智能体", "squad": "小队", "participants": "参与者", "agent_participants": "智能体", "member_participants": "人类", "daily_turn_limit": "每日轮次上限", "schedule_interval": "运行间隔" },
+    "placeholders": { "title": "研究议事厅", "instructions": "写下问题、约束和预期产出", "select_agent": "选择智能体", "select_squad": "选择小队", "optional": "可选" },
+    "hints": { "daily_turn_limit": "留空表示不限轮次。", "schedule_interval": "最少 5 分钟；留空表示手动运行。" },
+    "facilitator_modes": { "agent": "智能体", "squad": "小队" }
+  },
+  "promote": { "title": "沉淀结果", "description": "把已完成的房间内容转成工作区产物。", "fields": { "kind": "目标", "title": "标题", "rationale": "理由" }, "placeholders": { "title": "产物标题", "rationale": "为什么值得沉淀" }, "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "决策" }, "source_entry": "讨论记录", "source_cycle": "已完成轮次" },
+  "cycle": { "status": { "refused": "已拒绝", "queued": "排队中", "running": "执行中", "completed": "已完成", "failed": "失败", "cancelled": "已取消", "unknown": "未知" }, "source": { "message": "消息", "mention": "提及", "manual": "手动", "schedule": "调度", "agent": "智能体", "unknown": "未知" } },
+  "refusal": { "room_paused": "房间已暂停", "room_archived": "房间已归档", "budget_exhausted": "今日预算已用完", "cycle_active": "已有轮次正在执行", "no_targets": "没有可运行的智能体", "unknown": "本次执行被拒绝" },
+  "artifact": { "kinds": { "issue": "Issue", "wiki": "Wiki", "decision": "决策", "unknown": "产物" } },
+  "toast": { "created": "房间已创建", "message_posted": "消息已发送", "status_updated": "房间状态已更新", "wake_queued": "轮次已排队", "promoted": "产物已沉淀", "create_failed": "无法创建房间", "message_saved_no_execution": "消息已保存，但未启动执行", "message_failed": "消息发送失败", "status_failed": "无法更新房间状态", "wake_failed": "无法启动轮次", "promote_failed": "无法沉淀产物" }
+}
