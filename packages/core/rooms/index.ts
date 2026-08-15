@@ -28,16 +28,20 @@ export {
 export { roomDetailOptions, roomKeys, roomListOptions } from "./queries";
 export {
   EMPTY_ROOM_COMPOSER_DRAFTS,
+  EMPTY_SCOPED_ROOM_COMPOSER_DRAFTS,
   completeRoomComposerDraft,
   createRoomComposerDraft,
   ensureRoomComposerDraft,
   markRoomComposerFailed,
   markRoomComposerPending,
+  roomComposerDraftsForScope,
   updateRoomComposerBody,
   updateRoomComposerMention,
   type RoomComposerDraft,
   type RoomComposerDraftStatus,
+  type RoomComposerDraftScope,
   type RoomComposerDrafts,
+  type ScopedRoomComposerDrafts,
 } from "./composer-draft";
 export {
   ROOM_COMPOSER_DRAFT_STORAGE_KEY,

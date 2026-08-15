@@ -1,47 +1,92 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import { useAuthStore } from "@multica/core/auth";
+import { useCurrentWorkspace } from "@multica/core/paths";
 import { createSafeId } from "@multica/core/utils";
 import {
   completeRoomComposerDraft,
   ensureRoomComposerDraft,
   markRoomComposerFailed,
   markRoomComposerPending,
+  roomComposerDraftsForScope,
   updateRoomComposerBody,
   updateRoomComposerMention,
   useRoomComposerDraftStore,
+  type RoomComposerDraftScope,
   type RoomComposerDrafts,
 } from "@multica/core/rooms";
 
-function updateDrafts(update: (drafts: RoomComposerDrafts) => RoomComposerDrafts) {
+function claimAndUpdateDrafts(
+  scope: RoomComposerDraftScope,
+  update: (drafts: RoomComposerDrafts) => RoomComposerDrafts,
+) {
   const store = useRoomComposerDraftStore.getState();
-  const next = update(store.draft);
-  if (next !== store.draft) store.setDraft(next);
+  const current = roomComposerDraftsForScope(store.draft, scope);
+  const next = update(current);
+  if (
+    next !== current ||
+    store.draft.ownerUserId !== scope.userId ||
+    store.draft.ownerWorkspaceId !== scope.workspaceId
+  ) {
+    store.setDraft({
+      ownerUserId: scope.userId,
+      ownerWorkspaceId: scope.workspaceId,
+      rooms: next,
+    });
+  }
+}
+
+function updateOwnedDrafts(
+  scope: RoomComposerDraftScope,
+  update: (drafts: RoomComposerDrafts) => RoomComposerDrafts,
+) {
+  const store = useRoomComposerDraftStore.getState();
+  if (
+    store.draft.ownerUserId !== scope.userId ||
+    store.draft.ownerWorkspaceId !== scope.workspaceId
+  ) {
+    return;
+  }
+  const next = update(store.draft.rooms);
+  if (next !== store.draft.rooms) store.setDraft({ rooms: next });
 }
 
 export function useRoomComposerDrafts(activeRoomId: string) {
-  const draft = useRoomComposerDraftStore((state) => state.draft[activeRoomId]);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const workspaceId = useCurrentWorkspace()?.id ?? null;
+  const scope = useMemo(
+    () => (userId && workspaceId ? { userId, workspaceId } : null),
+    [userId, workspaceId],
+  );
+  const draft = useRoomComposerDraftStore((state) =>
+    scope
+      ? roomComposerDraftsForScope(state.draft, scope)[activeRoomId]
+      : undefined,
+  );
 
   useEffect(() => {
-    if (!activeRoomId) return;
+    if (!activeRoomId || !scope) return;
     const ensureDraft = () => {
-      updateDrafts((current) =>
+      claimAndUpdateDrafts(scope, (current) =>
         ensureRoomComposerDraft(current, activeRoomId, createSafeId()),
       );
     };
     ensureDraft();
     return useRoomComposerDraftStore.persist.onFinishHydration(ensureDraft);
-  }, [activeRoomId]);
+  }, [activeRoomId, scope]);
 
   const updateBody = useCallback((roomId: string, body: string) => {
-    updateDrafts((current) =>
+    if (!scope) return;
+    claimAndUpdateDrafts(scope, (current) =>
       updateRoomComposerBody(current, roomId, body, createSafeId()),
     );
-  }, []);
+  }, [scope]);
 
   const updateMention = useCallback(
     (roomId: string, agentId: string, selected: boolean) => {
-      updateDrafts((current) =>
+      if (!scope) return;
+      claimAndUpdateDrafts(scope, (current) =>
         updateRoomComposerMention(
           current,
           roomId,
@@ -51,22 +96,44 @@ export function useRoomComposerDrafts(activeRoomId: string) {
         ),
       );
     },
-    [],
+    [scope],
   );
 
-  const markPending = useCallback((roomId: string) => {
-    updateDrafts((current) => markRoomComposerPending(current, roomId));
-  }, []);
+  const markPending = useCallback(
+    (roomId: string, idempotencyKey: string) => {
+      if (!scope) return;
+      updateOwnedDrafts(scope, (current) =>
+        current[roomId]?.idempotencyKey === idempotencyKey
+          ? markRoomComposerPending(current, roomId)
+          : current,
+      );
+    },
+    [scope],
+  );
 
-  const markFailed = useCallback((roomId: string) => {
-    updateDrafts((current) => markRoomComposerFailed(current, roomId));
-  }, []);
+  const markFailed = useCallback(
+    (roomId: string, idempotencyKey: string) => {
+      if (!scope) return;
+      updateOwnedDrafts(scope, (current) =>
+        current[roomId]?.idempotencyKey === idempotencyKey
+          ? markRoomComposerFailed(current, roomId)
+          : current,
+      );
+    },
+    [scope],
+  );
 
-  const complete = useCallback((roomId: string) => {
-    updateDrafts((current) =>
-      completeRoomComposerDraft(current, roomId, createSafeId()),
-    );
-  }, []);
+  const complete = useCallback(
+    (roomId: string, idempotencyKey: string) => {
+      if (!scope) return;
+      updateOwnedDrafts(scope, (current) =>
+        current[roomId]?.idempotencyKey === idempotencyKey
+          ? completeRoomComposerDraft(current, roomId, createSafeId())
+          : current,
+      );
+    },
+    [scope],
+  );
 
   return {
     draft,

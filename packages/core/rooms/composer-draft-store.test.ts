@@ -6,6 +6,7 @@ import {
   ROOM_COMPOSER_DRAFT_STORAGE_KEY,
   useRoomComposerDraftStore,
 } from "./composer-draft-store";
+import { roomComposerDraftsForScope } from "./composer-draft";
 
 const flush = () => new Promise((resolve) => queueMicrotask(() => resolve(null)));
 
@@ -54,17 +55,21 @@ describe("room composer draft store", () => {
     setCurrentWorkspace("acme", "workspace-a");
     await flush();
     useRoomComposerDraftStore.getState().setDraft({
-      "room-a": {
-        body: "recover me",
-        mentionAgentIds: ["agent-a"],
-        idempotencyKey: "key-a",
-        status: "idle",
+      ownerUserId: "user-a",
+      ownerWorkspaceId: "workspace-a",
+      rooms: {
+        "room-a": {
+          body: "recover me",
+          mentionAgentIds: ["agent-a"],
+          idempotencyKey: "key-a",
+          status: "idle",
+        },
       },
     });
 
     const stored = localStorage.getItem(`${ROOM_COMPOSER_DRAFT_STORAGE_KEY}:acme`);
     expect(stored).not.toBeNull();
-    expect(JSON.parse(stored ?? "{}").state.draft["room-a"]).toMatchObject({
+    expect(JSON.parse(stored ?? "{}").state.draft.rooms["room-a"]).toMatchObject({
       body: "recover me",
       mentionAgentIds: ["agent-a"],
       idempotencyKey: "key-a",
@@ -78,11 +83,15 @@ describe("room composer draft store", () => {
       JSON.stringify({
         state: {
           draft: {
-            "room-b": {
-              body: "retry after reload",
-              mentionAgentIds: ["agent-b"],
-              idempotencyKey: "stable-key",
-              status: "pending",
+            ownerUserId: "user-b",
+            ownerWorkspaceId: "workspace-b",
+            rooms: {
+              "room-b": {
+                body: "retry after reload",
+                mentionAgentIds: ["agent-b"],
+                idempotencyKey: "stable-key",
+                status: "pending",
+              },
             },
           },
         },
@@ -92,7 +101,7 @@ describe("room composer draft store", () => {
     setCurrentWorkspace("beta", "workspace-b");
     await flush();
 
-    expect(useRoomComposerDraftStore.getState().draft["room-b"]).toEqual({
+    expect(useRoomComposerDraftStore.getState().draft.rooms["room-b"]).toEqual({
       body: "retry after reload",
       mentionAgentIds: ["agent-b"],
       idempotencyKey: "stable-key",
@@ -104,17 +113,80 @@ describe("room composer draft store", () => {
     setCurrentWorkspace("gamma", "workspace-c");
     await flush();
     useRoomComposerDraftStore.getState().setDraft({
-      "room-c": {
-        body: "private note",
-        mentionAgentIds: [],
-        idempotencyKey: "key-c",
-        status: "idle",
+      ownerUserId: "user-c",
+      ownerWorkspaceId: "workspace-c",
+      rooms: {
+        "room-c": {
+          body: "private note",
+          mentionAgentIds: [],
+          idempotencyKey: "key-c",
+          status: "idle",
+        },
       },
     });
 
     resetAllRegisteredDrafts();
 
-    expect(useRoomComposerDraftStore.getState().draft).toEqual({});
+    expect(useRoomComposerDraftStore.getState().draft).toEqual({
+      ownerUserId: null,
+      ownerWorkspaceId: null,
+      rooms: {},
+    });
     expect(useRoomComposerDraftStore.getState().hasDraft()).toBe(false);
+  });
+
+  it("does not expose one user's draft to another user in the same workspace", async () => {
+    setCurrentWorkspace("shared", "workspace-shared");
+    await flush();
+    useRoomComposerDraftStore.getState().setDraft({
+      ownerUserId: "user-a",
+      ownerWorkspaceId: "workspace-shared",
+      rooms: {
+        "room-private": {
+          body: "Alice only",
+          mentionAgentIds: ["agent-private"],
+          idempotencyKey: "alice-key",
+          status: "idle",
+        },
+      },
+    });
+
+    const stored = useRoomComposerDraftStore.getState().draft;
+    expect(
+      roomComposerDraftsForScope(stored, {
+        userId: "user-b",
+        workspaceId: "workspace-shared",
+      }),
+    ).toEqual({});
+    expect(
+      roomComposerDraftsForScope(stored, {
+        userId: "user-a",
+        workspaceId: "workspace-shared",
+      })["room-private"]?.body,
+    ).toBe("Alice only");
+  });
+
+  it("does not expose drafts when a workspace slug is reused", async () => {
+    setCurrentWorkspace("reused", "workspace-old");
+    await flush();
+    useRoomComposerDraftStore.getState().setDraft({
+      ownerUserId: "user-a",
+      ownerWorkspaceId: "workspace-old",
+      rooms: {
+        "room-old": {
+          body: "Old workspace",
+          mentionAgentIds: [],
+          idempotencyKey: "old-key",
+          status: "idle",
+        },
+      },
+    });
+
+    expect(
+      roomComposerDraftsForScope(useRoomComposerDraftStore.getState().draft, {
+        userId: "user-a",
+        workspaceId: "workspace-new",
+      }),
+    ).toEqual({});
   });
 });

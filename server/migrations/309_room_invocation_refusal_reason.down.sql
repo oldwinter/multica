@@ -1,3 +1,7 @@
+UPDATE room_cycle
+SET refusal_reason = NULL
+WHERE refusal_reason = 'invocation_not_allowed';
+
 ALTER TABLE room_cycle
     DROP CONSTRAINT room_cycle_refusal_reason_check,
     ADD CONSTRAINT room_cycle_refusal_reason_check CHECK (

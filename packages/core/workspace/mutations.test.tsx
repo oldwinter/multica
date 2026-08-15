@@ -9,7 +9,11 @@ import { setApiInstance } from "../api";
 import type { ApiClient } from "../api/client";
 import { defaultStorage } from "../platform/storage";
 import type { Workspace } from "../types";
-import { useCreateWorkspace, useDeleteWorkspace } from "./mutations";
+import {
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useLeaveWorkspace,
+} from "./mutations";
 import { workspaceKeys } from "./queries";
 import {
   isWorkspaceDeletePending,
@@ -93,6 +97,57 @@ describe("useCreateWorkspace", () => {
         .getQueryData<Workspace[]>(workspaceKeys.list())
         ?.map((workspace) => workspace.id),
     ).toEqual(["ws-1"]);
+  });
+});
+
+describe("useLeaveWorkspace", () => {
+  let qc: QueryClient;
+  let leaveWorkspace: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+
+  beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    leaveWorkspace = vi.fn().mockResolvedValue(undefined);
+    setApiInstance({ leaveWorkspace } as unknown as ApiClient);
+    qc.setQueryData<Workspace[]>(workspaceKeys.list(), [
+      makeWorkspace("ws-1", "leave-me"),
+    ]);
+  });
+
+  afterEach(() => {
+    qc.clear();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("clears the departed workspace storage after success", async () => {
+    defaultStorage.setItem("multica_room_composer_drafts:leave-me", "private");
+    const { result } = renderHook(() => useLeaveWorkspace(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync("ws-1");
+    });
+
+    expect(
+      defaultStorage.getItem("multica_room_composer_drafts:leave-me"),
+    ).toBeNull();
+  });
+
+  it("preserves workspace storage when leaving fails", async () => {
+    leaveWorkspace.mockRejectedValue(new Error("boom"));
+    defaultStorage.setItem("multica_room_composer_drafts:leave-me", "private");
+    const { result } = renderHook(() => useLeaveWorkspace(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("ws-1")).rejects.toThrow("boom");
+    });
+
+    expect(
+      defaultStorage.getItem("multica_room_composer_drafts:leave-me"),
+    ).toBe("private");
   });
 });
 
