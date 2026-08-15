@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,15 +25,9 @@ func RoomMaintenanceJob(maintainer roomdomain.Maintenance) JobSpec {
 		RetryBackoff:      []time.Duration{time.Minute, 5 * time.Minute},
 		Scopes:            StaticScopes(ScopeGlobal),
 		Handler: func(ctx context.Context, input HandlerInput) (HandlerResult, error) {
-			due, err := maintainer.DispatchDue(ctx, input.PlanTime, 100)
-			if err != nil {
-				return HandlerResult{}, fmt.Errorf("dispatch due Rooms: %w", err)
-			}
-			reconciled, err := maintainer.Reconcile(ctx, 100)
-			if err != nil {
-				return HandlerResult{}, fmt.Errorf("reconcile Room tasks: %w", err)
-			}
-			return HandlerResult{
+			due, dispatchErr := maintainer.DispatchDue(ctx, input.PlanTime, 100)
+			reconciled, reconcileErr := maintainer.Reconcile(ctx, 100)
+			result := HandlerResult{
 				RowsAffected: int64(due.RoomsAdvanced + reconciled),
 				Result: map[string]any{
 					"rooms_advanced":   due.RoomsAdvanced,
@@ -41,7 +36,21 @@ func RoomMaintenanceJob(maintainer roomdomain.Maintenance) JobSpec {
 					"tasks_queued":     due.TasksQueued,
 					"tasks_reconciled": reconciled,
 				},
-			}, nil
+			}
+			if dispatchErr != nil || reconcileErr != nil {
+				return result, errors.Join(
+					wrapRoomMaintenanceError("dispatch due Rooms", dispatchErr),
+					wrapRoomMaintenanceError("reconcile Room tasks", reconcileErr),
+				)
+			}
+			return result, nil
 		},
 	}
+}
+
+func wrapRoomMaintenanceError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }

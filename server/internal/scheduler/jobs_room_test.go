@@ -55,13 +55,28 @@ func TestRoomMaintenanceJobDispatchesDueAndReconciles(t *testing.T) {
 	}
 }
 
-func TestRoomMaintenanceJobStopsBeforeReconcileOnDispatchFailure(t *testing.T) {
-	maintainer := &recordingRoomMaintainer{dispatchErr: errors.New("database unavailable")}
+func TestRoomMaintenanceJobReconcilesAfterDispatchFailure(t *testing.T) {
+	dispatchErr := errors.New("database unavailable")
+	maintainer := &recordingRoomMaintainer{dispatchErr: dispatchErr, reconciled: 2}
 	job := RoomMaintenanceJob(maintainer)
-	if _, err := job.Handler(context.Background(), HandlerInput{Job: &job, Scope: ScopeGlobal, PlanTime: time.Now()}); err == nil {
-		t.Fatal("Room maintenance dispatch failure was swallowed")
+	result, err := job.Handler(context.Background(), HandlerInput{Job: &job, Scope: ScopeGlobal, PlanTime: time.Now()})
+	if !errors.Is(err, dispatchErr) {
+		t.Fatalf("Room maintenance error = %v, want dispatch error", err)
 	}
-	if maintainer.reconcileLimit != 0 {
-		t.Fatalf("reconcile ran after dispatch failure with limit %d", maintainer.reconcileLimit)
+	if maintainer.reconcileLimit != 100 || result.Result["tasks_reconciled"] != 2 {
+		t.Fatalf("reconcile after dispatch failure = limit %d result %+v", maintainer.reconcileLimit, result)
+	}
+}
+
+func TestRoomMaintenanceJobPreservesDispatchAndReconcileFailures(t *testing.T) {
+	dispatchErr := errors.New("dispatch unavailable")
+	reconcileErr := errors.New("reconcile unavailable")
+	maintainer := &recordingRoomMaintainer{dispatchErr: dispatchErr, reconcileErr: reconcileErr}
+	job := RoomMaintenanceJob(maintainer)
+
+	_, err := job.Handler(context.Background(), HandlerInput{Job: &job, Scope: ScopeGlobal, PlanTime: time.Now()})
+
+	if !errors.Is(err, dispatchErr) || !errors.Is(err, reconcileErr) {
+		t.Fatalf("Room maintenance error = %v, want both failures", err)
 	}
 }
