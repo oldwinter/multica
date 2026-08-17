@@ -49,6 +49,8 @@ interface Props {
   /** True while an agent task is running for the active session. The
    *  composer swaps Send for Stop. */
   sending: boolean;
+  /** Queued tasks remain busy, but do not expose Stop without draft restore. */
+  allowStop?: boolean;
   /** Hard-disable typing + send. Used when there's no usable agent in the
    *  workspace or the session is archived (legacy). */
   disabled?: boolean;
@@ -64,6 +66,7 @@ export function ChatComposer({
   onSend,
   onStop,
   sending,
+  allowStop = true,
   disabled = false,
   disabledReason,
 }: Props) {
@@ -112,7 +115,7 @@ export function ChatComposer({
       disabled={disabled}
       disabledReason={disabledReason}
       isSending={sending}
-      renderStop={() => <StopButton onPress={handleStop} />}
+      renderStop={allowStop ? () => <StopButton onPress={handleStop} /> : undefined}
       manageKeyboard={false}
     />
   );

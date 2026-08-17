@@ -19,3 +19,4 @@ export {
   useSkillPermissions,
 } from "./use-resource-permissions";
 export { useWikiTwinPermissions } from "./use-wiki-twin-permissions";
+export { useCurrentMember } from "./use-current-member";

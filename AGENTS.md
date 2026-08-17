@@ -17,10 +17,13 @@ Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared package
 - `server/` - Go backend (Chi router, sqlc, gorilla/websocket)
 - `apps/web/` - Next.js frontend (App Router)
 - `apps/desktop/` - Electron desktop app
+- `apps/mobile/` - Expo / React Native iOS app (read `apps/mobile/CLAUDE.md` first)
+- `apps/docs/` - Fumadocs documentation site
 - `packages/core/` - Headless business logic (Zustand stores, React Query hooks, API client)
 - `packages/ui/` - Atomic UI components (shadcn/Base UI, zero business logic)
 - `packages/views/` - Shared business pages/components
 - `packages/tsconfig/` - Shared TypeScript config
+- `packages/eslint-config/` - Shared ESLint config
 
 ### State Management (critical)
 
@@ -52,3 +55,15 @@ make check            # Full verification pipeline
 ```
 
 See CLAUDE.md for the authoritative rules and common commands.
+
+## Upstream Sync
+
+This checkout is a fork of `multica-ai/multica`. Before merging
+`upstream/main` or adding a feature that will live beside upstream,
+read [docs/downstream/upstream-sync.md](docs/downstream/upstream-sync.md).
+
+That page records the 2026-08-17 sync (347 upstream commits, 40
+conflicts), how each conflict class was resolved, and the rules that
+keep the next merge small: own a leaf and register at a point, do not
+restyle upstream shells, do not hand-merge sqlc output, and sync after
+each local feature rather than after a stack of them.
