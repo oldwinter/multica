@@ -12,6 +12,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/issueposition"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/dbid"
 )
 
 type RoomArtifactTargets struct {
@@ -59,6 +60,7 @@ func (s *IssueService) createRoomIssueTarget(ctx context.Context, tx pgx.Tx, art
 		return db.Issue{}, fmt.Errorf("position Room issue: %w", err)
 	}
 	issue, err := queries.CreateIssue(ctx, db.CreateIssueParams{
+		ID:          dbid.NewV7(),
 		WorkspaceID: artifact.WorkspaceID,
 		Title:       artifact.Title,
 		Description: pgtype.Text{String: artifact.Body, Valid: true},

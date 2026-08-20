@@ -243,12 +243,24 @@ func ListModels(ctx context.Context, providerType string, runtimeCmd Command) (C
 		// makes model selection session-scoped, restore a discovery helper
 		// here modelled on discoverTraecliModels.
 		return Catalog{Models: []Model{}}, nil
+	case "mcode":
+		// MCode's ACP server does not expose session-scoped model selection or
+		// a model catalog. The configured MCode runtime owns the model choice.
+		return Catalog{Models: []Model{}}, nil
 	case "grok":
 		// xAI Grok Build is ACP-native (`grok agent stdio`); model catalog
 		// comes from session/new. Falls back to a small static list so the
 		// UI picker stays usable offline / unauthenticated.
 		return cachedDiscovery(discoveryCacheKey(providerType, runtimeCmd), func() (Catalog, error) {
 			return discoverGrokModels(ctx, runtimeCmd)
+		})
+	case "dim":
+		// Dim (dimcode) is ACP-native (`dim acp`); its model catalog is
+		// advertised by session/new under models.availableModels. Enumeration
+		// requires a logged-in dim (OAuth); on any failure fall back to an
+		// empty catalog so the UI keeps manual entry available.
+		return cachedDiscovery(discoveryCacheKey(providerType, runtimeCmd), func() (Catalog, error) {
+			return discoverDimModels(ctx, runtimeCmd)
 		})
 	default:
 		return Catalog{}, fmt.Errorf("unknown agent type: %q", providerType)
@@ -269,13 +281,15 @@ func ListModels(ctx context.Context, providerType string, runtimeCmd Command) (C
 // dropdown plus a silently-ignored manual-entry field.
 func ModelSelectionSupported(providerType string) bool {
 	switch providerType {
-	case "qwenpaw":
+	case "qwenpaw", "mcode":
 		// QwenPaw's `session/set_model` persists to agent.json at the agent
 		// scope, not the session scope. Calling it would mutate the user's
 		// shared, persistent agent config. Model override is therefore
 		// unsupported — the runtime uses whatever model is configured in
 		// the agent profile. If QwenPaw makes model selection session-scoped
-		// upstream, this can be reverted to `true`.
+		// upstream, this can be reverted to `true`. MCode similarly exposes no
+		// model option through ACP, so its runtime configuration remains the
+		// source of truth.
 		return false
 	default:
 		return true
@@ -2559,4 +2573,24 @@ func codebuddyStaticModels() []Model {
 		{ID: "gpt-5.5", Label: "GPT 5.5", Provider: "openai"},
 		{ID: "deepseek-v3-2-volc-ioa", Label: "Deepseek V3 2 Volc IOA", Provider: "deepseek"},
 	}
+}
+
+// discoverDimModels enumerates the model catalog from a Dim ACP session/new
+// handshake. Dim (dimcode) advertises models.availableModels; enumeration
+// requires a logged-in dim (OAuth). On any failure the caller falls back to
+// the manual-entry field.
+func discoverDimModels(ctx context.Context, runtimeCmd Command) (Catalog, error) {
+	models, err := discoverACPModels(ctx, runtimeCmd, acpDiscoveryProvider{
+		defaultBin:   "dim",
+		clientName:   "multica-model-discovery",
+		tmpdirPrefix: "multica-dim-discovery-",
+		acpArgs:      []string{"acp"},
+	})
+	if err != nil || len(models) == 0 {
+		if err != nil {
+			slog.Debug("dim model discovery failed; falling back to manual entry", "error", err)
+		}
+		return Catalog{Models: []Model{}, Fallback: true}, nil
+	}
+	return Catalog{Models: models}, nil
 }

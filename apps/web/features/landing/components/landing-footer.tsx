@@ -42,7 +42,8 @@ export function LandingFooter() {
                 href={twitterUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-white/40 transition-colors hover:text-white"
+                aria-label="Multica on X (Twitter)"
+                className="text-white/65 transition-colors hover:text-white"
               >
                 <XMark className="size-4" />
               </Link>
@@ -50,7 +51,8 @@ export function LandingFooter() {
                 href={githubUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-white/40 transition-colors hover:text-white"
+                aria-label="Multica on GitHub"
+                className="text-white/65 transition-colors hover:text-white"
               >
                 <GitHubMark className="size-4" />
               </Link>
@@ -58,8 +60,8 @@ export function LandingFooter() {
                 href={discordUrl}
                 target="_blank"
                 rel="noreferrer"
-                aria-label="Discord"
-                className="text-white/40 transition-colors hover:text-white"
+                aria-label="Multica on Discord"
+                className="text-white/65 transition-colors hover:text-white"
               >
                 <DiscordMark className="size-4" />
               </Link>
@@ -78,7 +80,7 @@ export function LandingFooter() {
           <div className="grid flex-1 grid-cols-2 gap-8 sm:grid-cols-4">
             {groups.map((group) => (
               <div key={group.label}>
-                <h4 className="text-caption font-semibold uppercase tracking-normal text-white/40">
+                <h4 className="text-caption font-semibold uppercase tracking-normal text-white/65">
                   {group.label}
                 </h4>
                 <ul className="mt-4 flex flex-col gap-2.5">
@@ -103,7 +105,7 @@ export function LandingFooter() {
 
         {/* Bottom: copyright + language switcher */}
         <div className="flex items-center justify-between py-6">
-          <p className="text-label text-white/36">
+          <p className="text-label text-white/65">
             {t.footer.copyright.replace(
               "{year}",
               String(new Date().getFullYear()),
@@ -119,7 +121,7 @@ export function LandingFooter() {
                   "px-1.5 py-1 text-caption font-medium transition-colors",
                   l === locale
                     ? "text-white/70"
-                    : "text-white/30 hover:text-white/50",
+                    : "text-white/65 hover:text-white/85",
                   i > 0 && "border-l border-white/16",
                 )}
               >

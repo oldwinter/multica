@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -92,7 +93,7 @@ func TestOmpExecuteDefaultsToOmpBinary(t *testing.T) {
 		"exit 0\n"
 	writeTestExecutable(t, fakePath, []byte(script))
 
-	t.Setenv("PATH", fakeDir)
+	t.Setenv("PATH", fakeDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	backend, err := ResolveBackend("omp", Config{Logger: slog.Default()})
 	if err != nil {

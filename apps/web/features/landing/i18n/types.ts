@@ -50,6 +50,7 @@ export type LandingDict = {
     navigation: string;
     openMenu: string;
     closeMenu: string;
+    skipToContent: string;
   };
   hero: {
     headlineLine1: string;

@@ -45,11 +45,11 @@ describe("AllPlatforms", () => {
     const intelLabel = screen.getByText("macOS · Intel");
     const intelRow = intelLabel.parentElement?.parentElement;
     expect(intelRow).not.toBeNull();
-    expect(within(intelRow!).getByRole("link", { name: ".dmg" })).toHaveAttribute(
+    expect(within(intelRow!).getByRole("link", { name: "macOS · Intel .dmg" })).toHaveAttribute(
       "href",
       "https://downloads.test/mac-x64.dmg",
     );
-    expect(within(intelRow!).getByRole("link", { name: ".zip" })).toHaveAttribute(
+    expect(within(intelRow!).getByRole("link", { name: "macOS · Intel .zip" })).toHaveAttribute(
       "href",
       "https://downloads.test/mac-x64.zip",
     );

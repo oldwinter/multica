@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { useLocale } from "../../i18n";
-import type { DownloadAssets } from "../../utils/parse-release-assets";
+import {
+  hasCompleteAssetSet,
+  type DownloadAssets,
+} from "../../utils/parse-release-assets";
 import { AppleIcon, LinuxIcon, WindowsIcon } from "./os-icons";
 
 interface Props {
@@ -126,7 +129,9 @@ export function AllPlatforms({
           />
         </div>
 
-        {isFallbackNeeded(assets) ? (
+        {/* Some row is missing its link — surface the GitHub fallback so
+            users on an orphaned row still have a way out. */}
+        {!hasCompleteAssetSet(assets) ? (
           <p className="mt-6 text-label text-muted-foreground">
             <Link
               href={fallbackHref}
@@ -175,6 +180,7 @@ function Row({ icon, label, formats, unavailable, isLast }: RowProps) {
             <a
               key={f.label}
               href={f.href}
+              aria-label={`${label} ${f.label}`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-label font-medium transition-colors hover:border-border hover:bg-muted"
             >
               {f.label}
@@ -183,6 +189,7 @@ function Row({ icon, label, formats, unavailable, isLast }: RowProps) {
             <span
               key={f.label}
               aria-disabled="true"
+              aria-label={`${label} ${f.label}: ${unavailable}`}
               className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-1.5 text-label text-muted-foreground"
               title={unavailable}
             >
@@ -193,13 +200,4 @@ function Row({ icon, label, formats, unavailable, isLast }: RowProps) {
       </div>
     </div>
   );
-}
-
-// Twelve desktop artifacts are expected per release (four Mac,
-// two Windows, six Linux). If any are missing, surface the GitHub
-// fallback link so users on an orphaned row have a way out.
-const EXPECTED_ASSET_COUNT = 12;
-
-function isFallbackNeeded(assets: DownloadAssets): boolean {
-  return Object.values(assets).filter(Boolean).length < EXPECTED_ASSET_COUNT;
 }

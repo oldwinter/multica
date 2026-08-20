@@ -1248,6 +1248,14 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			run:  func() error { return qtx.DeleteWorkspaceAutopilotRuns(ctx, requester.WorkspaceID) },
 		},
 		{
+			name: "delete autopilot quota reservations",
+			run:  func() error { return qtx.DeleteWorkspaceAutopilotQuotaReservations(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete autopilot quota periods",
+			run:  func() error { return qtx.DeleteWorkspaceAutopilotQuotaPeriods(ctx, requester.WorkspaceID) },
+		},
+		{
 			name: "delete rooms",
 			run:  func() error { return qtx.DeleteWorkspaceRoomData(ctx, requester.WorkspaceID) },
 		},

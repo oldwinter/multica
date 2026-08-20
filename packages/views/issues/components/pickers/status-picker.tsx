@@ -1,16 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import type { IssueStatus, UpdateIssueRequest } from "@multica/core/types";
-import { ALL_STATUSES, STATUS_CONFIG } from "@multica/core/issues/config";
-import {
-  UI_EASE_OUT,
-  UI_MOTION_DURATION,
-} from "@multica/ui/lib/motion";
+import { STATUS_CONFIG } from "@multica/core/issues/config";
+import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { UI_EASE_OUT, UI_MOTION_DURATION } from "@multica/ui/lib/motion";
 import { StatusIcon } from "../status-icon";
 import { PropertyPicker, PickerItem } from "./property-picker";
 import { useT } from "../../../i18n";
+import { useStatusLabel } from "../../utils/status-label";
+import { useStatusOptions } from "../../utils/status-options";
+
+/** Above this many options the flat list stops being scannable. */
+const SEARCH_THRESHOLD = 9;
 
 const COMPLETION_PARTICLES = [
   { x: 0, y: -30 },
@@ -28,7 +32,7 @@ type CompletionBurstOrigin = {
   readonly y: number;
 };
 
-function showCompletionBurst(origin: CompletionBurstOrigin) {
+function showCompletionBurst(origin: CompletionBurstOrigin): void {
   const duration = UI_MOTION_DURATION.standard * 3 * 1000;
   const easing = `cubic-bezier(${UI_EASE_OUT.join(",")})`;
   const burst = document.createElement("span");
@@ -108,54 +112,98 @@ export function StatusPicker({
   const shouldReduceMotion = useReducedMotion() ?? false;
   const open = controlledOpen ?? internalOpen;
   const setOpen = controlledOnOpenChange ?? setInternalOpen;
+  const [query, setQuery] = useState("");
   const { t } = useT("issues");
+  // Every StatusPicker call site lives inside the workspace shell (issue
+  // detail, table, board batch toolbar, create-issue modal), so the provider
+  // is guaranteed here.
+  const wsId = useWorkspaceId();
+  const { categoryOf, colorOf } = useIssueStatuses(wsId);
+  const labelOf = useStatusLabel(wsId);
+
+  /**
+   * Offerable statuses as one flat list, in canonical category order.
+   *
+   * Archived statuses are excluded: archiving retires a status from future
+   * assignment while leaving the issues already on it untouched. Falls back to
+   * the 7 built-ins until the catalog lands, so a cold render offers exactly
+   * what it always did instead of an empty popover. (MUL-6243)
+   */
+  const allOptions = useStatusOptions(wsId);
+
+  const options = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allOptions;
+    return allOptions.filter((o) => o.label.toLowerCase().includes(q));
+  }, [allOptions, query]);
+
+  const searchable = allOptions.length > SEARCH_THRESHOLD;
 
   return (
     <span ref={triggerRef} className="relative inline-flex min-w-0 max-w-full">
       <PropertyPicker
         open={open}
-        onOpenChange={setOpen}
-        width="w-44"
+        onOpenChange={(v) => {
+          if (!v) setQuery("");
+          setOpen(v);
+        }}
+        width="w-52"
         align={align}
         triggerRender={triggerRender}
+        searchable={searchable}
+        searchPlaceholder={t(($) => $.filters.search_status)}
+        onSearchChange={setQuery}
         trigger={
           customTrigger ??
           (status != null ? (
             <>
-              <StatusIcon status={status} className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{t(($) => $.status[status])}</span>
+              <StatusIcon
+                status={status}
+                category={categoryOf(status)}
+                color={colorOf(status)}
+                className="h-3.5 w-3.5 shrink-0"
+              />
+              <span className="truncate">{labelOf(status)}</span>
             </>
           ) : null)
         }
       >
-        {ALL_STATUSES.map((s) => {
-          const c = STATUS_CONFIG[s];
-          return (
-            <PickerItem
-              key={s}
-              selected={s === status}
-              hoverClassName={c.hoverBg}
-              onClick={() => {
-                let completionOrigin: CompletionBurstOrigin | null = null;
-                if (s === "done" && status !== "done" && !shouldReduceMotion) {
-                  const bounds = triggerRef.current?.getBoundingClientRect();
-                  if (bounds) {
-                    completionOrigin = {
-                      x: bounds.left + bounds.width / 2,
-                      y: bounds.top + bounds.height / 2,
-                    };
-                  }
+        {options.map((option) => (
+          <PickerItem
+            key={option.key}
+            selected={option.key === status}
+            hoverClassName={STATUS_CONFIG[option.category].hoverBg}
+            onClick={() => {
+              let completionOrigin: CompletionBurstOrigin | null = null;
+              const currentCategory = status == null ? null : categoryOf(status);
+              if (
+                option.category === "done" &&
+                currentCategory !== "done" &&
+                !shouldReduceMotion
+              ) {
+                const bounds = triggerRef.current?.getBoundingClientRect();
+                if (bounds) {
+                  completionOrigin = {
+                    x: bounds.left + bounds.width / 2,
+                    y: bounds.top + bounds.height / 2,
+                  };
                 }
-                onUpdate({ status: s });
-                setOpen(false);
-                if (completionOrigin) showCompletionBurst(completionOrigin);
-              }}
-            >
-              <StatusIcon status={s} className="h-3.5 w-3.5" />
-              <span>{t(($) => $.status[s])}</span>
-            </PickerItem>
-          );
-        })}
+              }
+              onUpdate({ status: option.key });
+              setOpen(false);
+              setQuery("");
+              if (completionOrigin) showCompletionBurst(completionOrigin);
+            }}
+          >
+            <StatusIcon
+              status={option.key}
+              category={option.category}
+              color={option.color}
+              className="h-3.5 w-3.5"
+            />
+            <span className="truncate">{option.label}</span>
+          </PickerItem>
+        ))}
       </PropertyPicker>
     </span>
   );

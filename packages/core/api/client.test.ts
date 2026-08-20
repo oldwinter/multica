@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY } from "./client";
+import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY, clientErrorMessage } from "./client";
+import { EMPTY_PLUGIN_PREVIEW } from "./schemas";
 import type { Logger } from "../logger";
 
 afterEach(() => {
@@ -36,6 +37,75 @@ describe("ApiClient error logging", () => {
       expect.objectContaining({ error: "missing authorization" }),
     );
     expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("ApiClient edit guards", () => {
+  it("serializes field baselines for issue and comment writes", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    await client.updateIssue("issue-1", { title: "Latest", title_base: "Original" });
+    await client.updateComment("comment-1", "Latest", [], undefined, "Original");
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      title: "Latest",
+      title_base: "Original",
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      content: "Latest",
+      content_base: "Original",
+    });
+  });
+
+  it("accepts an older issue response without revision and rejects a malformed revision", async () => {
+    const legacyIssue = {
+      id: "issue-1",
+      workspace_id: "ws-1",
+      number: 1,
+      identifier: "MUL-1",
+      title: "Legacy issue",
+      description: null,
+      status: "todo",
+      priority: "none",
+      assignee_type: null,
+      assignee_id: null,
+      creator_type: "member",
+      creator_id: "user-1",
+      parent_issue_id: null,
+      project_id: null,
+      position: 0,
+      start_date: null,
+      due_date: null,
+      created_at: "2026-08-16T00:00:00Z",
+      updated_at: "2026-08-16T00:00:00Z",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ issues: [legacyIssue], total: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        issues: [{ ...legacyIssue, revision: "invalid" }],
+        total: 1,
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    const parsedLegacy = await client.listIssues();
+    expect(parsedLegacy).toMatchObject({ issues: [{ id: "issue-1" }], total: 1 });
+    expect(parsedLegacy.issues[0]).not.toHaveProperty("revision");
+    await expect(client.listIssues()).resolves.toEqual({ issues: [], total: 0 });
   });
 });
 
@@ -103,24 +173,22 @@ describe("ApiClient pull-request response schema", () => {
   });
 });
 
-describe("ApiClient Remote MCP OAuth response schema", () => {
-  it("degrades a malformed start response without inventing a navigation URL", async () => {
+describe("ApiClient Plugin preview response schema", () => {
+  it("degrades a malformed preview so a blank scope list is never shown as approval", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ authorization_url: 42 }), {
+        new Response(JSON.stringify({ scopes: "issues:read" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
       ),
     );
 
-    await expect(new ApiClient("https://api.example.test").startPluginRemoteMCPOAuth(
+    await expect(new ApiClient("https://api.example.test").previewPlugin(
       "workspace-1",
-      "installation-1",
-      "search",
-      { public_config: {}, failure_policy: "required" },
-    )).resolves.toEqual({ authorization_url: "" });
+      { source_url: "https://example.test/multica.plugin.json" },
+    )).resolves.toEqual(EMPTY_PLUGIN_PREVIEW);
   });
 });
 
@@ -858,6 +926,7 @@ describe("ApiClient", () => {
     await client.updateAutopilot("ap-1", { status: "paused", project_id: null });
     await client.deleteAutopilot("ap-1");
     await client.triggerAutopilot("ap-1");
+    await client.getAutopilotQuotaUsage();
     await client.listAutopilotRuns("ap-1", { limit: 10, offset: 20 });
     await client.createAutopilotTrigger("ap-1", {
       kind: "schedule",
@@ -872,6 +941,7 @@ describe("ApiClient", () => {
       url,
       method: init?.method ?? "GET",
       body: init?.body,
+      idempotencyKey: (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"],
     }));
 
     expect(calls).toMatchObject([
@@ -893,7 +963,12 @@ describe("ApiClient", () => {
         body: JSON.stringify({ status: "paused", project_id: null }),
       },
       { url: "https://api.example.test/api/autopilots/ap-1", method: "DELETE" },
-      { url: "https://api.example.test/api/autopilots/ap-1/trigger", method: "POST" },
+      {
+        url: "https://api.example.test/api/autopilots/ap-1/trigger",
+        method: "POST",
+        idempotencyKey: expect.any(String),
+      },
+      { url: "https://api.example.test/api/autopilots/usage", method: "GET" },
       { url: "https://api.example.test/api/autopilots/ap-1/runs?limit=10&offset=20", method: "GET" },
       {
         url: "https://api.example.test/api/autopilots/ap-1/triggers",
@@ -1978,127 +2053,6 @@ describe("ApiClient unsubscribe endpoints", () => {
   });
 });
 
-describe("ApiClient LM Wiki and Twin lifecycle contracts", () => {
-  const revision = {
-    id: "revision-1",
-    revision_number: 1,
-    schema_version: 1,
-    source_digest: "sha256:wiki",
-    content: { schema_version: 1 },
-    trigger_kind: "manual",
-    requested_by_id: null,
-    created_at: "2026-08-11T00:00:00Z",
-    review: null,
-  };
-  const proposal = {
-    id: "proposal-1",
-    kind: "initial",
-    source_wiki_revision_id: "revision-1",
-    base_twin_version_id: null,
-    schema_version: 1,
-    content: { schema_version: 1 },
-    content_digest: "sha256:twin",
-    requested_by_id: null,
-    created_at: "2026-08-11T00:00:00Z",
-    review: null,
-    signed_version: null,
-  };
-  const version = {
-    id: "version-1",
-    version_number: 1,
-    proposal_id: "proposal-1",
-    source_wiki_revision_id: "revision-1",
-    prior_version_id: null,
-    schema_version: 1,
-    content: { schema_version: 1 },
-    content_digest: "sha256:twin",
-    signed_off_by_id: "member-1",
-    signed_off_at: "2026-08-11T00:00:00Z",
-    created_at: "2026-08-11T00:00:00Z",
-  };
-
-  function json(body: unknown) {
-    return new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  it("uses parsed endpoints for Wiki and Twin read/write contracts", async () => {
-    const detail = { revision, citations: [] };
-    const twinDetail = { proposal, source_revision: revision, citations: [] };
-    const versionDetail = { version, proposal, source_revision: revision, citations: [] };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(json({ latest_revision: revision }))
-      .mockResolvedValueOnce(json(detail))
-      .mockResolvedValueOnce(json({ created: true, revision }))
-      .mockResolvedValueOnce(json(detail))
-      .mockResolvedValueOnce(json(detail))
-      .mockResolvedValueOnce(json({ current_version: version }))
-      .mockResolvedValueOnce(json(twinDetail))
-      .mockResolvedValueOnce(json(versionDetail))
-      .mockResolvedValueOnce(json({ created: true, proposal }))
-      .mockResolvedValueOnce(json({ created: true, version }))
-      .mockResolvedValueOnce(json(twinDetail));
-    vi.stubGlobal("fetch", fetchMock);
-    const client = new ApiClient("https://api.example.test");
-
-    await expect(client.getLMWiki()).resolves.toMatchObject({ can_manage: false, revisions: [] });
-    await expect(client.getLMWikiRevision("revision-1")).resolves.toEqual(detail);
-    await expect(client.refreshLMWiki()).resolves.toMatchObject({ created: true });
-    await expect(client.acceptLMWikiRevision("revision-1")).resolves.toEqual(detail);
-    await expect(client.rejectLMWikiRevision("revision-1", "not ready")).resolves.toEqual(detail);
-    await expect(client.getTwins()).resolves.toMatchObject({ can_manage: false, proposals: [], versions: [] });
-    await expect(client.getTwinProposal("proposal-1")).resolves.toEqual(twinDetail);
-    await expect(client.getTwinVersion("version-1")).resolves.toEqual(versionDetail);
-    await expect(client.ensureTwinProposal("revision-1")).resolves.toMatchObject({ created: true });
-    await expect(client.acceptTwinProposal("proposal-1")).resolves.toMatchObject({ created: true });
-    await expect(client.rejectTwinProposal("proposal-1", "not ready")).resolves.toEqual(twinDetail);
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "https://api.example.test/api/lm-wiki/",
-      "https://api.example.test/api/lm-wiki/revisions/revision-1",
-      "https://api.example.test/api/lm-wiki/refresh",
-      "https://api.example.test/api/lm-wiki/revisions/revision-1/accept",
-      "https://api.example.test/api/lm-wiki/revisions/revision-1/reject",
-      "https://api.example.test/api/twins/",
-      "https://api.example.test/api/twins/proposals/proposal-1",
-      "https://api.example.test/api/twins/versions/version-1",
-      "https://api.example.test/api/twins/proposals",
-      "https://api.example.test/api/twins/proposals/proposal-1/accept",
-      "https://api.example.test/api/twins/proposals/proposal-1/reject",
-    ]);
-    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
-      method: "POST",
-      body: JSON.stringify({ reason: "not ready" }),
-    });
-    expect(fetchMock.mock.calls[8]?.[1]).toMatchObject({
-      method: "POST",
-      body: JSON.stringify({ wiki_revision_id: "revision-1" }),
-    });
-    expect(fetchMock.mock.calls[10]?.[1]).toMatchObject({
-      method: "POST",
-      body: JSON.stringify({ reason: "not ready" }),
-    });
-  });
-
-  it("keeps overview fallbacks but rejects malformed lifecycle details", async () => {
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(json({ latest_revision: { id: "" } }))
-      .mockResolvedValueOnce(json({ version: { id: "" } })));
-    const client = new ApiClient("https://api.example.test");
-
-    await expect(client.getLMWiki()).resolves.toEqual({
-      latest_revision: null,
-      accepted_revision: null,
-      pending_revision: null,
-      revisions: [],
-      can_manage: false,
-    });
-    await expect(client.getTwinVersion("version-1")).rejects.toThrow();
-  });
-});
-
 describe("ApiClient startMikaOnboarding", () => {
   it("returns the opening a well-formed response reports", async () => {
     vi.stubGlobal(
@@ -2370,5 +2324,30 @@ describe("ApiClient workspace MCP servers", () => {
     [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/api/agents/agent-1/mcp-servers/srv-1");
     expect(init.method).toBe("DELETE");
+  });
+});
+
+describe("clientErrorMessage", () => {
+  it("returns a 4xx message, which handlers write for the user", () => {
+    expect(clientErrorMessage(new ApiError("autopilot is not active", 400, "Bad Request")))
+      .toBe("autopilot is not active");
+    expect(clientErrorMessage(new ApiError("forbidden", 403, "Forbidden"))).toBe("forbidden");
+  });
+
+  it("withholds a 5xx message, which carries internal server detail", () => {
+    // MUL-6472: the pre-fix body for a failed autopilot trigger looked like
+    // this, and it was rendered verbatim in the run-now toast.
+    const leaky = new ApiError(
+      'failed to trigger autopilot: create run: ERROR: duplicate key value violates unique constraint "autopilot_run_pkey" (SQLSTATE 23505)',
+      500,
+      "Internal Server Error",
+    );
+    expect(clientErrorMessage(leaky)).toBeUndefined();
+    expect(clientErrorMessage(new ApiError("internal error", 503, "Service Unavailable"))).toBeUndefined();
+  });
+
+  it("withholds a transport failure, whose message says nothing actionable", () => {
+    expect(clientErrorMessage(new TypeError("Failed to fetch"))).toBeUndefined();
+    expect(clientErrorMessage(undefined)).toBeUndefined();
   });
 });

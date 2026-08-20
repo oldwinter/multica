@@ -14,6 +14,16 @@ import (
 
 const maxLegacyMigrationPrefix = 148
 
+// legacyDuplicateMigrationStems lists prefixes that were already duplicated
+// before this lint existed. It is a frozen historical record, not an escape
+// hatch: a new collision must be renumbered instead of added here. Prefix 362
+// was briefly listed and is deliberately absent again — the later of the two
+// migrations was renumbered to 376, which its idempotent DDL made safe.
+//
+// Prefixes 251–309 record the 2026-08-20 merge of two already-published
+// histories: upstream migrations and the downstream Twin, Wiki, and Rooms
+// migrations. Renaming either side would change its schema_migrations identity
+// and re-run DDL on existing installations, so their exact stems stay frozen.
 var legacyDuplicateMigrationStems = map[string][]string{
 	"020": {"020_issue_number", "020_task_session"},
 	"026": {"026_comment_reactions", "026_task_messages"},
@@ -45,6 +55,63 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"124": {"124_autopilot_run_planned_at", "124_channel_generalization", "124_task_prepare_lease"},
 	"127": {"127_issue_pull_request_reference_only", "127_task_squad_id", "127_user_composio_connection"},
 	"128": {"128_agent_task_queue_runtime_mcp_overlay", "128_autopilot_collaborator", "128_comment_routing_escalation"},
+	"251": {"251_agent_runtime_unbind", "251_twin_profile"},
+	"252": {"252_agent_builder_draft", "252_twin_profile_workspace_index"},
+	"253": {"253_runtime_profile_add_qwenpaw", "253_twin_profile_id_index"},
+	"254": {"254_runtime_profile_add_reasonix", "254_twin_profile_primary_key"},
+	"255": {"255_agent_task_queue_chat_pending_deferred_v3", "255_wiki_page"},
+	"256": {"256_drop_agent_task_queue_chat_pending_v2", "256_wiki_page_id_index"},
+	"257": {"257_agent_task_queue_channel_media_pending_unique_v2", "257_wiki_page_workspace_list_index"},
+	"258": {"258_drop_pending_issue_agent_v1", "258_wiki_page_workspace_path_unique"},
+	"259": {"259_issue_origin_dingtalk_chat", "259_wiki_page_project_path_unique"},
+	"260": {"260_issue_origin_dingtalk_chat_validate", "260_wiki_page_user_path_unique"},
+	"261": {"261_agent_task_queue_terminal_completed_at_v2", "261_wiki_page_primary_key"},
+	"262": {"262_drop_agent_task_queue_terminal_completed_at_v1", "262_wiki_page_personal_global"},
+	"263": {"263_issue_origin_wecom_chat", "263_wiki_page_user_path_unique_drop"},
+	"264": {"264_issue_origin_wecom_chat_validate", "264_wiki_page_user_path_global_unique"},
+	"265": {"265_issue_view", "265_lm_wiki_tables"},
+	"266": {"266_issue_view_owner_index", "266_lm_wiki_revision_id_index"},
+	"267": {"267_issue_view_shared_index", "267_lm_wiki_citation_id_index"},
+	"268": {"268_issue_view_preference", "268_lm_wiki_review_id_index"},
+	"269": {"269_issue_view_workspace_variant", "269_lm_wiki_primary_keys"},
+	"270": {"270_lm_wiki_revision_number_index", "270_pinned_item_view"},
+	"271": {"271_channel_chat_pending_fresh", "271_lm_wiki_revision_created_index"},
+	"272": {"272_lm_wiki_citation_source_index", "272_rollup_task_usage_hourly_xact_lock"},
+	"273": {"273_agent_task_queue_runtime_id_index", "273_lm_wiki_citation_ordinal_index"},
+	"274": {"274_lm_wiki_review_revision_index", "274_task_token_workspace_id_index"},
+	"275": {"275_task_token_agent_id_index", "275_twin_tables"},
+	"276": {"276_chat_draft_restore_task_id_index", "276_twin_proposal_id_index"},
+	"277": {"277_autopilot_run_task_id_index", "277_twin_proposal_review_id_index"},
+	"278": {"278_agent_task_queue_agent_id_keyset_index", "278_twin_version_id_index"},
+	"279": {"279_agent_task_queue_issue_id_keyset_index", "279_twin_primary_keys"},
+	"281": {"281_agent_workspace_id_keyset_index", "281_twin_proposal_created_index"},
+	"282": {"282_issue_workspace_id_keyset_index", "282_twin_proposal_review_index"},
+	"283": {"283_agent_runtime_workspace_id_keyset_index", "283_twin_version_number_index"},
+	"284": {"284_task_owner_row_fence", "284_twin_version_proposal_index"},
+	"285": {"285_plugin_lifecycle_v1", "285_room_tables"},
+	"286": {"286_plugin_identity_key_index", "286_room_id_index"},
+	"287": {"287_plugin_release_version_index", "287_room_participant_id_index"},
+	"288": {"288_plugin_installation_workspace_plugin_index", "288_room_entry_id_index"},
+	"289": {"289_plugin_contribution_key_index", "289_room_cycle_id_index"},
+	"290": {"290_plugin_contribution_ordinal_index", "290_room_turn_id_index"},
+	"291": {"291_plugin_grant_revision_index", "291_room_artifact_id_index"},
+	"292": {"292_plugin_binding_revision_index", "292_room_primary_keys"},
+	"293": {"293_plugin_installation_workspace_index", "293_room_workspace_index"},
+	"294": {"294_plugin_snapshot_execution_v1", "294_room_participant_identity_index"},
+	"295": {"295_plugin_artifact_file_index", "295_room_entry_ordinal_index"},
+	"296": {"296_plugin_snapshot_revision_index", "296_room_cycle_sequence_index"},
+	"297": {"297_plugin_execution_task_index", "297_room_cycle_wake_index"},
+	"298": {"298_plugin_health_index", "298_room_active_cycle_index"},
+	"299": {"299_agent_task_plugin_manifest_index", "299_room_turn_participant_index"},
+	"300": {"300_drop_redundant_issue_workspace_number_index", "300_room_artifact_kind_index"},
+	"301": {"301_drop_redundant_sys_cron_job_plan_index", "301_room_due_index"},
+	"302": {"302_agent_task_room_turn_index", "302_drop_redundant_channel_chat_session_binding_index"},
+	"303": {"303_drop_redundant_lark_chat_session_binding_index", "303_room_artifact_room_index"},
+	"304": {"304_dingtalk_group_route", "304_room_turn_room_index"},
+	"305": {"305_dingtalk_group_route_installation_conversation_unique", "305_room_participant_room_index"},
+	"307": {"307_agent_task_room_turn_lookup_index", "307_dingtalk_group_route_id_unique"},
+	"308": {"308_agent_task_branch_name", "308_room_entry_turn_result_index"},
+	"309": {"309_agent_runtime_id_index", "309_room_invocation_refusal_reason"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)

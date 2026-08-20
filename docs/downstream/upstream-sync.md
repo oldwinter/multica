@@ -7,7 +7,28 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
-## What This Sync Looked Like
+## 2026-08-20 Sync
+
+- Merge base: `38c992ad` (`v0.4.28`, 2026-08-17).
+- Upstream ahead: 111 commits through `f737974b7` (`v0.4.31`).
+- Local unique commits: 14.
+- Conflict files: 25.
+
+The same ownership rules held. Custom issue status support stayed upstream-owned,
+with local completion effects and skin tokens reattached at the picker boundary.
+Plugin v2 stayed upstream-owned, while the workspace deletion manifest retained
+the local Twin, Wiki, and Rooms tables. Runtime-scoped task claiming and health
+gates stayed upstream-owned, with room-task admission added as one extra scope.
+
+This sync also joined two published migration histories that both used numeric
+prefixes 251-309. The migration ledger stores the complete filename stem, so
+renumbering either history would make existing installations replay DDL. The
+merged checkout therefore freezes the exact duplicate stem sets and registers
+every local concurrent index with the migrator's invalid-index cleanup hooks.
+New migrations must still use the next unique prefix after the repository
+maximum.
+
+## 2026-08-17 Sync
 
 - Merge base: `37f3bb7d` (`MUL-5587`, 2026-07-31 era).
 - Upstream ahead: 347 commits through `38c992ad` (`v0.4.28`, 2026-08-17).

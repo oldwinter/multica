@@ -19,6 +19,7 @@ const ALL_RELEASES_URL =
   "https://github.com/multica-ai/multica/releases";
 
 export function DownloadClient({ release }: { release: LatestRelease }) {
+  const { t } = useLocale();
   const [detected, setDetected] = useState<DetectResult | null>(null);
   const versionUnavailable = release.version === null;
 
@@ -37,6 +38,12 @@ export function DownloadClient({ release }: { release: LatestRelease }) {
 
   return (
     <>
+      <a
+        href="#main-content"
+        className="sr-only z-[100] rounded-md bg-background px-4 py-2 text-body font-medium text-foreground focus:fixed focus:top-4 focus:left-4 focus:not-sr-only focus:ring-2 focus:ring-ring focus:outline-none"
+      >
+        {t.header.skipToContent}
+      </a>
       {/* Positioning context for the dark-variant LandingHeader —
           mirrors multica-landing.tsx. The header is `absolute top-0
           inset-x-0`, so it anchors to this `relative` wrapper and
@@ -45,24 +52,25 @@ export function DownloadClient({ release }: { release: LatestRelease }) {
           block and read as fixed. */}
       <div className="relative">
         <LandingHeader variant="dark" />
-        <DownloadHero
-          detected={detected}
-          assets={release.assets}
-          versionUnavailable={versionUnavailable}
-        />
+        <main id="main-content" tabIndex={-1} className="outline-none">
+          <DownloadHero
+            detected={detected}
+            assets={release.assets}
+            versionUnavailable={versionUnavailable}
+          />
+          <AllPlatforms
+            assets={release.assets}
+            fallbackHref={ALL_RELEASES_URL}
+          />
+          <CliSection />
+          <CloudSection />
+          <VersionInfoFooter
+            version={release.version}
+            releaseHtmlUrl={releaseHtmlUrl}
+          />
+        </main>
+        <LandingFooter />
       </div>
-
-      <AllPlatforms
-        assets={release.assets}
-        fallbackHref={ALL_RELEASES_URL}
-      />
-      <CliSection />
-      <CloudSection />
-      <VersionInfoFooter
-        version={release.version}
-        releaseHtmlUrl={releaseHtmlUrl}
-      />
-      <LandingFooter />
     </>
   );
 }

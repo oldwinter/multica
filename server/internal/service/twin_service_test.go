@@ -62,7 +62,7 @@ func TestTwinInitialProposalAcceptanceAndEvolution(t *testing.T) {
 	if err := json.Unmarshal(evolution.Proposal.Content, &content); err != nil {
 		t.Fatalf("decode evolution content: %v", err)
 	}
-	if content.SourceWikiRevisionID != uuidString(secondWiki.ID) || len(content.Assertions) != 1 || len(content.Diff.Added) != 1 || len(content.Diff.Removed) != 1 {
+	if content.SourceWikiRevisionID != twinUUIDString(secondWiki.ID) || len(content.Assertions) != 1 || len(content.Diff.Added) != 1 || len(content.Diff.Removed) != 1 {
 		t.Fatalf("evolution content = %#v", content)
 	}
 	if _, err := fixture.service.EnsureProposal(fixture.ctx, fixture.workspaceID, firstWiki.ID, fixture.actorID); !errors.Is(err, ErrTwinWikiStale) {
@@ -160,7 +160,7 @@ func (f twinServiceFixture) acceptedWiki(t *testing.T, title string) db.LmWikiRe
 
 func (f twinServiceFixture) wikiRevision(t *testing.T, title string) db.LmWikiRevision {
 	t.Helper()
-	snapshot, err := BuildLMWikiSnapshot(LMWikiSourceSnapshot{Issues: []LMWikiIssue{{ID: uuidString(f.workspaceID), Number: 1, Title: title, Status: "todo"}}})
+	snapshot, err := BuildLMWikiSnapshot(LMWikiSourceSnapshot{Issues: []LMWikiIssue{{ID: twinUUIDString(f.workspaceID), Number: 1, Title: title, Status: "todo"}}})
 	if err != nil {
 		t.Fatalf("build Twin source Wiki: %v", err)
 	}
@@ -178,6 +178,6 @@ func (f twinServiceFixture) wikiRevision(t *testing.T, title string) db.LmWikiRe
 	return revision
 }
 
-func uuidString(value pgtype.UUID) string {
+func twinUUIDString(value pgtype.UUID) string {
 	return value.String()
 }
