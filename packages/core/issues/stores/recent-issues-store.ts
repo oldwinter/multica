@@ -17,6 +17,7 @@ interface RecentIssuesState {
   byWorkspace: Record<string, RecentIssueEntry[]>;
   recordVisit: (wsId: string, id: string) => void;
   forgetIssue: (wsId: string, id: string) => void;
+  clearWorkspace: (wsId: string) => void;
   pruneWorkspaces: (activeWsIds: string[]) => void;
 }
 
@@ -76,6 +77,12 @@ export const useRecentIssuesStore = create<RecentIssuesState>()(
           return {
             byWorkspace: { ...state.byWorkspace, [wsId]: nextBucket },
           };
+        }),
+      clearWorkspace: (wsId) =>
+        set((state) => {
+          if (!state.byWorkspace[wsId]) return state;
+          const { [wsId]: _, ...rest } = state.byWorkspace;
+          return { byWorkspace: rest };
         }),
       pruneWorkspaces: (activeWsIds) =>
         set((state) => {

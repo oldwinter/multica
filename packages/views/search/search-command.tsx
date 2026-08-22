@@ -10,6 +10,7 @@ import {
   FileText,
   GitBranch,
   Link2,
+  ListX,
   Loader2,
   MessageSquare,
   Plus,
@@ -59,8 +60,10 @@ import { routeIconForPath } from "../layout/route-icon-components";
 import { PROJECT_STATUS_CONFIG } from "@multica/core/projects/config";
 import type { ProjectStatus } from "@multica/core/types";
 import { ActorAvatar } from "../common/actor-avatar";
+import { DeferredTooltip } from "../common/deferred-tooltip";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
+import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -357,6 +360,7 @@ export function SearchCommand() {
   }, []);
   const wsId = useWorkspaceId();
   const recentItems = useRecentIssuesStore(selectRecentIssues(wsId));
+  const clearRecentIssues = useRecentIssuesStore((state) => state.clearWorkspace);
   const p: WorkspacePaths = useWorkspacePaths();
   const {
     preferences: { requestedAppearance: theme },
@@ -1050,6 +1054,29 @@ export function SearchCommand() {
                 }
                 className={`${GROUP_CLASS} [&_[cmdk-group-heading]]:flex [&_[cmdk-group-heading]]:items-center [&_[cmdk-group-heading]]:gap-2`}
               >
+                <div className="flex min-h-11 items-center gap-2 px-3 text-caption font-medium text-muted-foreground sm:min-h-7">
+                  <Clock className="size-3" aria-hidden="true" />
+                  <span>{t(($) => $.groups.recent)}</span>
+                  <DeferredTooltip
+                    content={t(($) => $.actions.clear_recent)}
+                    side="left"
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="ml-auto size-11 text-muted-foreground hover:text-foreground sm:size-7"
+                        aria-label={t(($) => $.actions.clear_recent)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          clearRecentIssues(wsId);
+                        }}
+                      >
+                        <ListX aria-hidden="true" />
+                      </Button>
+                    }
+                  />
+                </div>
                 {recentIssues.map((item) => (
                   <CommandPrimitive.Item
                     key={item.id}

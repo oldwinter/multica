@@ -26,6 +26,9 @@
     "switch_to_dark": "切换到深色主题",
     "use_system_theme": "跟随系统主题"
   },
+  "actions": {
+    "clear_recent": "清空最近 issue 记录"
+  },
   "toast": {
     "link_copied": "已复制链接",
     "link_copy_failed": "复制链接失败",
