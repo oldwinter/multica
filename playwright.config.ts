@@ -9,6 +9,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? process.env.FRONTEND_ORIGIN ?? "http://localhost:3000",
     headless: true,
+    video: process.env.PLAYWRIGHT_RECORD_VIDEO === "1" ? "on" : "off",
   },
   projects: [
     {
