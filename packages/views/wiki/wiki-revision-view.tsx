@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import ReactMarkdown from "react-markdown";
 import { ArrowLeft, Check, Copy, FileLock2 } from "lucide-react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths, useWorkspacePaths } from "@multica/core/paths";
@@ -15,6 +14,7 @@ import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
+import { RichContent } from "../rich-content";
 
 interface ImmutableWikiRevisionProps {
   revision?: WikiRevision;
@@ -136,9 +136,10 @@ export function ImmutableWikiRevision({
             {copyError ? (
               <p className="mt-3 break-words text-caption text-destructive" role="alert">{t(($) => $.revision.copy_error)}</p>
             ) : null}
-            <article className="prose prose-sm dark:prose-invert mt-6 max-w-none break-words">
-              <ReactMarkdown>{revision.content || t(($) => $.history.empty_content)}</ReactMarkdown>
-            </article>
+            <RichContent
+              content={revision.content || t(($) => $.history.empty_content)}
+              className="prose prose-sm dark:prose-invert mt-6 max-w-none break-words"
+            />
           </div>
         )}
       </div>

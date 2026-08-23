@@ -181,7 +181,11 @@ export function createBrowserAppearanceAdapter(
     supportsRemoteSync: source !== "docs",
     load() {
       const win = currentWindow();
-      return win ? readBootstrapValue(win) : null;
+      return win
+        ? source === "docs"
+          ? safeRead(win)
+          : readBootstrapValue(win)
+        : null;
     },
     loadForAccount(accountId) {
       const win = currentWindow();

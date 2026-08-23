@@ -51,15 +51,19 @@ describe("WikiProposalsPanel", () => {
   it("lets a reviewer edit, preview, and accept a proposal", () => {
     const { onAccept } = renderPanel();
     fireEvent.change(screen.getByDisplayValue("Agent guide"), { target: { value: "Reviewed guide" } });
-    fireEvent.change(screen.getByDisplayValue("# Proposed content"), { target: { value: "# Reviewed content" } });
+    fireEvent.change(screen.getByDisplayValue("# Proposed content"), { target: { value: "# Reviewed content\n\n[Open issue](/issues/MUL-1)" } });
     fireEvent.click(screen.getByText("Preview"));
     expect(screen.getByText("Reviewed content")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open issue" })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/\/issues\/MUL-1$/),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Accept proposal" }));
     expect(onAccept).toHaveBeenCalledWith({
       proposalId: "proposal-1",
       path: "guide.md",
       title: "Reviewed guide",
-      content: "# Reviewed content",
+      content: "# Reviewed content\n\n[Open issue](/issues/MUL-1)",
     });
   });
 

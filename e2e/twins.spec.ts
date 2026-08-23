@@ -43,6 +43,13 @@ function collectSignals(page: Page): BrowserSignals {
   page.on("requestfailed", (request) => {
     const failure = request.failure()?.errorText ?? "unknown failure";
     if (request.url().includes("/api/client-usage") && failure.includes("ERR_ABORTED")) return;
+    // Navigating from the live Workspace Wiki to an issue or immutable
+    // revision cancels its in-flight list refresh. This is a browser-owned
+    // cancellation, not a backend response failure.
+    if (request.method() === "GET" && failure.includes("ERR_ABORTED")) {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === "/api/wiki/pages" || pathname.startsWith("/api/wiki/pages/")) return;
+    }
     signals.requestFailures.push(`${request.method()} ${request.url()} ${failure}`);
   });
   return signals;
@@ -251,6 +258,9 @@ test("reviews Workspace Wiki evidence, signs evolved Twins, and preserves member
     const proposalReview = page.getByRole("region", { name: "Review proposed edit" });
     await expect(proposalReview).toBeVisible();
     await page.getByRole("textbox", { name: "Content" }).fill(reviewedContent);
+    await proposalReview.getByText("Preview", { exact: true }).click();
+    await expect(proposalReview.getByRole("link", { name: "Open the source issue" }))
+      .toHaveAttribute("href", `/${workspace.slug}/issues/${sourceIssue.identifier}`);
     await page.getByRole("button", { name: "Accept proposal" }).click();
     await expect(page.getByText("Revision 3", { exact: true })).toBeVisible();
     await expect(proposalReview.getByText("accepted", { exact: true })).toBeVisible();
@@ -261,7 +271,10 @@ test("reviews Workspace Wiki evidence, signs evolved Twins, and preserves member
     await page.keyboard.press("Escape");
     await page.getByRole("tab", { name: "Document" }).click();
     const sourceIssueLink = page.getByRole("link", { name: "Open the source issue" });
-    await expect(sourceIssueLink).toHaveAttribute("href", `/issues/${sourceIssue.identifier}`);
+    await expect(sourceIssueLink).toHaveAttribute(
+      "href",
+      `/${workspace.slug}/issues/${sourceIssue.identifier}`,
+    );
     await sourceIssueLink.click();
     await expect(page).toHaveURL(new RegExp(`/${workspace.slug}/issues/`));
     await page.goBack({ waitUntil: "domcontentloaded" });
@@ -610,6 +623,10 @@ test("reviews Workspace Wiki evidence, signs evolved Twins, and preserves member
     await expect(page.getByText(
       "Verify rollback ownership, notify support, and record the decision.",
     )).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open the source issue" })).toHaveAttribute(
+      "href",
+      `/${workspace.slug}/issues/${sourceIssue.identifier}`,
+    );
     await expect(page.getByText(`wiki_page_revision:${acceptedWikiRevision.id}`)).toBeVisible();
     responsive.push(
       await capture(

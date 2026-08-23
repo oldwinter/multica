@@ -35,6 +35,9 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 vi.mock("../navigation", () => ({
   useNavigation: () => ({ push: harness.push, back: harness.back }),
+  useOptionalNavigation: () => null,
+  useAppOrigin: () => null,
+  resolveClickIntent: () => "push",
 }));
 
 vi.mock("@multica/core/wiki", async (importOriginal) => {
@@ -58,7 +61,7 @@ const page = {
   ownerUserId: "user-1",
   path: "private/notes.md",
   title: "Private notes",
-  content: "# Private",
+  content: "# Private\n\n[Open workspace issue](/acme/issues/MUL-1)",
   createdBy: "user-1",
   currentRevisionNumber: 2,
   currentRevisionId: "revision-2",
@@ -99,6 +102,10 @@ describe("PersonalWikiPageView", () => {
 
     expect(screen.getByRole("heading", { name: "Personal Wiki" })).toBeInTheDocument();
     expect(screen.queryByText("Proposals")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open workspace issue" })).toHaveAttribute(
+      "href",
+      "/acme/issues/MUL-1",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Stable revision" }));
     expect(harness.push).toHaveBeenCalledWith("/personal-wiki/revisions/revision-2");
     fireEvent.click(screen.getByTitle("Back"));

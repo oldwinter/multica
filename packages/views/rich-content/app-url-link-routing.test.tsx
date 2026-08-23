@@ -100,6 +100,12 @@ describe("RichContent link routing", () => {
     ].join(" "));
 
     for (const label of ["Issue", "Project", "Room", "Wiki"]) {
+      expect(screen.getByText(label).closest("a")?.getAttribute("href")).toMatch(
+        /^\/test\/(issues|projects|rooms|wiki)/,
+      );
+    }
+
+    for (const label of ["Issue", "Project", "Room", "Wiki"]) {
       screen.getByText(label).click();
     }
 

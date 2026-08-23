@@ -62,6 +62,7 @@ import {
   openLink,
   isMentionHref,
   parseWorkspaceEntityLink,
+  resolveInternalLinkPath,
   type WorkspaceEntityRef,
 } from "../editor/utils/link-handler";
 import { preprocessMarkdown } from "../editor/utils/preprocess";
@@ -211,6 +212,9 @@ function RichLink({ href, children }: { href?: string; children?: ReactNode }) {
   // (web), modified clicks are left to the browser — the only way to get a
   // real background tab.
   const desktopTabs = !!useOptionalNavigation()?.openInNewTab;
+  const anchorHref = href
+    ? resolveInternalLinkPath(href, slug, appOrigin) ?? href
+    : href;
 
   if (href?.startsWith("slash://skill/")) {
     return <span className="slash-command">{children}</span>;
@@ -244,7 +248,7 @@ function RichLink({ href, children }: { href?: string; children?: ReactNode }) {
   // URL cannot be resolved.
   const plainLink = (
     <a
-      href={href}
+      href={anchorHref}
       onClick={(e) => {
         if (!href) {
           e.preventDefault();

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   openLink,
   parseWorkspaceEntityLink,
+  resolveInternalLinkPath,
   toInternalAppPath,
 } from "./link-handler";
 
@@ -131,6 +132,27 @@ describe("openLink", () => {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+});
+
+describe("resolveInternalLinkPath", () => {
+  it("canonicalizes slugless links for browser-owned tab gestures", () => {
+    expect(resolveInternalLinkPath("/issues/MUL-1", "acme", APP_ORIGIN)).toBe(
+      "/acme/issues/MUL-1",
+    );
+    expect(
+      resolveInternalLinkPath(
+        `${APP_ORIGIN}/other/wiki/revisions/revision-1`,
+        "acme",
+        APP_ORIGIN,
+      ),
+    ).toBe("/other/wiki/revisions/revision-1");
+  });
+
+  it("rejects protocol-relative links as internal paths", () => {
+    expect(
+      resolveInternalLinkPath("//evil.example/issues/MUL-1", "acme", APP_ORIGIN),
+    ).toBeNull();
   });
 });
 

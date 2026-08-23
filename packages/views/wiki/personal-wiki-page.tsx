@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import ReactMarkdown from "react-markdown";
 import {
   ArrowLeft,
   BookLock,
@@ -39,6 +38,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
+import { RichContent } from "../rich-content";
 import { wikiConflict } from "./wiki-conflict";
 import { WikiHistoryDialog } from "./wiki-history-dialog";
 import { WikiEditor, WikiPageList } from "./wiki-page-primitives";
@@ -349,9 +349,10 @@ export function PersonalWikiPageView({
                     </Button>
                   </div>
                 </div>
-                <article className="prose prose-sm dark:prose-invert max-w-none break-words">
-                  <ReactMarkdown>{selected.content || t(($) => $.history.empty_content)}</ReactMarkdown>
-                </article>
+                <RichContent
+                  content={selected.content || t(($) => $.history.empty_content)}
+                  className="prose prose-sm dark:prose-invert max-w-none break-words"
+                />
               </div>
             )}
           </section>

@@ -239,6 +239,32 @@ export function parseWorkspaceEntityLink(
 }
 
 /**
+ * Resolve an app link to the canonical path a browser anchor should expose.
+ *
+ * Unlike `openLink`, this does not perform navigation. Readonly renderers use
+ * it for their real `href`, so browser-owned modified and middle clicks reach
+ * the same workspace-scoped destination as an intercepted plain click.
+ */
+export function resolveInternalLinkPath(
+  href: string,
+  currentSlug?: string | null,
+  appOrigin?: string | null,
+): string | null {
+  const internalPath = href.startsWith("/")
+    ? toSameOriginPath(href, appOrigin)
+    : toInternalAppPath(href, appOrigin);
+  if (!internalPath) return null;
+
+  if (currentSlug && !isGlobalPath(internalPath)) {
+    const firstSegment = internalPath.split(/[/?#]/)[1];
+    if (firstSegment && WORKSPACE_ROUTE_SEGMENTS.has(firstSegment)) {
+      return `/${currentSlug}${internalPath}`;
+    }
+  }
+  return internalPath;
+}
+
+/**
  * Open a link — internal paths dispatch multica:navigate, external open new tab.
  *
  * If `currentSlug` is provided and `href` is a workspace-scoped path lacking a
@@ -260,24 +286,11 @@ export function openLink(
   appOrigin?: string | null,
   intent: LinkClickIntent = "push",
 ): void {
-  const internalPath = href.startsWith("/")
-    ? href
-    : toInternalAppPath(href, appOrigin);
+  const internalPath = resolveInternalLinkPath(href, currentSlug, appOrigin);
   if (internalPath) {
-    let path = internalPath;
-    if (currentSlug && !isGlobalPath(path)) {
-      const firstSegment = path.split(/[/?#]/)[1];
-      if (firstSegment && WORKSPACE_ROUTE_SEGMENTS.has(firstSegment)) {
-        // Path looks like /issues/abc (no slug) — prepend current slug.
-        path = `/${currentSlug}${path}`;
-      }
-      // Otherwise the first segment is either already a slug (e.g. "acme" in
-      // "/acme/issues") or something unknown (e.g. "/foo"). Leave it alone —
-      // the user wrote what they meant.
-    }
     window.dispatchEvent(
       new CustomEvent("multica:navigate", {
-        detail: { path, disposition: intent },
+        detail: { path: internalPath, disposition: intent },
       }),
     );
   } else {

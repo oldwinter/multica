@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import { Bot, Check, FileDiff, X } from "lucide-react";
 import type { WikiProposal } from "@multica/core/wiki";
 import { Badge } from "@multica/ui/components/ui/badge";
@@ -18,6 +17,7 @@ import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import { RichContent } from "../rich-content";
 
 interface ProposalReviewInput {
   proposalId: string;
@@ -159,9 +159,10 @@ export function WikiProposalsPanel({
 
           <details className="rounded-md border border-surface-border px-3 py-2">
             <summary className="cursor-pointer text-body font-medium text-foreground">{t(($) => $.actions.preview)}</summary>
-            <article className="prose prose-sm dark:prose-invert mt-3 max-w-none break-words">
-              <ReactMarkdown>{content || t(($) => $.history.empty_content)}</ReactMarkdown>
-            </article>
+            <RichContent
+              content={content || t(($) => $.history.empty_content)}
+              className="prose prose-sm dark:prose-invert mt-3 max-w-none break-words"
+            />
           </details>
 
           {selected.evidenceRefs.length > 0 ? (

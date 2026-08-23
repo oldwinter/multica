@@ -187,6 +187,18 @@ describe("browser appearance bootstrap", () => {
     expect(document.documentElement).not.toHaveClass("dark");
   });
 
+  it("keeps Docs bootstrap on its local projection when an app account cache exists", async () => {
+    const webAdapter = createBrowserAppearanceAdapter("web");
+    const docsAdapter = createBrowserAppearanceAdapter("docs");
+    const accountAppearance = fixture({ skin: "relay", resolvedAppearance: "dark" });
+    const docsAppearance = fixture({ skin: "field", resolvedAppearance: "light" });
+
+    await webAdapter.persistForAccount?.("account-a", accountAppearance);
+    docsAdapter.persist(docsAppearance);
+
+    expect(await docsAdapter.load()).toEqual(docsAppearance);
+  });
+
   it("imports an ownerless legacy choice for only the first account", async () => {
     localStorage.setItem(LEGACY_SKIN_STORAGE_KEY, "relay");
     localStorage.setItem(LEGACY_APPEARANCE_STORAGE_KEY, "dark");

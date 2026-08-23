@@ -13,7 +13,7 @@ const revision: WikiRevision = {
   revisionNumber: 2,
   path: "handbook/质量标准.md",
   title: "跨工作区长期保留的质量标准与操作约束",
-  content: "# Exact content",
+  content: "# Exact content\n\n[Open source issue](/issues/MUL-1)",
   contentDigest: "sha256:exact-content-digest",
   actorType: "member",
   actorId: "member-1",
@@ -52,6 +52,10 @@ describe("ImmutableWikiRevision", () => {
     expect(screen.getByText("human by member")).toBeInTheDocument();
     expect(document.querySelector("time")).toHaveAttribute("datetime", "2026-08-23T11:00:00Z");
     expect(screen.getByRole("heading", { name: revision.title })).toHaveClass("break-words");
+    expect(screen.getByRole("link", { name: "Open source issue" })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/\/issues\/MUL-1$/),
+    );
     fireEvent.click(screen.getByTitle("Copy revision citation"));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("wiki_page_revision:revision-2"));
   });
