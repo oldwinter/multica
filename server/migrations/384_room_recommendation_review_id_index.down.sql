@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS room_recommendation_review_id_uidx;

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { CoreProvider } from "@multica/core/platform";
+import { useAuthStore } from "@multica/core/auth";
 import { createBrowserCookieLocaleAdapter } from "@multica/core/i18n/browser";
 import type { LocaleResources, SupportedLocale } from "@multica/core/i18n";
 import { useWelcomeStore } from "@multica/core/onboarding";
@@ -13,6 +14,8 @@ import {
   clearLoggedInCookie,
 } from "@/features/auth/auth-cookie";
 import { detectWebOS } from "@/platform/client-os";
+import { webAppearanceAdapter } from "@/platform/appearance-adapter";
+import { AppearanceSyncBridge } from "@multica/views/appearance";
 
 // Legacy token in localStorage → keep this session in token mode so users who
 // logged in before the cookie-auth migration stay authed. They migrate to
@@ -43,6 +46,26 @@ function deriveWsUrl(): string | undefined {
 // to the package.json version so local dev still reports something useful.
 const WEB_VERSION =
   process.env.NEXT_PUBLIC_APP_VERSION || packageJson.version || "dev";
+
+function WebAppearanceBridge({ children }: { children: React.ReactNode }) {
+  const account = useAuthStore((state) => state.user);
+  const updateAccountAppearance = useAuthStore(
+    (state) => state.updateAppearancePreferences,
+  );
+  const refreshAccountAppearance = useAuthStore(
+    (state) => state.refreshAppearancePreferences,
+  );
+  return (
+    <AppearanceSyncBridge
+      adapter={webAppearanceAdapter}
+      account={account}
+      updateAccountAppearance={updateAccountAppearance}
+      refreshAccountAppearance={refreshAccountAppearance}
+    >
+      {children}
+    </AppearanceSyncBridge>
+  );
+}
 
 export function WebProviders({
   children,
@@ -86,9 +109,11 @@ export function WebProviders({
       resources={resources}
       localeAdapter={localeAdapter}
     >
-      <WebNavigationProvider>
-        <WebScrollRestorationProvider>{children}</WebScrollRestorationProvider>
-      </WebNavigationProvider>
+      <WebAppearanceBridge>
+        <WebNavigationProvider>
+          <WebScrollRestorationProvider>{children}</WebScrollRestorationProvider>
+        </WebNavigationProvider>
+      </WebAppearanceBridge>
     </CoreProvider>
   );
 }

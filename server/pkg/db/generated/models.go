@@ -171,6 +171,8 @@ type AgentTaskQueue struct {
 	RoomTurnID                pgtype.UUID `json:"room_turn_id"`
 	BranchName                pgtype.Text `json:"branch_name"`
 	DurableWorkDir            pgtype.Text `json:"durable_work_dir"`
+	TwinUseState              pgtype.Text `json:"twin_use_state"`
+	TwinVersionID             pgtype.UUID `json:"twin_version_id"`
 }
 
 type AgentToLabel struct {
@@ -930,15 +932,36 @@ type LmWikiReview struct {
 }
 
 type LmWikiRevision struct {
-	ID             pgtype.UUID        `json:"id"`
+	ID                      pgtype.UUID        `json:"id"`
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	RevisionNumber          int64              `json:"revision_number"`
+	SchemaVersion           int32              `json:"schema_version"`
+	SourceDigest            string             `json:"source_digest"`
+	Content                 []byte             `json:"content"`
+	TriggerKind             string             `json:"trigger_kind"`
+	RequestedByID           pgtype.UUID        `json:"requested_by_id"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	SourcePolicyVersion     int64              `json:"source_policy_version"`
+	SourcePolicyDigest      string             `json:"source_policy_digest"`
+	RemoteGenerationEnabled bool               `json:"remote_generation_enabled"`
+}
+
+type LmWikiSourcePolicy struct {
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	PolicyVersion           int64              `json:"policy_version"`
+	SourceClasses           []byte             `json:"source_classes"`
+	RemoteGenerationEnabled bool               `json:"remote_generation_enabled"`
+	UpdatedByID             pgtype.UUID        `json:"updated_by_id"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
+type LmWikiSourceWikiPage struct {
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	PageID         pgtype.UUID        `json:"page_id"`
+	RevisionID     pgtype.UUID        `json:"revision_id"`
 	RevisionNumber int64              `json:"revision_number"`
-	SchemaVersion  int32              `json:"schema_version"`
-	SourceDigest   string             `json:"source_digest"`
-	Content        []byte             `json:"content"`
-	TriggerKind    string             `json:"trigger_kind"`
-	RequestedByID  pgtype.UUID        `json:"requested_by_id"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	SelectedByID   pgtype.UUID        `json:"selected_by_id"`
+	SelectedAt     pgtype.Timestamptz `json:"selected_at"`
 }
 
 type Member struct {
@@ -1078,58 +1101,76 @@ type QuickAction struct {
 }
 
 type Room struct {
-	ID                      pgtype.UUID        `json:"id"`
-	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
-	Title                   string             `json:"title"`
-	Instructions            string             `json:"instructions"`
-	CreatedByUserID         pgtype.UUID        `json:"created_by_user_id"`
-	FacilitatorAgentID      pgtype.UUID        `json:"facilitator_agent_id"`
-	FacilitatorSquadID      pgtype.UUID        `json:"facilitator_squad_id"`
-	Status                  string             `json:"status"`
-	DailyTurnLimit          pgtype.Int4        `json:"daily_turn_limit"`
-	ScheduleIntervalMinutes pgtype.Int4        `json:"schedule_interval_minutes"`
-	NextWakeAt              pgtype.Timestamptz `json:"next_wake_at"`
-	ActiveCycleID           pgtype.UUID        `json:"active_cycle_id"`
-	Memory                  []byte             `json:"memory"`
-	MemoryVersion           int64              `json:"memory_version"`
-	LastEntryOrdinal        int64              `json:"last_entry_ordinal"`
-	LastCycleSequence       int64              `json:"last_cycle_sequence"`
-	CreatedAt               pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	ID                        pgtype.UUID        `json:"id"`
+	WorkspaceID               pgtype.UUID        `json:"workspace_id"`
+	Title                     string             `json:"title"`
+	Instructions              string             `json:"instructions"`
+	CreatedByUserID           pgtype.UUID        `json:"created_by_user_id"`
+	FacilitatorAgentID        pgtype.UUID        `json:"facilitator_agent_id"`
+	FacilitatorSquadID        pgtype.UUID        `json:"facilitator_squad_id"`
+	Status                    string             `json:"status"`
+	DailyTurnLimit            pgtype.Int4        `json:"daily_turn_limit"`
+	ScheduleIntervalMinutes   pgtype.Int4        `json:"schedule_interval_minutes"`
+	NextWakeAt                pgtype.Timestamptz `json:"next_wake_at"`
+	ActiveCycleID             pgtype.UUID        `json:"active_cycle_id"`
+	Memory                    []byte             `json:"memory"`
+	MemoryVersion             int64              `json:"memory_version"`
+	LastEntryOrdinal          int64              `json:"last_entry_ordinal"`
+	LastCycleSequence         int64              `json:"last_cycle_sequence"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+	Objective                 string             `json:"objective"`
+	SuccessCriteria           []byte             `json:"success_criteria"`
+	StopConditions            []byte             `json:"stop_conditions"`
+	TemplateID                pgtype.Text        `json:"template_id"`
+	MaxCostTicks              pgtype.Int8        `json:"max_cost_ticks"`
+	AcceptedMemoryRevisionID  pgtype.UUID        `json:"accepted_memory_revision_id"`
+	LastMemoryRevisionVersion int64              `json:"last_memory_revision_version"`
+	CapabilityVersion         int32              `json:"capability_version"`
 }
 
 type RoomArtifact struct {
-	ID              pgtype.UUID        `json:"id"`
-	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
-	RoomID          pgtype.UUID        `json:"room_id"`
-	CycleID         pgtype.UUID        `json:"cycle_id"`
-	TurnID          pgtype.UUID        `json:"turn_id"`
-	EntryID         pgtype.UUID        `json:"entry_id"`
-	Kind            string             `json:"kind"`
-	IdempotencyKey  string             `json:"idempotency_key"`
-	TargetID        pgtype.UUID        `json:"target_id"`
-	Title           string             `json:"title"`
-	Body            string             `json:"body"`
-	Rationale       pgtype.Text        `json:"rationale"`
-	SourceDigest    string             `json:"source_digest"`
-	CreatedByUserID pgtype.UUID        `json:"created_by_user_id"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-}
-
-type RoomCycle struct {
 	ID                pgtype.UUID        `json:"id"`
 	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
 	RoomID            pgtype.UUID        `json:"room_id"`
-	Sequence          int64              `json:"sequence"`
-	Source            string             `json:"source"`
-	WakeKey           string             `json:"wake_key"`
-	TriggeringEntryID pgtype.UUID        `json:"triggering_entry_id"`
-	Status            string             `json:"status"`
-	RefusalReason     pgtype.Text        `json:"refusal_reason"`
-	PlannedAt         pgtype.Timestamptz `json:"planned_at"`
+	CycleID           pgtype.UUID        `json:"cycle_id"`
+	TurnID            pgtype.UUID        `json:"turn_id"`
+	EntryID           pgtype.UUID        `json:"entry_id"`
+	Kind              string             `json:"kind"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	TargetID          pgtype.UUID        `json:"target_id"`
+	Title             string             `json:"title"`
+	Body              string             `json:"body"`
+	Rationale         pgtype.Text        `json:"rationale"`
+	SourceDigest      string             `json:"source_digest"`
+	CreatedByUserID   pgtype.UUID        `json:"created_by_user_id"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	StartedAt         pgtype.Timestamptz `json:"started_at"`
-	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	MemoryRevisionID  pgtype.UUID        `json:"memory_revision_id"`
+	CitationEntryIds  []byte             `json:"citation_entry_ids"`
+	RecommendationKey pgtype.Text        `json:"recommendation_key"`
+}
+
+type RoomCycle struct {
+	ID                   pgtype.UUID        `json:"id"`
+	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
+	RoomID               pgtype.UUID        `json:"room_id"`
+	Sequence             int64              `json:"sequence"`
+	Source               string             `json:"source"`
+	WakeKey              string             `json:"wake_key"`
+	TriggeringEntryID    pgtype.UUID        `json:"triggering_entry_id"`
+	Status               string             `json:"status"`
+	RefusalReason        pgtype.Text        `json:"refusal_reason"`
+	PlannedAt            pgtype.Timestamptz `json:"planned_at"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	StartedAt            pgtype.Timestamptz `json:"started_at"`
+	CompletedAt          pgtype.Timestamptz `json:"completed_at"`
+	Phase                string             `json:"phase"`
+	SynthesisError       []byte             `json:"synthesis_error"`
+	SynthesisTurnID      pgtype.UUID        `json:"synthesis_turn_id"`
+	MemoryRevisionID     pgtype.UUID        `json:"memory_revision_id"`
+	ExpectedMaxTurns     int32              `json:"expected_max_turns"`
+	CancelIdempotencyKey pgtype.Text        `json:"cancel_idempotency_key"`
+	CostLimitTicks       pgtype.Int8        `json:"cost_limit_ticks"`
 }
 
 type RoomEntry struct {
@@ -1147,6 +1188,27 @@ type RoomEntry struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type RoomMemoryRevision struct {
+	ID                      pgtype.UUID        `json:"id"`
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	RoomID                  pgtype.UUID        `json:"room_id"`
+	CycleID                 pgtype.UUID        `json:"cycle_id"`
+	SynthesisTurnID         pgtype.UUID        `json:"synthesis_turn_id"`
+	Version                 int64              `json:"version"`
+	SchemaVersion           int32              `json:"schema_version"`
+	Synthesis               []byte             `json:"synthesis"`
+	Digest                  string             `json:"digest"`
+	ReviewStatus            string             `json:"review_status"`
+	ReviewedByUserID        pgtype.UUID        `json:"reviewed_by_user_id"`
+	ReviewedAt              pgtype.Timestamptz `json:"reviewed_at"`
+	CorrectedFromRevisionID pgtype.UUID        `json:"corrected_from_revision_id"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	ReviewIdempotencyKey    pgtype.Text        `json:"review_idempotency_key"`
+	ReviewRequestDigest     pgtype.Text        `json:"review_request_digest"`
+	CreatorType             string             `json:"creator_type"`
+	CreatorID               pgtype.UUID        `json:"creator_id"`
+}
+
 type RoomParticipant struct {
 	ID              pgtype.UUID        `json:"id"`
 	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
@@ -1159,21 +1221,38 @@ type RoomParticipant struct {
 	LeftAt          pgtype.Timestamptz `json:"left_at"`
 }
 
+type RoomRecommendationReview struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	RoomID            pgtype.UUID        `json:"room_id"`
+	MemoryRevisionID  pgtype.UUID        `json:"memory_revision_id"`
+	RecommendationKey string             `json:"recommendation_key"`
+	Status            string             `json:"status"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	RequestDigest     string             `json:"request_digest"`
+	ArtifactID        pgtype.UUID        `json:"artifact_id"`
+	ReviewedByUserID  pgtype.UUID        `json:"reviewed_by_user_id"`
+	ReviewedAt        pgtype.Timestamptz `json:"reviewed_at"`
+}
+
 type RoomTurn struct {
-	ID            pgtype.UUID        `json:"id"`
-	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
-	RoomID        pgtype.UUID        `json:"room_id"`
-	CycleID       pgtype.UUID        `json:"cycle_id"`
-	AgentID       pgtype.UUID        `json:"agent_id"`
-	SquadID       pgtype.UUID        `json:"squad_id"`
-	Status        string             `json:"status"`
-	RefusalReason pgtype.Text        `json:"refusal_reason"`
-	SessionID     pgtype.Text        `json:"session_id"`
-	WorkDir       pgtype.Text        `json:"work_dir"`
-	Result        []byte             `json:"result"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	RoomID         pgtype.UUID        `json:"room_id"`
+	CycleID        pgtype.UUID        `json:"cycle_id"`
+	AgentID        pgtype.UUID        `json:"agent_id"`
+	SquadID        pgtype.UUID        `json:"squad_id"`
+	Status         string             `json:"status"`
+	RefusalReason  pgtype.Text        `json:"refusal_reason"`
+	SessionID      pgtype.Text        `json:"session_id"`
+	WorkDir        pgtype.Text        `json:"work_dir"`
+	Result         []byte             `json:"result"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
+	TurnKind       string             `json:"turn_kind"`
+	Attempt        int32              `json:"attempt"`
+	IdempotencyKey pgtype.Text        `json:"idempotency_key"`
 }
 
 type RuntimeProfile struct {
@@ -1350,6 +1429,31 @@ type TaskUsageHourlyRollupState struct {
 	LastError         pgtype.Text        `json:"last_error"`
 }
 
+type TwinBinding struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	ScopeType     string             `json:"scope_type"`
+	ScopeID       pgtype.UUID        `json:"scope_id"`
+	State         string             `json:"state"`
+	TwinVersionID pgtype.UUID        `json:"twin_version_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TwinDeposition struct {
+	ID                     pgtype.UUID        `json:"id"`
+	WorkspaceID            pgtype.UUID        `json:"workspace_id"`
+	TaskID                 pgtype.UUID        `json:"task_id"`
+	BaseTwinVersionID      pgtype.UUID        `json:"base_twin_version_id"`
+	ProposalID             pgtype.UUID        `json:"proposal_id"`
+	EvidenceDigest         string             `json:"evidence_digest"`
+	State                  string             `json:"state"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+	ReplacesProposalID     pgtype.UUID        `json:"replaces_proposal_id"`
+	EditedAssertionsDigest string             `json:"edited_assertions_digest"`
+}
+
 type TwinProfile struct {
 	ID             pgtype.UUID        `json:"id"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
@@ -1378,6 +1482,7 @@ type TwinProposal struct {
 	ContentDigest        string             `json:"content_digest"`
 	RequestedByID        pgtype.UUID        `json:"requested_by_id"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	ReplacesProposalID   pgtype.UUID        `json:"replaces_proposal_id"`
 }
 
 type TwinProposalReview struct {
@@ -1388,6 +1493,35 @@ type TwinProposalReview struct {
 	ReviewerID  pgtype.UUID        `json:"reviewer_id"`
 	Reason      pgtype.Text        `json:"reason"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type TwinRunFeedback struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	TaskID      pgtype.UUID        `json:"task_id"`
+	Rating      string             `json:"rating"`
+	Note        pgtype.Text        `json:"note"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TwinTaskAttribution struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	TaskID           pgtype.UUID        `json:"task_id"`
+	AgentID          pgtype.UUID        `json:"agent_id"`
+	RuntimeID        pgtype.UUID        `json:"runtime_id"`
+	TaskDispatchedAt pgtype.Timestamptz `json:"task_dispatched_at"`
+	TwinVersionID    pgtype.UUID        `json:"twin_version_id"`
+	Briefing         string             `json:"briefing"`
+	BriefingDigest   string             `json:"briefing_digest"`
+	AssertionIds     []byte             `json:"assertion_ids"`
+	CitationKeys     []byte             `json:"citation_keys"`
+	PolicyScopeType  string             `json:"policy_scope_type"`
+	PolicyScopeID    pgtype.UUID        `json:"policy_scope_id"`
+	PolicyState      string             `json:"policy_state"`
+	CompilerVersion  string             `json:"compiler_version"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
 type TwinVersion struct {
@@ -1420,7 +1554,11 @@ type User struct {
 	Language                pgtype.Text        `json:"language"`
 	ProfileDescription      string             `json:"profile_description"`
 	// User-preferred IANA timezone for report rendering (Viewing tz). NULL means "use the browser-detected tz at render time". Affects dashboards, charts, and any "today" label shown to this user. Does not affect data materialisation — all rollups remain in UTC.
-	Timezone pgtype.Text `json:"timezone"`
+	Timezone               pgtype.Text        `json:"timezone"`
+	Skin                   pgtype.Text        `json:"skin"`
+	Appearance             pgtype.Text        `json:"appearance"`
+	AppearanceUpdatedAt    pgtype.Timestamptz `json:"appearance_updated_at"`
+	AppearanceTokenVersion pgtype.Int4        `json:"appearance_token_version"`
 }
 
 type UserComposioConnection struct {
@@ -1528,17 +1666,61 @@ type WebhookDelivery struct {
 }
 
 type WikiPage struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	Scope       string             `json:"scope"`
-	ProjectID   pgtype.UUID        `json:"project_id"`
-	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
-	Path        string             `json:"path"`
-	Title       string             `json:"title"`
-	Content     string             `json:"content"`
-	CreatedBy   pgtype.UUID        `json:"created_by"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	Content               string             `json:"content"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
+}
+
+type WikiPageEditProposal struct {
+	ID                 pgtype.UUID        `json:"id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	PageID             pgtype.UUID        `json:"page_id"`
+	BaseRevisionNumber int64              `json:"base_revision_number"`
+	ProposedPath       string             `json:"proposed_path"`
+	ProposedTitle      string             `json:"proposed_title"`
+	ProposedContent    string             `json:"proposed_content"`
+	ContentDigest      string             `json:"content_digest"`
+	Rationale          string             `json:"rationale"`
+	EvidenceRefs       []byte             `json:"evidence_refs"`
+	AgentID            pgtype.UUID        `json:"agent_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	Status             string             `json:"status"`
+	ReviewedByID       pgtype.UUID        `json:"reviewed_by_id"`
+	ReviewReason       pgtype.Text        `json:"review_reason"`
+	ReviewedAt         pgtype.Timestamptz `json:"reviewed_at"`
+	AcceptedRevisionID pgtype.UUID        `json:"accepted_revision_id"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
+type WikiPageRevision struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	OwnerUserID    pgtype.UUID        `json:"owner_user_id"`
+	PageID         pgtype.UUID        `json:"page_id"`
+	RevisionNumber int64              `json:"revision_number"`
+	Path           string             `json:"path"`
+	Title          string             `json:"title"`
+	Content        string             `json:"content"`
+	ContentDigest  string             `json:"content_digest"`
+	ActorType      string             `json:"actor_type"`
+	ActorID        pgtype.UUID        `json:"actor_id"`
+	SourceKind     string             `json:"source_kind"`
+	SourceRefID    pgtype.UUID        `json:"source_ref_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
 type Workspace struct {

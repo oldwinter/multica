@@ -23,16 +23,9 @@ import "@fontsource-variable/source-serif-4/wght-italic.css";
 // class instead of chasing weights one at a time.
 import "@fontsource-variable/geist-mono";
 import "./globals.css";
-import {
-  parseSkin,
-  SKIN_STORAGE_KEY,
-} from "@multica/ui/components/common/theme-provider";
+import { applyCachedBrowserAppearanceBeforePaint } from "./platform/appearance-adapter";
 
-if (typeof document !== "undefined" && typeof localStorage !== "undefined") {
-  document.documentElement.dataset.skin = parseSkin(
-    localStorage.getItem(SKIN_STORAGE_KEY),
-  );
-}
+applyCachedBrowserAppearanceBeforePaint();
 
 // react-grab: dev-only element inspector. Hold ⌘C (Mac) / Ctrl+C and click any
 // element to copy its source path + line + component stack for pasting to an AI.

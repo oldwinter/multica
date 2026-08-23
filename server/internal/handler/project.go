@@ -631,6 +631,14 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete project views")
 		return
 	}
+	if err := qtx.DeleteTwinBindingsForScope(r.Context(), db.DeleteTwinBindingsForScopeParams{
+		WorkspaceID: project.WorkspaceID,
+		ScopeType:   "project",
+		ScopeID:     project.ID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete project Twin binding")
+		return
+	}
 	if err := qtx.DeleteProject(r.Context(), db.DeleteProjectParams{
 		ID:          project.ID,
 		WorkspaceID: project.WorkspaceID,

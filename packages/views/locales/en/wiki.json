@@ -2,7 +2,7 @@
   "page": {
     "eyebrow": "Workspace Wiki",
     "title": "Wiki",
-    "description": "Markdown knowledge base for the workspace, projects, and personal notes."
+    "description": "Searchable, revisioned Markdown knowledge for the workspace, projects, and personal notes."
   },
   "scopes": {
     "workspace": "Workspace",
@@ -10,7 +10,7 @@
     "user": "Personal"
   },
   "scope_hints": {
-    "user": "Personal pages follow you across every workspace."
+    "user": "Personal pages follow you across every workspace and never become LM Wiki evidence."
   },
   "actions": {
     "new_page": "New page",
@@ -19,7 +19,9 @@
     "edit": "Edit",
     "preview": "Preview",
     "cancel": "Cancel",
-    "create": "Create"
+    "create": "Create",
+    "retry": "Try again",
+    "back": "Back"
   },
   "fields": {
     "path": "Path",
@@ -30,14 +32,145 @@
   },
   "empty": {
     "title": "No wiki pages yet",
-    "description": "Create a markdown page to start capturing knowledge in this scope.",
+    "description": "Create a Markdown page to start capturing knowledge in this scope.",
     "pick_project": "Select a project to browse its wiki."
   },
   "states": {
     "loading": "Loading wiki…",
     "error": "Could not load wiki pages.",
     "saving": "Saving…",
-    "saved": "Saved"
+    "saved": "Saved",
+    "action_error": "The action could not be completed. Try again."
   },
-  "delete_confirm": "Delete this wiki page? This cannot be undone."
+  "search": {
+    "label": "Search Wiki",
+    "placeholder": "Search title, path, and content",
+    "clear": "Clear search",
+    "minimum": "Enter at least two characters to search.",
+    "loading": "Searching Wiki…",
+    "error": "Search is unavailable. Try again.",
+    "empty": "No Wiki pages match this search."
+  },
+  "tabs": {
+    "document": "Document",
+    "proposals": "Proposals"
+  },
+  "meta": {
+    "revision": "Revision {{number}}",
+    "provenance": "{{source}} by {{actor}}",
+    "copy_citation": "Copy revision citation",
+    "copied": "Revision citation copied"
+  },
+  "history": {
+    "action": "History",
+    "title": "Revision history",
+    "description": "Compare immutable revisions or restore an older version as a new revision.",
+    "loading": "Loading revision history…",
+    "error": "Could not load revision history.",
+    "empty": "No revisions are available.",
+    "empty_content": "Empty page",
+    "timeline": "Revision timeline",
+    "revision_label": "Revision {{number}}",
+    "compare_from": "Compare from",
+    "compare_to": "Compare to",
+    "provenance": "{{source}} by {{actor}}",
+    "restore": "Restore",
+    "restore_title": "Restore this revision?",
+    "restore_description": "Revision {{number}} will become a new revision. Existing history stays unchanged."
+  },
+  "proposals": {
+    "loading": "Loading proposals…",
+    "error": "Could not load proposals.",
+    "empty_title": "No proposals",
+    "empty_description": "Agent edits appear here for human review before they can change shared knowledge.",
+    "list_label": "Wiki proposals",
+    "review_title": "Review proposed edit",
+    "base_revision": "Based on revision {{number}}",
+    "no_rationale": "No rationale provided.",
+    "evidence": "Evidence",
+    "accept": "Accept proposal",
+    "reject": "Reject",
+    "reject_title": "Reject this proposal?",
+    "reject_description": "The proposal stays in history with your review decision.",
+    "reason": "Reason (optional)",
+    "review_reason": "Review reason: {{reason}}",
+    "stale": "This proposal is based on an older revision. Reload the page and review it against the latest content."
+  },
+  "conflict": {
+    "title": "This page changed while you were editing",
+    "description": "The server is now on revision {{number}}. Reload its version or keep your draft and merge it manually.",
+    "reload": "Reload server version",
+    "merge": "Merge my draft",
+    "merge_title": "Review your merge",
+    "merge_description": "Your draft is preserved. Compare it with the current server version before saving.",
+    "server_version": "Show current server version",
+    "stale_restore": "The page changed before the restore completed. Reload history and try again."
+  },
+  "delete_dialog": {
+    "title": "Delete this Wiki page?",
+    "description": "The page and its shared references will be removed. This action cannot be undone."
+  },
+  "personal": {
+    "eyebrow": "Private knowledge",
+    "title": "Personal Wiki",
+    "description": "Private, cross-workspace Markdown notes that only you can read and edit. Personal pages never become shared LM Wiki evidence.",
+    "search_label": "Search Personal Wiki",
+    "search_placeholder": "Search your titles, paths, and content",
+    "empty_title": "No personal pages yet",
+    "empty_description": "Create a private Markdown page that stays available even when you leave a workspace.",
+    "stable_revision": "Stable revision",
+    "delete_description": "The live page will be removed. Its immutable revision links remain available only to you."
+  },
+  "revision": {
+    "title": "Wiki revision",
+    "shared_eyebrow": "Workspace evidence",
+    "personal_eyebrow": "Private evidence",
+    "read_only": "Read only",
+    "description": "This immutable snapshot preserves the exact content and provenance of the cited revision.",
+    "loading": "Loading revision...",
+    "error": "This revision could not be loaded or is no longer available to you.",
+    "citation": "Canonical citation",
+    "digest": "Content digest",
+    "revision_number": "Revision number",
+    "provenance": "Provenance",
+    "created_at": "Created at",
+    "open_stable": "Open stable revision",
+    "copy_error": "The citation could not be copied."
+  },
+  "source_policy": {
+    "title": "LM Wiki sources",
+    "description": "Choose evidence classes and pin exact Wiki revisions for the next LM Wiki refresh.",
+    "remote_title": "Remote generation",
+    "remote_description": "Off by default. Enable only when this workspace may use remote generation.",
+    "remote_label": "Allow remote generation",
+    "remote_owner_only": "Only workspace owners and admins can change remote generation.",
+    "remote_exclusions": "Local-only sources and personal Wiki pages are always excluded.",
+    "exclusions_title": "Permanent exclusions",
+    "exclusion_always": "Always excluded",
+    "exclusion_personal": "Personal Wiki pages",
+    "exclusion_personal_reason": "Private personal scope never becomes shared evidence.",
+    "exclusion_local_only": "Local-only sources",
+    "exclusion_local_only_reason": "Local-only content never leaves the owner's daemon.",
+    "classes": "Source classes",
+    "pages": "Pinned Wiki revisions",
+    "save": "Save source policy",
+    "saving": "Saving policy…",
+    "saved": "Source policy saved",
+    "loading": "Loading source policy…",
+    "error": "Could not load source policy.",
+    "save_error": "The source policy could not be saved.",
+    "read_only": "Only workspace owners and admins can change this policy.",
+    "empty_pages": "No Wiki pages are available.",
+    "revision": "Revision {{number}}",
+    "digest": "Digest {{digest}}",
+    "provenance": "{{source}} by {{actor}}",
+    "personal_excluded": "Personal pages are private and cannot be LM Wiki evidence.",
+    "eligible": "Eligible",
+    "excluded": "Excluded",
+    "classes_issue": "Issues",
+    "classes_project": "Projects",
+    "classes_project_resource": "Project resources",
+    "classes_autopilot_run": "Completed automation runs",
+    "classes_wiki_page": "Pinned Wiki pages"
+  }
 }

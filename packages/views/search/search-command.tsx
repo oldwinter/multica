@@ -67,7 +67,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@multica/ui/components/ui/dialog";
-import { useTheme } from "@multica/ui/components/common/theme-provider";
 import { copyText } from "@multica/ui/lib/clipboard";
 import {
   resolveClickIntent,
@@ -79,6 +78,7 @@ import { useT } from "../i18n";
 import { matchesPinyin } from "../editor/extensions/pinyin-match";
 import { HighlightText } from "./highlight-text";
 import { useSearchStore } from "./search-store";
+import { useAppearancePreferences } from "../appearance";
 
 // The palette's Pages group is generated from WORKSPACE_PAGES, the same
 // registry the sidebar nav and the desktop tab bar read. It used to be a
@@ -353,7 +353,10 @@ export function SearchCommand() {
   const wsId = useWorkspaceId();
   const recentItems = useRecentIssuesStore(selectRecentIssues(wsId));
   const p: WorkspacePaths = useWorkspacePaths();
-  const { theme, setTheme } = useTheme();
+  const {
+    preferences: { requestedAppearance: theme },
+    selectAppearance: setTheme,
+  } = useAppearancePreferences();
   const { data: members = [] } = useQuery(memberListOptions(wsId));
 
   // Resolve each recent issue via its cached detail entry. Recent items are

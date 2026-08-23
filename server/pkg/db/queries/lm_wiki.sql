@@ -52,12 +52,16 @@ WITH next_revision AS (
     WHERE workspace_id = sqlc.arg(workspace_id)
 )
 INSERT INTO lm_wiki_revision (
-    workspace_id, revision_number, source_digest, content, trigger_kind,
-    requested_by_id
+	workspace_id, revision_number, schema_version, source_digest, content,
+	source_policy_version, source_policy_digest, remote_generation_enabled,
+	trigger_kind, requested_by_id
 )
-SELECT sqlc.arg(workspace_id), next_revision.revision_number,
-       sqlc.arg(source_digest), sqlc.arg(content), sqlc.arg(trigger_kind),
-       sqlc.narg(requested_by_id)
+SELECT sqlc.arg(workspace_id), next_revision.revision_number, 2,
+       sqlc.arg(source_digest), sqlc.arg(content), sqlc.arg(source_policy_version),
+       COALESCE(NULLIF(sqlc.arg(source_policy_digest), ''),
+           'sha256:0000000000000000000000000000000000000000000000000000000000000000'),
+       sqlc.arg(remote_generation_enabled),
+       sqlc.arg(trigger_kind), sqlc.narg(requested_by_id)
 FROM next_revision
 RETURNING *;
 
@@ -157,3 +161,77 @@ FROM workspace
 WHERE id > sqlc.arg(workspace_id)
 ORDER BY id ASC
 LIMIT sqlc.arg(result_limit);
+
+-- name: GetLMWikiSourcePolicy :one
+SELECT * FROM lm_wiki_source_policy
+WHERE workspace_id = $1;
+
+-- name: UpsertLMWikiSourcePolicy :one
+INSERT INTO lm_wiki_source_policy (
+    workspace_id, source_classes, remote_generation_enabled, updated_by_id
+) VALUES (
+    sqlc.arg(workspace_id), sqlc.arg(source_classes)::jsonb,
+    sqlc.arg(remote_generation_enabled), sqlc.arg(updated_by_id)
+)
+ON CONFLICT (workspace_id) DO UPDATE SET
+    policy_version = lm_wiki_source_policy.policy_version + 1,
+    source_classes = EXCLUDED.source_classes,
+    remote_generation_enabled = EXCLUDED.remote_generation_enabled,
+    updated_by_id = EXCLUDED.updated_by_id,
+    updated_at = now()
+RETURNING *;
+
+-- name: GetWikiPageRevisionForLMWikiPolicy :one
+SELECT revision.*
+FROM wiki_page page
+JOIN wiki_page_revision revision
+  ON revision.workspace_id = page.workspace_id
+ AND revision.page_id = page.id
+WHERE page.workspace_id = sqlc.arg(workspace_id)
+  AND page.id = sqlc.arg(page_id)
+  AND page.scope IN ('workspace', 'project')
+  AND revision.revision_number = sqlc.arg(revision_number);
+
+-- name: DeleteLMWikiSourceWikiPages :exec
+DELETE FROM lm_wiki_source_wiki_page
+WHERE workspace_id = $1;
+
+-- name: CreateLMWikiSourceWikiPages :exec
+INSERT INTO lm_wiki_source_wiki_page (
+    workspace_id, page_id, revision_id, revision_number, selected_by_id
+)
+SELECT sqlc.arg(workspace_id), selected.page_id, selected.revision_id,
+       selected.revision_number, sqlc.arg(selected_by_id)
+FROM jsonb_to_recordset(sqlc.arg(selections)::jsonb) AS selected(
+    page_id UUID,
+    revision_id UUID,
+    revision_number BIGINT
+)
+ON CONFLICT (workspace_id, page_id) DO UPDATE SET
+    revision_id = EXCLUDED.revision_id,
+    revision_number = EXCLUDED.revision_number,
+    selected_by_id = EXCLUDED.selected_by_id,
+    selected_at = now();
+
+-- name: ListLMWikiSourceWikiPages :many
+SELECT * FROM lm_wiki_source_wiki_page
+WHERE workspace_id = $1
+ORDER BY page_id;
+
+-- name: ListLMWikiSourceWikiPageRevisions :many
+SELECT revision.id::text AS revision_id, page.id::text AS page_id,
+       page.scope, COALESCE(page.project_id::text, '')::text AS project_id,
+       revision.revision_number, revision.path, revision.title, revision.content,
+       revision.content_digest, revision.created_at
+FROM lm_wiki_source_wiki_page selected
+JOIN wiki_page page
+  ON page.workspace_id = selected.workspace_id
+ AND page.id = selected.page_id
+ AND page.scope IN ('workspace', 'project')
+JOIN wiki_page_revision revision
+  ON revision.workspace_id = selected.workspace_id
+ AND revision.page_id = selected.page_id
+ AND revision.id = selected.revision_id
+ AND revision.revision_number = selected.revision_number
+WHERE selected.workspace_id = sqlc.arg(workspace_id)
+ORDER BY revision.id;

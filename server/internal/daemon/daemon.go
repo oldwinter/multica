@@ -6285,6 +6285,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		RoomInstructions:                 task.RoomInstructions,
 		RoomMemory:                       strings.TrimSpace(string(task.RoomMemory)),
 		RoomTranscript:                   strings.TrimSpace(string(task.RoomTranscript)),
+		RoomCostLimitTicks:               task.RoomCostLimitTicks,
 		QuickCreatePrompt:                task.QuickCreatePrompt,
 		HandoffNote:                      task.HandoffNote,
 		IsSquadLeader:                    taskIsSquadLeader(task),

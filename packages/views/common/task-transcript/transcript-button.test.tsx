@@ -26,8 +26,11 @@ import type { TimelineItem } from "./build-timeline";
 vi.mock("@multica/core/api", () => ({
   api: {
     listTaskMessages: vi.fn(),
+    getTwinTaskContext: vi.fn(),
   },
 }));
+
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-test" }));
 
 // Render the timeline items so tests can assert the dialog grows in place.
 // `tool_use` / `tool_result` entries don't coalesce, so each message stays a
@@ -91,10 +94,18 @@ function renderWith(qc: QueryClient, ui: React.ReactNode): RenderResult {
 }
 
 const listTaskMessages = vi.mocked(api.listTaskMessages);
+const getTwinTaskContext = vi.mocked(api.getTwinTaskContext);
 
 beforeEach(() => {
   listTaskMessages.mockReset();
   listTaskMessages.mockResolvedValue([]);
+  getTwinTaskContext.mockReset();
+  getTwinTaskContext.mockResolvedValue({
+    taskId: LIVE_TASK_ID,
+    depositions: [],
+    assertions: [],
+    citations: [],
+  });
 });
 
 afterEach(() => {

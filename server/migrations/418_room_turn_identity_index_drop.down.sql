@@ -1,0 +1,14 @@
+-- Rollback is intentionally fail-closed. The migrator first checks for v2
+-- cycles with multiple turns for the same participant. If any exist, keep the
+-- v2 schema or:
+--   1. Back up each duplicate room_turn group and its references from
+--      agent_task_queue.room_turn_id, room_entry.turn_id,
+--      room_artifact.turn_id, room_cycle.synthesis_turn_id, and
+--      room_memory_revision.synthesis_turn_id.
+--   2. Choose the one legacy-compatible turn to retain per cycle/agent and
+--      archive or relink every dependent row before removing extra turns.
+--   3. Run the diagnostic query from the migrator until it returns no rows,
+--      then rerun migrate down.
+-- The migration never deletes attempt history or substitutes a weaker
+-- non-unique index.
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS room_turn_participant_uidx ON room_turn (cycle_id, agent_id);

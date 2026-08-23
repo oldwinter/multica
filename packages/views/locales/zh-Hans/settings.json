@@ -106,6 +106,15 @@
     "general_title": "常规",
     "appearance_title": "外观",
     "appearance_hint": "选择界面材质，以及它如何响应环境明暗。",
+    "appearance_sync": {
+      "default": "正在使用产品默认设置",
+      "synced": "已同步到其他设备",
+      "pending": "正在等待同步",
+      "local_only": "已保存在此设备",
+      "failed": "同步失败",
+      "retry": "重试同步",
+      "reset": "重置外观"
+    },
     "skin": {
       "title": "皮肤",
       "tension": {

@@ -1,4 +1,5 @@
 import type { ChatSession } from "./chat";
+import type { TwinTaskContext } from "../twins/execution-types";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "error" | "offline";
 
@@ -410,6 +411,11 @@ export interface AgentTask {
    * user-facing task surfaces; older backends omit it — render conditionally.
    */
   attribution?: TaskAttribution;
+  /**
+   * Immutable Twin execution audit metadata for this run. It is additive and
+   * omitted by older servers or when no signed Twin was dispatched.
+   */
+  twin_context?: TwinTaskContext;
   /**
    * This run's own token consumption, one entry per (provider, model) it used.
    * Present on the issue execution-log endpoint only; the daemon claim path

@@ -98,11 +98,18 @@ func TestTwinAcceptProposalRejectsOppositeAndStaleSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reject proposal: %v", err)
 	}
+	repeated, err := fixture.service.RejectProposal(fixture.ctx, fixture.workspaceID, proposal.Proposal.ID, fixture.actorID, "not ready")
+	if err != nil {
+		t.Fatalf("repeat rejection: %v", err)
+	}
 	_, oppositeErr := fixture.service.AcceptProposal(fixture.ctx, fixture.workspaceID, proposal.Proposal.ID, fixture.actorID)
 
 	// Then
-	if rejected.Review == nil || rejected.Review.Decision != "rejected" {
+	if !rejected.Created || rejected.Proposal.Review == nil || rejected.Proposal.Review.Decision != "rejected" {
 		t.Fatalf("rejected proposal detail = %#v", rejected)
+	}
+	if repeated.Created || repeated.Proposal.Review == nil || repeated.Proposal.Review.Decision != "rejected" {
+		t.Fatalf("repeated rejection detail = %#v", repeated)
 	}
 	if !errors.Is(oppositeErr, ErrTwinAlreadyDecided) {
 		t.Fatalf("opposite review error = %v, want ErrTwinAlreadyDecided", oppositeErr)
@@ -113,12 +120,13 @@ func TestTwinAcceptProposalRejectsOppositeAndStaleSource(t *testing.T) {
 }
 
 type twinServiceFixture struct {
-	ctx         context.Context
-	pool        *pgxpool.Pool
-	queries     *db.Queries
-	service     *TwinService
-	workspaceID pgtype.UUID
-	actorID     pgtype.UUID
+	ctx          context.Context
+	pool         *pgxpool.Pool
+	queries      *db.Queries
+	service      *TwinService
+	workspaceID  pgtype.UUID
+	actorID      pgtype.UUID
+	egressPolicy LMWikiEgressPolicy
 }
 
 func newTwinServiceFixture(t *testing.T) twinServiceFixture {
@@ -141,12 +149,52 @@ func newTwinServiceFixture(t *testing.T) twinServiceFixture {
 		t.Fatalf("create Twin service actor: %v", err)
 	}
 	queries := db.New(pool)
+	policy, err := NewWikiService(queries, pool).UpdateSourcePolicy(ctx, workspaceID, actorID, LMWikiSourcePolicy{
+		SourceClasses: []string{"issue"}, RemoteGenerationEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("authorize Twin test evidence: %v", err)
+	}
 	t.Cleanup(func() {
 		_ = queries.DeleteWorkspaceWikiTwinData(context.Background(), workspaceID)
 		_ = queries.DeleteWorkspaceTwinProfile(context.Background(), workspaceID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM workspace WHERE id = $1`, workspaceID)
 	})
-	return twinServiceFixture{ctx: ctx, pool: pool, queries: queries, service: NewTwinService(queries, pool), workspaceID: workspaceID, actorID: actorID}
+	service := NewTwinService(queries, pool)
+	service.ProposalGenerator = twinFixtureProposalGenerator{}
+	return twinServiceFixture{
+		ctx: ctx, pool: pool, queries: queries, service: service,
+		workspaceID: workspaceID, actorID: actorID,
+		egressPolicy: LMWikiEgressPolicy{
+			RemoteGenerationEnabled: policy.RemoteGenerationEnabled,
+			PolicyVersion:           policy.PolicyVersion, PolicyDigest: policy.PolicyDigest,
+		},
+	}
+}
+
+type twinFixtureProposalGenerator struct{}
+
+func (twinFixtureProposalGenerator) Generate(_ context.Context, input TwinProposalGenerationInput) (TwinProposalCandidate, error) {
+	assertions := make([]TwinAssertion, 0, len(input.BuilderInput.Citations))
+	for _, citation := range input.BuilderInput.Citations {
+		applicability := TwinAssertionApplicability{Keywords: []string{citation.SourceType}}
+		switch citation.SourceType {
+		case "issue":
+			applicability = TwinAssertionApplicability{IssueID: citation.SourceID}
+		case "project":
+			applicability = TwinAssertionApplicability{ProjectID: citation.SourceID}
+		}
+		text := citation.Label
+		if text == "" {
+			text = citation.CitationKey
+		}
+		assertions = append(assertions, TwinAssertion{
+			ID: "fixture:" + citation.SourceDigest, Type: TwinAssertionProcedure, Text: text,
+			Applicability: applicability, EvidenceCitations: []string{citation.CitationKey}, Confidence: 0.9,
+			Provenance: TwinAssertionProvenance{Kind: TwinProvenanceModel, Generator: "fixture-model"},
+		})
+	}
+	return TwinProposalCandidate{Assertions: assertions}, nil
 }
 
 func (f twinServiceFixture) acceptedWiki(t *testing.T, title string) db.LmWikiRevision {
@@ -160,11 +208,18 @@ func (f twinServiceFixture) acceptedWiki(t *testing.T, title string) db.LmWikiRe
 
 func (f twinServiceFixture) wikiRevision(t *testing.T, title string) db.LmWikiRevision {
 	t.Helper()
-	snapshot, err := BuildLMWikiSnapshot(LMWikiSourceSnapshot{Issues: []LMWikiIssue{{ID: twinUUIDString(f.workspaceID), Number: 1, Title: title, Status: "todo"}}})
+	snapshot, err := BuildLMWikiSnapshot(LMWikiSourceSnapshot{
+		EgressPolicy: f.egressPolicy,
+		Issues:       []LMWikiIssue{{ID: twinUUIDString(f.workspaceID), Number: 1, Title: title, Status: "todo"}},
+	})
 	if err != nil {
 		t.Fatalf("build Twin source Wiki: %v", err)
 	}
-	revision, err := f.queries.CreateLMWikiRevision(f.ctx, db.CreateLMWikiRevisionParams{WorkspaceID: f.workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON, TriggerKind: "manual", RequestedByID: f.actorID})
+	revision, err := f.queries.CreateLMWikiRevision(f.ctx, db.CreateLMWikiRevisionParams{
+		WorkspaceID: f.workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON,
+		SourcePolicyVersion: f.egressPolicy.PolicyVersion, SourcePolicyDigest: f.egressPolicy.PolicyDigest,
+		RemoteGenerationEnabled: true, TriggerKind: "manual", RequestedByID: f.actorID,
+	})
 	if err != nil {
 		t.Fatalf("create Twin source Wiki: %v", err)
 	}

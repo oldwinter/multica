@@ -42,11 +42,18 @@ func seedQueuedIssueTask(t *testing.T, ctx context.Context, agentID, runtimeID, 
 }
 
 func postBatchClaim(t *testing.T, workspaceID string, runtimeIDs []string, maxTasks int) *httptest.ResponseRecorder {
+	return postBatchClaimWithCapabilities(t, workspaceID, runtimeIDs, maxTasks, "")
+}
+
+func postBatchClaimWithCapabilities(t *testing.T, workspaceID string, runtimeIDs []string, maxTasks int, capabilities string) *httptest.ResponseRecorder {
 	t.Helper()
 	w := httptest.NewRecorder()
 	req := newDaemonTokenRequest("POST", "/api/daemon/tasks/claim",
 		map[string]any{"daemon_id": batchClaimTestDaemonID, "runtime_ids": runtimeIDs, "max_tasks": maxTasks},
 		workspaceID, batchClaimTestDaemonID)
+	if capabilities != "" {
+		req.Header.Set("X-Client-Capabilities", capabilities)
+	}
 	testHandler.ClaimTasksByRuntime(w, req)
 	return w
 }

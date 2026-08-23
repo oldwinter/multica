@@ -130,7 +130,8 @@ type Config struct {
 	// can frame API-hosted PDFs without allowing arbitrary third-party frames.
 	AttachmentFrameAncestors []string
 	// LLM* configure the basic LLM API layer (MUL-4238). They back the
-	// server-internal LLM helpers in pkg/llm (e.g. chat title generation).
+	// server-internal LLM helpers in pkg/llm (chat titles, quick actions, and an
+	// explicit owner/admin Twin Build over accepted canonical LM Wiki evidence).
 	// The generic OpenAI-compatible passthrough endpoints were removed in
 	// MUL-4309; LLM access is internal-only now. When both LLMAPIKey and
 	// LLMBaseURL are empty the layer is disabled and callers fall back
@@ -193,8 +194,11 @@ type Handler struct {
 	RoomRuntime            roomdomain.Runtime
 	RoomMaintenance        roomdomain.Maintenance
 	AutopilotService       *service.AutopilotService
+	WikiKnowledge          service.WikiKnowledge
 	WikiService            *service.WikiService
 	TwinService            *service.TwinService
+	TwinBriefingResolver   TwinBriefingClaimResolver
+	TwinTaskClaimFinalizer TaskClaimFinalizer
 	EmailService           *service.EmailService
 	UpdateStore            UpdateStore
 	ModelListStore         ModelListStore
@@ -361,7 +365,7 @@ type Handler struct {
 	channelFileDelivery map[string]bool
 	// LLM is the basic LLM API layer (MUL-4238): a thin wrapper over the
 	// OpenAI Go SDK backing server-internal one-shot LLM helpers such as chat
-	// title generation. The generic passthrough endpoints were removed in
+	// title generation and explicit accepted-evidence Twin Build. The generic passthrough endpoints were removed in
 	// MUL-4309, so it is internal-only now. Always non-nil (New builds it from
 	// Config); when unconfigured its Enabled() reports false and callers fall
 	// back silently.
@@ -440,11 +444,23 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	// a disabled client, which turns the feature off rather than failing.
 	taskSvc.QuickActions = llmClient
 	issueSvc := service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc)
+	wikiKnowledge := service.NewWikiKnowledgeService(bus)
 	roomTargets := service.NewRoomArtifactTargets(issueSvc)
+	roomTargets.SetWikiPageCreator(func(ctx context.Context, txQueries *db.Queries, input service.RoomWikiPageCreateInput) (db.WikiPage, error) {
+		return wikiKnowledge.CreatePage(ctx, txQueries, service.WikiPageCreateInput{
+			WorkspaceID: input.WorkspaceID, ProjectID: input.ProjectID, OwnerUserID: input.OwnerUserID,
+			Scope: input.Scope, Path: input.Path, Title: input.Title, Content: input.Content,
+			ActorType: input.ActorType, ActorID: input.ActorID,
+			SourceKind: input.SourceKind, SourceRefID: input.SourceRefID,
+		})
+	})
+	roomTargets.SetWikiPagePublisher(func(ctx context.Context, pageID pgtype.UUID, actorType string, actorID pgtype.UUID) error {
+		return wikiKnowledge.PublishCreatedPage(ctx, queries, pageID, actorType, actorID)
+	})
 	roomService := roomdomain.NewService(queries, txStarter, taskSvc, roomTargets, bus)
-	twinSvc := service.NewTwinService(queries, txStarter)
+	twinSvc := service.NewProductionTwinService(queries, txStarter, llmClient)
 	wikiSvc := service.NewWikiService(queries, lmWikiTxStarter{txStarter: txStarter})
-	wikiSvc.OnAccepted = twinSvc
+	wikiSvc.Events = bus
 	h := &Handler{
 		Queries:                      queries,
 		DB:                           executor,
@@ -461,6 +477,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		RoomRuntime:                  roomService,
 		RoomMaintenance:              roomService,
 		AutopilotService:             service.NewAutopilotService(queries, txStarter, bus, taskSvc),
+		WikiKnowledge:                wikiKnowledge,
 		WikiService:                  wikiSvc,
 		TwinService:                  twinSvc,
 		EmailService:                 emailService,
@@ -485,6 +502,11 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		LLM: llmClient,
 		cfg: cfg,
 	}
+	// Claim-time Twin resolution must use the same handler instance so the
+	// operator kill switch is evaluated for every poll. TaskService owns the
+	// complete token/receipt transaction and extends it with Twin attribution.
+	h.TwinBriefingResolver = h
+	h.TwinTaskClaimFinalizer = taskSvc
 	h.WebhookDeliveryWorker = NewWebhookDeliveryWorker(h)
 
 	// GitHub API snapshot pipeline for PR cards (MUL-5265). Built

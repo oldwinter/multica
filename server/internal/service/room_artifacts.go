@@ -16,11 +16,45 @@ import (
 )
 
 type RoomArtifactTargets struct {
-	issues *IssueService
+	issues      *IssueService
+	wiki        RoomWikiPageCreator
+	wikiPublish RoomWikiPagePublisher
 }
+
+// RoomWikiPageCreateInput deliberately mirrors WikiPageCreateInput without
+// coupling the Rooms leaf to the Wiki feature's generated schema. The handler
+// composes this through WikiKnowledge.CreatePage once that feature is enabled.
+type RoomWikiPageCreateInput struct {
+	WorkspaceID pgtype.UUID
+	ProjectID   pgtype.UUID
+	OwnerUserID pgtype.UUID
+	Scope       string
+	Path        string
+	Title       string
+	Content     string
+	ActorType   string
+	ActorID     pgtype.UUID
+	SourceKind  string
+	SourceRefID pgtype.UUID
+}
+
+type RoomWikiPageCreator func(context.Context, *db.Queries, RoomWikiPageCreateInput) (db.WikiPage, error)
+type RoomWikiPagePublisher func(context.Context, pgtype.UUID, string, pgtype.UUID) error
 
 func NewRoomArtifactTargets(issues *IssueService) *RoomArtifactTargets {
 	return &RoomArtifactTargets{issues: issues}
+}
+
+func (targets *RoomArtifactTargets) SetWikiPageCreator(creator RoomWikiPageCreator) {
+	if targets != nil {
+		targets.wiki = creator
+	}
+}
+
+func (targets *RoomArtifactTargets) SetWikiPagePublisher(publisher RoomWikiPagePublisher) {
+	if targets != nil {
+		targets.wikiPublish = publisher
+	}
 }
 
 func (targets *RoomArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, tx pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
@@ -35,10 +69,20 @@ func (targets *RoomArtifactTargets) CreateRoomArtifactTarget(ctx context.Context
 		}
 		return issue.ID, nil
 	case "wiki":
+		if targets == nil || targets.wiki == nil {
+			return pgtype.UUID{}, fmt.Errorf("wiki knowledge service is unavailable")
+		}
 		wikiPath := path.Join("rooms", util.UUIDToString(artifact.RoomID), util.UUIDToString(artifact.ID)+".md")
-		page, err := queries.CreateWikiPage(ctx, db.CreateWikiPageParams{
-			WorkspaceID: artifact.WorkspaceID, Scope: "workspace", Path: wikiPath,
-			Title: artifact.Title, Content: artifact.Body, CreatedBy: artifact.CreatedByUserID,
+		page, err := targets.wiki(ctx, queries, RoomWikiPageCreateInput{
+			WorkspaceID: artifact.WorkspaceID,
+			Scope:       "workspace",
+			Path:        wikiPath,
+			Title:       artifact.Title,
+			Content:     artifact.Body,
+			ActorType:   "member",
+			ActorID:     artifact.CreatedByUserID,
+			SourceKind:  "room_promotion",
+			SourceRefID: artifact.ID,
 		})
 		if err != nil {
 			return pgtype.UUID{}, err
@@ -88,14 +132,24 @@ func (s *IssueService) createRoomIssueTarget(ctx context.Context, tx pgx.Tx, art
 }
 
 func (targets *RoomArtifactTargets) RoomArtifactTargetCreated(ctx context.Context, artifact db.RoomArtifact) {
-	if artifact.Kind != "issue" || targets == nil || targets.issues == nil || !artifact.TargetID.Valid {
+	if targets == nil || !artifact.TargetID.Valid {
 		return
 	}
-	issue, err := targets.issues.Queries.GetIssue(ctx, artifact.TargetID)
-	if err != nil {
-		return
+	switch artifact.Kind {
+	case "issue":
+		if targets.issues == nil {
+			return
+		}
+		issue, err := targets.issues.Queries.GetIssue(ctx, artifact.TargetID)
+		if err != nil {
+			return
+		}
+		actorID := util.UUIDToString(artifact.CreatedByUserID)
+		targets.issues.publishIssueCreated(issue, nil, nil, "member", actorID, IssueCreateOpts{Platform: "room"})
+		targets.issues.captureCreatedAnalytics(issue, "member", actorID, IssueCreateOpts{Platform: "room"})
+	case "wiki":
+		if targets.wikiPublish != nil {
+			_ = targets.wikiPublish(ctx, artifact.TargetID, "member", artifact.CreatedByUserID)
+		}
 	}
-	actorID := util.UUIDToString(artifact.CreatedByUserID)
-	targets.issues.publishIssueCreated(issue, nil, nil, "member", actorID, IssueCreateOpts{Platform: "room"})
-	targets.issues.captureCreatedAnalytics(issue, "member", actorID, IssueCreateOpts{Platform: "room"})
 }

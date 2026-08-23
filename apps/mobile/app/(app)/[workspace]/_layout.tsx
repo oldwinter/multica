@@ -10,13 +10,16 @@ import { useIssuesRealtime } from "@/data/realtime/use-issues-realtime";
 import { useMyIssuesRealtime } from "@/data/realtime/use-my-issues-realtime";
 import { useChatSessionsRealtime } from "@/data/realtime/use-chat-sessions-realtime";
 import { useProjectsRealtime } from "@/data/realtime/use-projects-realtime";
+import { useRoomsRealtime } from "@/data/realtime/use-rooms-realtime";
 import { usePinsRealtime } from "@/data/realtime/use-pins-realtime";
 import { usePresenceRealtime } from "@/data/realtime/use-presence-realtime";
+import { useWikiRealtime } from "@/data/realtime/use-wiki-realtime";
 import { useWorkspacePresencePrefetch } from "@/lib/use-workspace-presence-prefetch";
 import { ModalCloseButton } from "@/components/ui/modal-close-button";
 import { useNewIssueDraftResetOnWorkspaceChange } from "@/data/stores/new-issue-draft-store";
 import { useNewProjectDraftResetOnWorkspaceChange } from "@/data/stores/new-project-draft-store";
 import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-session-picker-store";
+import { wikiProjectPickerScreenOptions } from "@/data/wiki-navigation";
 
 /**
  * Shared Stack.Screen options for every iOS formSheet-presented sheet route.
@@ -52,6 +55,9 @@ const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>["options"] = {
   headerShown: false,
 };
 
+const WIKI_PROJECT_PICKER_OPTIONS =
+  wikiProjectPickerScreenOptions(SHEET_OPTIONS);
+
 /**
  * Cold-start deep-link anchor. Expo Router otherwise treats whatever
  * route resolves the URL as the root of the stack — if the user opens a
@@ -78,6 +84,8 @@ function RealtimeSubscriptions() {
   useMyIssuesRealtime();
   useChatSessionsRealtime();
   useProjectsRealtime();
+  useWikiRealtime();
+  useRoomsRealtime();
   usePinsRealtime();
   // Presence: warm the three queries up front so avatars don't flash a
   // dotless first render, and listen for daemon/agent/task events to keep
@@ -146,6 +154,15 @@ export default function WorkspaceLayout() {
             headerBackTitle: "Back",
           }}
         />
+        <Stack.Screen
+          name="room/[id]"
+          options={{
+            title: "Room",
+            headerBackTitle: "Rooms",
+          }}
+        />
+        <Stack.Screen name="room/[id]/review" options={SHEET_OPTIONS} />
+        <Stack.Screen name="room/[id]/promotion" options={SHEET_OPTIONS} />
         <Stack.Screen
           name="project/[id]/edit"
           options={{
@@ -296,6 +313,50 @@ export default function WorkspaceLayout() {
         <Stack.Screen
           name="more/projects"
           options={{ title: "Projects", headerBackTitle: "Back" }}
+        />
+        <Stack.Screen
+          name="more/wiki"
+          options={{ title: "Wiki", headerBackTitle: "Back" }}
+        />
+        <Stack.Screen
+          name="wiki/project-picker"
+          options={WIKI_PROJECT_PICKER_OPTIONS}
+        />
+        <Stack.Screen
+          name="wiki/new"
+          options={{
+            title: "New Wiki Page",
+            presentation: "modal",
+            headerLeft: () => <ModalCloseButton />,
+          }}
+        />
+        <Stack.Screen
+          name="wiki/[id]"
+          options={{ title: "Wiki Page", headerBackTitle: "Wiki" }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/edit"
+          options={{
+            title: "Edit Wiki Page",
+            presentation: "modal",
+            headerLeft: () => <ModalCloseButton />,
+          }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/history"
+          options={{ title: "Revision History", headerBackTitle: "Page" }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/proposals"
+          options={{ title: "Agent Proposals", headerBackTitle: "Page" }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/proposal/[proposalId]"
+          options={{ title: "Review Proposal", headerBackTitle: "Proposals" }}
+        />
+        <Stack.Screen
+          name="more/rooms"
+          options={{ title: "Rooms", headerBackTitle: "Back" }}
         />
         <Stack.Screen
           name="more/agents"

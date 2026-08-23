@@ -24,6 +24,7 @@ describe("paths.workspace() shape", () => {
         "agents",
         "twins",
         "wiki",
+        "personalWiki",
         "newAgent",
         "newAgentManual",
         "newAgentAi",
@@ -52,6 +53,7 @@ describe("paths.workspace() shape", () => {
       ["agents", "agents"],
       ["twins", "twins"],
       ["wiki", "wiki"],
+      ["personalWiki", "personal-wiki"],
       ["newAgent", "agents/new"],
       ["newAgentManual", "agents/new/manual"],
       ["newAgentAi", "agents/new/ai"],
@@ -89,6 +91,7 @@ describe("global path / reserved slug consistency", () => {
     "/workspaces/",
     "/invite/",
     "/auth/",
+    "/personal-wiki",
   ];
 
   it("isGlobalPath agrees with the canonical global prefix list", () => {

@@ -89,6 +89,23 @@ const (
 	EventChatSessionDeleted  = "chat:session_deleted"
 	EventChatSessionUpdated  = "chat:session_updated"
 
+	// Workspace Wiki events. Revisions are append-only, so page updates,
+	// restores, and accepted proposals carry revision identity as an
+	// invalidation hint rather than mutable page content.
+	EventWikiPageCreated      = "wiki:page_created"
+	EventWikiPageUpdated      = "wiki:page_updated"
+	EventWikiPageDeleted      = "wiki:page_deleted"
+	EventWikiRevisionCreated  = "wiki:revision_created"
+	EventWikiRevisionRestored = "wiki:revision_restored"
+	EventWikiProposalCreated  = "wiki:proposal_created"
+	EventWikiProposalReviewed = "wiki:proposal_reviewed"
+
+	// LM Wiki lifecycle events. These are deliberately separate from mutable
+	// Workspace Wiki events because their query trees and review semantics differ.
+	EventLMWikiSourcePolicyChanged = "lm_wiki:source_policy_changed"
+	EventLMWikiRevisionChanged     = "lm_wiki:revision_changed"
+	EventLMWikiReviewChanged       = "lm_wiki:review_changed"
+
 	// Project events
 	EventProjectCreated         = "project:created"
 	EventProjectUpdated         = "project:updated"
@@ -215,3 +232,32 @@ const (
 	EventTelegramInstallationCreated = "telegram_installation:created"
 	EventTelegramInstallationRevoked = "telegram_installation:revoked"
 )
+
+// WikiEventPayload is the content-free realtime envelope shared by page,
+// revision, and proposal events. The event type gives each field its meaning;
+// optional fields let older clients ignore lifecycle details they do not know.
+//
+// RecipientID is routing metadata for personal Wiki events. It is never
+// serialized, so user identity is not repeated inside the client payload.
+type WikiEventPayload struct {
+	PageID                 string `json:"page_id"`
+	Scope                  string `json:"scope"`
+	ProjectID              string `json:"project_id,omitempty"`
+	RevisionID             string `json:"revision_id,omitempty"`
+	RevisionNumber         int64  `json:"revision_number,omitempty"`
+	ProposalID             string `json:"proposal_id,omitempty"`
+	BaseRevisionNumber     int64  `json:"base_revision_number,omitempty"`
+	ReviewStatus           string `json:"status,omitempty"`
+	AcceptedRevisionID     string `json:"accepted_revision_id,omitempty"`
+	AcceptedRevisionNumber int64  `json:"accepted_revision_number,omitempty"`
+	RecipientID            string `json:"-"`
+}
+
+// LMWikiEventPayload identifies the changed policy, immutable revision, or
+// review without sending evidence, citations, digests, or generated content.
+type LMWikiEventPayload struct {
+	PolicyVersion  int64  `json:"policy_version,omitempty"`
+	RevisionID     string `json:"revision_id,omitempty"`
+	RevisionNumber int64  `json:"revision_number,omitempty"`
+	ReviewDecision string `json:"decision,omitempty"`
+}

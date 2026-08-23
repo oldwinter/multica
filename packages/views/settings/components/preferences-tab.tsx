@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Check, Monitor, Moon, Sun } from "lucide-react";
+import { Check, Monitor, Moon, RefreshCw, RotateCcw, Sun } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -11,16 +11,12 @@ import {
   SelectValue,
 } from "@multica/ui/components/ui/select";
 import { Switch } from "@multica/ui/components/ui/switch";
+import { Button } from "@multica/ui/components/ui/button";
 import {
   RadioGroup,
   RadioGroupItem,
 } from "@multica/ui/components/ui/radio-group";
-import {
-  SKIN_IDS,
-  useSkin,
-  useTheme,
-  type Skin,
-} from "@multica/ui/components/common/theme-provider";
+import { SKIN_IDS, type SkinId } from "@multica/core/appearance";
 import { cn } from "@multica/ui/lib/utils";
 import {
   DEFAULT_LOCALE,
@@ -33,6 +29,7 @@ import { useCommentComposerStore } from "@multica/core/issues/stores";
 import { api } from "@multica/core/api";
 import { browserTimezone, timezoneOptions } from "../../common/timezone-select";
 import { useT } from "../../i18n";
+import { useAppearancePreferences } from "../../appearance";
 import {
   SettingsCard,
   SettingsRow,
@@ -41,8 +38,15 @@ import {
 } from "./settings-layout";
 
 export function PreferencesTab() {
-  const { theme, setTheme } = useTheme();
-  const { skin, setSkin } = useSkin();
+  const {
+    preferences,
+    selectSkin,
+    selectAppearance,
+    reset: resetAppearance,
+    retry: retryAppearanceSync,
+  } = useAppearancePreferences();
+  const skin = preferences.skin;
+  const theme = preferences.requestedAppearance;
   const { t, i18n } = useT("settings");
   const localeAdapter = useLocaleAdapter();
   const user = useAuthStore((s) => s.user);
@@ -74,7 +78,7 @@ export function PreferencesTab() {
     },
   ];
 
-  const skinOptions: Array<{ value: Skin; label: string; description: string }> =
+  const skinOptions: Array<{ value: SkinId; label: string; description: string }> =
     SKIN_IDS.map((value) => ({
       value,
       label: t(($) => $.preferences.skin[value].name),
@@ -134,7 +138,7 @@ export function PreferencesTab() {
           aria-label={t(($) => $.preferences.skin.title)}
           value={skin}
           onValueChange={(value) => {
-            setSkin(value as Skin);
+            selectSkin(value as SkinId);
             toast.success(t(($) => $.auto_save.toast_saved), {
               id: "settings-auto-save",
             });
@@ -199,7 +203,7 @@ export function PreferencesTab() {
               aria-label={t(($) => $.preferences.theme.title)}
               value={theme}
               onValueChange={(value) => {
-                setTheme(value);
+                selectAppearance(value as "system" | "light" | "dark");
                 toast.success(t(($) => $.auto_save.toast_saved), {
                   id: "settings-auto-save",
                 });
@@ -230,6 +234,48 @@ export function PreferencesTab() {
             </RadioGroup>
           </SettingsRow>
         </SettingsCard>
+
+        <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-h-8 items-center gap-1">
+            <span
+              className="text-caption text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              {preferences.source === "default" &&
+                t(($) => $.preferences.appearance_sync.default)}
+              {preferences.source !== "default" &&
+                preferences.syncState.status === "local-only" &&
+                t(($) => $.preferences.appearance_sync.local_only)}
+              {preferences.syncState.status === "synced" &&
+                t(($) => $.preferences.appearance_sync.synced)}
+              {preferences.syncState.status === "pending" &&
+                t(($) => $.preferences.appearance_sync.pending)}
+              {preferences.syncState.status === "failed" &&
+                t(($) => $.preferences.appearance_sync.failed)}
+            </span>
+            {preferences.syncState.status === "failed" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-warning"
+                onClick={retryAppearanceSync}
+              >
+                <RefreshCw className="size-3.5" aria-hidden="true" />
+                {t(($) => $.preferences.appearance_sync.retry)}
+              </Button>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-muted-foreground"
+            onClick={resetAppearance}
+          >
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            {t(($) => $.preferences.appearance_sync.reset)}
+          </Button>
+        </div>
       </SettingsSection>
 
       <SettingsSection title={t(($) => $.preferences.general_title)}>

@@ -126,6 +126,7 @@ export function lifecycleFixture() {
     citations: [citation],
   };
   return {
+    wsId: "00000000-0000-4000-8000-000000000001",
     state: "ready" as const,
     wiki,
     wikiDetail,
@@ -151,6 +152,8 @@ export function lifecycleFixture() {
     onEnsureTwin: () => undefined,
     onAcceptTwin: async () => undefined,
     onRejectTwin: async () => undefined,
+    onCorrectTwin: async () => undefined,
+    onEditDeposition: async () => undefined,
     onRetry: () => undefined,
   };
 }

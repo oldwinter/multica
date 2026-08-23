@@ -42,34 +42,67 @@ func marshalLMWikiCitations(citations []LMWikiCitation) ([]byte, error) {
 }
 
 func loadLMWikiSnapshot(ctx context.Context, queries *db.Queries, workspaceID pgtype.UUID) (LMWikiCanonicalSnapshot, error) {
-	issues, err := queries.ListLMWikiSourceIssues(ctx, workspaceID)
+	policy, err := loadLMWikiSourcePolicyState(ctx, queries, workspaceID)
 	if err != nil {
-		return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki issues: %w", err)
+		return LMWikiCanonicalSnapshot{}, err
 	}
-	projects, err := queries.ListLMWikiSourceProjects(ctx, workspaceID)
-	if err != nil {
-		return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki projects: %w", err)
+	enabled := make(map[string]bool, len(policy.SourceClasses))
+	for _, sourceClass := range policy.SourceClasses {
+		enabled[sourceClass] = true
 	}
-	resources, err := queries.ListLMWikiSourceProjectResources(ctx, workspaceID)
-	if err != nil {
-		return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki resources: %w", err)
+	sources := LMWikiSourceSnapshot{EgressPolicy: LMWikiEgressPolicy{
+		RemoteGenerationEnabled: policy.RemoteGenerationEnabled,
+		PolicyVersion:           policy.PolicyVersion,
+		PolicyDigest:            policy.PolicyDigest,
+	}}
+	if enabled["issue"] {
+		issues, err := queries.ListLMWikiSourceIssues(ctx, workspaceID)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki issues: %w", err)
+		}
+		for _, row := range issues {
+			sources.Issues = append(sources.Issues, LMWikiIssue{ID: row.ID, Number: row.Number, Title: row.Title, Description: row.Description, Status: row.Status, Priority: row.Priority, ProjectID: row.ProjectID, StartDate: row.StartDate, DueDate: row.DueDate, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time})
+		}
 	}
-	runs, err := queries.ListLMWikiSourceAutopilotRuns(ctx, workspaceID)
-	if err != nil {
-		return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki autopilot runs: %w", err)
+	if enabled["project"] {
+		projects, err := queries.ListLMWikiSourceProjects(ctx, workspaceID)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki projects: %w", err)
+		}
+		for _, row := range projects {
+			sources.Projects = append(sources.Projects, LMWikiProject{ID: row.ID, Title: row.Title, Description: row.Description, Status: row.Status, Priority: row.Priority, StartDate: row.StartDate, DueDate: row.DueDate, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time})
+		}
 	}
-	sources := LMWikiSourceSnapshot{}
-	for _, row := range issues {
-		sources.Issues = append(sources.Issues, LMWikiIssue{ID: row.ID, Number: row.Number, Title: row.Title, Description: row.Description, Status: row.Status, Priority: row.Priority, ProjectID: row.ProjectID, StartDate: row.StartDate, DueDate: row.DueDate, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time})
+	if enabled["project_resource"] {
+		resources, err := queries.ListLMWikiSourceProjectResources(ctx, workspaceID)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki resources: %w", err)
+		}
+		for _, row := range resources {
+			sources.ProjectResources = append(sources.ProjectResources, LMWikiProjectResource{ID: row.ID, ProjectID: row.ProjectID, ResourceType: row.ResourceType, Label: row.Label, Position: row.Position, GitURL: row.GitUrl, Ref: row.Ref, DefaultBranchHint: row.DefaultBranchHint})
+		}
 	}
-	for _, row := range projects {
-		sources.Projects = append(sources.Projects, LMWikiProject{ID: row.ID, Title: row.Title, Description: row.Description, Status: row.Status, Priority: row.Priority, StartDate: row.StartDate, DueDate: row.DueDate, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time})
+	if enabled["autopilot_run"] {
+		runs, err := queries.ListLMWikiSourceAutopilotRuns(ctx, workspaceID)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki autopilot runs: %w", err)
+		}
+		for _, row := range runs {
+			sources.AutopilotRuns = append(sources.AutopilotRuns, LMWikiAutopilotRun{ID: row.ID, AutopilotID: row.AutopilotID, AutopilotTitle: row.AutopilotTitle, Status: row.Status, Source: row.Source, IssueID: row.IssueID, TriggeredAt: row.TriggeredAt.Time, CompletedAt: row.CompletedAt.Time})
+		}
 	}
-	for _, row := range resources {
-		sources.ProjectResources = append(sources.ProjectResources, LMWikiProjectResource{ID: row.ID, ProjectID: row.ProjectID, ResourceType: row.ResourceType, Label: row.Label, Position: row.Position, GitURL: row.GitUrl, Ref: row.Ref, DefaultBranchHint: row.DefaultBranchHint})
-	}
-	for _, row := range runs {
-		sources.AutopilotRuns = append(sources.AutopilotRuns, LMWikiAutopilotRun{ID: row.ID, AutopilotID: row.AutopilotID, AutopilotTitle: row.AutopilotTitle, Status: row.Status, Source: row.Source, IssueID: row.IssueID, TriggeredAt: row.TriggeredAt.Time, CompletedAt: row.CompletedAt.Time})
+	if enabled["wiki_page"] {
+		pages, err := queries.ListLMWikiSourceWikiPageRevisions(ctx, workspaceID)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, fmt.Errorf("list lm wiki Wiki page revisions: %w", err)
+		}
+		for _, row := range pages {
+			sources.WikiPages = append(sources.WikiPages, LMWikiPageRevision{
+				ID: row.RevisionID, PageID: row.PageID, Scope: row.Scope, ProjectID: row.ProjectID,
+				RevisionNumber: row.RevisionNumber, Path: row.Path, Title: row.Title,
+				Content: row.Content, ContentDigest: row.ContentDigest, CreatedAt: row.CreatedAt.Time,
+			})
+		}
 	}
 	snapshot, err := BuildLMWikiSnapshot(sources)
 	if err != nil {

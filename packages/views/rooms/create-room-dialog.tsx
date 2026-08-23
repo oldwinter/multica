@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Bot, Check, Loader2, Users } from "lucide-react";
 import type { Agent, MemberWithUser, Squad } from "@multica/core/types";
-import type { CreateRoomInput, RoomDetail } from "@multica/core/rooms";
+import type { CreateRoomInput, RoomDetail, RoomTemplateId } from "@multica/core/rooms";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
@@ -42,6 +42,8 @@ interface CreateRoomDialogProps {
 }
 
 const SCHEDULE_VALUES = [0, 15, 30, 60, 180, 720, 1440] as const;
+const TEMPLATE_VALUES = ["research", "planning", "risk", "incident", "decision"] as const;
+type CreateRoomTemplate = Exclude<RoomTemplateId, "unknown">;
 
 export function CreateRoomDialog({
   open,
@@ -63,6 +65,10 @@ export function CreateRoomDialog({
   );
   const [mode, setMode] = useState<FacilitatorMode>("agent");
   const [title, setTitle] = useState("");
+  const [templateId, setTemplateId] = useState<CreateRoomTemplate>("research");
+  const [objective, setObjective] = useState(() => t(($) => $.create.templates.research.objective));
+  const [successCriteria, setSuccessCriteria] = useState(() => t(($) => $.create.templates.research.success_criteria));
+  const [stopConditions, setStopConditions] = useState(() => t(($) => $.create.templates.research.stop_conditions));
   const [instructions, setInstructions] = useState("");
   const [facilitatorId, setFacilitatorId] = useState("");
   const [participantAgentIds, setParticipantAgentIds] = useState<Set<string>>(
@@ -72,16 +78,22 @@ export function CreateRoomDialog({
     new Set(),
   );
   const [dailyLimit, setDailyLimit] = useState("");
+  const [maxCostTicks, setMaxCostTicks] = useState("");
   const [scheduleMinutes, setScheduleMinutes] = useState("0");
 
   const reset = () => {
     setMode("agent");
     setTitle("");
+    setTemplateId("research");
+    setObjective(t(($) => $.create.templates.research.objective));
+    setSuccessCriteria(t(($) => $.create.templates.research.success_criteria));
+    setStopConditions(t(($) => $.create.templates.research.stop_conditions));
     setInstructions("");
     setFacilitatorId("");
     setParticipantAgentIds(new Set());
     setParticipantMemberIds(new Set());
     setDailyLimit("");
+    setMaxCostTicks("");
     setScheduleMinutes("0");
   };
 
@@ -108,9 +120,14 @@ export function CreateRoomDialog({
     ];
     const shared = {
       title: title.trim(),
+      template_id: templateId,
+      objective: objective.trim(),
+      success_criteria: lines(successCriteria),
+      stop_conditions: lines(stopConditions),
       instructions: instructions.trim() || undefined,
       participants,
       daily_turn_limit: dailyLimit ? Number(dailyLimit) : undefined,
+      max_cost_ticks: maxCostTicks ? Number(maxCostTicks) : undefined,
       schedule_interval_minutes:
         scheduleMinutes === "0" ? undefined : Number(scheduleMinutes),
     };
@@ -126,7 +143,14 @@ export function CreateRoomDialog({
 
   const facilitatorOptions = mode === "agent" ? activeAgents : activeSquads;
   const canSubmit =
-    title.trim().length > 0 && facilitatorId.length > 0 && !pending;
+    title.trim().length > 0 && objective.trim().length > 0 && facilitatorId.length > 0 && !pending;
+
+  const applyTemplate = (value: CreateRoomTemplate) => {
+    setTemplateId(value);
+    setObjective(t(($) => $.create.templates[value].objective));
+    setSuccessCriteria(t(($) => $.create.templates[value].success_criteria));
+    setStopConditions(t(($) => $.create.templates[value].stop_conditions));
+  };
 
   return (
     <Dialog
@@ -154,6 +178,47 @@ export function CreateRoomDialog({
               onChange={(event) => setTitle(event.target.value)}
             />
           </Field>
+          <Field label={t(($) => $.create.fields.template)}>
+            <Select
+              items={TEMPLATE_VALUES.map((value) => ({ value, label: t(($) => $.create.templates[value].label) }))}
+              value={templateId}
+              onValueChange={(value) => {
+                if (value && TEMPLATE_VALUES.includes(value as CreateRoomTemplate)) applyTemplate(value as CreateRoomTemplate);
+              }}
+            >
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TEMPLATE_VALUES.map((value) => <SelectItem key={value} value={value}>{t(($) => $.create.templates[value].label)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label={t(($) => $.create.fields.objective)}>
+            <Textarea
+              className="min-h-20 resize-y"
+              value={objective}
+              maxLength={1200}
+              placeholder={t(($) => $.create.placeholders.objective)}
+              onChange={(event) => setObjective(event.target.value)}
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t(($) => $.create.fields.success_criteria)}>
+              <Textarea
+                className="min-h-24 resize-y"
+                value={successCriteria}
+                placeholder={t(($) => $.create.placeholders.one_per_line)}
+                onChange={(event) => setSuccessCriteria(event.target.value)}
+              />
+            </Field>
+            <Field label={t(($) => $.create.fields.stop_conditions)}>
+              <Textarea
+                className="min-h-24 resize-y"
+                value={stopConditions}
+                placeholder={t(($) => $.create.placeholders.one_per_line)}
+                onChange={(event) => setStopConditions(event.target.value)}
+              />
+            </Field>
+          </div>
           <Field label={t(($) => $.create.fields.instructions)}>
             <Textarea
               className="min-h-20 resize-y"
@@ -217,7 +282,14 @@ export function CreateRoomDialog({
             </Select>
           </Field>
 
-          <Field label={t(($) => $.create.fields.participants)}>
+          <div
+            className="space-y-1.5 text-caption font-medium text-muted-foreground"
+            role="group"
+            aria-labelledby="room-create-participants-label"
+          >
+            <span id="room-create-participants-label">
+              {t(($) => $.create.fields.participants)}
+            </span>
             <div className="max-h-44 overflow-y-auto rounded-lg border border-surface-border p-1">
               {activeAgents.map((agent) => (
                 <ParticipantOption
@@ -244,9 +316,9 @@ export function CreateRoomDialog({
                 />
               ))}
             </div>
-          </Field>
+          </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Field label={t(($) => $.create.fields.daily_turn_limit)}>
               <Input
                 type="number"
@@ -256,6 +328,16 @@ export function CreateRoomDialog({
                 value={dailyLimit}
                 placeholder={t(($) => $.detail.unlimited)}
                 onChange={(event) => setDailyLimit(event.target.value)}
+              />
+            </Field>
+            <Field label={t(($) => $.create.fields.max_cost_ticks)}>
+              <Input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={maxCostTicks}
+                placeholder={t(($) => $.detail.unlimited)}
+                onChange={(event) => setMaxCostTicks(event.target.value)}
               />
             </Field>
             <Field label={t(($) => $.create.fields.schedule_interval)}>
@@ -301,6 +383,10 @@ export function CreateRoomDialog({
   );
 }
 
+function lines(value: string): string[] {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
 function Field({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5 text-caption font-medium text-muted-foreground">
@@ -328,6 +414,7 @@ function ParticipantOption({
       type="button"
       role="checkbox"
       aria-checked={checked}
+      aria-label={name}
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-foreground outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onToggle}
     >

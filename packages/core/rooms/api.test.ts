@@ -81,6 +81,7 @@ describe("ApiClient rooms", () => {
       } }))
       .mockResolvedValueOnce(jsonResponse({ cycle, turns: [turn], tasks: ["task-1"] }))
       .mockResolvedValueOnce(jsonResponse({ ...room, status: "paused" }))
+			.mockResolvedValueOnce(jsonResponse({ ...room, daily_turn_limit: 20, max_cost_ticks: 200 }))
       .mockResolvedValueOnce(jsonResponse({
         id: "artifact-1",
         cycle_id: null,
@@ -99,13 +100,21 @@ describe("ApiClient rooms", () => {
 
     await client.listRooms();
     await client.getRoom("room-1");
-    await client.createRoom({ title: "Research room", facilitator_agent_id: "agent-1" });
+    await client.createRoom({
+      title: "Research room",
+      objective: "Compare the evidence",
+      facilitator_agent_id: "agent-1",
+    });
     await client.postRoomMessage("room-1", {
       body: "Investigate this.",
       idempotency_key: "message-key-1",
     });
     await client.wakeRoom("room-1", { idempotency_key: "wake-key-1" });
     await client.setRoomStatus("room-1", { status: "paused" });
+		await client.updateRoomBudget("room-1", {
+			daily_turn_limit: 20,
+			max_cost_ticks: 200,
+		});
     await client.promoteRoomArtifact("room-1", {
       entry_id: "entry-1",
       kind: "decision",
@@ -120,6 +129,7 @@ describe("ApiClient rooms", () => {
       "https://api.example.test/api/rooms/room-1/messages",
       "https://api.example.test/api/rooms/room-1/wake",
       "https://api.example.test/api/rooms/room-1/status",
+			"https://api.example.test/api/rooms/room-1/budget",
       "https://api.example.test/api/rooms/room-1/promotions",
     ]);
     expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
@@ -130,7 +140,11 @@ describe("ApiClient rooms", () => {
       method: "POST",
       body: expect.stringContaining('"idempotency_key":"wake-key-1"'),
     });
-    expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({
+		expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({
+			method: "PUT",
+			body: JSON.stringify({ daily_turn_limit: 20, max_cost_ticks: 200 }),
+		});
+		expect(fetchMock.mock.calls[7]?.[1]).toMatchObject({
       method: "POST",
       body: expect.stringContaining('"idempotency_key":"promotion-key-1"'),
     });
@@ -150,18 +164,108 @@ describe("ApiClient rooms", () => {
     await expect(new ApiClient("https://api.example.test").listRooms()).resolves.toEqual([]);
   });
 
-  it("rejects a malformed create response", async () => {
+	it("degrades a malformed budget update response", async () => {
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ id: 42 })));
+
+		await expect(
+			new ApiClient("https://api.example.test").updateRoomBudget("room-1", {
+				daily_turn_limit: null,
+				max_cost_ticks: null,
+			}),
+		).resolves.toMatchObject({ id: "", daily_turn_limit: null, max_cost_ticks: null });
+	});
+
+  it("parses authoritative preflight and usage responses", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        allowed: true,
+        refusal_reason: null,
+        capability_version: 2,
+        capability_ready: true,
+        required_daemon_capability: "rooms_outcome_v2",
+				spend_limit_supported: true,
+				required_cost_capability: "room-cost-limits-v1",
+        target_agents: [{
+          agent_id: "agent-1",
+          ready: true,
+          invocation_allowed: true,
+          reason: null,
+        }],
+        expected_max_turns: 2,
+        synthesis_required: true,
+        budget: {
+          daily_turn_limit: 10,
+          used_turns: 2,
+          max_cost_ticks: 100,
+          used_cost_ticks: 20,
+          remaining_cost_ticks: 80,
+					reserved_cost_ticks: 10,
+          uncosted_turns: 0,
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        turns_total: 8,
+        cost_ticks: 64,
+        uncosted_turns: 1,
+        failures: 1,
+        accepted_syntheses: 2,
+        promoted_artifacts: 1,
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    await expect(client.getRoomPreflight("room-1", "agent-1", "schedule")).resolves.toMatchObject({
+      source: "unknown",
+      allowed: true,
+      capability_version: 2,
+      capability_ready: true,
+      required_daemon_capability: "rooms_outcome_v2",
+			spend_limit_supported: true,
+			required_cost_capability: "room-cost-limits-v1",
+      expected_max_turns: 2,
+    });
+    await expect(client.getRoomUsage("room-1")).resolves.toMatchObject({
+      turns_total: 8,
+      accepted_syntheses: 2,
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.example.test/api/rooms/room-1/preflight?source=schedule&target_agent_id=agent-1",
+      "https://api.example.test/api/rooms/room-1/usage",
+    ]);
+  });
+
+  it("degrades malformed preflight and usage responses", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ allowed: "yes" }))
+      .mockResolvedValueOnce(jsonResponse({ turns_total: "many" })));
+    const client = new ApiClient("https://api.example.test");
+
+    await expect(client.getRoomPreflight("room-1")).resolves.toMatchObject({
+      allowed: false,
+      capability_version: 0,
+      capability_ready: true,
+      target_agents: [],
+    });
+    await expect(client.getRoomUsage("room-1")).resolves.toMatchObject({
+      turns_total: 0,
+      promoted_artifacts: 0,
+    });
+  });
+
+  it("falls back for a malformed create response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ room: "wrong" })));
 
     await expect(
       new ApiClient("https://api.example.test").createRoom({
         title: "Research room",
+        objective: "Compare the evidence",
         facilitator_agent_id: "agent-1",
       }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ room: { id: "" }, entries: [] });
   });
 
-  it("rejects a malformed message response", async () => {
+  it("falls back for a malformed message response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ cycle: "wrong" })));
 
     await expect(
@@ -169,28 +273,28 @@ describe("ApiClient rooms", () => {
         body: "Investigate this.",
         idempotency_key: "message-key-1",
       }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ entry: { id: "" }, cycle: { id: "" } });
   });
 
-  it("rejects a malformed wake response", async () => {
+  it("falls back for a malformed wake response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ cycle: "wrong" })));
 
     await expect(
       new ApiClient("https://api.example.test").wakeRoom("room-1", {
         idempotency_key: "wake-key-1",
       }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ cycle: { id: "" }, turns: [], tasks: [] });
   });
 
-  it("rejects a malformed status response", async () => {
+  it("falls back for a malformed status response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ status: "paused" })));
 
     await expect(
       new ApiClient("https://api.example.test").setRoomStatus("room-1", { status: "paused" }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ id: "", status: "unknown" });
   });
 
-  it("rejects a malformed promotion response", async () => {
+  it("falls back for a malformed promotion response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ kind: "decision" })));
 
     await expect(
@@ -200,7 +304,7 @@ describe("ApiClient rooms", () => {
         idempotency_key: "promotion-key-1",
         title: "Choose the primary source",
       }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({ id: "", kind: "decision" });
   });
 });
 

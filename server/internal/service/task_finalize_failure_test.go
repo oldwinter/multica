@@ -73,6 +73,110 @@ func TestFinalizeTaskClaimFailureRollsBackTokenThenRequeue(t *testing.T) {
 	}
 }
 
+func TestFinalizeTaskClaimWithTwinCommitsOrRollsBackWholeClaim(t *testing.T) {
+	ctx := context.Background()
+	pool := newTaskClaimRacePool(t)
+	queries := db.New(pool)
+	svc := NewTaskService(queries, pool, nil, events.New())
+
+	taskID, userID, workspaceID := dispatchedCommentTaskFixture(t, ctx, pool)
+	workspaceUUID := util.MustParseUUID(workspaceID)
+	userUUID := util.MustParseUUID(userID)
+	task, err := queries.GetAgentTask(ctx, util.MustParseUUID(taskID))
+	if err != nil {
+		t.Fatalf("load task: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = queries.DeleteWorkspaceTwinExecutionData(context.Background(), workspaceUUID)
+		_ = queries.DeleteWorkspaceWikiTwinData(context.Background(), workspaceUUID)
+	})
+
+	revision, err := queries.CreateLMWikiRevision(ctx, db.CreateLMWikiRevisionParams{
+		WorkspaceID: workspaceUUID, SourceDigest: twinExecutionTestDigest("claim-source"),
+		Content: []byte(`{"schema_version":1}`), TriggerKind: "manual", RequestedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("create source revision: %v", err)
+	}
+	proposal, err := queries.CreateTwinProposal(ctx, db.CreateTwinProposalParams{
+		WorkspaceID: workspaceUUID, Kind: "initial", SourceWikiRevisionID: revision.ID,
+		Content:       []byte(`{"schema_version":1,"assertions":[]}`),
+		ContentDigest: twinExecutionTestDigest("claim-proposal"), RequestedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("create proposal: %v", err)
+	}
+	if _, err := queries.CreateTwinProposalReview(ctx, db.CreateTwinProposalReviewParams{
+		WorkspaceID: workspaceUUID, ProposalID: proposal.ID, Decision: "accepted", ReviewerID: userUUID,
+	}); err != nil {
+		t.Fatalf("accept proposal: %v", err)
+	}
+	version, err := queries.CreateTwinVersion(ctx, db.CreateTwinVersionParams{
+		WorkspaceID: workspaceUUID, ProposalID: proposal.ID, SignedOffByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("create signed version: %v", err)
+	}
+
+	briefing := "Use the signed release checklist."
+	attribution := &TwinClaimAttribution{
+		Briefing: briefing, VersionID: version.ID.String(),
+		BriefingDigest:       TwinBriefingDigest(briefing),
+		SelectedAssertionIDs: []string{"assertion:release"},
+		CitationIDs:          []string{"issue:release"},
+		PolicyState:          string(TwinUseEnabled),
+		PolicyScope:          string(TwinUseScopeWorkspace),
+		PolicyScopeID:        workspaceID,
+		CompilerVersion:      TwinBriefingCompilerVersion,
+	}
+	token := func(hash string) db.CreateTaskTokenParams {
+		return db.CreateTaskTokenParams{
+			TokenHash: hash, TaskID: task.ID, AgentID: task.AgentID,
+			WorkspaceID: workspaceUUID, UserID: userUUID,
+			ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+		}
+	}
+
+	invalid := *attribution
+	invalid.BriefingDigest = TwinBriefingDigest("different briefing")
+	if _, err := svc.FinalizeTaskClaimWithTwin(
+		ctx, task, token(fmt.Sprintf("twin-finalize-invalid-%d", time.Now().UnixNano())),
+		[]pgtype.UUID{task.TriggerCommentID}, true, &invalid,
+	); err == nil {
+		t.Fatal("expected invalid Twin attribution to fail claim finalization")
+	}
+	var tokenCount, attributionCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM task_token WHERE task_id = $1`, task.ID).Scan(&tokenCount); err != nil {
+		t.Fatalf("count rolled-back task tokens: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM twin_task_attribution WHERE task_id = $1`, task.ID).Scan(&attributionCount); err != nil {
+		t.Fatalf("count rolled-back Twin attributions: %v", err)
+	}
+	if tokenCount != 0 || attributionCount != 0 {
+		t.Fatalf("failed finalization left token=%d attribution=%d, want both zero", tokenCount, attributionCount)
+	}
+
+	receipt, err := svc.FinalizeTaskClaimWithTwin(
+		ctx, task, token(fmt.Sprintf("twin-finalize-valid-%d", time.Now().UnixNano())),
+		[]pgtype.UUID{task.TriggerCommentID}, true, attribution,
+	)
+	if err != nil {
+		t.Fatalf("finalize valid Twin claim: %v", err)
+	}
+	if len(receipt) != 1 || receipt[0] != task.TriggerCommentID {
+		t.Fatalf("delivery receipt = %v, want trigger comment", receipt)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM task_token WHERE task_id = $1`, task.ID).Scan(&tokenCount); err != nil {
+		t.Fatalf("count committed task tokens: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM twin_task_attribution WHERE task_id = $1`, task.ID).Scan(&attributionCount); err != nil {
+		t.Fatalf("count committed Twin attributions: %v", err)
+	}
+	if tokenCount != 1 || attributionCount != 1 {
+		t.Fatalf("successful finalization committed token=%d attribution=%d, want both one", tokenCount, attributionCount)
+	}
+}
+
 // dispatchedCommentTaskFixture provisions a comment-backed task already in the
 // `dispatched` state (never started), returning (taskID, ownerUserID).
 func dispatchedCommentTaskFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (taskID, userID, workspaceID string) {

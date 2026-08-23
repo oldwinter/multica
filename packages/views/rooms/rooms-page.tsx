@@ -4,31 +4,47 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, MessageSquareText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ApiError } from "@multica/core/api";
+import { ApiError, errorCode } from "@multica/core/api";
+import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { useWorkspacePaths } from "@multica/core/paths";
 import type { Agent, MemberWithUser, Squad } from "@multica/core/types";
 import { agentListOptions, memberListOptions, squadListOptions } from "@multica/core/workspace/queries";
 import {
   roomDetailOptions,
   roomListOptions,
+  roomPreflightOptions,
+  roomUsageOptions,
+  deriveRoomOutcomeState,
+  useCancelRoomCycle,
   useCreateRoom,
   usePostRoomMessage,
   usePromoteRoomArtifact,
+  useRetryRoomSynthesis,
+  useReviewRoomCycle,
+  useReviewRoomRecommendation,
+  useRoomViewStore,
   useSetRoomStatus,
+  useUpdateRoomBudget,
   useWakeRoom,
   type CreateRoomInput,
   type PromoteRoomArtifactInput,
   type Room,
   type RoomArtifact,
   type RoomDetail,
+  type RoomSynthesis,
 } from "@multica/core/rooms";
 import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../i18n";
+import { useNavigation } from "../navigation";
 import { CreateRoomDialog } from "./create-room-dialog";
 import { PromoteRoomDialog, type PromotionSource } from "./promote-room-dialog";
+import { RoomBudgetDialog } from "./room-budget-dialog";
 import { RoomDetail as RoomDetailView } from "./room-detail";
 import { RoomList } from "./room-list";
 import { useRoomComposerDrafts } from "./use-room-composer-drafts";
+import { operationFingerprint, useIdempotencyRegistry } from "./idempotency";
+import { selectRoomLifecycleCycleId } from "./room-controller";
 
 const EMPTY_ROOMS: readonly Room[] = [];
 const EMPTY_AGENTS: readonly Agent[] = [];
@@ -38,9 +54,17 @@ const EMPTY_SQUADS: readonly Squad[] = [];
 export function RoomsPage() {
   const { t } = useT("rooms");
   const workspaceId = useWorkspaceId();
-  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const paths = useWorkspacePaths();
+  const nav = useNavigation();
+  const linkedRoomId = nav.searchParams.get("room") ?? "";
+  const [selectedRoomId, setSelectedRoomId] = useState(linkedRoomId);
   const [createOpen, setCreateOpen] = useState(false);
   const [promotionSource, setPromotionSource] = useState<PromotionSource | null>(null);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const currentUser = useAuthStore((state) => state.user);
+  const detailTab = useRoomViewStore((state) => state.detailTab);
+  const setDetailTab = useRoomViewStore((state) => state.setDetailTab);
+  const lifecycleIdempotency = useIdempotencyRegistry();
 
   const roomsQuery = useQuery(roomListOptions(workspaceId));
   const agentsQuery = useQuery(agentListOptions(workspaceId));
@@ -49,29 +73,65 @@ export function RoomsPage() {
   const rooms = roomsQuery.data ?? EMPTY_ROOMS;
   const activeRoomId = selectedRoomId || rooms[0]?.id || "";
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
+  const preflightQuery = useQuery(roomPreflightOptions(workspaceId, activeRoomId));
+  const scheduledPreflightQuery = useQuery({
+    ...roomPreflightOptions(workspaceId, activeRoomId, undefined, "schedule"),
+    enabled: Boolean(
+      workspaceId &&
+      activeRoomId &&
+      detailQuery.data?.room.schedule_interval_minutes,
+    ),
+  });
+  const usageQuery = useQuery(roomUsageOptions(workspaceId, activeRoomId));
+  const detail = detailQuery.data;
+  const lifecycleCycleId = selectRoomLifecycleCycleId(detail);
   const agents = agentsQuery.data ?? EMPTY_AGENTS;
   const members = membersQuery.data ?? EMPTY_MEMBERS;
   const squads = squadsQuery.data ?? EMPTY_SQUADS;
+  const canManageBudget = useMemo(() => {
+    const member = members.find((candidate) => candidate.user_id === currentUser?.id);
+    return member?.role === "owner" || member?.role === "admin";
+  }, [currentUser?.id, members]);
 
   useEffect(() => {
+    if (linkedRoomId && rooms.some((room) => room.id === linkedRoomId)) {
+      setSelectedRoomId(linkedRoomId);
+      return;
+    }
     if (selectedRoomId && rooms.some((room) => room.id === selectedRoomId)) return;
     setSelectedRoomId(rooms[0]?.id ?? "");
-  }, [rooms, selectedRoomId]);
+  }, [linkedRoomId, rooms, selectedRoomId]);
+
+  const selectRoom = (roomId: string) => {
+    setSelectedRoomId(roomId);
+    nav.replace(paths.roomDetail(roomId));
+  };
 
   const createRoom = useCreateRoom();
   const postMessage = usePostRoomMessage(activeRoomId);
   const wakeRoom = useWakeRoom(activeRoomId);
   const setStatus = useSetRoomStatus(activeRoomId);
+  const updateBudget = useUpdateRoomBudget(activeRoomId);
   const promote = usePromoteRoomArtifact(activeRoomId);
+  const retrySynthesis = useRetryRoomSynthesis(activeRoomId, lifecycleCycleId);
+  const reviewCycle = useReviewRoomCycle(activeRoomId, lifecycleCycleId);
+  const cancelCycle = useCancelRoomCycle(activeRoomId, lifecycleCycleId);
+  const reviewRecommendation = useReviewRoomRecommendation(activeRoomId);
 
   const directoryLoading =
     agentsQuery.isPending || membersQuery.isPending || squadsQuery.isPending;
-  const detail = detailQuery.data;
   const composer = useRoomComposerDrafts(activeRoomId);
   const latestError = useMemo(
     () => [roomsQuery.error, detailQuery.error].find((error) => error instanceof Error),
     [detailQuery.error, roomsQuery.error],
   );
+  const outcomeState = detail
+    ? deriveRoomOutcomeState(detail, {
+        preflight: preflightQuery.data,
+        preflightPending: preflightQuery.isPending,
+        usage: usageQuery.data,
+      })
+    : null;
 
   const reportFailure = (fallback: string, error: Error | null) => {
     toast.error(error?.message || fallback);
@@ -83,7 +143,7 @@ export function RoomsPage() {
   ) => {
     createRoom.mutate(input, {
       onSuccess: (created) => {
-        setSelectedRoomId(created.room.id);
+        selectRoom(created.room.id);
         onSuccess(created);
         toast.success(t(($) => $.toast.created));
       },
@@ -114,7 +174,7 @@ export function RoomsPage() {
           rooms={rooms}
           selectedId={activeRoomId}
           loading={roomsQuery.isPending}
-          onSelect={setSelectedRoomId}
+          onSelect={selectRoom}
           onCreate={() => setCreateOpen(true)}
         />
 
@@ -148,7 +208,7 @@ export function RoomsPage() {
             actionLabel={t(($) => $.actions.retry)}
             onAction={() => detailQuery.refetch()}
           />
-        ) : (
+        ) : outcomeState ? (
           <div
             data-testid="room-detail"
             data-room-id={detail.room.id}
@@ -156,14 +216,26 @@ export function RoomsPage() {
           >
             <RoomDetailView
               detail={detail}
+              detailTab={detailTab}
+              outcomeState={outcomeState}
+              preflight={preflightQuery.data}
+              scheduledPreflight={scheduledPreflightQuery.data}
               agents={agents}
               draft={composer.draft}
               onDraftBodyChange={(body) => composer.updateBody(activeRoomId, body)}
               onDraftMentionChange={(agentId, selected) =>
                 composer.updateMention(activeRoomId, agentId, selected)
               }
+              onDetailTabChange={setDetailTab}
               waking={wakeRoom.isPending}
+              preflightPending={preflightQuery.isFetching}
+              preflightError={preflightQuery.isError}
               statusPending={setStatus.isPending}
+              reviewPending={reviewCycle.isPending}
+              retryPending={retrySynthesis.isPending}
+              cancelPending={cancelCycle.isPending}
+              recommendationPending={reviewRecommendation.isPending || promote.isPending}
+              canManageBudget={canManageBudget}
               onPost={(input) => {
                 const submittedRoomId = activeRoomId;
                 const submittedIdempotencyKey = input.idempotency_key;
@@ -175,7 +247,11 @@ export function RoomsPage() {
                     toast.success(t(($) => $.toast.message_posted));
                   })
                   .catch((error: Error) => {
-                    if (error instanceof ApiError && error.status === 409) {
+                    if (
+                      error instanceof ApiError &&
+                      error.status === 409 &&
+                      roomMessageWasPersisted(error)
+                    ) {
                       composer.complete(submittedRoomId, submittedIdempotencyKey);
                       toast.warning(t(($) => $.toast.message_saved_no_execution));
                     } else {
@@ -190,6 +266,89 @@ export function RoomsPage() {
                   onError: (error) => reportFailure(t(($) => $.toast.wake_failed), error),
                 });
               }}
+              onRetryPreflight={() => {
+                void preflightQuery.refetch();
+              }}
+              onReview={(action, correction?: RoomSynthesis) => {
+                const fingerprint = operationFingerprint("review", {
+                  roomId: activeRoomId,
+                  cycleId: lifecycleCycleId,
+                  action,
+                  expectedMemoryVersion: detail.room.memory_version,
+                  correction,
+                });
+                reviewCycle.mutate(
+                  {
+                    action,
+                    expected_memory_version: detail.room.memory_version,
+                    correction,
+                    idempotency_key: lifecycleIdempotency.keyFor(fingerprint),
+                  },
+                  {
+                    onSuccess: () => {
+                      lifecycleIdempotency.complete(fingerprint);
+                      toast.success(t(($) => $.toast.reviewed));
+                    },
+                    onError: (error) => reportRoomFailure(t(($) => $.toast.review_failed), error, t),
+                  },
+                );
+              }}
+              onRetrySynthesis={() => {
+                const fingerprint = operationFingerprint("retry-synthesis", {
+                  roomId: activeRoomId,
+                  cycleId: lifecycleCycleId,
+                });
+                retrySynthesis.mutate(
+                  { idempotency_key: lifecycleIdempotency.keyFor(fingerprint) },
+                  {
+                    onSuccess: () => {
+                      lifecycleIdempotency.complete(fingerprint);
+                      toast.success(t(($) => $.toast.synthesis_retry_queued));
+                    },
+                    onError: (error) => reportRoomFailure(t(($) => $.toast.synthesis_retry_failed), error, t),
+                  },
+                );
+              }}
+              onCancelCycle={() => {
+                const fingerprint = operationFingerprint("cancel-cycle", {
+                  roomId: activeRoomId,
+                  cycleId: lifecycleCycleId,
+                });
+                cancelCycle.mutate(
+                  { idempotency_key: lifecycleIdempotency.keyFor(fingerprint) },
+                  {
+                    onSuccess: () => {
+                      lifecycleIdempotency.complete(fingerprint);
+                      toast.success(t(($) => $.toast.cycle_cancelled));
+                    },
+                    onError: (error) => reportRoomFailure(t(($) => $.toast.cycle_cancel_failed), error, t),
+                  },
+                );
+              }}
+              onRejectRecommendation={(revisionId, recommendationKey) => {
+                const fingerprint = operationFingerprint("reject-recommendation", {
+                  roomId: activeRoomId,
+                  revisionId,
+                  recommendationKey,
+                });
+                reviewRecommendation.mutate(
+                  {
+                    revisionId,
+                    recommendationKey,
+                    input: {
+                      action: "reject",
+                      idempotency_key: lifecycleIdempotency.keyFor(fingerprint),
+                    },
+                  },
+                  {
+                    onSuccess: () => {
+                      lifecycleIdempotency.complete(fingerprint);
+                      toast.success(t(($) => $.toast.recommendation_rejected));
+                    },
+                    onError: (error) => reportRoomFailure(t(($) => $.toast.recommendation_review_failed), error, t),
+                  },
+                );
+              }}
               onStatus={(status) => {
                 setStatus.mutate(
                   { status },
@@ -200,9 +359,10 @@ export function RoomsPage() {
                 );
               }}
               onPromote={setPromotionSource}
+              onManageBudget={() => setBudgetOpen(true)}
             />
           </div>
-        )}
+        ) : null}
       </div>
 
       <CreateRoomDialog
@@ -220,8 +380,59 @@ export function RoomsPage() {
         onOpenChange={(open) => !open && setPromotionSource(null)}
         onPromote={promoteArtifact}
       />
+      {detail ? (
+        <RoomBudgetDialog
+          open={budgetOpen}
+          room={detail.room}
+          pending={updateBudget.isPending}
+          onOpenChange={setBudgetOpen}
+          onSave={(input) => {
+            updateBudget.mutate(input, {
+              onSuccess: () => {
+                setBudgetOpen(false);
+                toast.success(t(($) => $.toast.budget_updated));
+              },
+              onError: (error) => reportFailure(t(($) => $.toast.budget_failed), error),
+            });
+          }}
+        />
+      ) : null}
     </main>
   );
+}
+
+type RoomsT = ReturnType<typeof useT<"rooms">>["t"];
+
+function reportRoomFailure(fallback: string, error: Error | null, t: RoomsT): void {
+  switch (errorCode(error)) {
+    case "stale_review":
+      toast.error(t(($) => $.errors.stale_review));
+      return;
+    case "idempotency_conflict":
+      toast.error(t(($) => $.errors.idempotency_conflict));
+      return;
+    case "synthesis_not_retryable":
+      toast.error(t(($) => $.errors.synthesis_not_retryable));
+      return;
+    case "recommendation_already_reviewed":
+      toast.error(t(($) => $.errors.recommendation_already_reviewed));
+      return;
+    default:
+      toast.error(error?.message || fallback);
+  }
+}
+
+function roomMessageWasPersisted(error: unknown): boolean {
+  switch (errorCode(error)) {
+    case "room_paused":
+    case "room_archived":
+    case "budget_exhausted":
+    case "active_cycle":
+    case "agent_unavailable":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function WorkspaceState({

@@ -1045,6 +1045,9 @@ func renderRoomContext(ctx TaskContextForEnv) string {
 	var b strings.Builder
 	b.WriteString("# Room Collaboration Turn\n\n")
 	fmt.Fprintf(&b, "**Room:** %s\n\n**Room ID:** %s\n\n**Cycle ID:** %s\n\n**Turn ID:** %s\n\n", ctx.RoomTitle, ctx.RoomID, ctx.RoomCycleID, ctx.RoomTurnID)
+	if ctx.RoomCostLimitTicks != nil {
+		fmt.Fprintf(&b, "**Cost limit:** %d ticks\n\n", *ctx.RoomCostLimitTicks)
+	}
 	if strings.TrimSpace(ctx.RoomInstructions) != "" {
 		b.WriteString("## Room Instructions\n\n")
 		b.WriteString(ctx.RoomInstructions)

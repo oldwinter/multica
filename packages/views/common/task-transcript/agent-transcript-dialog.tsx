@@ -26,6 +26,10 @@ import {
   Info,
   Coins,
   GitBranch,
+  Archive,
+  BookOpenCheck,
+  CircleMinus,
+  ThumbsUp,
 } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -51,6 +55,7 @@ import {
   type TranscriptSortDirection,
 } from "@multica/core/agents/stores";
 import type { AgentTask, Agent, AgentRuntime } from "@multica/core/types/agent";
+import type { TwinFeedbackInput } from "@multica/core/twins";
 import { resolveWorkdirCopyTarget } from "@multica/core/issues";
 import { runtimeDisplayName, providerDisplayName } from "@multica/core/runtimes";
 import { useCustomPricingStore } from "@multica/core/runtimes/custom-pricing-store";
@@ -109,7 +114,7 @@ import "./task-transcript.css";
 // Only one layer is expanded at a time — the inspector opens on demand rather
 // than splitting the surface in two before the reader has asked anything.
 
-interface AgentTranscriptDialogProps {
+export interface AgentTranscriptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   task: AgentTask;
@@ -123,6 +128,10 @@ interface AgentTranscriptDialogProps {
    * The dialog stays generic — slot content is the caller's concern.
    */
   headerSlot?: React.ReactNode;
+  onTwinFeedback?: (input: TwinFeedbackInput) => Promise<unknown>;
+  onCreateTwinDeposition?: () => Promise<unknown>;
+  twinFeedbackPending?: boolean;
+  twinDepositionPending?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -305,6 +314,10 @@ export function AgentTranscriptDialog({
   agentName,
   isLive = false,
   headerSlot,
+  onTwinFeedback,
+  onCreateTwinDeposition,
+  twinFeedbackPending = false,
+  twinDepositionPending = false,
 }: AgentTranscriptDialogProps) {
   const { t } = useT("agents");
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
@@ -1006,6 +1019,16 @@ export function AgentTranscriptDialog({
         {/* ── What the run produced ──────────────────────────────────── */}
         <RunOutcomeRow outcome={outcome} branch={task.branch_name} />
 
+        {task.twin_context?.attribution ? (
+          <TwinRunContextBand
+            task={task}
+            onFeedback={onTwinFeedback}
+            onCreateDeposition={onCreateTwinDeposition}
+            feedbackPending={twinFeedbackPending}
+            depositionPending={twinDepositionPending}
+          />
+        ) : null}
+
         {/* ── Where the time went ────────────────────────────────────── */}
         {showTimeline && lanes && (
           <RunTimeline
@@ -1202,6 +1225,173 @@ export function AgentTranscriptDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TwinRunContextBand({
+  task,
+  onFeedback,
+  onCreateDeposition,
+  feedbackPending,
+  depositionPending,
+}: {
+  task: AgentTask;
+  onFeedback?: (input: TwinFeedbackInput) => Promise<unknown>;
+  onCreateDeposition?: () => Promise<unknown>;
+  feedbackPending: boolean;
+  depositionPending: boolean;
+}) {
+  const { t } = useT("twins");
+  const context = task.twin_context;
+  const attribution = context?.attribution;
+  const [rating, setRating] = useState(context?.feedback?.rating ?? null);
+  const [depositionCreated, setDepositionCreated] = useState(false);
+  const [actionError, setActionError] = useState(false);
+  if (!context || !attribution) return null;
+
+  const terminal = ["completed", "failed", "cancelled"].includes(task.status);
+  const submitFeedback = async (next: TwinFeedbackInput["rating"]) => {
+    if (!onFeedback || feedbackPending) return;
+    setActionError(false);
+    try {
+      await onFeedback({ rating: next });
+      setRating(next);
+    } catch {
+      setActionError(true);
+    }
+  };
+  const createDeposition = async () => {
+    if (!onCreateDeposition || depositionPending) return;
+    setActionError(false);
+    try {
+      await onCreateDeposition();
+      setDepositionCreated(true);
+    } catch {
+      setActionError(true);
+    }
+  };
+
+  const factClass = "min-w-0 break-all text-caption text-muted-foreground";
+  return (
+    <section className="shrink-0 border-b bg-muted/20 px-4 py-2.5" aria-labelledby="twin-run-context-title">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <h3 id="twin-run-context-title" className="flex items-center gap-1.5 text-body font-medium">
+          <BookOpenCheck className="size-4 text-brand" />
+          {t(($) => $.task_context.title)}
+        </h3>
+        <span className={factClass}>
+          {t(($) => $.task_context.version, { number: attribution.twinVersionNumber })}
+        </span>
+        <span className={factClass}>
+          {t(($) => $.task_context.policy)}: {attribution.policyScopeType} · {attribution.policyState}
+        </span>
+        <span className={factClass}>
+          {t(($) => $.task_context.compiler)}: {attribution.compilerVersion}
+        </span>
+        <span className="text-caption tabular-nums text-muted-foreground">
+          {t(($) => $.task_context.budget, {
+            bytes: attribution.byteCount,
+            tokens: attribution.tokenCount,
+          })}
+        </span>
+      </div>
+
+      <details className="mt-2 text-caption">
+        <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">
+          {t(($) => $.task_context.exact_briefing)}
+        </summary>
+        <div className="mt-2 grid gap-2 border-l-2 pl-3">
+          <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-faint-foreground">{t(($) => $.task_context.version_digest)}</dt>
+              <dd className="break-all font-mono text-foreground">{attribution.twinVersionDigest}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-faint-foreground">{t(($) => $.task_context.briefing_digest)}</dt>
+              <dd className="break-all font-mono text-foreground">{attribution.briefingDigest}</dd>
+            </div>
+          </dl>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-caption text-foreground">
+            {attribution.briefing}
+          </pre>
+          {context.assertions.length > 0 ? (
+            <div>
+              <div className="mb-1 text-faint-foreground">{t(($) => $.task_context.assertions)}</div>
+              <ul className="grid gap-1">
+                {context.assertions.map((assertion) => (
+                  <li key={assertion.id} className="min-w-0 break-words text-foreground">
+                    <span className="font-medium">{assertion.type || assertion.id}</span>
+                    {assertion.text ? ` · ${assertion.text}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {context.citations.length > 0 ? (
+            <div>
+              <div className="mb-1 text-faint-foreground">{t(($) => $.task_context.citations)}</div>
+              <ul className="grid gap-1">
+                {context.citations.map((citation) => (
+                  <li key={citation.key} className="min-w-0 break-all text-foreground">
+                    <span className="font-medium">{citation.label || citation.key}</span>
+                    {citation.sourceType ? ` · ${citation.sourceType}` : ""}
+                    {citation.locator ? ` · ${citation.locator}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </details>
+
+      {terminal ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-caption text-muted-foreground">
+            {t(($) => $.task_context.feedback_prompt)}
+          </span>
+          {([
+            ["helped", ThumbsUp, t(($) => $.task_context.feedback_helped)],
+            ["irrelevant", CircleMinus, t(($) => $.task_context.feedback_irrelevant)],
+            ["mismatch", CircleAlert, t(($) => $.task_context.feedback_mismatch)],
+          ] as const).map(([value, Icon, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={rating === value ? "secondary" : "ghost"}
+              aria-pressed={rating === value}
+              disabled={!onFeedback || feedbackPending}
+              onClick={() => void submitFeedback(value)}
+            >
+              <Icon className="size-3.5" />
+              {label}
+            </Button>
+          ))}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!onCreateDeposition || depositionPending || depositionCreated}
+            onClick={() => void createDeposition()}
+          >
+            {depositionPending ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />}
+            {depositionCreated
+              ? t(($) => $.task_context.deposition_created)
+              : t(($) => $.task_context.deposition_action)}
+          </Button>
+          {context.depositions.length > 0 ? (
+            <span className="text-caption text-muted-foreground">
+              {t(($) => $.task_context.deposition_exists, { count: context.depositions.length })}
+            </span>
+          ) : null}
+          {actionError ? (
+            <span className="text-caption text-destructive" role="alert">
+              {t(($) => $.task_context.action_failed)}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

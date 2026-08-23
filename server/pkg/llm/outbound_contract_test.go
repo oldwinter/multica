@@ -39,12 +39,11 @@ func (c *countingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 // layer — agent runs reach a model by their own path, which no variable here
 // governs. See the package doc.)
 //
-// Both consumers of this package send private chat content upstream — the
-// first message of a chat session (auto-titling) and the tail of a conversation
-// (follow-up questions). "Leave the LLM variables empty" is the documented
-// answer for an operator whose policy forbids that (.env.example, the docs
-// environment-variables pages, and GitHub issue #7162), so the behaviour has to
-// be a tested guarantee rather than something that happens to be true today.
+// The consumers of this package can send private chat content or accepted Twin
+// evidence upstream. "Leave the LLM variables empty" is the documented answer
+// for an operator whose policy forbids that (.env.example and the four docs
+// environment-variables pages), so the behaviour has to be a tested guarantee
+// rather than something that happens to be true today.
 //
 // Every exported call path is exercised, because each one is a place a future
 // refactor could start building a request before consulting Enabled().
@@ -125,6 +124,7 @@ const openAISDKImportPrefix = "github.com/openai/openai-go"
 var documentedConsumers = map[string]string{
 	"internal/handler/chat_title.go":                  "chat auto-titling: the first user message of a new chat session",
 	"internal/service/chat_quick_actions_generate.go": "chat follow-up questions: the tail of the conversation",
+	"internal/service/twin_model_adapter.go":          "Twin Build: accepted immutable LM Wiki canonical JSON, safe citation keys, and prior signed assertions",
 }
 
 // clientCallSurface is every method on Client that can produce an upstream
@@ -145,23 +145,25 @@ var clientCallSurface = map[string]bool{
 // This is deliberately NOT part of documentedConsumers. That map is published
 // to operators as "what this deployment sends to a third party"; parking a
 // name collision there to quiet a test would corrupt a privacy disclosure to
-// save a line. Empty today — the repository has no collisions.
-var methodNameCollisions = map[string]bool{}
+// save a line.
+var methodNameCollisions = map[string]bool{
+	"internal/service/twin_generator.go": true, // TwinJSONModel contract; the adapter below is the actual llm.Client caller.
+}
 
 // TestDocumentedConsumersAreTheOnlyCallers keeps the published consumer
 // inventory from going quietly stale.
 //
 // The operator-facing copy does not merely say this layer can be turned off; it
 // enumerates what is sent, feature by feature, so an admin can decide whether
-// to turn it on. That list is a promise about the whole server, and a third
+// to turn it on. That list is a promise about the whole server, and another
 // feature calling GenerateText would break it silently: nothing in the build
-// notices, the docs keep naming two consumers, and the deployment starts
-// sending something no one disclosed.
+// notices, the docs keep publishing the old inventory, and the deployment
+// starts sending something no one disclosed.
 //
 // The import guard below cannot catch that case — a new consumer goes through
-// this package exactly as the existing two do, importing no SDK. So this test
-// scans production call sites instead and requires the set to match the
-// inventory in both directions: an undocumented caller fails, and so does a
+// this package exactly as the existing consumers do, importing no SDK. So this
+// test scans production call sites instead and requires the set to match the
+// inventory in both directions: an undisclosed caller fails, and so does a
 // documented one that stopped calling.
 func TestDocumentedConsumersAreTheOnlyCallers(t *testing.T) {
 	found := map[string][]string{}

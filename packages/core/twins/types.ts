@@ -82,6 +82,7 @@ export interface TwinProposal {
   readonly content: LifecycleContent;
   readonly content_digest: string;
   readonly requested_by_id: string | null;
+  readonly replaces_proposal_id?: string | null;
   readonly created_at: string;
   readonly review: TwinProposalReview | null;
   readonly signed_version: TwinVersion | null;
@@ -99,6 +100,7 @@ export interface TwinProposalDetail {
   readonly proposal: TwinProposal;
   readonly source_revision: LMWikiRevision;
   readonly citations: readonly LMWikiCitation[];
+  readonly run_evidence?: import("./execution-types").TwinDepositionEvidence;
 }
 
 export interface TwinVersionDetail {

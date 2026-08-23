@@ -125,6 +125,35 @@ func TestBuiltinSkillsFrontmatterIsStrictYAML(t *testing.T) {
 	}
 }
 
+func TestWikiSkillTeachesRevisionAndProposalContract(t *testing.T) {
+	skill, ok := findSkill(t, "multica-wiki")
+	if !ok {
+		return
+	}
+
+	for _, required := range []string{
+		"multica wiki list",
+		"multica wiki get",
+		"multica wiki search",
+		"multica wiki propose",
+		"current_revision_id",
+		"wiki_page_revision:{current_revision_id}",
+		"expected_revision_number",
+		"wiki_revision_conflict",
+		"/api/wiki/pages/{id}/revisions",
+		"/api/wiki/pages/{id}/proposals",
+		"idempotency_key",
+		"Personal pages are never eligible LM Wiki evidence",
+	} {
+		if !strings.Contains(skill.Content, required) {
+			t.Errorf("Wiki skill is missing %q", required)
+		}
+	}
+	if !skillHasFile(skill, "references/wiki-source-map.md") {
+		t.Error("Wiki skill missing supporting file references/wiki-source-map.md")
+	}
+}
+
 // TestMentioningSkillFollowsContractFrontmatter locks the reference template:
 // the mentioning skill is a context-triggered platform-contract skill, so it
 // must declare user-invocable:false and fence itself to the multica CLI. New

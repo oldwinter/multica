@@ -80,6 +80,14 @@ export interface User {
   profile_description: string;
   /** Pinned IANA tz; null means "use browser-detected tz at render time". */
   timezone: string | null;
+  /** Explicit named skin synced across authenticated application clients. */
+  skin: "tension" | "relay" | "field" | null;
+  /** Requested appearance. `system` resolves locally and is never rewritten. */
+  appearance: "system" | "light" | "dark" | null;
+  /** Client-authored timestamp of the last explicit appearance change. */
+  appearanceUpdatedAt: string | null;
+  /** Semantic token contract used when the preference was written. */
+  appearanceTokenVersion: number | null;
   created_at: string;
   updated_at: string;
 }

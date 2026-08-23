@@ -215,4 +215,86 @@ describe("TwinsPage", () => {
     expect(screen.queryByText("Couldn't save the decision. Try again.")).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Revision r3" })).toBeInTheDocument();
   });
+
+  it("selects the replacement proposal returned after editing a deposition", async () => {
+    const fixture = lifecycleFixture();
+    const taskId = "00000000-0000-4000-8000-000000000010";
+    const depositionDetail = {
+      ...fixture.proposalDetail,
+      proposal: {
+        ...fixture.proposalDetail.proposal,
+        kind: "deposition",
+        schema_version: 2,
+      },
+      run_evidence: {
+        taskId,
+        baseTwinVersionId: "00000000-0000-4000-8000-000000000011",
+        evidenceDigest: `sha256:${"a".repeat(64)}`,
+        taskStatus: "completed",
+        completedAt: "2026-08-11T09:00:00Z",
+        feedbackRating: "helped" as const,
+        safeMetadata: {},
+      },
+    };
+    const replacementId = "00000000-0000-4000-8000-000000000012";
+    const replacementDetail = {
+      ...depositionDetail,
+      proposal: {
+        ...depositionDetail.proposal,
+        id: replacementId,
+        content_digest: `sha256:${"b".repeat(64)}`,
+      },
+    };
+    vi.spyOn(client, "getLMWiki").mockResolvedValue(fixture.wiki);
+    vi.spyOn(client, "getTwins").mockResolvedValue({
+      ...fixture.twin,
+      pending_proposal: depositionDetail.proposal,
+      proposals: [depositionDetail.proposal],
+    });
+    vi.spyOn(client, "getLMWikiRevision").mockResolvedValue(fixture.wikiDetail);
+    const getProposal = vi.spyOn(client, "getTwinProposal").mockImplementation(async (id) => (
+      id === replacementId ? replacementDetail : depositionDetail
+    ));
+    vi.spyOn(client, "getTwinVersion").mockResolvedValue(fixture.versionDetail);
+    vi.spyOn(client, "getTwinOverview").mockResolvedValue({ twin: null });
+    const createDeposition = vi.spyOn(client, "createTwinDeposition").mockResolvedValue({
+      deposition: null,
+      proposal: {
+        id: replacementId,
+        kind: "deposition",
+        schemaVersion: 2,
+        contentDigest: `sha256:${"b".repeat(64)}`,
+        createdAt: "2026-08-11T10:00:00Z",
+      },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <I18nProvider locale="en" resources={resources}>
+        <WorkspaceSlugProvider slug="acme">
+          <QueryClientProvider client={queryClient}><TwinsPage /></QueryClientProvider>
+        </WorkspaceSlugProvider>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Twin Builder" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit deposition" }));
+    const editedAssertions = [{
+      id: "assertion-new",
+      type: "quality_bar",
+      text: "Keep the review decision explicit and auditable.",
+      applicability: { keywords: ["review"] },
+      evidence_citations: ["issue:42"],
+    }];
+    fireEvent.change(screen.getByLabelText("Assertions JSON"), {
+      target: { value: JSON.stringify(editedAssertions, null, 2) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create replacement" }));
+
+    await waitFor(() => expect(createDeposition).toHaveBeenCalledWith(taskId, {
+      replacesProposalId: "proposal-2",
+      editedAssertions,
+    }));
+    await waitFor(() => expect(getProposal).toHaveBeenCalledWith(replacementId));
+    expect(await screen.findAllByText(replacementId)).toHaveLength(2);
+  });
 });

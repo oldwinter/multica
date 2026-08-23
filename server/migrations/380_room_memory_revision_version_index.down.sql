@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS room_memory_revision_version_uidx;

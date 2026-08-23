@@ -26,6 +26,32 @@ export type {
   TwinReviewStepId,
   TwinReviewStepState,
 } from "./profile";
+export type {
+  CreateTwinDepositionInput,
+  TwinBinding,
+  TwinBindingsResponse,
+  TwinBindingScope,
+  TwinBindingState,
+  TwinBriefingPreview,
+  TwinBriefingPreviewInput,
+  TwinDeposition,
+  TwinDepositionEvidence,
+  TwinDepositionProposal,
+  TwinDepositionResponse,
+  TwinEffectivePolicy,
+  TwinExecutionMetrics,
+  TwinFeedbackInput,
+  TwinFeedbackRating,
+  TwinKillSwitch,
+  TwinPolicyExclusion,
+  TwinRunAssertion,
+  TwinRunCitation,
+  TwinTaskAttribution,
+  TwinTaskContext,
+  TwinTaskFeedback,
+  TwinVersionReference,
+  UpsertTwinBindingInput,
+} from "./execution-types";
 export {
   twinProfileKeys,
   twinProfileOverviewOptions,
@@ -38,10 +64,24 @@ export {
   wikiRevisionOptions,
 } from "./queries";
 export {
+  twinBindingsOptions,
+  twinExecutionKeys,
+  twinExecutionMetricsOptions,
+  twinTaskContextOptions,
+} from "./execution-queries";
+export {
   useAcceptLMWikiRevision,
   useAcceptTwinProposal,
+  useCorrectTwinProposal,
   useEnsureTwinProposal,
   useRefreshLMWiki,
   useRejectLMWikiRevision,
   useRejectTwinProposal,
 } from "./mutations";
+export {
+  useCreateTwinDeposition,
+  useDeleteTwinBinding,
+  usePreviewTwinBriefing,
+  useSubmitTwinTaskFeedback,
+  useUpsertTwinBinding,
+} from "./execution-mutations";

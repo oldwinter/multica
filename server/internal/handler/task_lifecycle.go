@@ -10,6 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/analytics"
+	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -220,5 +222,15 @@ func (h *Handler) RerunIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := taskToResponse(*task, uuidToString(issue.WorkspaceID))
 	h.hydrateTaskAttributions(r.Context(), []*TaskAttribution{resp.Attribution})
+	if task.RerunOfTaskID.Valid {
+		if attributions, attributionErr := service.NewTwinExecutionStore(h.Queries).ListTaskAttributions(r.Context(), issue.WorkspaceID, task.RerunOfTaskID); attributionErr == nil && len(attributions) > 0 {
+			obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.TwinTaskRevision(analytics.TwinTaskRevisionMetric{
+				Context: analytics.TwinMetricContext{
+					UserID: uuidToString(actorUserID), WorkspaceID: workspaceID, TaskID: uuidToString(task.RerunOfTaskID),
+				},
+				Decision: analytics.TwinTaskRevisionRequestedRevision, Kind: analytics.TwinTaskRevisionKindOther, RevisionCount: 1,
+			}))
+		}
+	}
 	writeJSON(w, http.StatusAccepted, resp)
 }

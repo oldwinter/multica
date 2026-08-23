@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS twin_binding_workspace_scope_uidx;

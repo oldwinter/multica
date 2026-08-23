@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CoreProvider } from "@multica/core/platform";
 import { pickLocale, type SupportedLocale } from "@multica/core/i18n";
@@ -10,6 +17,8 @@ import { api } from "@multica/core/api";
 import { useHasOnboarded } from "@multica/core/paths";
 import { setCurrentWorkspace } from "@multica/core/platform";
 import { ThemeProvider } from "@multica/ui/components/common/theme-provider";
+import { AppearanceSyncBridge } from "@multica/views/appearance";
+import { desktopAppearanceAdapter } from "./platform/appearance-adapter";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import { Toaster } from "@multica/ui/components/ui/sonner";
 import { DesktopLoginPage } from "./pages/login";
@@ -41,6 +50,26 @@ const HTML_LANG: Record<SupportedLocale, string> = {
   ko: "ko-KR",
   ja: "ja-JP",
 };
+
+function DesktopAppearanceBridge({ children }: { children: ReactNode }) {
+  const account = useAuthStore((state) => state.user);
+  const updateAccountAppearance = useAuthStore(
+    (state) => state.updateAppearancePreferences,
+  );
+  const refreshAccountAppearance = useAuthStore(
+    (state) => state.refreshAppearancePreferences,
+  );
+  return (
+    <AppearanceSyncBridge
+      adapter={desktopAppearanceAdapter}
+      account={account}
+      updateAccountAppearance={updateAccountAppearance}
+      refreshAccountAppearance={refreshAccountAppearance}
+    >
+      {children}
+    </AppearanceSyncBridge>
+  );
+}
 
 
 /**
@@ -462,18 +491,20 @@ export default function App() {
           resources={resources}
           localeAdapter={localeAdapter}
         >
-          <DesktopAuthSessionBridge />
-          {windowContext.kind === "main" && <DiagnosticRouteReporter />}
-          {windowContext.kind === "main" && (
-            <DesktopClientUsageReporter
-              apiUrl={runtimeConfigResult.config.apiUrl}
-            />
-          )}
-          {windowContext.kind === "issue" ? (
-            <IssueWindowContent />
-          ) : (
-            <AppContent />
-          )}
+          <DesktopAppearanceBridge>
+            <DesktopAuthSessionBridge />
+            {windowContext.kind === "main" && <DiagnosticRouteReporter />}
+            {windowContext.kind === "main" && (
+              <DesktopClientUsageReporter
+                apiUrl={runtimeConfigResult.config.apiUrl}
+              />
+            )}
+            {windowContext.kind === "issue" ? (
+              <IssueWindowContent />
+            ) : (
+              <AppContent />
+            )}
+          </DesktopAppearanceBridge>
         </CoreProvider>
       ) : (
         <BlockingRuntimeConfigError message={runtimeConfigResult.error.message} />

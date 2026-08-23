@@ -31,6 +31,11 @@ RETURNING *;
 -- to leave the existing column untouched. Folding it into UpdateUser
 -- rather than carrying a dedicated UpdateUserTimezone keeps the
 -- profile-patch shape uniform between Preferences fields.
+--
+-- Appearance preferences use a client-authored explicit-change timestamp.
+-- The four values are validated as a complete tuple by the handler and schema.
+-- A delayed write from an older device therefore returns the current row
+-- without replacing a newer explicit choice.
 UPDATE "user" SET
     name = COALESCE($2, name),
     avatar_url = COALESCE($3, avatar_url),
@@ -40,6 +45,30 @@ UPDATE "user" SET
         WHEN sqlc.narg('timezone')::text IS NULL THEN timezone
         WHEN sqlc.narg('timezone')::text = ''    THEN NULL
         ELSE sqlc.narg('timezone')::text
+    END,
+    skin = CASE
+        WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+        THEN sqlc.narg('skin')::text
+        ELSE skin
+    END,
+    appearance = CASE
+        WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+        THEN sqlc.narg('appearance')::text
+        ELSE appearance
+    END,
+    appearance_token_version = CASE
+        WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+        THEN sqlc.narg('appearance_token_version')::integer
+        ELSE appearance_token_version
+    END,
+    appearance_updated_at = CASE
+        WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+        THEN sqlc.narg('appearance_change_at')::timestamptz
+        ELSE appearance_updated_at
     END,
     updated_at = now()
 WHERE id = $1

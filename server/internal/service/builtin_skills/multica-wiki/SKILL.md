@@ -17,42 +17,97 @@ stored as markdown (`path` ends in `.md`) with three scopes:
 | `user` | owner only, **cross-workspace** | (uses current user; same library in every workspace) |
 
 Workspace Wiki is separate from the evidence-generated LM Wiki shown under
-`/{slug}/twins`. LM Wiki v1 does not ingest these mutable `wiki_page` records;
-combining the stores requires an explicit provenance and review policy.
+`/{slug}/twins`. Owners and admins may explicitly select an immutable
+workspace or project page revision as an LM Wiki source.
+Personal pages are never eligible LM Wiki evidence.
 
-## API (via Multica HTTP / CLI if exposed)
+## Typed CLI
 
 List pages:
 
 ```bash
 # Workspace scope (default)
-curl -H "Authorization: Bearer $TOKEN" -H "X-Workspace-ID: $WS" \
-  "$API/api/wiki/pages?scope=workspace"
+multica wiki list --scope workspace --output json
 
 # Project scope
-curl -H "Authorization: Bearer $TOKEN" -H "X-Workspace-ID: $WS" \
-  "$API/api/wiki/pages?scope=project&project_id=$PROJECT_ID"
+multica wiki list --scope project --project-id <project-id> --output json
 
 # Personal scope
-curl -H "Authorization: Bearer $TOKEN" -H "X-Workspace-ID: $WS" \
-  "$API/api/wiki/pages?scope=user"
+multica wiki list --scope user --output json
 ```
 
-Create a page (markdown body):
+Search and read the exact current revision:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "X-Workspace-ID: $WS" \
-  -H "Content-Type: application/json" \
-  -d '{"scope":"workspace","path":"concepts/agents.md","title":"Agents","content":"# Agents\n\n..."}' \
-  "$API/api/wiki/pages"
+multica wiki search "review policy" --scope workspace --output json
+multica wiki get <page-id> --output json
 ```
 
-Get / update / delete:
+The list, search, and get responses include `current_revision_id`,
+`current_revision_number`, `content_digest`, and provenance. Cite the immutable
+revision as `wiki_page_revision:{current_revision_id}`. Never cite only the
+mutable page ID.
+
+Shared clients use these additional lifecycle routes:
 
 ```text
 GET    /api/wiki/pages/{id}
-PUT    /api/wiki/pages/{id}   body: { "path"?, "title"?, "content"? }
+GET    /api/wiki/pages/{id}/revisions
+```
+
+Human updates use optimistic concurrency. Read `current_revision_number` from
+the page, then include it in every write. A `409` response with code
+`wiki_revision_conflict` means the page changed; reload it and merge the new
+content before retrying. Never blindly retry a stale write.
+
+```text
+PUT    /api/wiki/pages/{id}
+       body: { "expected_revision_number": 4, "path"?, "title"?, "content"? }
+POST   /api/wiki/pages/{id}/revisions/{revisionId}/restore
+       body: { "expected_revision_number": 4 }
 DELETE /api/wiki/pages/{id}
+```
+
+Every successful create, update, accepted proposal, or restore creates one
+append-only revision. Cite the exact revision ID and content digest used in
+work; do not cite only the mutable page ID.
+
+## Agent edit proposals
+
+Agents must not directly update shared workspace or project pages. Submit a
+reviewable proposal against the exact base revision instead:
+
+```bash
+multica wiki propose <page-id> \
+  --base-revision 4 \
+  --path concepts/agents.md \
+  --title "Agents" \
+  --content-file ./proposal.md \
+  --rationale "Record the reviewed operating rule" \
+  --evidence-ref task:<task-id> \
+  --idempotency-key <stable-key> \
+  --output json
+```
+
+Only a human reviewer may accept, edit-and-accept, or reject a proposal.
+Acceptance rechecks the base revision and creates one new page revision. Agent
+retries must reuse the same idempotency key. `MULTICA_AGENT_ID` supplies the
+authoritative Agent identity in task context; do not claim another Agent ID.
+
+The typed command submits this contract:
+
+```text
+POST /api/wiki/pages/{id}/proposals
+body: {
+  "base_revision_number": 4,
+  "proposed_path": "concepts/agents.md",
+  "proposed_title": "Agents",
+  "proposed_content": "# Agents\n...",
+  "rationale": "Record the reviewed operating rule",
+  "evidence_refs": ["task:<task-id>"],
+  "agent_id": "<MULTICA_AGENT_ID>",
+  "idempotency_key": "<stable-key>"
+}
 ```
 
 ## Path rules
@@ -65,9 +120,15 @@ DELETE /api/wiki/pages/{id}
 
 - User asks to capture durable knowledge, decisions, or glossary entries
 - After research that should stay queryable by later agent runs
-- Prefer updating an existing page at the same path over creating duplicates
+- Search before proposing a page so the Agent does not create duplicates
+- For shared knowledge, prefer a small proposal against the current revision
+- Personal pages may be written only on the signed-in human's explicit request
 
 ## Privacy
 
 Personal (`user`) pages are private to the signed-in human. Do not attempt to
-read another member's personal wiki.
+read another member's personal wiki, cite them as shared evidence, or include
+them in an LM Wiki source policy.
+
+See `references/wiki-source-map.md` for the implementation surfaces behind
+this contract.

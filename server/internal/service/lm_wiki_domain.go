@@ -40,10 +40,18 @@ func (e *LMWikiSizeError) Error() string {
 func (e *LMWikiSizeError) Unwrap() error { return e.Cause }
 
 type LMWikiSourceSnapshot struct {
+	EgressPolicy     LMWikiEgressPolicy
 	Issues           []LMWikiIssue
 	Projects         []LMWikiProject
 	ProjectResources []LMWikiProjectResource
 	AutopilotRuns    []LMWikiAutopilotRun
+	WikiPages        []LMWikiPageRevision
+}
+
+type LMWikiEgressPolicy struct {
+	RemoteGenerationEnabled bool   `json:"remote_generation_enabled"`
+	PolicyVersion           int64  `json:"policy_version"`
+	PolicyDigest            string `json:"policy_digest"`
 }
 
 type LMWikiIssue struct {
@@ -68,6 +76,12 @@ type LMWikiAutopilotRun struct {
 	TriggeredAt, CompletedAt                                 time.Time
 }
 
+type LMWikiPageRevision struct {
+	ID, PageID, Scope, ProjectID, Path, Title, Content, ContentDigest string
+	RevisionNumber                                                    int64
+	CreatedAt                                                         time.Time
+}
+
 type LMWikiGitRef struct {
 	Host              string `json:"host"`
 	RepositoryPath    string `json:"repository_path"`
@@ -77,10 +91,12 @@ type LMWikiGitRef struct {
 
 type LMWikiContent struct {
 	SchemaVersion    int                     `json:"schema_version"`
+	EgressPolicy     LMWikiEgressPolicy      `json:"egress_policy"`
 	Issues           []lmWikiIssueContent    `json:"issues"`
 	Projects         []lmWikiProjectContent  `json:"projects"`
 	ProjectResources []lmWikiResourceContent `json:"project_resources"`
 	AutopilotRuns    []lmWikiRunContent      `json:"autopilot_runs"`
+	WikiPages        []lmWikiPageContent     `json:"wiki_pages"`
 }
 
 type LMWikiCanonicalSnapshot struct {
@@ -150,9 +166,28 @@ type lmWikiRunContent struct {
 	AcceptanceState string `json:"acceptance_state"`
 }
 
+type lmWikiPageContent struct {
+	CitationKey    string `json:"citation_key"`
+	RevisionID     string `json:"revision_id"`
+	PageID         string `json:"page_id"`
+	Scope          string `json:"scope"`
+	ProjectID      string `json:"project_id,omitempty"`
+	RevisionNumber int64  `json:"revision_number"`
+	Path           string `json:"path"`
+	Title          string `json:"title"`
+	Content        string `json:"content"`
+	ContentDigest  string `json:"content_digest"`
+	CreatedAt      string `json:"created_at,omitempty"`
+}
+
 func BuildLMWikiSnapshot(sources LMWikiSourceSnapshot) (LMWikiCanonicalSnapshot, error) {
-	content := LMWikiContent{SchemaVersion: 1}
-	citations := make([]LMWikiCitation, 0, len(sources.Issues)+len(sources.Projects)+len(sources.ProjectResources)+len(sources.AutopilotRuns))
+	content := LMWikiContent{
+		SchemaVersion: 2, EgressPolicy: sources.EgressPolicy,
+		Issues: []lmWikiIssueContent{}, Projects: []lmWikiProjectContent{},
+		ProjectResources: []lmWikiResourceContent{}, AutopilotRuns: []lmWikiRunContent{},
+		WikiPages: []lmWikiPageContent{},
+	}
+	citations := make([]LMWikiCitation, 0, len(sources.Issues)+len(sources.Projects)+len(sources.ProjectResources)+len(sources.AutopilotRuns)+len(sources.WikiPages))
 	for _, source := range sources.Issues {
 		item := lmWikiIssueContent{CitationKey: citationKey("issue", source.ID), ID: source.ID, Number: source.Number, Title: normalizeLMWikiText(source.Title), Description: normalizeLMWikiText(source.Description), Status: normalizeLMWikiText(source.Status), Priority: normalizeLMWikiText(source.Priority), ProjectID: source.ProjectID, StartDate: source.StartDate, DueDate: source.DueDate, CreatedAt: canonicalTime(source.CreatedAt), UpdatedAt: canonicalTime(source.UpdatedAt)}
 		itemJSON, err := json.Marshal(item)
@@ -211,6 +246,31 @@ func BuildLMWikiSnapshot(sources LMWikiSourceSnapshot) (LMWikiCanonicalSnapshot,
 		}
 		content.AutopilotRuns, citations = append(content.AutopilotRuns, item), append(citations, citation)
 	}
+	for _, source := range sources.WikiPages {
+		if source.Scope != "workspace" && source.Scope != "project" {
+			continue
+		}
+		item := lmWikiPageContent{
+			CitationKey: citationKey("wiki_page_revision", source.ID), RevisionID: source.ID,
+			PageID: source.PageID, Scope: source.Scope, ProjectID: source.ProjectID,
+			RevisionNumber: source.RevisionNumber, Path: source.Path, Title: source.Title,
+			Content: source.Content, ContentDigest: source.ContentDigest,
+			CreatedAt: canonicalTime(source.CreatedAt),
+		}
+		itemJSON, err := json.Marshal(item)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, fmt.Errorf("marshal Wiki page revision citation item: %w", err)
+		}
+		citation, err := newLMWikiCitation(
+			"wiki_page_revision", source.ID, item.CreatedAt,
+			"wiki-pages/"+source.PageID+"/revisions/"+source.ID,
+			"Wiki: "+normalizeLMWikiText(source.Title), itemJSON,
+		)
+		if err != nil {
+			return LMWikiCanonicalSnapshot{}, err
+		}
+		content.WikiPages, citations = append(content.WikiPages, item), append(citations, citation)
+	}
 	sort.Slice(content.Issues, func(i, j int) bool { return content.Issues[i].CitationKey < content.Issues[j].CitationKey })
 	sort.Slice(content.Projects, func(i, j int) bool { return content.Projects[i].CitationKey < content.Projects[j].CitationKey })
 	sort.Slice(content.ProjectResources, func(i, j int) bool {
@@ -218,6 +278,9 @@ func BuildLMWikiSnapshot(sources LMWikiSourceSnapshot) (LMWikiCanonicalSnapshot,
 	})
 	sort.Slice(content.AutopilotRuns, func(i, j int) bool {
 		return content.AutopilotRuns[i].CitationKey < content.AutopilotRuns[j].CitationKey
+	})
+	sort.Slice(content.WikiPages, func(i, j int) bool {
+		return content.WikiPages[i].CitationKey < content.WikiPages[j].CitationKey
 	})
 	sort.Slice(citations, func(i, j int) bool { return citations[i].CitationKey < citations[j].CitationKey })
 	canonical, err := json.Marshal(content)

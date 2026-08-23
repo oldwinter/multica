@@ -42,6 +42,16 @@ var internalOnlyPayloadKeys = map[string][]string{
 	protocol.EventTaskFailed: {"error"},
 }
 
+var wikiRealtimeEvents = map[string]bool{
+	protocol.EventWikiPageCreated:      true,
+	protocol.EventWikiPageUpdated:      true,
+	protocol.EventWikiPageDeleted:      true,
+	protocol.EventWikiRevisionCreated:  true,
+	protocol.EventWikiRevisionRestored: true,
+	protocol.EventWikiProposalCreated:  true,
+	protocol.EventWikiProposalReviewed: true,
+}
+
 // projectOutbound returns payload with the event type's internal-only keys
 // removed, ready to serialize for external consumers.
 //
@@ -50,6 +60,13 @@ var internalOnlyPayloadKeys = map[string][]string{
 // forwarder may yet read it, so mutating it in place would be a landmine.
 func projectOutbound(eventType string, payload any) any {
 	keys := internalOnlyPayloadKeys[eventType]
+	if wikiRealtimeEvents[eventType] {
+		// Map payloads are supported at the event-bus boundary for compatibility
+		// with handlers that have not adopted protocol.WikiEventPayload yet.
+		// The typed payload omits RecipientID through json:"-"; map payloads need
+		// the same projection explicitly.
+		keys = append(keys, "recipient_id")
+	}
 	if len(keys) == 0 {
 		return payload
 	}
@@ -65,6 +82,37 @@ func projectOutbound(eventType string, payload any) any {
 		delete(projected, k)
 	}
 	return projected
+}
+
+// wikiRealtimeRoute validates the shared Wiki routing envelope. New Wiki
+// events fail closed when scope metadata is malformed: a personal event must
+// never fall through to workspace fanout simply because its recipient is
+// absent. Map support keeps the event-bus boundary tolerant while producers
+// migrate to protocol.WikiEventPayload.
+func wikiRealtimeRoute(payload any) (scope, recipientID string, ok bool) {
+	switch value := payload.(type) {
+	case protocol.WikiEventPayload:
+		scope, recipientID = value.Scope, value.RecipientID
+	case *protocol.WikiEventPayload:
+		if value == nil {
+			return "", "", false
+		}
+		scope, recipientID = value.Scope, value.RecipientID
+	case map[string]any:
+		scope, _ = value["scope"].(string)
+		recipientID, _ = value["recipient_id"].(string)
+	default:
+		return "", "", false
+	}
+
+	switch scope {
+	case "workspace", "project":
+		return scope, "", true
+	case "user":
+		return scope, recipientID, recipientID != ""
+	default:
+		return "", "", false
+	}
 }
 
 // registerListeners wires up event bus listeners for WS broadcasting.
@@ -175,6 +223,19 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		}
 	})
 
+	// Wiki events share event types across workspace/project and personal
+	// scopes. Personal pages are cross-workspace and private, so route them to
+	// every connection owned by the target user instead of any workspace room.
+	for eventType := range wikiRealtimeEvents {
+		bus.Subscribe(eventType, func(e events.Event) {
+			scope, recipientID, ok := wikiRealtimeRoute(e.Payload)
+			if !ok || scope != "user" {
+				return
+			}
+			sendToRecipient(b, e, recipientID)
+		})
+	}
+
 	// member:added — also send to the invited user so they discover the new workspace.
 	// Pass excludeWorkspace so clients already in the target room (reached via
 	// BroadcastToWorkspace in SubscribeAll) don't receive the event twice.
@@ -208,6 +269,12 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		// Skip personal events — they are handled by type-specific listeners above.
 		if personalEvents[e.Type] {
 			return
+		}
+		if wikiRealtimeEvents[e.Type] {
+			scope, _, ok := wikiRealtimeRoute(e.Payload)
+			if !ok || scope == "user" {
+				return
+			}
 		}
 
 		msg := map[string]any{

@@ -283,6 +283,36 @@ var concurrentIndexCleanups = map[string]string{
 	"361_issue_last_activity_index":                             "idx_issue_workspace_last_activity",
 	"363_plugin_invocation_installation_index":                  "idx_plugin_invocation_installation_created",
 	"364_plugin_invocation_created_at_index":                    "idx_plugin_invocation_created_at",
+	"378_room_memory_revision_id_index":                         "room_memory_revision_id_uidx",
+	"380_room_memory_revision_version_index":                    "room_memory_revision_version_uidx",
+	"381_room_cycle_phase_index":                                "room_cycle_phase_idx",
+	"382_room_artifact_memory_revision_index":                   "room_artifact_memory_revision_idx",
+	"384_room_recommendation_review_id_index":                   "room_recommendation_review_id_uidx",
+	"386_room_recommendation_review_identity_index":             "room_recommendation_review_identity_uidx",
+	"389_wiki_page_revision_id_index":                           "wiki_page_revision_id_uidx",
+	"390_wiki_page_revision_number_index":                       "wiki_page_revision_page_number_uidx",
+	"391_wiki_page_revision_list_index":                         "wiki_page_revision_page_created_idx",
+	"392_wiki_page_search_index":                                "wiki_page_search_fts_idx",
+	"393_wiki_page_proposal_id_index":                           "wiki_page_edit_proposal_id_uidx",
+	"394_wiki_page_proposal_idempotency_index":                  "wiki_page_edit_proposal_idempotency_uidx",
+	"395_wiki_page_proposal_list_index":                         "wiki_page_edit_proposal_page_status_idx",
+	"396_lm_wiki_source_policy_index":                           "lm_wiki_source_policy_workspace_uidx",
+	"397_lm_wiki_source_page_index":                             "lm_wiki_source_wiki_page_identity_uidx",
+	"399_twin_binding_id_index":                                 "twin_binding_id_uidx",
+	"400_twin_task_attribution_id_index":                        "twin_task_attribution_id_uidx",
+	"401_twin_run_feedback_id_index":                            "twin_run_feedback_id_uidx",
+	"402_twin_deposition_id_index":                              "twin_deposition_id_uidx",
+	"404_twin_binding_scope_index":                              "twin_binding_workspace_scope_uidx",
+	"405_twin_task_attribution_claim_index":                     "twin_task_attribution_claim_uidx",
+	"406_twin_run_feedback_task_index":                          "twin_run_feedback_workspace_task_uidx",
+	"407_twin_deposition_proposal_index":                        "twin_deposition_workspace_proposal_uidx",
+	"408_twin_deposition_task_index":                            "twin_deposition_workspace_task_idx",
+	"413_twin_proposal_identity_partial_index":                  "twin_proposal_workspace_identity_uidx",
+	"414_twin_deposition_request_index":                         "twin_deposition_workspace_request_uidx",
+	"417_twin_proposal_replacement_index":                       "twin_proposal_workspace_replacement_uidx",
+	"419_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
+	"421_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
+	"424_room_memory_review_key_index":                          "room_memory_review_key_uidx",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction
@@ -291,6 +321,7 @@ var concurrentIndexCleanups = map[string]string{
 // the retry, while a bare CREATE would stay wedged on "already exists"; both
 // cases need direction-specific cleanup before the rollback can retry safely.
 var concurrentDownIndexCleanups = map[string]string{
+	"418_room_turn_identity_index_drop":                     "room_turn_participant_uidx",
 	"144_drop_agent_task_queue_chat_pending_v1":             "idx_agent_task_queue_chat_pending",
 	"171_drop_legacy_label_namespace_index":                 "issue_label_workspace_name_lower_idx",
 	"256_drop_agent_task_queue_chat_pending_v2":             "idx_agent_task_queue_chat_pending_v2",
@@ -304,6 +335,7 @@ var concurrentDownIndexCleanups = map[string]string{
 	"312_drop_global_plugin_identity_key_index":             "idx_plugin_identity_key",
 	"371_comment_content_search_index_strategy":             "idx_comment_content_trgm",
 	"375_drop_issue_last_activity_index":                    "idx_issue_workspace_last_activity",
+	"412_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
 }
 
 var preMigrationHooks = func() map[string]preMigrationHook {
@@ -322,8 +354,98 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	for version, index := range concurrentDownIndexCleanups {
 		hooks[version] = cleanupInvalidConcurrentIndexHook(index)
 	}
+	hooks["412_drop_twin_proposal_identity_index"] = chainMigrationHooks(
+		hooks["412_drop_twin_proposal_identity_index"],
+		blockTwinProposalIdentityRollbackHook(pgx.Identifier{"public", "twin_proposal"}.Sanitize()),
+	)
+
+	// Migration 418 restores the v1 one-turn-per-participant invariant. A v2
+	// database may legitimately contain retries or synthesis attempts with the
+	// same (cycle_id, agent_id), so never let CREATE UNIQUE INDEX discover that
+	// incompatibility after starting the build. Clean up an interrupted prior
+	// build first, then fail with an actionable, data-preserving diagnostic.
+	const roomTurnIdentityVersion = "418_room_turn_identity_index_drop"
+	hooks[roomTurnIdentityVersion] = chainMigrationHooks(
+		hooks[roomTurnIdentityVersion],
+		preflightRoomTurnIdentityRollback,
+	)
 	return hooks
 }()
+
+func chainMigrationHooks(hooks ...preMigrationHook) preMigrationHook {
+	return func(ctx context.Context, pool *pgxpool.Pool) error {
+		for _, hook := range hooks {
+			if hook == nil {
+				continue
+			}
+			if err := hook(ctx, pool); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// Migration 412's down direction restores the old all-kind proposal identity
+// index. Deposition replacements intentionally reuse that old identity, so a
+// database with append-only replacement history cannot safely represent the
+// pre-413 schema. Fail before starting the concurrent index build instead of
+// leaving an INVALID index and an opaque unique-violation retry loop.
+func blockTwinProposalIdentityRollbackHook(tableName string) preMigrationHook {
+	return func(ctx context.Context, pool *pgxpool.Pool) error {
+		var conflicts bool
+		err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM `+tableName+`
+				GROUP BY workspace_id, kind, source_wiki_revision_id,
+				         COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid)
+				HAVING count(*) > 1
+			)
+		`).Scan(&conflicts)
+		if err != nil {
+			return fmt.Errorf("inspect Twin proposal history before rollback: %w", err)
+		}
+		if conflicts {
+			return errors.New("rollback blocked: Twin proposal replacement history cannot be represented by the pre-413 identity index; remain on migration 413+ or use an approved data migration")
+		}
+		return nil
+	}
+}
+
+func preflightRoomTurnIdentityRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	var duplicateGroups, turnCount int64
+	var cycleID, agentID string
+	err := pool.QueryRow(ctx, `
+		WITH duplicate_turns AS (
+			SELECT cycle_id, agent_id, count(*) AS turn_count
+			FROM room_turn
+			GROUP BY cycle_id, agent_id
+			HAVING count(*) > 1
+		), ranked_duplicates AS (
+			SELECT cycle_id, agent_id, turn_count, count(*) OVER () AS duplicate_groups
+			FROM duplicate_turns
+			ORDER BY turn_count DESC, cycle_id, agent_id
+			LIMIT 1
+		)
+		SELECT duplicate_groups, cycle_id::text, agent_id::text, turn_count
+		FROM ranked_duplicates
+	`).Scan(&duplicateGroups, &cycleID, &agentID, &turnCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect Room turns before restoring the v1 identity index: %w", err)
+	}
+
+	return fmt.Errorf(
+		"cannot roll back 418_room_turn_identity_index_drop: room_turn contains %d duplicate (cycle_id, agent_id) group(s), including cycle_id=%s agent_id=%s with %d turns; the v1 unique index cannot represent v2 retry/synthesis history. Recovery: keep the v2 schema, or back up each duplicate group plus agent_task_queue.room_turn_id, room_entry.turn_id, room_artifact.turn_id, room_cycle.synthesis_turn_id, and room_memory_revision.synthesis_turn_id references; choose one legacy-compatible turn per cycle/agent; archive or relink every dependent row before removing extra turns; then verify `SELECT cycle_id, agent_id, count(*) FROM room_turn GROUP BY cycle_id, agent_id HAVING count(*) > 1` returns no rows and rerun migrate down",
+		duplicateGroups,
+		cycleID,
+		agentID,
+		turnCount,
+	)
+}
 
 var upMigrationConditions = map[string]migrationCondition{
 	// Fresh databases that successfully built the CJK-friendly bigram index do

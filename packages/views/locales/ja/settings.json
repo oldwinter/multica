@@ -106,6 +106,15 @@
     "general_title": "一般",
     "appearance_title": "外観",
     "appearance_hint": "画面の素材感と、周囲の明るさへの反応を選びます。",
+    "appearance_sync": {
+      "default": "製品のデフォルトを使用中",
+      "synced": "デバイス間で同期済み",
+      "pending": "同期待ち",
+      "local_only": "このデバイスに保存済み",
+      "failed": "同期に失敗しました",
+      "retry": "同期を再試行",
+      "reset": "外観をリセット"
+    },
     "skin": {
       "title": "スキン",
       "tension": {

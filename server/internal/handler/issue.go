@@ -3058,6 +3058,28 @@ type UpdateIssueRequest struct {
 	// MUL-3375). Only consumed when a run actually starts: SuppressRun=true or
 	// a parked/non-triggering write drops it. Never fabricates a comment.
 	HandoffNote string `json:"handoff_note,omitempty"`
+	// TwinUse is a one-off policy for the single task this update may enqueue.
+	// It is validated and snapshotted on that task; it never mutates a binding.
+	TwinUse *issueTwinUseRequest `json:"twin_use,omitempty"`
+}
+
+type issueTwinUseRequest struct {
+	State         service.TwinUsePolicyState `json:"state"`
+	TwinVersionID string                     `json:"twin_version_id,omitempty"`
+}
+
+func (h *Handler) validateIssueTwinUse(w http.ResponseWriter, r *http.Request, workspaceID pgtype.UUID, input *issueTwinUseRequest) (*service.TwinOneOffUsePolicyOverride, bool) {
+	if input == nil {
+		return nil, true
+	}
+	canonical, err := h.twinExecutionService(r).ValidateTaskUseSnapshot(r.Context(), workspaceID, service.TwinOneOffUsePolicyOverride{
+		State: input.State, VersionID: input.TwinVersionID,
+	})
+	if err != nil {
+		h.writeTwinExecutionError(w, err)
+		return nil, false
+	}
+	return &canonical, true
 }
 
 func mergeIssueChannelMediaDescription(current, incoming string, base *string, attachments []db.Attachment) string {
@@ -3254,6 +3276,10 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	var req UpdateIssueRequest
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	twinUse, ok := h.validateIssueTwinUse(w, r, prevIssue.WorkspaceID, req.TwinUse)
+	if !ok {
 		return
 	}
 
@@ -3567,7 +3593,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		},
 		h.issueTriggerWriteProbe(r, actorType, actorID, issue),
 	); ok && !req.SuppressRun {
-		h.dispatchIssueRun(r.Context(), issue, trigger, actorType, actorID, req.HandoffNote)
+		h.dispatchIssueRun(r.Context(), issue, trigger, actorType, actorID, req.HandoffNote, twinUse)
 	}
 
 	// Platform-driven parent notification: when this issue transitions into
@@ -3832,6 +3858,13 @@ func (h *Handler) deleteIssueAndCollectAttachmentURLs(ctx context.Context, issue
 	if err != nil {
 		return nil, fmt.Errorf("list issue attachment URLs: %w", err)
 	}
+	if err := qtx.DeleteTwinBindingsForScope(ctx, db.DeleteTwinBindingsForScopeParams{
+		WorkspaceID: issue.WorkspaceID,
+		ScopeType:   "issue",
+		ScopeID:     issue.ID,
+	}); err != nil {
+		return nil, fmt.Errorf("delete issue Twin binding: %w", err)
+	}
 	if err := qtx.DeleteIssue(ctx, db.DeleteIssueParams{
 		ID:          issue.ID,
 		WorkspaceID: issue.WorkspaceID,
@@ -3863,6 +3896,10 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 	var req BatchUpdateIssuesRequest
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Updates.TwinUse != nil {
+		writeError(w, http.StatusBadRequest, "twin_use is only supported for a single issue run")
 		return
 	}
 
@@ -4172,7 +4209,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			},
 			h.issueTriggerWriteProbe(r, actorType, actorID, issue),
 		); ok && !req.Updates.SuppressRun {
-			h.dispatchIssueRun(r.Context(), issue, trigger, actorType, actorID, req.Updates.HandoffNote)
+			h.dispatchIssueRun(r.Context(), issue, trigger, actorType, actorID, req.Updates.HandoffNote, nil)
 		}
 
 		// No status change — not even → cancelled — cancels active tasks here,

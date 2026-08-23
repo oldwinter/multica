@@ -98,7 +98,8 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByText(/^Added assertions/)).toBeInTheDocument();
     expect(screen.getAllByText("assertion-new")).toHaveLength(2);
     expect(screen.getByText(/^Removed assertions/)).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Assertion changes" })).toHaveClass("lg:grid-cols-3");
+    expect(screen.getByText(/^Changed assertions/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Assertion changes" })).toHaveClass("xl:grid-cols-4");
     expect(screen.getByRole("region", { name: "Assertion changes" })).not.toHaveClass("sm:grid-cols-3");
     expect(screen.getByRole("link", { name: "Open issue" })).toHaveAttribute("href", "/acme/issues/issue-42");
 
@@ -115,6 +116,26 @@ describe("TwinWorkspaceView", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Confirm rejection" })));
     expect(onRejectTwin).toHaveBeenCalledWith("proposal-2", "Needs narrower evidence");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("links Wiki citations to their immutable revision", () => {
+    const fixture = lifecycleFixture();
+    const revisionCitation = {
+      ...fixture.proposalDetail.citations[0],
+      id: "citation-wiki-revision",
+      citation_key: "wiki_page_revision:revision-7",
+      source_type: "wiki_page_revision",
+      source_id: "revision-7",
+      locator: "wiki-pages/page-1/revisions/revision-7",
+      label: "Wiki: Focused verification",
+    };
+    renderView({ proposalDetail: { ...fixture.proposalDetail, citations: [revisionCitation] } });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    fireEvent.click(screen.getByText(revisionCitation.label).closest("button")!);
+
+    expect(screen.getByRole("link", { name: revisionCitation.locator }))
+      .toHaveAttribute("href", "/acme/wiki/revisions/revision-7");
   });
 
   it("renders the persisted six-step Twin review spine and its data states", () => {
@@ -186,6 +207,12 @@ describe("TwinWorkspaceView", () => {
     expect(screen.queryByRole("button", { name: "Sign off proposal" })).not.toBeInTheDocument();
   });
 
+  it("renders the LM Wiki source-policy slot in the evidence workflow", () => {
+    renderView({ sourcePolicyPanel: <div>Exact source policy</div> });
+
+    expect(screen.getByTestId("lm-wiki-source-policy-slot")).toHaveTextContent("Exact source policy");
+  });
+
   it("keeps first-run refresh explicit for managers and unavailable to members", () => {
     const onRefreshWiki = vi.fn();
     const fixture = lifecycleFixture();
@@ -239,6 +266,117 @@ describe("TwinWorkspaceView", () => {
     expect(screen.queryByRole("combobox", { name: "Twin proposal" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Twin version" })).not.toBeInTheDocument();
     expect(screen.getByText("Accept a Wiki revision to start Twin Builder.")).toBeInTheDocument();
+  });
+
+  it("shows only sanitized deposition evidence and never renders raw metadata", () => {
+    const fixture = lifecycleFixture();
+    renderView({
+      proposalDetail: {
+        ...fixture.proposalDetail,
+        proposal: { ...fixture.proposalDetail.proposal, kind: "deposition" },
+        run_evidence: {
+          taskId: "00000000-0000-4000-8000-000000000010",
+          baseTwinVersionId: "00000000-0000-4000-8000-000000000011",
+          evidenceDigest: `sha256:${"a".repeat(64)}`,
+          taskStatus: "completed",
+          completedAt: "2026-08-11T09:00:00Z",
+          feedbackRating: "helped",
+          safeMetadata: {
+            raw_output: "must-never-render",
+            local_path: "/home/private/worktree",
+          },
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    const evidence = screen.getByRole("region", { name: "Sanitized run evidence" });
+    expect(evidence).toBeInTheDocument();
+    expect(within(evidence).getAllByText("completed")).not.toHaveLength(0);
+    expect(within(evidence).getByText("helped")).toBeInTheDocument();
+    expect(screen.queryByText("must-never-render")).not.toBeInTheDocument();
+    expect(screen.queryByText("/home/private/worktree")).not.toBeInTheDocument();
+  });
+
+  it("lets a manager create an edited replacement for a pending deposition", async () => {
+    const fixture = lifecycleFixture();
+    const onEditDeposition = vi.fn(async () => undefined);
+    renderView({
+      onEditDeposition,
+      proposalDetail: {
+        ...fixture.proposalDetail,
+        proposal: { ...fixture.proposalDetail.proposal, kind: "deposition" },
+        run_evidence: {
+          taskId: "00000000-0000-4000-8000-000000000010",
+          baseTwinVersionId: "00000000-0000-4000-8000-000000000011",
+          evidenceDigest: `sha256:${"a".repeat(64)}`,
+          taskStatus: "completed",
+          completedAt: "2026-08-11T09:00:00Z",
+          feedbackRating: "helped",
+          safeMetadata: {},
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit deposition" }));
+    const editor = screen.getByLabelText("Assertions JSON");
+    fireEvent.change(editor, { target: { value: "{invalid" } });
+    expect(screen.getByText("Enter valid JSON.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create replacement" })).toBeDisabled();
+
+    const editedAssertions = [{
+      id: "assertion-new",
+      type: "quality_bar",
+      text: "始终记录明确且可复核的评审结论",
+      applicability: { workspace_id: fixture.wsId, keywords: ["review"] },
+      evidence_citations: ["issue:42"],
+      confidence: 0.95,
+    }];
+    fireEvent.change(editor, { target: { value: JSON.stringify(editedAssertions, null, 2) } });
+    expect(screen.getByText("Changes are ready for review.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create replacement" }));
+
+    await waitFor(() => expect(onEditDeposition).toHaveBeenCalledWith("proposal-2", editedAssertions));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("creates a validated correction before signing a normal proposal", async () => {
+    const onCorrectTwin = vi.fn(async () => undefined);
+    renderView({ onCorrectTwin });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit proposal" }));
+    const editor = screen.getByLabelText("Assertions JSON");
+    fireEvent.change(editor, { target: { value: "[]" } });
+    expect(screen.getByText("Changes are ready for validation.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create correction" }));
+
+    await waitFor(() => expect(onCorrectTwin).toHaveBeenCalledWith("proposal-2", []));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("keeps deposition editing unavailable to read-only members", () => {
+    const fixture = lifecycleFixture();
+    renderView({
+      canManageTwin: false,
+      proposalDetail: {
+        ...fixture.proposalDetail,
+        proposal: { ...fixture.proposalDetail.proposal, kind: "deposition" },
+        run_evidence: {
+          taskId: "00000000-0000-4000-8000-000000000010",
+          baseTwinVersionId: "00000000-0000-4000-8000-000000000011",
+          evidenceDigest: `sha256:${"a".repeat(64)}`,
+          taskStatus: "completed",
+          completedAt: "2026-08-11T09:00:00Z",
+          feedbackRating: null,
+          safeMetadata: {},
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    expect(screen.queryByRole("button", { name: "Edit deposition" })).not.toBeInTheDocument();
   });
 
 });

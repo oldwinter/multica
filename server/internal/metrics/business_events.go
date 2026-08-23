@@ -15,6 +15,10 @@ import (
 // Most provider boots land in 5–60s; the long tail catches stuck pulls.
 var runtimeReadyBuckets = []float64{1, 2.5, 5, 10, 30, 60, 120, 300, 600}
 
+var twinOperationLatencyBuckets = []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30}
+var twinBriefingByteBuckets = []float64{256, 512, 1024, 2048, 4096, 8192}
+var twinBriefingTokenBuckets = []float64{64, 128, 256, 512, 1024, 2048}
+
 // cloudRuntimeRequestBuckets covers outbound Fleet/Gateway calls from sub-100ms
 // (status pings) to ~30s (provision). Aligns with cloudruntime.defaultTimeout.
 var cloudRuntimeRequestBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30}
@@ -65,6 +69,21 @@ type businessEventMetrics struct {
 	feedbackSubmitted               *prometheus.CounterVec
 	contactSalesSubmitted           *prometheus.CounterVec
 	chatOutputLocalPath             *prometheus.CounterVec
+	wikiSearch                      *prometheus.CounterVec
+	wikiProposalReview              *prometheus.CounterVec
+	lmWikiReview                    *prometheus.CounterVec
+	twinProposalGeneration          *prometheus.CounterVec
+	twinProposalGenerationSeconds   *prometheus.HistogramVec
+	twinSignOff                     *prometheus.CounterVec
+	twinBriefingCompilation         *prometheus.CounterVec
+	twinBriefingCompilationSeconds  *prometheus.HistogramVec
+	twinBriefingUse                 *prometheus.CounterVec
+	twinBriefingBytes               *prometheus.HistogramVec
+	twinBriefingTokens              *prometheus.HistogramVec
+	twinRunFeedback                 *prometheus.CounterVec
+	twinTaskRevision                *prometheus.CounterVec
+	twinDepositionReview            *prometheus.CounterVec
+	roomOutcome                     *prometheus.CounterVec
 }
 
 func newBusinessEventMetrics() *businessEventMetrics {
@@ -212,6 +231,70 @@ func newBusinessEventMetrics() *businessEventMetrics {
 			Name: "multica_chat_output_local_path_total",
 			Help: "Total agent chat replies that referenced a runtime-local path, by evidence kind. Observation only — the reply is still delivered.",
 		}, metricLabels("multica_chat_output_local_path_total")),
+		wikiSearch: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_wiki_search_total",
+			Help: "Total Wiki searches by bounded scope and hit outcome.",
+		}, metricLabels("multica_wiki_search_total")),
+		wikiProposalReview: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_wiki_proposal_review_total",
+			Help: "Total human Wiki proposal reviews by decision and whether acceptance was edited.",
+		}, metricLabels("multica_wiki_proposal_review_total")),
+		lmWikiReview: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_lm_wiki_review_total",
+			Help: "Total immutable LM Wiki revision reviews by decision.",
+		}, metricLabels("multica_lm_wiki_review_total")),
+		twinProposalGeneration: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_proposal_generation_total",
+			Help: "Total Twin proposal generation outcomes by bounded kind and state.",
+		}, metricLabels("multica_twin_proposal_generation_total")),
+		twinProposalGenerationSeconds: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "multica_twin_proposal_generation_seconds",
+			Help:    "Twin proposal generation latency in seconds.",
+			Buckets: twinOperationLatencyBuckets,
+		}, metricLabels("multica_twin_proposal_generation_seconds")),
+		twinSignOff: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_sign_off_total",
+			Help: "Total Twin sign-off decisions by bounded proposal kind.",
+		}, metricLabels("multica_twin_sign_off_total")),
+		twinBriefingCompilation: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_briefing_compilation_total",
+			Help: "Total Twin briefing compilation outcomes by bounded policy scope and exclusion code.",
+		}, metricLabels("multica_twin_briefing_compilation_total")),
+		twinBriefingCompilationSeconds: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "multica_twin_briefing_compilation_seconds",
+			Help:    "Twin briefing compilation latency in seconds.",
+			Buckets: twinOperationLatencyBuckets,
+		}, metricLabels("multica_twin_briefing_compilation_seconds")),
+		twinBriefingUse: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_briefing_use_total",
+			Help: "Total Twin briefing preview, injection, and skip outcomes.",
+		}, metricLabels("multica_twin_briefing_use_total")),
+		twinBriefingBytes: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "multica_twin_briefing_bytes",
+			Help:    "Bounded Twin briefing size used for preview or runtime injection.",
+			Buckets: twinBriefingByteBuckets,
+		}, metricLabels("multica_twin_briefing_bytes")),
+		twinBriefingTokens: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "multica_twin_briefing_tokens",
+			Help:    "Bounded Twin briefing token overhead used for preview or runtime injection.",
+			Buckets: twinBriefingTokenBuckets,
+		}, metricLabels("multica_twin_briefing_tokens")),
+		twinRunFeedback: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_run_feedback_total",
+			Help: "Total Twin run feedback ratings.",
+		}, metricLabels("multica_twin_run_feedback_total")),
+		twinTaskRevision: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_task_revision_total",
+			Help: "Total accepted Twin-assisted tasks and requested revisions by bounded revision kind.",
+		}, metricLabels("multica_twin_task_revision_total")),
+		twinDepositionReview: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_twin_deposition_review_total",
+			Help: "Total human Twin deposition review decisions.",
+		}, metricLabels("multica_twin_deposition_review_total")),
+		roomOutcome: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "multica_room_outcome_total",
+			Help: "Total Room outcome lifecycle events by bounded event, source, reason, and target kind.",
+		}, metricLabels("multica_room_outcome_total")),
 	}
 }
 
@@ -255,6 +338,21 @@ func (e *businessEventMetrics) collectors() []prometheus.Collector {
 		e.feedbackSubmitted,
 		e.contactSalesSubmitted,
 		e.chatOutputLocalPath,
+		e.wikiSearch,
+		e.wikiProposalReview,
+		e.lmWikiReview,
+		e.twinProposalGeneration,
+		e.twinProposalGenerationSeconds,
+		e.twinSignOff,
+		e.twinBriefingCompilation,
+		e.twinBriefingCompilationSeconds,
+		e.twinBriefingUse,
+		e.twinBriefingBytes,
+		e.twinBriefingTokens,
+		e.twinRunFeedback,
+		e.twinTaskRevision,
+		e.twinDepositionReview,
+		e.roomOutcome,
 	}
 }
 
@@ -374,6 +472,80 @@ func (m *BusinessMetrics) IncForEvent(ev analytics.Event) {
 		).Inc()
 	case analytics.EventContactSalesSubmitted:
 		m.events.contactSalesSubmitted.WithLabelValues(NormalizeContactSalesSource(stringProp(ev.Properties, "form_source"))).Inc()
+	case analytics.EventWikiSearch:
+		m.events.wikiSearch.WithLabelValues(
+			normalizeWikiScope(stringProp(ev.Properties, "scope")),
+			normalizeWikiSearchResult(stringProp(ev.Properties, "result")),
+		).Inc()
+	case analytics.EventWikiProposalReview:
+		m.events.wikiProposalReview.WithLabelValues(
+			normalizeWikiReviewDecision(stringProp(ev.Properties, "decision")),
+			boolLabel(boolProp(ev.Properties, "edited")),
+		).Inc()
+	case analytics.EventLMWikiReview:
+		m.events.lmWikiReview.WithLabelValues(
+			normalizeWikiReviewDecision(stringProp(ev.Properties, "decision")),
+		).Inc()
+	case analytics.EventTwinProposalGeneration:
+		kind := NormalizeTwinProposalKind(stringProp(ev.Properties, "kind"))
+		state := NormalizeTwinState(stringProp(ev.Properties, "state"))
+		m.events.twinProposalGeneration.WithLabelValues(kind, state).Inc()
+		if latencyMS := int64Prop(ev.Properties, "latency_ms"); latencyMS > 0 {
+			m.events.twinProposalGenerationSeconds.WithLabelValues(kind, state).Observe(float64(latencyMS) / 1000)
+		}
+	case analytics.EventTwinSignOff:
+		m.events.twinSignOff.WithLabelValues(
+			NormalizeTwinProposalKind(stringProp(ev.Properties, "kind")),
+			NormalizeTwinDecision(stringProp(ev.Properties, "decision")),
+		).Inc()
+	case analytics.EventTwinBriefingCompilation:
+		state := NormalizeTwinState(stringProp(ev.Properties, "state"))
+		scope := NormalizeTwinPolicyScope(stringProp(ev.Properties, "scope"))
+		m.events.twinBriefingCompilation.WithLabelValues(
+			state,
+			scope,
+			NormalizeTwinExclusionCode(stringProp(ev.Properties, "exclusion_code")),
+		).Inc()
+		if latencyMS := int64Prop(ev.Properties, "latency_ms"); latencyMS > 0 {
+			m.events.twinBriefingCompilationSeconds.WithLabelValues(state, scope).Observe(float64(latencyMS) / 1000)
+		}
+	case analytics.EventTwinBriefingUse:
+		state := NormalizeTwinState(stringProp(ev.Properties, "state"))
+		scope := NormalizeTwinPolicyScope(stringProp(ev.Properties, "scope"))
+		m.events.twinBriefingUse.WithLabelValues(
+			state,
+			scope,
+			NormalizeTwinExclusionCode(stringProp(ev.Properties, "exclusion_code")),
+		).Inc()
+		if byteCount := int64Prop(ev.Properties, "byte_count"); byteCount > 0 {
+			m.events.twinBriefingBytes.WithLabelValues(state, scope).Observe(float64(byteCount))
+		}
+		if tokenCount := int64Prop(ev.Properties, "token_count"); tokenCount > 0 {
+			m.events.twinBriefingTokens.WithLabelValues(state, scope).Observe(float64(tokenCount))
+		}
+	case analytics.EventTwinRunFeedback:
+		m.events.twinRunFeedback.WithLabelValues(NormalizeTwinFeedbackRating(stringProp(ev.Properties, "rating"))).Inc()
+	case analytics.EventTwinTaskRevision:
+		m.events.twinTaskRevision.WithLabelValues(
+			NormalizeTwinDecision(stringProp(ev.Properties, "decision")),
+			NormalizeTwinRevisionKind(stringProp(ev.Properties, "kind")),
+		).Inc()
+	case analytics.EventTwinDepositionReview:
+		m.events.twinDepositionReview.WithLabelValues(NormalizeTwinDecision(stringProp(ev.Properties, "decision"))).Inc()
+	case analytics.EventRoomCreated,
+		analytics.EventRoomFirstCycleCompleted,
+		analytics.EventRoomSynthesisAccepted,
+		analytics.EventRoomSynthesisRejected,
+		analytics.EventRoomSynthesisRetried,
+		analytics.EventRoomArtifactPromoted,
+		analytics.EventRoomBudgetRefused,
+		analytics.EventRoomCycleFailed:
+		m.events.roomOutcome.WithLabelValues(
+			NormalizeRoomEvent(ev.Name),
+			NormalizeRoomSource(stringProp(ev.Properties, "source")),
+			NormalizeRoomReason(stringProp(ev.Properties, "reason")),
+			NormalizeRoomKind(stringProp(ev.Properties, "kind")),
+		).Inc()
 	default:
 		// agent_task_* lifecycle telemetry is recorded straight to Prometheus
 		// via the typed BusinessMetrics.RecordTask* methods (they take

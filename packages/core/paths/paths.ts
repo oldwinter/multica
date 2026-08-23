@@ -27,6 +27,10 @@ function workspaceScoped(slug: string) {
     twins: () => `${ws}/twins`,
     wiki: () => `${ws}/wiki`,
     wikiPage: (id: string) => `${ws}/wiki/${encode(id)}`,
+    wikiRevision: (revisionId: string) => `${ws}/wiki/revisions/${encode(revisionId)}`,
+    personalWiki: () => `${ws}/personal-wiki`,
+    personalWikiPage: (id: string) => `${ws}/personal-wiki/${encode(id)}`,
+    personalWikiRevision: (revisionId: string) => `${ws}/personal-wiki/revisions/${encode(revisionId)}`,
     autopilotDetail: (id: string) => `${ws}/autopilots/${encode(id)}`,
     agents: () => `${ws}/agents`,
     newAgent: () => `${ws}/agents/new`,
@@ -46,6 +50,7 @@ function workspaceScoped(slug: string) {
     inbox: () => `${ws}/inbox`,
     chat: () => `${ws}/chat`,
     rooms: () => `${ws}/rooms`,
+    roomDetail: (id: string) => `${ws}/rooms?room=${encode(id)}`,
     chatWithAgent: (agentId: string) =>
       `${ws}/chat?agent=${encode(agentId)}`,
     chatSession: (sessionId: string) =>
@@ -71,6 +76,9 @@ export const paths = {
   invite: (id: string) => `/invite/${encode(id)}`,
   invitations: () => "/invitations",
   onboarding: () => "/onboarding",
+  personalWiki: () => "/personal-wiki",
+  personalWikiPage: (id: string) => `/personal-wiki/${encode(id)}`,
+  personalWikiRevision: (revisionId: string) => `/personal-wiki/revisions/${encode(revisionId)}`,
   authCallback: () => "/auth/callback",
   root: () => "/",
 };
@@ -81,7 +89,7 @@ export type WorkspacePaths = ReturnType<typeof workspaceScoped>;
 // A path is global if it equals or begins with any of these.
 // Note: `/workspaces/` (trailing slash) is the prefix — `workspaces` is reserved,
 // so any path starting with `/workspaces/...` is system-owned, not user-owned.
-const GLOBAL_PREFIXES = ["/login", "/workspaces/", "/invite/", "/invitations", "/onboarding", "/auth/", "/logout", "/signup"];
+const GLOBAL_PREFIXES = ["/login", "/workspaces/", "/invite/", "/invitations", "/onboarding", "/personal-wiki", "/auth/", "/logout", "/signup"];
 
 export function isGlobalPath(path: string): boolean {
   return GLOBAL_PREFIXES.some((p) => path === p || path.startsWith(p));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -23,6 +23,12 @@ import { agentListOptions, squadListOptions } from "@multica/core/workspace/quer
 import { runtimeListOptions, readRuntimeCliVersion, handoffSupported } from "@multica/core/runtimes";
 import { useShortcut, shortcutMatchesEvent, isPlainShortcut } from "@multica/core/shortcuts";
 import { isImeComposing } from "@multica/core/utils";
+import {
+  usePreviewTwinBriefing,
+  type TwinBindingState,
+  type TwinBriefingPreview,
+} from "@multica/core/twins";
+import { Eye, Power, Sparkles } from "lucide-react";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useT } from "../i18n";
@@ -73,18 +79,18 @@ interface RunConfirmData {
   assigneeId?: string;
   assigneeName?: string;
   issueRevision?: number;
+  request?: string;
+  projectId?: string;
 }
 
 /**
  * Handoff confirmation for the issue writes that start agent runs.
  *
  * The rule is "dialog = you are handing this to an agent", NOT "you are
- * confirming N runs" (MUL-5010). It therefore does no pre-flight prediction:
- * opening it fires no request, so the note box and buttons are usable on the
- * first frame. Previously it called POST /api/issues/preview-trigger on open
- * and blocked the whole dialog behind a "检查中…" spinner; because that query is
- * keyed per issue id with staleTime 0, every new issue was a guaranteed cache
- * miss and the wait was unavoidable.
+ * confirming N runs" (MUL-5010). The note and actions remain usable on the
+ * first frame. A single eligible run compiles its Twin briefing alongside the
+ * form. The run write waits for that exact one-off snapshot so it cannot queue
+ * a different signed version than the one the user reviewed.
  *
  * Completion is silent: the assignee/status change and any run it starts
  * surface through the issue's normal updates, so the confirm adds no result
@@ -112,6 +118,17 @@ export function RunConfirmModal({
   // spinner (the request runs an agent on the server for note assigns, so it is
   // not instant — the disabled-only state read as frozen).
   const [pendingAction, setPendingAction] = useState<"go" | "suppress" | null>(null);
+  const [twinUseState, setTwinUseState] = useState<TwinBindingState>("off");
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [previewSnapshot, setPreviewSnapshot] = useState<{
+    readonly requestedState: TwinBindingState;
+    readonly data: TwinBriefingPreview;
+  } | null>(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
+  const previewSequence = useRef(0);
+  const previewIntent = useRef("");
+  const previewedVersionId = useRef<string | null>(null);
   const submitting = pendingAction !== null;
 
   const updateIssue = useUpdateIssue();
@@ -132,23 +149,71 @@ export function RunConfirmModal({
   const { data: agents = [] } = useQuery({ ...agentListOptions(wsId), enabled: !!wsId });
   const { data: runtimes = [] } = useQuery({ ...runtimeListOptions(wsId), enabled: !!wsId });
   const { data: squads = [] } = useQuery({ ...squadListOptions(wsId), enabled: !!wsId });
-  const localHandoff = useMemo<boolean | null>(() => {
-    if (!d.assigneeId) return null;
-    let agentId: string | undefined;
-    if (d.assigneeType === "agent") {
-      agentId = d.assigneeId;
-    } else if (d.assigneeType === "squad") {
-      // A squad run is executed by its leader, so the leader's runtime is the
-      // one that has to render the note.
-      agentId = squads.find((s) => s.id === d.assigneeId)?.leader_id;
+  const targetAgentId = useMemo(() => {
+    if (d.assigneeType === "agent") return d.assigneeId;
+    if (d.assigneeType === "squad") {
+      return squads.find((s) => s.id === d.assigneeId)?.leader_id;
     }
-    if (!agentId) return null;
-    const agent = agents.find((a) => a.id === agentId);
+    return undefined;
+  }, [d.assigneeId, d.assigneeType, squads]);
+  const localHandoff = useMemo<boolean | null>(() => {
+    if (!targetAgentId) return null;
+    const agent = agents.find((a) => a.id === targetAgentId);
     if (!agent?.runtime_id) return null;
     const runtime = runtimes.find((r) => r.id === agent.runtime_id);
     if (!runtime) return null;
     return handoffSupported(readRuntimeCliVersion(runtime.metadata));
-  }, [d.assigneeType, d.assigneeId, agents, runtimes, squads]);
+  }, [targetAgentId, agents, runtimes]);
+
+  const twinPreview = usePreviewTwinBriefing();
+  const canPreviewTwin = issueIds.length === 1 && !!targetAgentId && !!d.request;
+  const previewIntentKey = [targetAgentId, d.projectId, issueIds[0], d.request].join("\u0000");
+  useEffect(() => {
+    if (!canPreviewTwin || !targetAgentId || !d.request) return;
+    if (previewIntent.current !== previewIntentKey) {
+      previewIntent.current = previewIntentKey;
+      previewedVersionId.current = null;
+    }
+    const sequence = ++previewSequence.current;
+    const requestedState = twinUseState;
+    const pinnedVersionId = requestedState === "off" ? null : previewedVersionId.current;
+    setPreviewPending(true);
+    setPreviewError(false);
+    setPreviewSnapshot(null);
+    void twinPreview.mutateAsync({
+      agentId: targetAgentId,
+      ...(d.projectId ? { projectId: d.projectId } : {}),
+      issueId: issueIds[0],
+      request: d.request,
+      oneOffState: requestedState,
+      ...(pinnedVersionId ? { twinVersionId: pinnedVersionId } : {}),
+    }).then((result) => {
+      if (previewSequence.current !== sequence) return;
+      if (result.twinVersion) previewedVersionId.current = result.twinVersion.id;
+      else if (requestedState !== "off") previewedVersionId.current = null;
+      setPreviewSnapshot({ requestedState, data: result });
+      setPreviewPending(false);
+    }).catch(() => {
+      if (previewSequence.current !== sequence) return;
+      setPreviewError(true);
+      setPreviewPending(false);
+    });
+    return () => {
+      if (previewSequence.current === sequence) previewSequence.current += 1;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canPreviewTwin, previewIntentKey, previewRevision, twinUseState]);
+
+  const activePreview = previewSnapshot?.requestedState === twinUseState
+    ? previewSnapshot.data
+    : null;
+  const previewNeedsVersion = twinUseState === "preview" || twinUseState === "enabled";
+  const previewReady = !canPreviewTwin || (
+    !previewPending &&
+    !previewError &&
+    activePreview !== null &&
+    (!previewNeedsVersion || activePreview.twinVersion !== null)
+  );
 
   // Soft gate: an old runtime can't render the note. Disable the box but let
   // the assignment proceed (MUL-3375 §6.3).
@@ -166,7 +231,19 @@ export function RunConfirmModal({
           assignee_type: d.assigneeType ?? null,
           assignee_id: d.assigneeId ?? null,
         };
-    return { ...base, ...extra };
+    const twinVersionId = activePreview?.twinVersion?.id;
+    const twinUse =
+      issueIds.length === 1 &&
+      activePreview &&
+      (twinUseState !== "enabled" || twinVersionId)
+        ? {
+            state: twinUseState,
+            ...((twinUseState === "enabled" || twinUseState === "preview") && twinVersionId
+              ? { twin_version_id: twinVersionId }
+              : {}),
+          }
+        : undefined;
+    return { ...base, ...extra, ...(twinUse ? { twin_use: twinUse } : {}) };
   };
 
   // The copy names whoever the issue is handed to; for a squad that is the
@@ -176,12 +253,13 @@ export function RunConfirmModal({
     getActorName(d.assigneeType === "squad" ? "squad" : "agent", d.assigneeId ?? "");
 
   const submit = async (suppressRun: boolean) => {
-    if (issueIds.length === 0 || submitting) return;
+    if (issueIds.length === 0 || submitting || !previewReady) return;
     setPendingAction(suppressRun ? "suppress" : "go");
     const payload = applyTo({
       ...(suppressRun ? { suppress_run: true } : {}),
       ...(!suppressRun && !noteDisabled && note.trim() ? { handoff_note: note.trim() } : {}),
     });
+    if (suppressRun) delete payload.twin_use;
     try {
       // Completion is silent, exactly as before: the assignee and any run show
       // up through the issue's normal assignee / run-status updates, so there is
@@ -267,8 +345,7 @@ export function RunConfirmModal({
           <DialogDescription>{headline}</DialogDescription>
         </DialogHeader>
 
-        {/* Always mounted and always usable on the first frame — nothing about
-            this box depends on a server answer. */}
+        {/* The note remains editable while the independent Twin preview settles. */}
         <div className="grid gap-1.5">
           <label className="text-body font-medium" htmlFor="handoff-note">
             {t(($) => $.run_confirm.note_label)}
@@ -287,13 +364,101 @@ export function RunConfirmModal({
           ) : null}
         </div>
 
-        {/* The only spinner left is on the button the user just pressed, and it
-            reflects the write in flight — never a pre-flight check. */}
+        {canPreviewTwin ? (
+          <section className="grid gap-2 border-y py-3" aria-labelledby="run-twin-use-title">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 id="run-twin-use-title" className="text-body font-medium">
+                  {t(($) => $.run_confirm.twin_title)}
+                </h3>
+                <p className="text-caption text-muted-foreground">
+                  {t(($) => $.run_confirm.twin_description)}
+                </p>
+              </div>
+              {activePreview ? (
+                <span className="shrink-0 text-caption tabular-nums text-muted-foreground">
+                  {t(($) => $.run_confirm.twin_budget, {
+                    bytes: activePreview.byteCount,
+                    tokens: activePreview.tokenCount,
+                  })}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-3 gap-1" role="group" aria-label={t(($) => $.run_confirm.twin_title)}>
+              {([
+                ["off", Power, t(($) => $.run_confirm.twin_off)],
+                ["preview", Eye, t(($) => $.run_confirm.twin_preview)],
+                ["enabled", Sparkles, t(($) => $.run_confirm.twin_enabled)],
+              ] as const).map(([state, Icon, label]) => {
+                const noVersion = state === twinUseState && state !== "off" && activePreview?.twinVersion === null;
+                return (
+                  <Button
+                    key={state}
+                    type="button"
+                    size="sm"
+                    variant={twinUseState === state ? "secondary" : "ghost"}
+                    aria-pressed={twinUseState === state}
+                    disabled={submitting}
+                    title={noVersion ? t(($) => $.run_confirm.twin_no_version) : label}
+                    onClick={() => {
+                      setTwinUseState(state);
+                      setPreviewRevision((revision) => revision + 1);
+                    }}
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            {previewPending || (!activePreview && !previewError) ? (
+              <div className="flex items-center gap-2 text-caption text-muted-foreground" role="status">
+                <Spinner className="size-4" />
+                {t(($) => $.run_confirm.twin_loading)}
+              </div>
+            ) : previewError ? (
+              <p className="text-caption text-destructive" role="alert">
+                {t(($) => $.run_confirm.twin_error)}
+              </p>
+            ) : activePreview ? (
+              <>
+                <p className="break-words text-caption text-muted-foreground">
+                  {t(($) => $.run_confirm.twin_effective, {
+                    state: activePreview.policy.state,
+                    version: activePreview.twinVersion?.versionNumber ?? "-",
+                  })}{" "}
+                  {activePreview.policy.reason}
+                </p>
+                {activePreview.twinVersion ? (
+                  <dl className="grid min-w-0 gap-2 text-caption sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <dt className="text-muted-foreground">{t(($) => $.run_confirm.twin_version_id)}</dt>
+                      <dd className="break-all font-mono text-foreground">{activePreview.twinVersion.id}</dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-muted-foreground">{t(($) => $.run_confirm.twin_version_digest)}</dt>
+                      <dd className="break-all font-mono text-foreground">{activePreview.twinVersion.contentDigest}</dd>
+                    </div>
+                  </dl>
+                ) : null}
+                {activePreview.briefing ? (
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words border-l-2 pl-3 text-caption text-foreground">
+                    {activePreview.briefing}
+                  </pre>
+                ) : null}
+              </>
+            ) : null}
+          </section>
+        ) : null}
+
+        {/* A single run can only queue the exact snapshot shown above. */}
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={submitting} onClick={() => submit(true)}>
+          <Button type="button" variant="outline" disabled={submitting || !previewReady} onClick={() => submit(true)}>
             {pendingAction === "suppress" ? <Spinner className="size-4" /> : t(($) => $.run_confirm.dont_start)}
           </Button>
-          <Button type="button" disabled={submitting} onClick={() => submit(false)}>
+          <Button type="button" disabled={submitting || !previewReady} onClick={() => submit(false)}>
             {pendingAction === "go" ? (
               <Spinner className="size-4" />
             ) : (

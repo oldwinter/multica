@@ -148,7 +148,7 @@ export default async function RootLayout({
     >
       <body className="h-full overflow-hidden">
         <Script id="multica-skin" strategy="beforeInteractive">
-          {`try{var s=localStorage.getItem("multica-skin");document.documentElement.dataset.skin=["tension","relay","field"].includes(s)?s:"tension"}catch(e){document.documentElement.dataset.skin="tension"}`}
+          {`var e=document.documentElement,m=false,s="tension",a="system",d=false;try{m=matchMedia("(prefers-color-scheme: dark)").matches}catch(_){}try{var o=localStorage.getItem("multica-appearance-preferences-owner"),x=localStorage.getItem("multica-authenticated-account-id"),q=x?localStorage.getItem("multica-appearance-preferences:account:"+encodeURIComponent(x)):null,r=q!==null?q:o===null||o===x?localStorage.getItem("multica-appearance-preferences"):null,p=null;try{p=r?JSON.parse(r):null}catch(_){}var f=p&&(p.version>1||p.tokenContractVersion>1),v=p&&p.version===1&&p.tokenContractVersion===1;s=f?"tension":v?p.skin:o===null?localStorage.getItem("multica-skin"):"tension";a=f?"system":v?p.requestedAppearance:o===null?localStorage.getItem("theme"):"system";d=a==="dark"||(a!=="light"&&m);if(v)localStorage.setItem("theme",a)}catch(_){s="tension";a="system";d=m}e.dataset.skin=["tension","relay","field"].includes(s)?s:"tension";e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light"`}
         </Script>
         {/*
           react-grab: dev-only element inspector. Hold ⌘C (Mac) / Ctrl+C and click

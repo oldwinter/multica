@@ -30,10 +30,15 @@ type roomParticipantRequest struct {
 type createRoomRequest struct {
 	Title                   string                   `json:"title"`
 	Instructions            string                   `json:"instructions,omitempty"`
+	Objective               string                   `json:"objective"`
+	SuccessCriteria         []string                 `json:"success_criteria,omitempty"`
+	StopConditions          []string                 `json:"stop_conditions,omitempty"`
+	TemplateID              string                   `json:"template_id,omitempty"`
 	FacilitatorAgentID      *string                  `json:"facilitator_agent_id,omitempty"`
 	FacilitatorSquadID      *string                  `json:"facilitator_squad_id,omitempty"`
 	Participants            []roomParticipantRequest `json:"participants,omitempty"`
 	DailyTurnLimit          *int32                   `json:"daily_turn_limit,omitempty"`
+	MaxCostTicks            *int64                   `json:"max_cost_ticks,omitempty"`
 	ScheduleIntervalMinutes *int32                   `json:"schedule_interval_minutes,omitempty"`
 }
 
@@ -52,41 +57,79 @@ type roomStatusRequest struct {
 	Status string `json:"status"`
 }
 
+type roomBudgetRequest struct {
+	DailyTurnLimit json.RawMessage `json:"daily_turn_limit"`
+	MaxCostTicks   json.RawMessage `json:"max_cost_ticks"`
+}
+
 type roomPromotionRequest struct {
-	Kind           string  `json:"kind"`
-	EntryID        *string `json:"entry_id,omitempty"`
-	CycleID        *string `json:"cycle_id,omitempty"`
-	IdempotencyKey string  `json:"idempotency_key"`
-	Title          string  `json:"title"`
-	Rationale      string  `json:"rationale,omitempty"`
+	Kind              string   `json:"kind"`
+	EntryID           *string  `json:"entry_id,omitempty"`
+	CycleID           *string  `json:"cycle_id,omitempty"`
+	MemoryRevisionID  *string  `json:"memory_revision_id,omitempty"`
+	RecommendationKey string   `json:"recommendation_key,omitempty"`
+	CitationEntryIDs  []string `json:"citation_entry_ids,omitempty"`
+	IdempotencyKey    string   `json:"idempotency_key"`
+	Title             string   `json:"title"`
+	Body              string   `json:"body,omitempty"`
+	Rationale         string   `json:"rationale,omitempty"`
+}
+
+type roomSynthesisRetryRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type roomCycleReviewRequest struct {
+	Action                string          `json:"action"`
+	ExpectedMemoryVersion int64           `json:"expected_memory_version"`
+	Correction            json.RawMessage `json:"correction,omitempty"`
+	IdempotencyKey        string          `json:"idempotency_key"`
+}
+
+type roomCycleCancelRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type roomRecommendationReviewRequest struct {
+	Action         string `json:"action"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 type roomResponse struct {
-	ID                      string          `json:"id"`
-	WorkspaceID             string          `json:"workspace_id"`
-	Title                   string          `json:"title"`
-	Instructions            string          `json:"instructions"`
-	CreatedByUserID         string          `json:"created_by_user_id"`
-	FacilitatorAgentID      string          `json:"facilitator_agent_id"`
-	FacilitatorSquadID      *string         `json:"facilitator_squad_id"`
-	Status                  string          `json:"status"`
-	DailyTurnLimit          *int32          `json:"daily_turn_limit"`
-	ScheduleIntervalMinutes *int32          `json:"schedule_interval_minutes"`
-	NextWakeAt              *string         `json:"next_wake_at"`
-	ActiveCycleID           *string         `json:"active_cycle_id"`
-	Memory                  json.RawMessage `json:"memory"`
-	MemoryVersion           int64           `json:"memory_version"`
-	CreatedAt               string          `json:"created_at"`
-	UpdatedAt               string          `json:"updated_at"`
+	ID                       string          `json:"id"`
+	WorkspaceID              string          `json:"workspace_id"`
+	Title                    string          `json:"title"`
+	Instructions             string          `json:"instructions"`
+	Objective                string          `json:"objective"`
+	SuccessCriteria          json.RawMessage `json:"success_criteria"`
+	StopConditions           json.RawMessage `json:"stop_conditions"`
+	TemplateID               *string         `json:"template_id"`
+	CreatedByUserID          string          `json:"created_by_user_id"`
+	FacilitatorAgentID       string          `json:"facilitator_agent_id"`
+	FacilitatorSquadID       *string         `json:"facilitator_squad_id"`
+	Status                   string          `json:"status"`
+	DailyTurnLimit           *int32          `json:"daily_turn_limit"`
+	MaxCostTicks             *int64          `json:"max_cost_ticks"`
+	ScheduleIntervalMinutes  *int32          `json:"schedule_interval_minutes"`
+	NextWakeAt               *string         `json:"next_wake_at"`
+	ActiveCycleID            *string         `json:"active_cycle_id"`
+	Memory                   json.RawMessage `json:"memory"`
+	MemoryVersion            int64           `json:"memory_version"`
+	AcceptedMemoryRevisionID *string         `json:"accepted_memory_revision_id"`
+	CapabilityVersion        int32           `json:"capability_version"`
+	CreatedAt                string          `json:"created_at"`
+	UpdatedAt                string          `json:"updated_at"`
 }
 
 type roomDetailResponse struct {
-	Room         roomResponse              `json:"room"`
-	Participants []roomParticipantResponse `json:"participants"`
-	Entries      []roomEntryResponse       `json:"entries"`
-	Cycles       []roomCycleResponse       `json:"cycles"`
-	Turns        []roomTurnResponse        `json:"turns"`
-	Artifacts    []roomArtifactResponse    `json:"artifacts"`
+	Room                  roomResponse                       `json:"room"`
+	Participants          []roomParticipantResponse          `json:"participants"`
+	Entries               []roomEntryResponse                `json:"entries"`
+	Cycles                []roomCycleResponse                `json:"cycles"`
+	Turns                 []roomTurnResponse                 `json:"turns"`
+	Artifacts             []roomArtifactResponse             `json:"artifacts"`
+	MemoryRevisions       []roomMemoryRevisionResponse       `json:"memory_revisions"`
+	RecommendationReviews []roomRecommendationReviewResponse `json:"recommendation_reviews"`
 }
 
 type roomParticipantResponse struct {
@@ -112,17 +155,23 @@ type roomEntryResponse struct {
 }
 
 type roomCycleResponse struct {
-	ID                string  `json:"id"`
-	Sequence          int64   `json:"sequence"`
-	Source            string  `json:"source"`
-	WakeKey           string  `json:"wake_key"`
-	TriggeringEntryID *string `json:"triggering_entry_id"`
-	Status            string  `json:"status"`
-	RefusalReason     *string `json:"refusal_reason"`
-	PlannedAt         *string `json:"planned_at"`
-	CreatedAt         string  `json:"created_at"`
-	StartedAt         *string `json:"started_at"`
-	CompletedAt       *string `json:"completed_at"`
+	ID                string          `json:"id"`
+	Sequence          int64           `json:"sequence"`
+	Source            string          `json:"source"`
+	WakeKey           string          `json:"wake_key"`
+	TriggeringEntryID *string         `json:"triggering_entry_id"`
+	Status            string          `json:"status"`
+	Phase             string          `json:"phase"`
+	RefusalReason     *string         `json:"refusal_reason"`
+	SynthesisError    json.RawMessage `json:"synthesis_error"`
+	SynthesisTurnID   *string         `json:"synthesis_turn_id"`
+	MemoryRevisionID  *string         `json:"memory_revision_id"`
+	ExpectedMaxTurns  int32           `json:"expected_max_turns"`
+	CostLimitTicks    *int64          `json:"cost_limit_ticks"`
+	PlannedAt         *string         `json:"planned_at"`
+	CreatedAt         string          `json:"created_at"`
+	StartedAt         *string         `json:"started_at"`
+	CompletedAt       *string         `json:"completed_at"`
 }
 
 type roomTurnResponse struct {
@@ -131,6 +180,8 @@ type roomTurnResponse struct {
 	AgentID       string  `json:"agent_id"`
 	SquadID       *string `json:"squad_id"`
 	Status        string  `json:"status"`
+	TurnKind      string  `json:"turn_kind"`
+	Attempt       int32   `json:"attempt"`
 	RefusalReason *string `json:"refusal_reason"`
 	CreatedAt     string  `json:"created_at"`
 	StartedAt     *string `json:"started_at"`
@@ -138,28 +189,122 @@ type roomTurnResponse struct {
 }
 
 type roomArtifactResponse struct {
-	ID              string  `json:"id"`
-	CycleID         *string `json:"cycle_id"`
-	TurnID          *string `json:"turn_id"`
-	EntryID         *string `json:"entry_id"`
-	Kind            string  `json:"kind"`
-	TargetID        *string `json:"target_id"`
-	Title           string  `json:"title"`
-	Body            string  `json:"body"`
-	Rationale       *string `json:"rationale"`
-	CreatedByUserID string  `json:"created_by_user_id"`
-	CreatedAt       string  `json:"created_at"`
+	ID                string          `json:"id"`
+	CycleID           *string         `json:"cycle_id"`
+	TurnID            *string         `json:"turn_id"`
+	EntryID           *string         `json:"entry_id"`
+	MemoryRevisionID  *string         `json:"memory_revision_id"`
+	RecommendationKey *string         `json:"recommendation_key"`
+	Kind              string          `json:"kind"`
+	TargetID          *string         `json:"target_id"`
+	Title             string          `json:"title"`
+	Body              string          `json:"body"`
+	Rationale         *string         `json:"rationale"`
+	CitationEntryIDs  json.RawMessage `json:"citation_entry_ids"`
+	CreatedByUserID   string          `json:"created_by_user_id"`
+	CreatedAt         string          `json:"created_at"`
 }
 
 type roomWakeResponse struct {
-	Cycle roomCycleResponse  `json:"cycle"`
-	Turns []roomTurnResponse `json:"turns"`
-	Tasks []string           `json:"tasks"`
+	Cycle   roomCycleResponse  `json:"cycle"`
+	Turns   []roomTurnResponse `json:"turns"`
+	Tasks   []string           `json:"tasks"`
+	Code    string             `json:"code,omitempty"`
+	Message string             `json:"message,omitempty"`
 }
 
 type roomMessageResponse struct {
 	Entry roomEntryResponse `json:"entry"`
 	roomWakeResponse
+}
+
+type roomMemoryRevisionResponse struct {
+	ID                      string          `json:"id"`
+	RoomID                  string          `json:"room_id"`
+	CycleID                 string          `json:"cycle_id"`
+	SynthesisTurnID         string          `json:"synthesis_turn_id"`
+	Version                 int64           `json:"version"`
+	SchemaVersion           int32           `json:"schema_version"`
+	Synthesis               json.RawMessage `json:"synthesis"`
+	Digest                  string          `json:"digest"`
+	CreatorType             string          `json:"creator_type"`
+	CreatorID               string          `json:"creator_id"`
+	ReviewStatus            string          `json:"review_status"`
+	ReviewedByUserID        *string         `json:"reviewed_by_user_id"`
+	ReviewedAt              *string         `json:"reviewed_at"`
+	CorrectedFromRevisionID *string         `json:"corrected_from_revision_id"`
+	CreatedAt               string          `json:"created_at"`
+}
+
+type roomRecommendationReviewResponse struct {
+	ID                string  `json:"id"`
+	RoomID            string  `json:"room_id"`
+	MemoryRevisionID  string  `json:"memory_revision_id"`
+	RecommendationKey string  `json:"recommendation_key"`
+	Status            string  `json:"status"`
+	ArtifactID        *string `json:"artifact_id"`
+	ReviewedByUserID  string  `json:"reviewed_by_user_id"`
+	ReviewedAt        string  `json:"reviewed_at"`
+}
+
+type roomPreflightAgentResponse struct {
+	AgentID           string  `json:"agent_id"`
+	Ready             bool    `json:"ready"`
+	InvocationAllowed bool    `json:"invocation_allowed"`
+	Reason            *string `json:"reason"`
+}
+
+type roomBudgetResponse struct {
+	DailyTurnLimit     *int32 `json:"daily_turn_limit"`
+	UsedTurns          int64  `json:"used_turns"`
+	MaxCostTicks       *int64 `json:"max_cost_ticks"`
+	UsedCostTicks      int64  `json:"used_cost_ticks"`
+	RemainingCostTicks *int64 `json:"remaining_cost_ticks"`
+	ReservedCostTicks  int64  `json:"reserved_cost_ticks"`
+	UncostedTurns      int64  `json:"uncosted_turns"`
+}
+
+type roomPreflightResponse struct {
+	Source                   string                       `json:"source"`
+	Allowed                  bool                         `json:"allowed"`
+	RefusalReason            *string                      `json:"refusal_reason"`
+	CapabilityVersion        int32                        `json:"capability_version"`
+	CapabilityReady          bool                         `json:"capability_ready"`
+	SpendLimitSupported      bool                         `json:"spend_limit_supported"`
+	RequiredDaemonCapability string                       `json:"required_daemon_capability"`
+	RequiredCostCapability   string                       `json:"required_cost_capability,omitempty"`
+	TargetAgents             []roomPreflightAgentResponse `json:"target_agents"`
+	ExpectedMaxTurns         int32                        `json:"expected_max_turns"`
+	SynthesisRequired        bool                         `json:"synthesis_required"`
+	Budget                   roomBudgetResponse           `json:"budget"`
+}
+
+type roomUsageResponse struct {
+	TurnsTotal        int64 `json:"turns_total"`
+	CostTicks         int64 `json:"cost_ticks"`
+	UncostedTurns     int64 `json:"uncosted_turns"`
+	Failures          int64 `json:"failures"`
+	AcceptedSyntheses int64 `json:"accepted_syntheses"`
+	PromotedArtifacts int64 `json:"promoted_artifacts"`
+}
+
+type roomSynthesisRetryResponse struct {
+	Cycle  roomCycleResponse `json:"cycle"`
+	Turn   roomTurnResponse  `json:"turn"`
+	TaskID string            `json:"task_id"`
+}
+
+type roomCycleReviewResponse struct {
+	Room           roomResponse               `json:"room"`
+	MemoryRevision roomMemoryRevisionResponse `json:"memory_revision"`
+}
+
+type roomCycleCancelResponse struct {
+	Cycle roomCycleResponse `json:"cycle"`
+}
+
+type roomRecommendationReviewResultResponse struct {
+	RecommendationReview roomRecommendationReviewResponse `json:"recommendation_review"`
 }
 
 func (h *Handler) ListRooms(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +335,60 @@ func (h *Handler) GetRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, roomDetailToResponse(detail))
+}
+
+func (h *Handler) GetRoomPreflight(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, ok := h.roomIDs(w, r)
+	if !ok {
+		return
+	}
+	actorID, ok := roomActorID(w, r)
+	if !ok {
+		return
+	}
+	targetValues := r.URL.Query()["target_agent_id"]
+	if len(targetValues) > maxRoomAgentTargets {
+		writeError(w, http.StatusBadRequest, "too many target agents")
+		return
+	}
+	targets, ok := parseRoomUUIDs(w, targetValues, "target_agent_id")
+	if !ok {
+		return
+	}
+	source := r.URL.Query().Get("source")
+	if source == "" {
+		source = "manual"
+	}
+	if source != "manual" && source != "schedule" {
+		writeError(w, http.StatusBadRequest, "invalid room preflight source")
+		return
+	}
+	result, err := h.Rooms.Preflight(r.Context(), roomdomain.PreflightInput{
+		WorkspaceID: workspaceID, RoomID: roomID, ActorUserID: actorID,
+		Source: source, TargetAgentIDs: targets,
+	})
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roomPreflightToResponse(result))
+}
+
+func (h *Handler) GetRoomUsage(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, ok := h.roomIDs(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.Rooms.Usage(r.Context(), workspaceID, roomID)
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roomUsageResponse{
+		TurnsTotal: result.TurnsTotal, CostTicks: result.CostTicks,
+		UncostedTurns: result.UncostedTurns, Failures: result.Failures,
+		AcceptedSyntheses: result.AcceptedSyntheses, PromotedArtifacts: result.PromotedArtifacts,
+	})
 }
 
 func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
@@ -227,9 +426,12 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	detail, err := h.Rooms.Create(r.Context(), roomdomain.CreateInput{
 		WorkspaceID: workspaceID, ActorUserID: actorID, Title: request.Title,
-		Instructions: request.Instructions, FacilitatorAgentID: facilitatorAgentID,
+		Instructions: request.Instructions, Objective: request.Objective,
+		SuccessCriteria: request.SuccessCriteria, StopConditions: request.StopConditions, TemplateID: request.TemplateID,
+		FacilitatorAgentID: facilitatorAgentID,
 		FacilitatorSquadID: facilitatorSquadID, Participants: participants,
-		DailyTurnLimit: request.DailyTurnLimit, ScheduleIntervalMinutes: request.ScheduleIntervalMinutes,
+		DailyTurnLimit: request.DailyTurnLimit, MaxCostTicks: request.MaxCostTicks,
+		ScheduleIntervalMinutes: request.ScheduleIntervalMinutes,
 	})
 	if err != nil {
 		h.writeRoomError(w, err)
@@ -272,6 +474,10 @@ func (h *Handler) PostRoomMessage(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusConflict
 	}
 	wake := roomWakeToResponse(result.WakeResult)
+	if status == http.StatusConflict {
+		wake.Code = roomConflictCode(result.Cycle.RefusalReason.String)
+		wake.Message = roomConflictMessage(wake.Code)
+	}
 	writeJSON(w, status, roomMessageResponse{Entry: roomEntryToResponse(result.Entry), roomWakeResponse: wake})
 }
 
@@ -312,7 +518,12 @@ func (h *Handler) WakeRoom(w http.ResponseWriter, r *http.Request) {
 	if result.Cycle.Status == "refused" {
 		status = http.StatusConflict
 	}
-	writeJSON(w, status, roomWakeToResponse(result))
+	response := roomWakeToResponse(result)
+	if status == http.StatusConflict {
+		response.Code = roomConflictCode(result.Cycle.RefusalReason.String)
+		response.Message = roomConflictMessage(response.Code)
+	}
+	writeJSON(w, status, response)
 }
 
 func (h *Handler) SetRoomStatus(w http.ResponseWriter, r *http.Request) {
@@ -333,6 +544,180 @@ func (h *Handler) SetRoomStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, roomToResponse(roomRow))
+}
+
+func (h *Handler) UpdateRoomBudget(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, ok := h.roomIDs(w, r)
+	if !ok {
+		return
+	}
+	actorID, ok := roomActorID(w, r)
+	if !ok {
+		return
+	}
+	var request roomBudgetRequest
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	dailyTurnLimit, ok := nullableRoomInt32(w, request.DailyTurnLimit, "daily_turn_limit")
+	if !ok {
+		return
+	}
+	maxCostTicks, ok := nullableRoomInt64(w, request.MaxCostTicks, "max_cost_ticks")
+	if !ok {
+		return
+	}
+	roomRow, err := h.Rooms.UpdateBudget(r.Context(), roomdomain.UpdateBudgetInput{
+		WorkspaceID: workspaceID, RoomID: roomID, ActorUserID: actorID,
+		DailyTurnLimit: dailyTurnLimit, MaxCostTicks: maxCostTicks,
+	})
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roomToResponse(roomRow))
+}
+
+func nullableRoomInt32(w http.ResponseWriter, raw json.RawMessage, field string) (pgtype.Int4, bool) {
+	if len(raw) == 0 {
+		writeError(w, http.StatusBadRequest, field+" is required")
+		return pgtype.Int4{}, false
+	}
+	if string(raw) == "null" {
+		return pgtype.Int4{}, true
+	}
+	var value int32
+	if err := json.Unmarshal(raw, &value); err != nil || value <= 0 {
+		writeError(w, http.StatusBadRequest, field+" must be a positive integer or null")
+		return pgtype.Int4{}, false
+	}
+	return pgtype.Int4{Int32: value, Valid: true}, true
+}
+
+func nullableRoomInt64(w http.ResponseWriter, raw json.RawMessage, field string) (pgtype.Int8, bool) {
+	if len(raw) == 0 {
+		writeError(w, http.StatusBadRequest, field+" is required")
+		return pgtype.Int8{}, false
+	}
+	if string(raw) == "null" {
+		return pgtype.Int8{}, true
+	}
+	var value int64
+	if err := json.Unmarshal(raw, &value); err != nil || value <= 0 {
+		writeError(w, http.StatusBadRequest, field+" must be a positive integer or null")
+		return pgtype.Int8{}, false
+	}
+	return pgtype.Int8{Int64: value, Valid: true}, true
+}
+
+func (h *Handler) RetryRoomSynthesis(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, cycleID, ok := h.roomCycleIDs(w, r)
+	if !ok {
+		return
+	}
+	actorID, ok := roomActorID(w, r)
+	if !ok {
+		return
+	}
+	var request roomSynthesisRetryRequest
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	result, err := h.Rooms.RetrySynthesis(r.Context(), roomdomain.RetrySynthesisInput{
+		WorkspaceID: workspaceID, RoomID: roomID, CycleID: cycleID,
+		ActorUserID: actorID, IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, roomSynthesisRetryResponse{
+		Cycle: roomCycleToResponse(result.Cycle), Turn: roomTurnToResponse(result.Turn),
+		TaskID: util.UUIDToString(result.Task.ID),
+	})
+}
+
+func (h *Handler) ReviewRoomCycle(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, cycleID, ok := h.roomCycleIDs(w, r)
+	if !ok {
+		return
+	}
+	actorID, ok := roomActorID(w, r)
+	if !ok {
+		return
+	}
+	var request roomCycleReviewRequest
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	result, err := h.Rooms.Review(r.Context(), roomdomain.ReviewInput{
+		WorkspaceID: workspaceID, RoomID: roomID, CycleID: cycleID,
+		ActorUserID: actorID, Action: request.Action,
+		ExpectedMemoryVersion: request.ExpectedMemoryVersion, Correction: request.Correction,
+		IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roomCycleReviewResponse{
+		Room: roomToResponse(result.Room), MemoryRevision: roomMemoryRevisionToResponse(result.MemoryRevision),
+	})
+}
+
+func (h *Handler) CancelRoomCycle(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, cycleID, ok := h.roomCycleIDs(w, r)
+	if !ok {
+		return
+	}
+	actorID, ok := roomActorID(w, r)
+	if !ok {
+		return
+	}
+	var request roomCycleCancelRequest
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	cycle, err := h.Rooms.Cancel(r.Context(), roomdomain.CancelInput{
+		WorkspaceID: workspaceID, RoomID: roomID, CycleID: cycleID,
+		ActorUserID: actorID, IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roomCycleCancelResponse{Cycle: roomCycleToResponse(cycle)})
+}
+
+func (h *Handler) ReviewRoomRecommendation(w http.ResponseWriter, r *http.Request) {
+	workspaceID, roomID, ok := h.roomIDs(w, r)
+	if !ok {
+		return
+	}
+	revisionID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "revisionId"), "memory revision id")
+	if !ok {
+		return
+	}
+	actorID, ok := roomActorID(w, r)
+	if !ok {
+		return
+	}
+	var request roomRecommendationReviewRequest
+	if !decodeRoomMutationRequest(w, r, &request) {
+		return
+	}
+	review, err := h.Rooms.ReviewRecommendation(r.Context(), roomdomain.RecommendationReviewInput{
+		WorkspaceID: workspaceID, RoomID: roomID, MemoryRevisionID: revisionID,
+		RecommendationKey: chi.URLParam(r, "key"), ActorUserID: actorID,
+		Action: request.Action, IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		h.writeRoomError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roomRecommendationReviewResultResponse{
+		RecommendationReview: roomRecommendationReviewToResponse(review),
+	})
 }
 
 func (h *Handler) PromoteRoomArtifact(w http.ResponseWriter, r *http.Request) {
@@ -356,10 +741,26 @@ func (h *Handler) PromoteRoomArtifact(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		return
 	}
+	memoryRevisionID, valid := optionalRoomUUID(w, request.MemoryRevisionID, "memory_revision_id")
+	if !valid {
+		return
+	}
+	citationEntryIDs, valid := parseRoomUUIDs(w, request.CitationEntryIDs, "citation_entry_ids")
+	if !valid {
+		return
+	}
+	legacySource := entryID.Valid != cycleID.Valid && !memoryRevisionID.Valid && strings.TrimSpace(request.RecommendationKey) == ""
+	recommendationSource := !entryID.Valid && !cycleID.Valid && memoryRevisionID.Valid && strings.TrimSpace(request.RecommendationKey) != ""
+	if !legacySource && !recommendationSource {
+		writeErrorCode(w, http.StatusConflict, "promotion_source_mismatch", "promotion source fields do not identify exactly one Room result")
+		return
+	}
 	result, err := h.Rooms.Promote(r.Context(), roomdomain.PromotionInput{
 		WorkspaceID: workspaceID, RoomID: roomID, ActorUserID: actorID,
-		EntryID: entryID, CycleID: cycleID, Kind: request.Kind,
-		IdempotencyKey: request.IdempotencyKey, Title: request.Title, Rationale: request.Rationale,
+		EntryID: entryID, CycleID: cycleID, MemoryRevisionID: memoryRevisionID,
+		RecommendationKey: request.RecommendationKey, CitationEntryIDs: citationEntryIDs,
+		Kind: request.Kind, IdempotencyKey: request.IdempotencyKey,
+		Title: request.Title, Body: request.Body, Rationale: request.Rationale,
 	})
 	if err != nil {
 		h.writeRoomError(w, err)
@@ -383,6 +784,15 @@ func (h *Handler) roomIDs(w http.ResponseWriter, r *http.Request) (pgtype.UUID, 
 	}
 	roomID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "room id")
 	return workspaceID, roomID, ok
+}
+
+func (h *Handler) roomCycleIDs(w http.ResponseWriter, r *http.Request) (pgtype.UUID, pgtype.UUID, pgtype.UUID, bool) {
+	workspaceID, roomID, ok := h.roomIDs(w, r)
+	if !ok {
+		return pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, false
+	}
+	cycleID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "cycleId"), "cycle id")
+	return workspaceID, roomID, cycleID, ok
 }
 
 func roomActorID(w http.ResponseWriter, r *http.Request) (pgtype.UUID, bool) {
@@ -447,24 +857,30 @@ func roomTaskIDs(tasks []db.AgentTaskQueue) []string {
 func roomToResponse(roomRow db.Room) roomResponse {
 	return roomResponse{
 		ID: util.UUIDToString(roomRow.ID), WorkspaceID: util.UUIDToString(roomRow.WorkspaceID),
-		Title: roomRow.Title, Instructions: roomRow.Instructions,
+		Title: roomRow.Title, Instructions: roomRow.Instructions, Objective: roomRow.Objective,
+		SuccessCriteria: roomJSONOr(roomRow.SuccessCriteria, "[]"), StopConditions: roomJSONOr(roomRow.StopConditions, "[]"),
+		TemplateID:      textPtr(roomRow.TemplateID),
 		CreatedByUserID: util.UUIDToString(roomRow.CreatedByUserID), FacilitatorAgentID: util.UUIDToString(roomRow.FacilitatorAgentID),
 		FacilitatorSquadID: uuidPtrString(roomRow.FacilitatorSquadID), Status: roomRow.Status,
-		DailyTurnLimit: int4Ptr(roomRow.DailyTurnLimit), ScheduleIntervalMinutes: int4Ptr(roomRow.ScheduleIntervalMinutes),
-		NextWakeAt: timestampPtr(roomRow.NextWakeAt), ActiveCycleID: uuidPtrString(roomRow.ActiveCycleID),
-		Memory: roomRow.Memory, MemoryVersion: roomRow.MemoryVersion,
+		DailyTurnLimit: int4Ptr(roomRow.DailyTurnLimit), MaxCostTicks: int8Ptr(roomRow.MaxCostTicks),
+		ScheduleIntervalMinutes: int4Ptr(roomRow.ScheduleIntervalMinutes),
+		NextWakeAt:              timestampPtr(roomRow.NextWakeAt), ActiveCycleID: uuidPtrString(roomRow.ActiveCycleID),
+		Memory: roomMemoryToResponse(roomRow.Memory), MemoryVersion: roomRow.MemoryVersion,
+		AcceptedMemoryRevisionID: uuidPtrString(roomRow.AcceptedMemoryRevisionID), CapabilityVersion: roomRow.CapabilityVersion,
 		CreatedAt: timestampToString(roomRow.CreatedAt), UpdatedAt: timestampToString(roomRow.UpdatedAt),
 	}
 }
 
 func roomDetailToResponse(detail roomdomain.Detail) roomDetailResponse {
 	response := roomDetailResponse{
-		Room:         roomToResponse(detail.Room),
-		Participants: make([]roomParticipantResponse, len(detail.Participants)),
-		Entries:      make([]roomEntryResponse, len(detail.Entries)),
-		Cycles:       make([]roomCycleResponse, len(detail.Cycles)),
-		Turns:        make([]roomTurnResponse, len(detail.Turns)),
-		Artifacts:    make([]roomArtifactResponse, len(detail.Artifacts)),
+		Room:                  roomToResponse(detail.Room),
+		Participants:          make([]roomParticipantResponse, len(detail.Participants)),
+		Entries:               make([]roomEntryResponse, len(detail.Entries)),
+		Cycles:                make([]roomCycleResponse, len(detail.Cycles)),
+		Turns:                 make([]roomTurnResponse, len(detail.Turns)),
+		Artifacts:             make([]roomArtifactResponse, len(detail.Artifacts)),
+		MemoryRevisions:       make([]roomMemoryRevisionResponse, len(detail.MemoryRevisions)),
+		RecommendationReviews: make([]roomRecommendationReviewResponse, len(detail.RecommendationReviews)),
 	}
 	for index, participant := range detail.Participants {
 		response.Participants[index] = roomParticipantResponse{
@@ -477,23 +893,19 @@ func roomDetailToResponse(detail roomdomain.Detail) roomDetailResponse {
 		response.Entries[index] = roomEntryToResponse(entry)
 	}
 	for index, cycle := range detail.Cycles {
-		response.Cycles[index] = roomCycleResponse{
-			ID: util.UUIDToString(cycle.ID), Sequence: cycle.Sequence, Source: cycle.Source,
-			WakeKey: cycle.WakeKey, TriggeringEntryID: uuidPtrString(cycle.TriggeringEntryID),
-			Status: cycle.Status, RefusalReason: textPtr(cycle.RefusalReason), PlannedAt: timestampPtr(cycle.PlannedAt),
-			CreatedAt: timestampToString(cycle.CreatedAt), StartedAt: timestampPtr(cycle.StartedAt), CompletedAt: timestampPtr(cycle.CompletedAt),
-		}
+		response.Cycles[index] = roomCycleToResponse(cycle)
 	}
 	for index, turn := range detail.Turns {
-		response.Turns[index] = roomTurnResponse{
-			ID: util.UUIDToString(turn.ID), CycleID: util.UUIDToString(turn.CycleID),
-			AgentID: util.UUIDToString(turn.AgentID), SquadID: uuidPtrString(turn.SquadID),
-			Status: turn.Status, RefusalReason: textPtr(turn.RefusalReason),
-			CreatedAt: timestampToString(turn.CreatedAt), StartedAt: timestampPtr(turn.StartedAt), CompletedAt: timestampPtr(turn.CompletedAt),
-		}
+		response.Turns[index] = roomTurnToResponse(turn)
 	}
 	for index, artifact := range detail.Artifacts {
 		response.Artifacts[index] = roomArtifactToResponse(artifact)
+	}
+	for index, revision := range detail.MemoryRevisions {
+		response.MemoryRevisions[index] = roomMemoryRevisionToResponse(revision)
+	}
+	for index, review := range detail.RecommendationReviews {
+		response.RecommendationReviews[index] = roomRecommendationReviewToResponse(review)
 	}
 	return response
 }
@@ -508,24 +920,13 @@ func roomEntryToResponse(entry db.RoomEntry) roomEntryResponse {
 }
 
 func roomWakeToResponse(result roomdomain.WakeResult) roomWakeResponse {
-	cycle := result.Cycle
 	response := roomWakeResponse{
-		Cycle: roomCycleResponse{
-			ID: util.UUIDToString(cycle.ID), Sequence: cycle.Sequence, Source: cycle.Source,
-			WakeKey: cycle.WakeKey, TriggeringEntryID: uuidPtrString(cycle.TriggeringEntryID),
-			Status: cycle.Status, RefusalReason: textPtr(cycle.RefusalReason), PlannedAt: timestampPtr(cycle.PlannedAt),
-			CreatedAt: timestampToString(cycle.CreatedAt), StartedAt: timestampPtr(cycle.StartedAt), CompletedAt: timestampPtr(cycle.CompletedAt),
-		},
+		Cycle: roomCycleToResponse(result.Cycle),
 		Turns: make([]roomTurnResponse, len(result.Turns)),
 		Tasks: roomTaskIDs(result.Tasks),
 	}
 	for index, turn := range result.Turns {
-		response.Turns[index] = roomTurnResponse{
-			ID: util.UUIDToString(turn.ID), CycleID: util.UUIDToString(turn.CycleID),
-			AgentID: util.UUIDToString(turn.AgentID), SquadID: uuidPtrString(turn.SquadID),
-			Status: turn.Status, RefusalReason: textPtr(turn.RefusalReason),
-			CreatedAt: timestampToString(turn.CreatedAt), StartedAt: timestampPtr(turn.StartedAt), CompletedAt: timestampPtr(turn.CompletedAt),
-		}
+		response.Turns[index] = roomTurnToResponse(turn)
 	}
 	return response
 }
@@ -534,10 +935,142 @@ func roomArtifactToResponse(artifact db.RoomArtifact) roomArtifactResponse {
 	return roomArtifactResponse{
 		ID: util.UUIDToString(artifact.ID), CycleID: uuidPtrString(artifact.CycleID),
 		TurnID: uuidPtrString(artifact.TurnID), EntryID: uuidPtrString(artifact.EntryID),
+		MemoryRevisionID: uuidPtrString(artifact.MemoryRevisionID), RecommendationKey: textPtr(artifact.RecommendationKey),
 		Kind: artifact.Kind, TargetID: uuidPtrString(artifact.TargetID), Title: artifact.Title,
-		Body: artifact.Body, Rationale: textPtr(artifact.Rationale),
+		Body: artifact.Body, Rationale: textPtr(artifact.Rationale), CitationEntryIDs: roomJSONOr(artifact.CitationEntryIds, "[]"),
 		CreatedByUserID: util.UUIDToString(artifact.CreatedByUserID), CreatedAt: timestampToString(artifact.CreatedAt),
 	}
+}
+
+func roomCycleToResponse(cycle db.RoomCycle) roomCycleResponse {
+	return roomCycleResponse{
+		ID: util.UUIDToString(cycle.ID), Sequence: cycle.Sequence, Source: cycle.Source,
+		WakeKey: cycle.WakeKey, TriggeringEntryID: uuidPtrString(cycle.TriggeringEntryID),
+		Status: cycle.Status, Phase: cycle.Phase, RefusalReason: externalRoomReasonPtr(cycle.RefusalReason),
+		SynthesisError: roomNullableJSON(cycle.SynthesisError), SynthesisTurnID: uuidPtrString(cycle.SynthesisTurnID),
+		MemoryRevisionID: uuidPtrString(cycle.MemoryRevisionID), ExpectedMaxTurns: cycle.ExpectedMaxTurns,
+		CostLimitTicks: int8Ptr(cycle.CostLimitTicks),
+		PlannedAt:      timestampPtr(cycle.PlannedAt), CreatedAt: timestampToString(cycle.CreatedAt),
+		StartedAt: timestampPtr(cycle.StartedAt), CompletedAt: timestampPtr(cycle.CompletedAt),
+	}
+}
+
+func roomTurnToResponse(turn db.RoomTurn) roomTurnResponse {
+	return roomTurnResponse{
+		ID: util.UUIDToString(turn.ID), CycleID: util.UUIDToString(turn.CycleID),
+		AgentID: util.UUIDToString(turn.AgentID), SquadID: uuidPtrString(turn.SquadID),
+		Status: turn.Status, TurnKind: turn.TurnKind, Attempt: turn.Attempt,
+		RefusalReason: externalRoomReasonPtr(turn.RefusalReason), CreatedAt: timestampToString(turn.CreatedAt),
+		StartedAt: timestampPtr(turn.StartedAt), CompletedAt: timestampPtr(turn.CompletedAt),
+	}
+}
+
+func roomMemoryRevisionToResponse(revision db.RoomMemoryRevision) roomMemoryRevisionResponse {
+	return roomMemoryRevisionResponse{
+		ID: util.UUIDToString(revision.ID), RoomID: util.UUIDToString(revision.RoomID),
+		CycleID: util.UUIDToString(revision.CycleID), SynthesisTurnID: util.UUIDToString(revision.SynthesisTurnID),
+		Version: revision.Version, SchemaVersion: revision.SchemaVersion,
+		Synthesis: roomJSONOr(revision.Synthesis, "{}"), Digest: revision.Digest,
+		CreatorType: revision.CreatorType, CreatorID: util.UUIDToString(revision.CreatorID), ReviewStatus: revision.ReviewStatus,
+		ReviewedByUserID: uuidPtrString(revision.ReviewedByUserID), ReviewedAt: timestampPtr(revision.ReviewedAt),
+		CorrectedFromRevisionID: uuidPtrString(revision.CorrectedFromRevisionID), CreatedAt: timestampToString(revision.CreatedAt),
+	}
+}
+
+func roomRecommendationReviewToResponse(review db.RoomRecommendationReview) roomRecommendationReviewResponse {
+	return roomRecommendationReviewResponse{
+		ID: util.UUIDToString(review.ID), RoomID: util.UUIDToString(review.RoomID),
+		MemoryRevisionID: util.UUIDToString(review.MemoryRevisionID), RecommendationKey: review.RecommendationKey,
+		Status: review.Status, ArtifactID: uuidPtrString(review.ArtifactID),
+		ReviewedByUserID: util.UUIDToString(review.ReviewedByUserID), ReviewedAt: timestampToString(review.ReviewedAt),
+	}
+}
+
+func roomPreflightToResponse(result roomdomain.PreflightResult) roomPreflightResponse {
+	response := roomPreflightResponse{
+		Source: result.Source, Allowed: result.Allowed, RefusalReason: externalRoomReason(result.RefusalReason),
+		CapabilityVersion: result.CapabilityVersion, CapabilityReady: result.CapabilityReady,
+		SpendLimitSupported:      result.SpendLimitSupported,
+		RequiredDaemonCapability: result.RequiredDaemonCapability,
+		RequiredCostCapability:   result.RequiredCostCapability,
+		TargetAgents:             make([]roomPreflightAgentResponse, len(result.TargetAgents)),
+		ExpectedMaxTurns:         result.ExpectedMaxTurns, SynthesisRequired: result.SynthesisRequired,
+		Budget: roomBudgetResponse{
+			DailyTurnLimit: result.Budget.DailyTurnLimit, UsedTurns: result.Budget.UsedTurns,
+			MaxCostTicks: result.Budget.MaxCostTicks, UsedCostTicks: result.Budget.UsedCostTicks,
+			RemainingCostTicks: result.Budget.RemainingCostTicks, ReservedCostTicks: result.Budget.ReservedCostTicks,
+			UncostedTurns: result.Budget.UncostedTurns,
+		},
+	}
+	for index, agent := range result.TargetAgents {
+		response.TargetAgents[index] = roomPreflightAgentResponse{
+			AgentID: util.UUIDToString(agent.AgentID), Ready: agent.Ready,
+			InvocationAllowed: agent.InvocationAllowed, Reason: externalRoomReason(agent.Reason),
+		}
+	}
+	return response
+}
+
+func roomJSONOr(value []byte, fallback string) json.RawMessage {
+	if len(value) == 0 || !json.Valid(value) {
+		return json.RawMessage(fallback)
+	}
+	return json.RawMessage(value)
+}
+
+func roomMemoryToResponse(value []byte) json.RawMessage {
+	var legacy struct {
+		Summary             string            `json:"summary"`
+		Facts               []string          `json:"facts"`
+		Decisions           []string          `json:"decisions"`
+		OpenQuestions       []string          `json:"open_questions"`
+		RecentContributions []json.RawMessage `json:"recent_contributions"`
+	}
+	legacy.Facts = []string{}
+	legacy.Decisions = []string{}
+	legacy.OpenQuestions = []string{}
+	legacy.RecentContributions = []json.RawMessage{}
+	if err := json.Unmarshal(value, &legacy); err == nil {
+		encoded, marshalErr := json.Marshal(legacy)
+		if marshalErr == nil {
+			return encoded
+		}
+	}
+	var synthesis roomdomain.Synthesis
+	if err := json.Unmarshal(value, &synthesis); err != nil || synthesis.SchemaVersion != roomdomain.RoomSynthesisSchemaVersion {
+		return json.RawMessage(`{"summary":"","facts":[],"decisions":[],"open_questions":[],"recent_contributions":[]}`)
+	}
+	projected := struct {
+		Summary             string            `json:"summary"`
+		Facts               []string          `json:"facts"`
+		Decisions           []string          `json:"decisions"`
+		OpenQuestions       []string          `json:"open_questions"`
+		RecentContributions []json.RawMessage `json:"recent_contributions"`
+	}{
+		Summary: synthesis.Summary, Facts: roomSynthesisTexts(synthesis.Facts),
+		Decisions: roomSynthesisTexts(synthesis.Decisions), OpenQuestions: roomSynthesisTexts(synthesis.OpenQuestions),
+		RecentContributions: []json.RawMessage{},
+	}
+	encoded, err := json.Marshal(projected)
+	if err != nil {
+		return json.RawMessage(`{"summary":"","facts":[],"decisions":[],"open_questions":[],"recent_contributions":[]}`)
+	}
+	return encoded
+}
+
+func roomSynthesisTexts(items []roomdomain.SynthesisItem) []string {
+	result := make([]string, len(items))
+	for index, item := range items {
+		result[index] = item.Text
+	}
+	return result
+}
+
+func roomNullableJSON(value []byte) json.RawMessage {
+	if len(value) == 0 || !json.Valid(value) {
+		return json.RawMessage("null")
+	}
+	return json.RawMessage(value)
 }
 
 func int4Ptr(value pgtype.Int4) *int32 {
@@ -545,6 +1078,13 @@ func int4Ptr(value pgtype.Int4) *int32 {
 		return nil
 	}
 	return &value.Int32
+}
+
+func int8Ptr(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int64
 }
 
 func timestampPtr(value pgtype.Timestamptz) *string {
@@ -562,6 +1102,62 @@ func textPtr(value pgtype.Text) *string {
 	return &value.String
 }
 
+func externalRoomReason(reason string) *string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil
+	}
+	value := roomConflictCode(reason)
+	return &value
+}
+
+func externalRoomReasonPtr(reason pgtype.Text) *string {
+	if !reason.Valid {
+		return nil
+	}
+	return externalRoomReason(reason.String)
+}
+
+func roomConflictCode(reason string) string {
+	switch strings.TrimSpace(reason) {
+	case "cycle_active", "active_cycle":
+		return "active_cycle"
+	case "room_paused":
+		return "room_paused"
+	case "room_archived":
+		return "room_archived"
+	case "budget_exhausted":
+		return "budget_exhausted"
+	case "invocation_not_allowed":
+		return "invocation_not_allowed"
+	case "spend_limit_unsupported":
+		return "spend_limit_unsupported"
+	case "agent_unavailable", "daemon_capability_unavailable", "no_targets":
+		return "agent_unavailable"
+	default:
+		return "agent_unavailable"
+	}
+}
+
+func roomConflictMessage(code string) string {
+	switch code {
+	case "room_paused":
+		return "message saved, but the Room is paused"
+	case "room_archived":
+		return "message saved, but the Room is archived"
+	case "active_cycle":
+		return "message saved, but another Room cycle is active"
+	case "budget_exhausted":
+		return "message saved, but the Room budget is exhausted"
+	case "spend_limit_unsupported":
+		return "message saved, but no connected runtime can enforce the Room spend limit"
+	case "invocation_not_allowed":
+		return "message saved, but an Agent cannot be invoked by this member"
+	default:
+		return "message saved, but the Room could not run"
+	}
+}
+
 func (h *Handler) writeRoomError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, roomdomain.ErrNotFound):
@@ -569,9 +1165,33 @@ func (h *Handler) writeRoomError(w http.ResponseWriter, err error) {
 	case errors.Is(err, roomdomain.ErrInvalidParticipant):
 		writeError(w, http.StatusBadRequest, "invalid room participant")
 	case errors.Is(err, roomdomain.ErrInvocationNotAllowed):
-		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error":       "Room Agent invocation is not allowed",
+			"code":        "invocation_not_allowed",
+			"reason_code": "invocation_not_allowed",
+		})
 	case errors.Is(err, roomdomain.ErrIdempotencyConflict):
-		writeError(w, http.StatusConflict, "idempotency key conflicts with an earlier request")
+		writeErrorCode(w, http.StatusConflict, "idempotency_conflict", "idempotency key conflicts with an earlier request")
+	case errors.Is(err, roomdomain.ErrStaleReview):
+		writeErrorCode(w, http.StatusConflict, "stale_review", "Room memory review is stale")
+	case errors.Is(err, roomdomain.ErrSynthesisNotRetryable):
+		writeErrorCode(w, http.StatusConflict, "synthesis_not_retryable", "Room synthesis cannot be retried")
+	case errors.Is(err, roomdomain.ErrBudgetExhausted):
+		writeErrorCode(w, http.StatusConflict, "budget_exhausted", "Room budget is exhausted")
+	case errors.Is(err, roomdomain.ErrBudgetPermissionDenied):
+		writeErrorCode(w, http.StatusForbidden, "budget_permission_denied", "Room budget updates require workspace owner or admin access")
+	case errors.Is(err, roomdomain.ErrBudgetBelowCommitted):
+		writeErrorCode(w, http.StatusConflict, "budget_below_committed", "Room budget is below active or completed usage")
+	case errors.Is(err, roomdomain.ErrBudgetHasUncostedUsage):
+		writeErrorCode(w, http.StatusConflict, "budget_has_uncosted_usage", "Room cost budget requires fully costed usage")
+	case errors.Is(err, roomdomain.ErrSpendLimitUnsupported):
+		writeErrorCode(w, http.StatusConflict, "spend_limit_unsupported", "Room spend limits require a cost-bound execution backend")
+	case errors.Is(err, roomdomain.ErrRecommendationReviewed):
+		writeErrorCode(w, http.StatusConflict, "recommendation_already_reviewed", "Room recommendation was already reviewed")
+	case errors.Is(err, roomdomain.ErrPromotionSourceMismatch):
+		writeErrorCode(w, http.StatusConflict, "promotion_source_mismatch", "Room promotion source does not match the accepted outcome")
+	case errors.Is(err, roomdomain.ErrInvalidSynthesis):
+		writeError(w, http.StatusBadRequest, "invalid Room synthesis")
 	case errors.Is(err, roomdomain.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, "invalid room input")
 	default:

@@ -214,10 +214,20 @@ import type {
 import type { TwinOverviewResponse } from "../twins";
 import type {
   CreateWikiPageInput,
+  CreatePersonalWikiPageInput,
+  CreateWikiProposalInput,
+  AcceptWikiProposalInput,
+  LMWikiSourcePolicy,
   ListWikiPagesParams,
+  RejectWikiProposalInput,
+  SearchWikiPagesParams,
+  SearchPersonalWikiPagesParams,
+  UpdateLMWikiSourcePolicyInput,
   UpdateWikiPageInput,
   WikiPage,
   WikiPageSummary,
+  WikiProposal,
+  WikiRevision,
 } from "../wiki";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type {
@@ -226,6 +236,7 @@ import type {
   FeedbackKind,
 } from "../feedback/types";
 import type {
+  LifecycleContent,
   LMWikiDetail,
   LMWikiOverview,
   LMWikiRefreshResult,
@@ -236,20 +247,57 @@ import type {
   TwinVersionResult,
 } from "../twins/types";
 import type {
+  CreateTwinDepositionInput,
+  TwinBinding,
+  TwinBindingsResponse,
+  TwinBriefingPreview,
+  TwinBriefingPreviewInput,
+  TwinDepositionResponse,
+  TwinExecutionMetrics,
+  TwinFeedbackInput,
+  TwinTaskContext,
+  TwinTaskFeedback,
+  UpsertTwinBindingInput,
+} from "../twins/execution-types";
+import {
+  EMPTY_TWIN_BINDINGS_RESPONSE,
+  EMPTY_TWIN_BRIEFING_PREVIEW,
+  EMPTY_TWIN_DEPOSITION_RESPONSE,
+  EMPTY_TWIN_EXECUTION_METRICS,
+  TwinBindingWireSchema,
+  TwinBindingsResponseSchema,
+  TwinBriefingPreviewSchema,
+  TwinDepositionResponseSchema,
+  TwinExecutionMetricsSchema,
+  TwinFeedbackResponseSchema,
+  TwinTaskContextWireSchema,
+} from "../twins/execution-schemas";
+import type {
   CloudRuntimeNode,
   CreateCloudRuntimeNodeRequest,
   ListCloudRuntimeNodesParams,
 } from "../runtimes/cloud-runtime";
 import type {
   CreateRoomInput,
+  CancelRoomCycleInput,
+  CancelRoomCycleResult,
   PostRoomMessageInput,
   PromoteRoomArtifactInput,
+  RejectRoomRecommendationInput,
+  RetryRoomSynthesisInput,
+  RetryRoomSynthesisResult,
+  ReviewRoomCycleInput,
+  ReviewRoomCycleResult,
+  ReviewRoomRecommendationResult,
   Room,
   RoomArtifact,
   RoomDetail,
   RoomMessageResult,
+  RoomPreflight,
+  RoomUsage,
   RoomWakeResult,
   SetRoomStatusInput,
+  UpdateRoomBudgetInput,
   WakeRoomInput,
 } from "../rooms/types";
 import { type Logger, noopLogger } from "../logger";
@@ -257,15 +305,46 @@ import { createRequestId, createSafeId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
 import { parseWithFallback } from "./schema";
 import {
+  EMPTY_CANCEL_ROOM_CYCLE_RESULT,
+  EMPTY_RETRY_ROOM_SYNTHESIS_RESULT,
+  EMPTY_REVIEW_ROOM_CYCLE_RESULT,
+  EMPTY_REVIEW_ROOM_RECOMMENDATION_RESULT,
+  EMPTY_ROOM,
+  EMPTY_ROOM_ARTIFACT,
   EMPTY_ROOM_DETAIL,
   EMPTY_ROOM_LIST,
+  EMPTY_ROOM_MESSAGE_RESULT,
+  EMPTY_ROOM_PREFLIGHT,
+  EMPTY_ROOM_USAGE,
+  EMPTY_ROOM_WAKE_RESULT,
+  CancelRoomCycleResultSchema,
+  RetryRoomSynthesisResultSchema,
+  ReviewRoomCycleResultSchema,
+  ReviewRoomRecommendationResultSchema,
   RoomArtifactSchema,
   RoomDetailSchema,
   RoomMessageResultSchema,
+  RoomPreflightSchema,
   RoomListSchema,
   RoomSchema,
+  RoomUsageSchema,
   RoomWakeResultSchema,
 } from "../rooms/schemas";
+import {
+  EMPTY_WIKI_PAGE,
+  EMPTY_WIKI_PAGE_LIST,
+  EMPTY_WIKI_PROPOSAL_LIST,
+  EMPTY_WIKI_REVISION_LIST,
+  EMPTY_WIKI_REVISION,
+  WikiPageListSchema,
+  WikiPageSchema,
+  WikiProposalListSchema,
+  WikiProposalSchema,
+  WikiRevisionListSchema,
+  WikiRevisionSchema,
+  EMPTY_LM_WIKI_SOURCE_POLICY,
+  LMWikiSourcePolicySchema,
+} from "../wiki/schemas";
 import {
   AgentTaskListSchema,
   AttachmentResponseSchema,
@@ -310,8 +389,6 @@ import {
   EMPTY_SEARCH_ISSUES_RESPONSE,
   EMPTY_SEARCH_PROJECTS_RESPONSE,
   EMPTY_TWIN_OVERVIEW_RESPONSE,
-  EMPTY_WIKI_PAGE,
-  EMPTY_WIKI_PAGE_LIST,
   EMPTY_SQUAD,
   EMPTY_SQUAD_LIST,
   EMPTY_SQUAD_MEMBER_STATUS_LIST,
@@ -343,8 +420,6 @@ import {
   SearchIssuesResponseSchema,
   SearchProjectsResponseSchema,
   TwinOverviewResponseSchema,
-  WikiPageListSchema,
-  WikiPageSchema,
   SquadSchema,
   SquadListSchema,
   SquadMemberStatusListResponseSchema,
@@ -839,9 +914,18 @@ export class ApiClient {
   }
 
   async updateMe(data: UpdateMeRequest): Promise<User> {
+    const { appearanceUpdatedAt, appearanceTokenVersion, ...fields } = data;
     const raw = await this.fetch<unknown>("/api/me", {
       method: "PATCH",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        ...fields,
+        ...(appearanceUpdatedAt === undefined
+          ? {}
+          : { appearance_updated_at: appearanceUpdatedAt }),
+        ...(appearanceTokenVersion === undefined
+          ? {}
+          : { appearance_token_version: appearanceTokenVersion }),
+      }),
     });
     return parseWithFallback(raw, UserSchema, EMPTY_USER, {
       endpoint: "PATCH /api/me",
@@ -3327,7 +3411,7 @@ export class ApiClient {
   async listWikiPages(params: ListWikiPagesParams = {}): Promise<WikiPageSummary[]> {
     const search = new URLSearchParams();
     if (params.scope) search.set("scope", params.scope);
-    if (params.project_id) search.set("project_id", params.project_id);
+    if (params.projectId) search.set("project_id", params.projectId);
     const qs = search.toString();
     const raw = await this.fetch<unknown>(`/api/wiki/pages${qs ? `?${qs}` : ""}`);
     return parseWithFallback(raw, WikiPageListSchema, EMPTY_WIKI_PAGE_LIST, {
@@ -3342,10 +3426,179 @@ export class ApiClient {
     });
   }
 
+  async searchWikiPages(params: SearchWikiPagesParams): Promise<WikiPageSummary[]> {
+    const search = new URLSearchParams({ q: params.q });
+    if (params.scope) search.set("scope", params.scope);
+    if (params.projectId) search.set("project_id", params.projectId);
+    const raw = await this.fetch<unknown>(`/api/wiki/search?${search.toString()}`);
+    return parseWithFallback(raw, WikiPageListSchema, EMPTY_WIKI_PAGE_LIST, {
+      endpoint: "GET /api/wiki/search",
+    });
+  }
+
+  async listWikiRevisions(id: string): Promise<WikiRevision[]> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/pages/${encodeURIComponent(id)}/revisions`,
+    );
+    return parseWithFallback(raw, WikiRevisionListSchema, EMPTY_WIKI_REVISION_LIST, {
+      endpoint: "GET /api/wiki/pages/:id/revisions",
+    });
+  }
+
+  async getWikiRevision(revisionId: string): Promise<WikiRevision> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/revisions/${encodeURIComponent(revisionId)}`,
+    );
+    return parseWithFallback(raw, WikiRevisionSchema, EMPTY_WIKI_REVISION, {
+      endpoint: "GET /api/wiki/revisions/:revisionId",
+    });
+  }
+
+  async restoreWikiRevision(
+    id: string,
+    revisionId: string,
+    expectedRevisionNumber: number,
+  ): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/pages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      {
+        method: "POST",
+        body: JSON.stringify({ expected_revision_number: expectedRevisionNumber }),
+      },
+    );
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "POST /api/wiki/pages/:id/revisions/:revisionId/restore",
+    });
+  }
+
+  async listWikiProposals(id: string): Promise<WikiProposal[]> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/pages/${encodeURIComponent(id)}/proposals`,
+    );
+    return parseWithFallback(raw, WikiProposalListSchema, EMPTY_WIKI_PROPOSAL_LIST, {
+      endpoint: "GET /api/wiki/pages/:id/proposals",
+    });
+  }
+
+  async createWikiProposal(id: string, data: CreateWikiProposalInput): Promise<WikiProposal> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/pages/${encodeURIComponent(id)}/proposals`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          base_revision_number: data.baseRevisionNumber,
+          proposed_path: data.proposedPath,
+          proposed_title: data.proposedTitle,
+          proposed_content: data.proposedContent,
+          rationale: data.rationale,
+          evidence_refs: data.evidenceRefs,
+          agent_id: data.agentId,
+          idempotency_key: data.idempotencyKey,
+        }),
+      },
+    );
+    return parseWithFallback(raw, WikiProposalSchema, {
+      id: "",
+      pageId: id,
+      baseRevisionNumber: data.baseRevisionNumber,
+      proposedPath: data.proposedPath,
+      proposedTitle: data.proposedTitle,
+      proposedContent: data.proposedContent,
+      contentDigest: "",
+      rationale: data.rationale ?? "",
+      evidenceRefs: data.evidenceRefs ?? [],
+      agentId: data.agentId,
+      idempotencyKey: data.idempotencyKey,
+      status: "unknown",
+      reviewedById: null,
+      reviewReason: null,
+      reviewedAt: null,
+      acceptedRevisionId: null,
+      createdAt: "",
+    }, { endpoint: "POST /api/wiki/pages/:id/proposals" });
+  }
+
+  async acceptWikiProposal(id: string, data: AcceptWikiProposalInput): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/pages/${encodeURIComponent(id)}/proposals/${encodeURIComponent(data.proposalId)}/accept`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expected_revision_number: data.expectedRevisionNumber,
+          path: data.path,
+          title: data.title,
+          content: data.content,
+        }),
+      },
+    );
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "POST /api/wiki/pages/:id/proposals/:proposalId/accept",
+    });
+  }
+
+  async rejectWikiProposal(id: string, data: RejectWikiProposalInput): Promise<WikiProposal> {
+    const raw = await this.fetch<unknown>(
+      `/api/wiki/pages/${encodeURIComponent(id)}/proposals/${encodeURIComponent(data.proposalId)}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify(data.reason === undefined ? {} : { reason: data.reason }),
+      },
+    );
+    return parseWithFallback(raw, WikiProposalSchema, {
+      id: data.proposalId,
+      pageId: id,
+      baseRevisionNumber: 0,
+      proposedPath: "",
+      proposedTitle: "",
+      proposedContent: "",
+      contentDigest: "",
+      rationale: "",
+      evidenceRefs: [],
+      agentId: "",
+      idempotencyKey: "",
+      status: "unknown",
+      reviewedById: null,
+      reviewReason: data.reason ?? null,
+      reviewedAt: null,
+      acceptedRevisionId: null,
+      createdAt: "",
+    }, { endpoint: "POST /api/wiki/pages/:id/proposals/:proposalId/reject" });
+  }
+
+  async getLMWikiSourcePolicy(): Promise<LMWikiSourcePolicy> {
+    const raw = await this.fetch<unknown>("/api/lm-wiki/source-policy");
+    return parseWithFallback(raw, LMWikiSourcePolicySchema, EMPTY_LM_WIKI_SOURCE_POLICY, {
+      endpoint: "GET /api/lm-wiki/source-policy",
+    });
+  }
+
+  async updateLMWikiSourcePolicy(data: UpdateLMWikiSourcePolicyInput): Promise<LMWikiSourcePolicy> {
+    const raw = await this.fetch<unknown>("/api/lm-wiki/source-policy", {
+      method: "PUT",
+      body: JSON.stringify({
+        source_classes: data.sourceClasses,
+        wiki_pages: data.wikiPages.map((page) => ({
+          page_id: page.pageId,
+          revision_number: page.revisionNumber,
+        })),
+        remote_generation_enabled: data.remoteGenerationEnabled,
+      }),
+    });
+    return parseWithFallback(raw, LMWikiSourcePolicySchema, EMPTY_LM_WIKI_SOURCE_POLICY, {
+      endpoint: "PUT /api/lm-wiki/source-policy",
+    });
+  }
+
   async createWikiPage(data: CreateWikiPageInput): Promise<WikiPage> {
     const raw = await this.fetch<unknown>("/api/wiki/pages", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        scope: data.scope,
+        project_id: data.projectId,
+        path: data.path,
+        title: data.title,
+        content: data.content,
+      }),
     });
     return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
       endpoint: "POST /api/wiki/pages",
@@ -3355,7 +3608,12 @@ export class ApiClient {
   async updateWikiPage(id: string, data: UpdateWikiPageInput): Promise<WikiPage> {
     const raw = await this.fetch<unknown>(`/api/wiki/pages/${encodeURIComponent(id)}`, {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        expected_revision_number: data.expectedRevisionNumber,
+        path: data.path,
+        title: data.title,
+        content: data.content,
+      }),
     });
     return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
       endpoint: "PUT /api/wiki/pages/:id",
@@ -3364,6 +3622,110 @@ export class ApiClient {
 
   async deleteWikiPage(id: string): Promise<void> {
     await this.fetch(`/api/wiki/pages/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  async listPersonalWikiPages(): Promise<WikiPageSummary[]> {
+    const raw = await this.fetch<unknown>("/api/personal-wiki/pages");
+    return parseWithFallback(raw, WikiPageListSchema, EMPTY_WIKI_PAGE_LIST, {
+      endpoint: "GET /api/personal-wiki/pages",
+    });
+  }
+
+  async searchPersonalWikiPages(
+    params: SearchPersonalWikiPagesParams,
+  ): Promise<WikiPageSummary[]> {
+    const search = new URLSearchParams({ q: params.q });
+    const raw = await this.fetch<unknown>(`/api/personal-wiki/search?${search.toString()}`);
+    return parseWithFallback(raw, WikiPageListSchema, EMPTY_WIKI_PAGE_LIST, {
+      endpoint: "GET /api/personal-wiki/search",
+    });
+  }
+
+  async getPersonalWikiPage(id: string): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(
+      `/api/personal-wiki/pages/${encodeURIComponent(id)}`,
+    );
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "GET /api/personal-wiki/pages/:id",
+    });
+  }
+
+  async createPersonalWikiPage(data: CreatePersonalWikiPageInput): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>("/api/personal-wiki/pages", {
+      method: "POST",
+      body: JSON.stringify({ path: data.path, title: data.title, content: data.content }),
+    });
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "POST /api/personal-wiki/pages",
+    });
+  }
+
+  async updatePersonalWikiPage(id: string, data: UpdateWikiPageInput): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(
+      `/api/personal-wiki/pages/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          expected_revision_number: data.expectedRevisionNumber,
+          path: data.path,
+          title: data.title,
+          content: data.content,
+        }),
+      },
+    );
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "PUT /api/personal-wiki/pages/:id",
+    });
+  }
+
+  async deletePersonalWikiPage(id: string): Promise<void> {
+    await this.fetch(`/api/personal-wiki/pages/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  async listPersonalWikiRevisions(id: string): Promise<WikiRevision[]> {
+    const raw = await this.fetch<unknown>(
+      `/api/personal-wiki/pages/${encodeURIComponent(id)}/revisions`,
+    );
+    return parseWithFallback(raw, WikiRevisionListSchema, EMPTY_WIKI_REVISION_LIST, {
+      endpoint: "GET /api/personal-wiki/pages/:id/revisions",
+    });
+  }
+
+  async getPersonalWikiPageRevision(id: string, revisionId: string): Promise<WikiRevision> {
+    const raw = await this.fetch<unknown>(
+      `/api/personal-wiki/pages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}`,
+    );
+    return parseWithFallback(raw, WikiRevisionSchema, EMPTY_WIKI_REVISION, {
+      endpoint: "GET /api/personal-wiki/pages/:id/revisions/:revisionId",
+    });
+  }
+
+  async restorePersonalWikiRevision(
+    id: string,
+    revisionId: string,
+    expectedRevisionNumber: number,
+  ): Promise<WikiPage> {
+    const raw = await this.fetch<unknown>(
+      `/api/personal-wiki/pages/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      {
+        method: "POST",
+        body: JSON.stringify({ expected_revision_number: expectedRevisionNumber }),
+      },
+    );
+    return parseWithFallback(raw, WikiPageSchema, EMPTY_WIKI_PAGE, {
+      endpoint: "POST /api/personal-wiki/pages/:id/revisions/:revisionId/restore",
+    });
+  }
+
+  async getPersonalWikiRevision(revisionId: string): Promise<WikiRevision> {
+    const raw = await this.fetch<unknown>(
+      `/api/personal-wiki/revisions/${encodeURIComponent(revisionId)}`,
+    );
+    return parseWithFallback(raw, WikiRevisionSchema, EMPTY_WIKI_REVISION, {
+      endpoint: "GET /api/personal-wiki/revisions/:revisionId",
+    });
   }
 
   // Project resources
@@ -3894,12 +4256,35 @@ export class ApiClient {
     });
   }
 
+  async getRoomPreflight(
+    roomId: string,
+    targetAgentId?: string,
+    source: "manual" | "schedule" = "manual",
+  ): Promise<RoomPreflight> {
+    const searchParams = new URLSearchParams({ source });
+    if (targetAgentId) searchParams.set("target_agent_id", targetAgentId);
+    const search = `?${searchParams}`;
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/preflight${search}`);
+    return parseWithFallback(raw, RoomPreflightSchema, EMPTY_ROOM_PREFLIGHT, {
+      endpoint: "GET /api/rooms/:id/preflight",
+    });
+  }
+
+  async getRoomUsage(roomId: string): Promise<RoomUsage> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/usage`);
+    return parseWithFallback(raw, RoomUsageSchema, EMPTY_ROOM_USAGE, {
+      endpoint: "GET /api/rooms/:id/usage",
+    });
+  }
+
   async createRoom(input: CreateRoomInput): Promise<RoomDetail> {
     const raw = await this.fetch<unknown>("/api/rooms", {
       method: "POST",
       body: JSON.stringify(input),
     });
-    return RoomDetailSchema.parse(raw);
+    return parseWithFallback(raw, RoomDetailSchema, EMPTY_ROOM_DETAIL, {
+      endpoint: "POST /api/rooms",
+    });
   }
 
   async postRoomMessage(roomId: string, input: PostRoomMessageInput): Promise<RoomMessageResult> {
@@ -3907,7 +4292,9 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(input),
     });
-    return RoomMessageResultSchema.parse(raw);
+    return parseWithFallback(raw, RoomMessageResultSchema, EMPTY_ROOM_MESSAGE_RESULT, {
+      endpoint: "POST /api/rooms/:id/messages",
+    });
   }
 
   async wakeRoom(roomId: string, input: WakeRoomInput): Promise<RoomWakeResult> {
@@ -3915,7 +4302,72 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(input),
     });
-    return RoomWakeResultSchema.parse(raw);
+    return parseWithFallback(raw, RoomWakeResultSchema, EMPTY_ROOM_WAKE_RESULT, {
+      endpoint: "POST /api/rooms/:id/wake",
+    });
+  }
+
+  async retryRoomSynthesis(
+    roomId: string,
+    cycleId: string,
+    input: RetryRoomSynthesisInput,
+  ): Promise<RetryRoomSynthesisResult> {
+    const raw = await this.fetch<unknown>(
+      `/api/rooms/${roomId}/cycles/${cycleId}/synthesis/retry`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+    return parseWithFallback(
+      raw,
+      RetryRoomSynthesisResultSchema,
+      EMPTY_RETRY_ROOM_SYNTHESIS_RESULT,
+      { endpoint: "POST /api/rooms/:id/cycles/:cycleId/synthesis/retry" },
+    );
+  }
+
+  async reviewRoomCycle(
+    roomId: string,
+    cycleId: string,
+    input: ReviewRoomCycleInput,
+  ): Promise<ReviewRoomCycleResult> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/cycles/${cycleId}/review`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return parseWithFallback(raw, ReviewRoomCycleResultSchema, EMPTY_REVIEW_ROOM_CYCLE_RESULT, {
+      endpoint: "POST /api/rooms/:id/cycles/:cycleId/review",
+    });
+  }
+
+  async cancelRoomCycle(
+    roomId: string,
+    cycleId: string,
+    input: CancelRoomCycleInput,
+  ): Promise<CancelRoomCycleResult> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/cycles/${cycleId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return parseWithFallback(raw, CancelRoomCycleResultSchema, EMPTY_CANCEL_ROOM_CYCLE_RESULT, {
+      endpoint: "POST /api/rooms/:id/cycles/:cycleId/cancel",
+    });
+  }
+
+  async reviewRoomRecommendation(
+    roomId: string,
+    revisionId: string,
+    recommendationKey: string,
+    input: RejectRoomRecommendationInput,
+  ): Promise<ReviewRoomRecommendationResult> {
+    const raw = await this.fetch<unknown>(
+      `/api/rooms/${roomId}/memory-revisions/${revisionId}/recommendations/${encodeURIComponent(recommendationKey)}/review`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+    return parseWithFallback(
+      raw,
+      ReviewRoomRecommendationResultSchema,
+      EMPTY_REVIEW_ROOM_RECOMMENDATION_RESULT,
+      { endpoint: "POST /api/rooms/:id/memory-revisions/:revisionId/recommendations/:key/review" },
+    );
   }
 
   async setRoomStatus(roomId: string, input: SetRoomStatusInput): Promise<Room> {
@@ -3923,7 +4375,19 @@ export class ApiClient {
       method: "PUT",
       body: JSON.stringify(input),
     });
-    return RoomSchema.parse(raw);
+    return parseWithFallback(raw, RoomSchema, EMPTY_ROOM, {
+      endpoint: "PUT /api/rooms/:id/status",
+    });
+  }
+
+  async updateRoomBudget(roomId: string, input: UpdateRoomBudgetInput): Promise<Room> {
+    const raw = await this.fetch<unknown>(`/api/rooms/${roomId}/budget`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+    return parseWithFallback(raw, RoomSchema, EMPTY_ROOM, {
+      endpoint: "PUT /api/rooms/:id/budget",
+    });
   }
 
   async promoteRoomArtifact(roomId: string, input: PromoteRoomArtifactInput): Promise<RoomArtifact> {
@@ -3931,7 +4395,9 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(input),
     });
-    return RoomArtifactSchema.parse(raw);
+    return parseWithFallback(raw, RoomArtifactSchema, EMPTY_ROOM_ARTIFACT, {
+      endpoint: "POST /api/rooms/:id/promotions",
+    });
   }
 
   // Autopilots
@@ -4008,6 +4474,19 @@ export class ApiClient {
     return TwinProposalResultSchema.parse(raw);
   }
 
+  async correctTwinProposal(
+    proposalId: string,
+    editedAssertions: readonly LifecycleContent[],
+    signal?: AbortSignal,
+  ): Promise<TwinProposalResult> {
+    const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/correct`, {
+      method: "POST",
+      body: JSON.stringify({ edited_assertions: editedAssertions }),
+      signal,
+    });
+    return TwinProposalResultSchema.parse(raw);
+  }
+
   async acceptTwinProposal(proposalId: string, signal?: AbortSignal): Promise<TwinVersionResult> {
     const raw = await this.fetch<unknown>(`/api/twins/proposals/${proposalId}/accept`, { method: "POST", signal });
     return TwinVersionResultSchema.parse(raw);
@@ -4020,6 +4499,102 @@ export class ApiClient {
       signal,
     });
     return TwinProposalDetailSchema.parse(raw);
+  }
+
+  async getTwinBindings(): Promise<TwinBindingsResponse> {
+    const raw = await this.fetch<unknown>("/api/twins/bindings");
+    return parseWithFallback(raw, TwinBindingsResponseSchema, EMPTY_TWIN_BINDINGS_RESPONSE, {
+      endpoint: "GET /api/twins/bindings",
+    });
+  }
+
+  async upsertTwinBinding(input: UpsertTwinBindingInput): Promise<TwinBinding | null> {
+    const raw = await this.fetch<unknown>("/api/twins/bindings", {
+      method: "POST",
+      body: JSON.stringify({
+        scope_type: input.scopeType,
+        scope_id: input.scopeId,
+        state: input.state,
+        twin_version_id: input.twinVersionId,
+      }),
+    });
+    return parseWithFallback(raw, TwinBindingWireSchema, null, {
+      endpoint: "POST /api/twins/bindings",
+    });
+  }
+
+  async deleteTwinBinding(bindingId: string): Promise<void> {
+    await this.fetch(`/api/twins/bindings/${bindingId}`, { method: "DELETE" });
+  }
+
+  async previewTwinBriefing(input: TwinBriefingPreviewInput): Promise<TwinBriefingPreview> {
+    const raw = await this.fetch<unknown>("/api/twins/briefings/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        agent_id: input.agentId,
+        ...(input.projectId ? { project_id: input.projectId } : {}),
+        ...(input.issueId ? { issue_id: input.issueId } : {}),
+        ...(input.runId ? { run_id: input.runId } : {}),
+        request: input.request,
+        ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
+        ...(input.oneOffState ? { one_off_state: input.oneOffState } : {}),
+        ...(input.twinVersionId ? { twin_version_id: input.twinVersionId } : {}),
+      }),
+    });
+    return parseWithFallback(raw, TwinBriefingPreviewSchema, EMPTY_TWIN_BRIEFING_PREVIEW, {
+      endpoint: "POST /api/twins/briefings/preview",
+    });
+  }
+
+  async getTwinTaskContext(taskId: string): Promise<TwinTaskContext> {
+    const raw = await this.fetch<unknown>(`/api/twins/tasks/${taskId}/context`);
+    return parseWithFallback(
+      raw,
+      TwinTaskContextWireSchema,
+      { taskId, depositions: [], assertions: [], citations: [] },
+      { endpoint: "GET /api/twins/tasks/:taskId/context" },
+    );
+  }
+
+  async submitTwinTaskFeedback(taskId: string, input: TwinFeedbackInput): Promise<TwinTaskFeedback | null> {
+    const raw = await this.fetch<unknown>(`/api/twins/tasks/${taskId}/feedback`, {
+      method: "PUT",
+      body: JSON.stringify({
+        rating: input.rating,
+        ...(input.note ? { note: input.note } : {}),
+      }),
+    });
+    const result = parseWithFallback<{ feedback: TwinTaskFeedback } | null>(raw, TwinFeedbackResponseSchema, null, {
+      endpoint: "PUT /api/twins/tasks/:taskId/feedback",
+    });
+    return result?.feedback ?? null;
+  }
+
+  async createTwinDeposition(
+    taskId: string,
+    input?: CreateTwinDepositionInput,
+  ): Promise<TwinDepositionResponse> {
+    const payload = input ? {
+      ...(input.replacesProposalId ? { replaces_proposal_id: input.replacesProposalId } : {}),
+      ...(input.editedAssertions ? { edited_assertions: input.editedAssertions } : {}),
+    } : null;
+    const raw = await this.fetch<unknown>(`/api/twins/tasks/${taskId}/depositions`, {
+      method: "POST",
+      ...(payload && Object.keys(payload).length > 0 ? { body: JSON.stringify(payload) } : {}),
+    });
+    return parseWithFallback(
+      raw,
+      TwinDepositionResponseSchema,
+      EMPTY_TWIN_DEPOSITION_RESPONSE,
+      { endpoint: "POST /api/twins/tasks/:taskId/depositions" },
+    );
+  }
+
+  async getTwinExecutionMetrics(): Promise<TwinExecutionMetrics> {
+    const raw = await this.fetch<unknown>("/api/twins/metrics");
+    return parseWithFallback(raw, TwinExecutionMetricsSchema, EMPTY_TWIN_EXECUTION_METRICS, {
+      endpoint: "GET /api/twins/metrics",
+    });
   }
 
   async createAutopilot(data: CreateAutopilotRequest): Promise<Autopilot> {

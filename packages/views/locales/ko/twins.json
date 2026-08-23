@@ -4,7 +4,7 @@
     "title": "LM Wiki 및 Twin",
     "description": "워크스페이스 지식을 확인하고 이를 기반으로 만든 Twin 버전을 승인합니다."
   },
-  "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder" },
+  "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder", "use": "사용" },
   "states": {
     "loading": "LM Wiki 및 Twin 로드 중",
     "loading_description": "최신 검토 기록을 가져오는 중입니다.",
@@ -35,6 +35,22 @@
     "rejected_guidance": "소스가 변경된 후 Wiki를 새로 고치면 새 진화 제안을 빌드할 수 있습니다.",
     "empty_assertions": "주장이 없습니다."
   },
+  "assertions": { "applicability": "적용 범위", "confidence": "신뢰도 {{value}}%", "provenance": "출처" },
+  "deposition": { "evidence_title": "정제된 실행 근거", "task": "작업", "base_version": "기준 Twin 버전", "status": "실행 상태", "completed": "완료 시각", "feedback": "실행 피드백", "evidence_digest": "근거 다이제스트", "sanitized_notice": "감사 메타데이터만 보관하며 원시 출력과 로컬 경로는 포함하지 않습니다.", "edit_action": "Deposition 편집", "edit_title": "Deposition 주장 편집", "edit_description": "저장하면 교체 제안이 생성되며 현재 제안은 변경되지 않습니다.", "edit_label": "주장 JSON", "edit_invalid_json": "올바른 JSON을 입력하세요.", "edit_array_required": "주장 배열을 입력하세요. 모두 제거하려면 []를 사용하세요.", "edit_assertion_required": "모든 주장에는 비어 있지 않은 id와 text가 필요합니다.", "edit_duplicate_id": "주장 id는 고유해야 합니다.", "edit_no_changes": "교체 제안을 만들기 전에 내용을 수정하세요.", "edit_ready": "변경 사항을 검토할 수 있습니다.", "edit_submit": "교체 제안 만들기", "edit_saving": "교체 제안 만드는 중" },
+  "correction": { "edit_action": "제안 편집", "edit_title": "제안 주장 편집", "edit_description": "저장하면 검증된 수정 제안이 생성되며 현재 제안과 서명된 버전은 변경되지 않습니다.", "edit_label": "주장 JSON", "edit_no_changes": "수정 제안을 만들기 전에 내용을 변경하세요.", "edit_ready": "변경 사항을 검증할 수 있습니다.", "edit_submit": "수정 제안 만들기", "edit_saving": "수정 제안 만드는 중" },
+  "use": {
+    "title": "Twin 실행 정책", "description": "서명된 Twin이 에이전트 실행을 미리 보거나 지원할 범위를 명시적으로 선택합니다. 새 범위는 저장 전까지 꺼져 있습니다.",
+    "loading": "Twin 실행 정책 불러오는 중", "error_title": "실행 정책을 사용할 수 없음", "error_description": "최신 바인딩과 지표를 불러오지 못했습니다.", "stale_title": "마지막으로 확인된 정책 표시 중", "stale_description": "최신 정책에 연결할 수 없습니다. 변경 전에 캐시된 상태를 확인하세요.", "try_again": "다시 시도",
+    "kill_switch_title": "Twin 실행이 일시 중지됨", "kill_switch_fallback": "운영자가 Twin 실행을 비활성화했습니다. 기존 감사 기록은 계속 볼 수 있습니다.", "read_only": "정책과 미리보기를 확인할 수 있습니다. 바인딩은 owner 또는 admin이 관리합니다.",
+    "binding_title": "정책 바인딩", "binding_description": "더 구체적인 범위가 넓은 범위를 재정의하며 각 바인딩은 변경 불가능한 서명 버전에 고정됩니다.",
+    "scope": "범위", "scope_workspace": "워크스페이스", "scope_agent": "에이전트", "scope_project": "프로젝트", "scope_issue": "태스크", "scope_id": "범위 ID", "scope_id_placeholder": "선택한 범위의 UUID", "version": "서명된 버전", "state": "모드",
+    "state_off": "끄기", "state_preview": "미리보기", "state_enabled": "사용", "state_off_description": "briefing을 주입하지 않습니다.", "state_preview_description": "컴파일하고 확인만 하며 briefing 바이트는 제어 영역을 벗어나지 않습니다.", "state_enabled_description": "대상 실행에 제한된 서명 briefing을 주입합니다.", "default_off": "기본값: 끄기",
+    "save_binding": "바인딩 저장", "saving_binding": "바인딩 저장 중", "configured_title": "설정된 바인딩", "configured_empty": "명시적 바인딩이 없습니다. Twin 실행은 기본적으로 꺼져 있습니다.", "delete_binding": "바인딩 삭제",
+    "preview_title": "Briefing 미리보기", "preview_description": "활성화 전에 우선순위를 해석하고 정확한 제한 briefing을 컴파일합니다.", "agent_id": "에이전트 ID", "project_id": "프로젝트 ID(선택)", "issue_id": "태스크 ID(선택)", "run_id": "일회성 실행 ID(선택)", "request": "실행 요청", "request_placeholder": "이 실행에서 수행할 작업을 설명하세요", "tags": "태그(쉼표로 구분)", "preview_action": "미리보기 컴파일", "previewing": "미리보기 컴파일 중",
+    "effective_policy": "유효 정책", "effective_source": "유효 출처", "no_effective_source": "명시적 바인딩 없음", "exclusions": "제외 이유", "exact_briefing": "정확한 briefing", "empty_briefing": "이 정책에서는 briefing 바이트를 주입하지 않습니다.", "compiler": "컴파일러", "budget": "{{bytes}}바이트 · {{tokens}}토큰",
+    "metrics_title": "실행 피드백", "attributed_runs": "귀속된 실행", "helpfulness": "유용성", "feedback": "피드백", "depositions": "Deposition", "bindings": "바인딩", "feedback_summary": "전체 {{total}} · 도움됨 {{helped}}", "deposition_summary": "전체 {{total}} · 대기 {{pending}}", "not_available": "아직 피드백이 부족합니다", "mutation_failed": "정책 변경을 저장하지 못했습니다. 다시 시도하세요.", "preview_failed": "briefing 미리보기를 컴파일하지 못했습니다. ID를 확인하고 다시 시도하세요."
+  },
+  "task_context": { "title": "Twin 실행 컨텍스트", "version": "Twin v{{number}}", "policy": "정책", "compiler": "컴파일러", "budget": "{{bytes}}바이트 · {{tokens}}토큰", "briefing_digest": "Briefing 다이제스트", "version_digest": "버전 다이제스트", "exact_briefing": "전달된 briefing", "assertions": "주장", "citations": "인용", "feedback_prompt": "이 Twin 컨텍스트가 유용했나요?", "feedback_helped": "도움됨", "feedback_irrelevant": "관련 없음", "feedback_mismatch": "불일치", "feedback_saved": "피드백 저장됨", "deposition_action": "Deposition 제안", "deposition_pending": "Deposition 생성 중", "deposition_created": "Deposition 제안 생성됨", "deposition_exists": "Deposition 제안 {{count}}개", "action_failed": "Twin 작업에 실패했습니다. 다시 시도하세요.", "unavailable": "이 실행에는 서명된 Twin 컨텍스트가 전달되지 않았습니다." },
   "selectors": {
     "wiki_revision": "Wiki 리비전",
     "twin_proposal": "Twin 제안",
@@ -75,7 +91,8 @@
     "title": "주장 변경",
     "added": "추가된 주장",
     "removed": "제거된 주장",
-    "unchanged": "변경되지 않은 주장"
+    "unchanged": "변경되지 않은 주장",
+    "changed": "변경된 주장"
   },
   "review": {
     "title": "Twin 검토 진행 상황",

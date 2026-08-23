@@ -48,27 +48,36 @@ func TestRoomConcurrentIndexMigrationsContainOneStatement(t *testing.T) {
 	indexFiles = append(indexFiles, filepath.Join(dir, "302_agent_task_room_turn_index.up.sql"))
 
 	wantFiles := map[string]bool{
-		"286_room_id_index.up.sql":                      true,
-		"287_room_participant_id_index.up.sql":          true,
-		"288_room_entry_id_index.up.sql":                true,
-		"289_room_cycle_id_index.up.sql":                true,
-		"290_room_turn_id_index.up.sql":                 true,
-		"291_room_artifact_id_index.up.sql":             true,
-		"293_room_workspace_index.up.sql":               true,
-		"294_room_participant_identity_index.up.sql":    true,
-		"295_room_entry_ordinal_index.up.sql":           true,
-		"296_room_cycle_sequence_index.up.sql":          true,
-		"297_room_cycle_wake_index.up.sql":              true,
-		"298_room_active_cycle_index.up.sql":            true,
-		"299_room_turn_participant_index.up.sql":        true,
-		"300_room_artifact_kind_index.up.sql":           true,
-		"301_room_due_index.up.sql":                     true,
-		"302_agent_task_room_turn_index.up.sql":         true,
-		"303_room_artifact_room_index.up.sql":           true,
-		"304_room_turn_room_index.up.sql":               true,
-		"305_room_participant_room_index.up.sql":        true,
-		"307_agent_task_room_turn_lookup_index.up.sql":  true,
-		"308_room_entry_turn_result_index.up.sql":       true,
+		"286_room_id_index.up.sql":                             true,
+		"287_room_participant_id_index.up.sql":                 true,
+		"288_room_entry_id_index.up.sql":                       true,
+		"289_room_cycle_id_index.up.sql":                       true,
+		"290_room_turn_id_index.up.sql":                        true,
+		"291_room_artifact_id_index.up.sql":                    true,
+		"293_room_workspace_index.up.sql":                      true,
+		"294_room_participant_identity_index.up.sql":           true,
+		"295_room_entry_ordinal_index.up.sql":                  true,
+		"296_room_cycle_sequence_index.up.sql":                 true,
+		"297_room_cycle_wake_index.up.sql":                     true,
+		"298_room_active_cycle_index.up.sql":                   true,
+		"299_room_turn_participant_index.up.sql":               true,
+		"300_room_artifact_kind_index.up.sql":                  true,
+		"301_room_due_index.up.sql":                            true,
+		"302_agent_task_room_turn_index.up.sql":                true,
+		"303_room_artifact_room_index.up.sql":                  true,
+		"304_room_turn_room_index.up.sql":                      true,
+		"305_room_participant_room_index.up.sql":               true,
+		"307_agent_task_room_turn_lookup_index.up.sql":         true,
+		"308_room_entry_turn_result_index.up.sql":              true,
+		"378_room_memory_revision_id_index.up.sql":             true,
+		"380_room_memory_revision_version_index.up.sql":        true,
+		"381_room_cycle_phase_index.up.sql":                    true,
+		"382_room_artifact_memory_revision_index.up.sql":       true,
+		"384_room_recommendation_review_id_index.up.sql":       true,
+		"386_room_recommendation_review_identity_index.up.sql": true,
+		"419_room_turn_kind_attempt_index.up.sql":              true,
+		"421_room_synthesis_retry_key_index.up.sql":            true,
+		"424_room_memory_review_key_index.up.sql":              true,
 	}
 
 	seen := make(map[string]bool, len(indexFiles))
@@ -93,6 +102,71 @@ func TestRoomConcurrentIndexMigrationsContainOneStatement(t *testing.T) {
 		if !seen[name] {
 			t.Errorf("missing Room concurrent index migration %s", name)
 		}
+	}
+}
+
+func TestRoomOutcomeConcurrentIndexMigrationsAreCrashReplaySafe(t *testing.T) {
+	dir := realMigrationsDir(t)
+	createFiles := []string{
+		"378_room_memory_revision_id_index.up.sql",
+		"380_room_memory_revision_version_index.up.sql",
+		"381_room_cycle_phase_index.up.sql",
+		"382_room_artifact_memory_revision_index.up.sql",
+		"384_room_recommendation_review_id_index.up.sql",
+		"386_room_recommendation_review_identity_index.up.sql",
+		"418_room_turn_identity_index_drop.down.sql",
+		"419_room_turn_kind_attempt_index.up.sql",
+		"421_room_synthesis_retry_key_index.up.sql",
+		"424_room_memory_review_key_index.up.sql",
+	}
+	dropFiles := []string{
+		"378_room_memory_revision_id_index.down.sql",
+		"380_room_memory_revision_version_index.down.sql",
+		"381_room_cycle_phase_index.down.sql",
+		"382_room_artifact_memory_revision_index.down.sql",
+		"384_room_recommendation_review_id_index.down.sql",
+		"386_room_recommendation_review_identity_index.down.sql",
+		"418_room_turn_identity_index_drop.up.sql",
+		"419_room_turn_kind_attempt_index.down.sql",
+		"421_room_synthesis_retry_key_index.down.sql",
+		"424_room_memory_review_key_index.down.sql",
+	}
+
+	createIndex := regexp.MustCompile(`(?is)^CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+IF\s+NOT\s+EXISTS\b.*;\s*$`)
+	dropIndex := regexp.MustCompile(`(?is)^DROP\s+INDEX\s+CONCURRENTLY\s+IF\s+EXISTS\b.*;\s*$`)
+	for _, name := range createFiles {
+		body, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Errorf("read %s: %v", name, err)
+			continue
+		}
+		if !createIndex.Match(bytesWithoutSQLComments(body)) {
+			t.Errorf("%s must use CREATE INDEX CONCURRENTLY IF NOT EXISTS", name)
+		}
+	}
+	for _, name := range dropFiles {
+		body, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Errorf("read %s: %v", name, err)
+			continue
+		}
+		if !dropIndex.Match(bytesWithoutSQLComments(body)) {
+			t.Errorf("%s must use DROP INDEX CONCURRENTLY IF EXISTS", name)
+		}
+	}
+}
+
+func TestRoomCapabilityRolloutDoesNotRewriteExistingRooms(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(realMigrationsDir(t), "422_room_capability_rollout.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := strings.ToUpper(string(bytesWithoutSQLComments(body)))
+	if strings.Contains(sql, "UPDATE ROOM") {
+		t.Fatal("capability rollout must not rewrite existing or concurrently created Rooms")
+	}
+	if !strings.Contains(sql, "ALTER TABLE ROOM ALTER COLUMN CAPABILITY_VERSION SET DEFAULT 1") {
+		t.Fatal("capability rollout must keep capability_version defaulted to 1")
 	}
 }
 

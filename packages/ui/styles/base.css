@@ -224,11 +224,11 @@ html[lang|="ko"] [data-twin-copy] {
     from var(--border-beam-angle),
     transparent 0deg,
     transparent 220deg,
-    #ffbe7b 245deg,
-    #ff777f 270deg,
-    #ff8ab4 295deg,
-    #a07cfe 320deg,
-    #5b9dff 345deg,
+    var(--effect-spectrum-1) 245deg,
+    var(--effect-spectrum-2) 270deg,
+    var(--effect-spectrum-3) 295deg,
+    var(--effect-spectrum-4) 320deg,
+    var(--effect-spectrum-5) 345deg,
     transparent 360deg
   );
   -webkit-mask:
@@ -245,11 +245,11 @@ html[lang|="ko"] [data-twin-copy] {
     animation: none;
     background: linear-gradient(
       90deg,
-      #ffbe7b,
-      #ff777f,
-      #ff8ab4,
-      #a07cfe,
-      #5b9dff
+      var(--effect-spectrum-1),
+      var(--effect-spectrum-2),
+      var(--effect-spectrum-3),
+      var(--effect-spectrum-4),
+      var(--effect-spectrum-5)
     );
   }
 }
@@ -413,6 +413,88 @@ html[data-theme-transition="reveal"]::view-transition-new(root) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html[data-theme-transition="reveal"]::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* Windows/browser high-contrast mode owns the palette. Keep Multica's
+ * semantics, but resolve them through system colors so text, focus, and
+ * selection remain visible even when authored colors are discarded. */
+@media (forced-colors: active) {
+  :root {
+    --app-shell: Canvas;
+    --page-canvas: Canvas;
+    --surface: Canvas;
+    --surface-foreground: CanvasText;
+    --surface-raised: Canvas;
+    --surface-hover: ButtonFace;
+    --surface-selected: Highlight;
+    --surface-selected-foreground: HighlightText;
+    --surface-border: CanvasText;
+    --background: Canvas;
+    --foreground: CanvasText;
+    --card: Canvas;
+    --card-foreground: CanvasText;
+    --popover: Canvas;
+    --popover-foreground: CanvasText;
+    --primary: Highlight;
+    --primary-foreground: HighlightText;
+    --secondary: ButtonFace;
+    --secondary-foreground: ButtonText;
+    --muted: Canvas;
+    --muted-foreground: GrayText;
+    --faint-foreground: GrayText;
+    --disabled-foreground: GrayText;
+    --accent: Highlight;
+    --accent-foreground: HighlightText;
+    --destructive: LinkText;
+    --destructive-foreground: Canvas;
+    --border: CanvasText;
+    --control-border: CanvasText;
+    --input: CanvasText;
+    --ring: Highlight;
+    --brand: Highlight;
+    --brand-foreground: HighlightText;
+    --success: CanvasText;
+    --warning: CanvasText;
+    --info: LinkText;
+    --chart-1: CanvasText;
+    --chart-2: LinkText;
+    --chart-3: GrayText;
+    --chart-4: CanvasText;
+    --chart-5: LinkText;
+    --sidebar: Canvas;
+    --sidebar-foreground: CanvasText;
+    --sidebar-primary: Highlight;
+    --sidebar-primary-foreground: HighlightText;
+    --sidebar-accent: Highlight;
+    --sidebar-accent-foreground: HighlightText;
+    --sidebar-border: CanvasText;
+    --sidebar-ring: Highlight;
+    --overlay-backdrop: Canvas;
+    --code-background: Canvas;
+    --code-foreground: CanvasText;
+    --editor-selection: Highlight;
+    --editor-selection-foreground: HighlightText;
+    --platform-chrome: Canvas;
+    --platform-chrome-foreground: CanvasText;
+    --status-backlog: GrayText;
+    --status-todo: CanvasText;
+    --status-in-progress: LinkText;
+    --status-done: CanvasText;
+    --status-cancelled: GrayText;
+  }
+
+  [aria-current]:not([aria-current="false"]),
+  [aria-selected="true"],
+  [data-state="checked"],
+  [data-state="on"] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  html[data-theme-transition="reveal"]::view-transition-old(root),
   html[data-theme-transition="reveal"]::view-transition-new(root) {
     animation: none;
   }

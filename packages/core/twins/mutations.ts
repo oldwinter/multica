@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { twinKeys, twinProfileKeys, wikiKeys } from "./queries";
+import type { LifecycleContent } from "./types";
 
 const LIFECYCLE_WRITE_TIMEOUT_MS = 30_000;
 const CACHE_SETTLEMENT_TIMEOUT_MS = 5_000;
@@ -74,6 +75,21 @@ export function useEnsureTwinProposal(wsId: string) {
   return useMutation({
     mutationFn: (wikiRevisionId: string) => withLifecycleWriteTimeout(
       (signal) => api.ensureTwinProposal(wikiRevisionId, signal),
+    ),
+    onSettled: () => settleLifecycleQueries([
+      queryClient.invalidateQueries({ queryKey: twinKeys.all(wsId) }),
+    ]),
+  });
+}
+
+export function useCorrectTwinProposal(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ proposalId, editedAssertions }: {
+      proposalId: string;
+      editedAssertions: readonly LifecycleContent[];
+    }) => withLifecycleWriteTimeout(
+      (signal) => api.correctTwinProposal(proposalId, editedAssertions, signal),
     ),
     onSettled: () => settleLifecycleQueries([
       queryClient.invalidateQueries({ queryKey: twinKeys.all(wsId) }),

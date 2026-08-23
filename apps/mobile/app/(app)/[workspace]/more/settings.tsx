@@ -13,6 +13,7 @@
  * Theme picker stays inline (3 fixed options, fits in one section).
  */
 import { Alert, ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -26,16 +27,25 @@ import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import {
+  recordMobileAppearanceViewed,
   useColorScheme,
   type ThemePreference,
 } from "@/lib/use-color-scheme";
 import { SKIN_IDS, THEMES, type AppSkin } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
+const THEME_OPTIONS: readonly {
+  value: ThemePreference;
+  label: string;
+  description: string;
+}[] = [
+  { value: "light", label: "Light", description: "Always use light mode" },
+  { value: "dark", label: "Dark", description: "Always use dark mode" },
+  {
+    value: "system",
+    label: "System",
+    description: "Follow this device's appearance",
+  },
 ];
 
 const SKIN_LABELS: Record<AppSkin, { name: string; description: string }> = {
@@ -47,6 +57,20 @@ const SKIN_LABELS: Record<AppSkin, { name: string; description: string }> = {
 function parseThemePreference(value: string): ThemePreference {
   if (value === "light" || value === "dark" || value === "system") return value;
   return "system";
+}
+
+function appearanceSyncCopy(
+  status: "local-only" | "pending" | "synced" | "failed",
+  online: boolean,
+): string {
+  if (status === "synced") return "Synced across your devices";
+  if (status === "pending") {
+    return online ? "Syncing your choice..." : "Waiting for a connection";
+  }
+  if (status === "failed") {
+    return "Saved on this device, but sync needs attention";
+  }
+  return "Using product defaults";
 }
 
 function initialsOf(name: string | undefined): string {
@@ -67,8 +91,40 @@ export default function SettingsPage() {
   const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
   const clearWorkspace = useWorkspaceStore((s) => s.clear);
   const { data, isLoading, error } = useQuery(workspaceListOptions());
-  const { preference, setPreference, skin, setSkin, theme } = useColorScheme();
+  const {
+    preference,
+    preferences,
+    setPreference,
+    skin,
+    setSkin,
+    theme,
+    online,
+    retrySync,
+    reset,
+  } = useColorScheme();
   const mutedFg = theme.mutedForeground;
+  const syncStatus = preferences.syncState.status;
+  const canRetry = syncStatus === "pending" || syncStatus === "failed";
+  const syncIcon =
+    syncStatus === "synced"
+      ? "cloud-done-outline"
+      : syncStatus === "failed"
+        ? "warning-outline"
+        : syncStatus === "pending"
+          ? "cloud-upload-outline"
+          : "phone-portrait-outline";
+  const syncIconColor =
+    syncStatus === "synced"
+      ? theme.success
+      : syncStatus === "failed"
+        ? theme.destructive
+        : syncStatus === "pending"
+          ? theme.info
+          : mutedFg;
+
+  useEffect(() => {
+    recordMobileAppearanceViewed();
+  }, []);
 
   const onSwitch = async (ws: Workspace) => {
     if (ws.slug === currentSlug) return;
@@ -227,18 +283,90 @@ export default function SettingsPage() {
               <View key={opt.value}>
                 <Pressable
                   onPress={() => setPreference(opt.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: opt.value === preference }}
+                  accessibilityLabel={`${opt.label}. ${opt.description}`}
                   className="flex-row items-center px-4 py-3.5 active:bg-secondary gap-3"
                 >
-                  <RadioGroupItem value={opt.value} />
-                  <Text className="flex-1 text-base font-medium text-foreground">
-                    {opt.label}
-                  </Text>
+                  <RadioGroupItem
+                    value={opt.value}
+                    accessible={false}
+                    importantForAccessibility="no-hide-descendants"
+                  />
+                  <View className="flex-1">
+                    <Text className="text-base font-medium text-foreground">
+                      {opt.label}
+                    </Text>
+                    <Text className="mt-0.5 text-sm text-muted-foreground">
+                      {opt.description}
+                    </Text>
+                  </View>
                 </Pressable>
                 {!isLast ? <Separator /> : null}
               </View>
             );
           })}
         </RadioGroup>
+        <Separator />
+        <View className="gap-3 px-4 py-3.5">
+          <View
+            className="flex-row items-center gap-2"
+            accessibilityLiveRegion="polite"
+          >
+            <Ionicons
+              name={syncIcon}
+              size={17}
+              color={syncIconColor}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <Text className="flex-1 text-sm text-muted-foreground">
+              {appearanceSyncCopy(syncStatus, online)}
+            </Text>
+          </View>
+          <View className="flex-row flex-wrap justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={reset}
+              className="h-auto min-h-9 py-2"
+              accessibilityLabel="Reset appearance to Tension and System"
+            >
+              <Ionicons
+                name="refresh-outline"
+                size={16}
+                color={mutedFg}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+              <Text>Reset defaults</Text>
+            </Button>
+            {canRetry ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={retrySync}
+                className="h-auto min-h-9 py-2"
+                disabled={!online}
+                accessibilityLabel="Retry appearance sync"
+                accessibilityHint={
+                  online
+                    ? "Retries syncing this device's appearance choice"
+                    : "Available when this device is online"
+                }
+              >
+                <Ionicons
+                  name="sync-outline"
+                  size={16}
+                  color={mutedFg}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+                <Text>Retry now</Text>
+              </Button>
+            ) : null}
+          </View>
+        </View>
       </SectionGroup>
 
       <View className="pt-2">
@@ -293,7 +421,7 @@ function SectionGroup({
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-xs uppercase tracking-normalr text-muted-foreground px-1">
+      <Text className="text-xs uppercase tracking-normal text-muted-foreground px-1">
         {title}
       </Text>
       <View className="rounded-md border border-border bg-card overflow-hidden">

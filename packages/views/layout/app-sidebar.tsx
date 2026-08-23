@@ -18,6 +18,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Layers,
+  BookLock,
   ChevronDown,
   ChevronRight,
   LogOut,
@@ -433,6 +434,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }: AppSidebarProps = {}) {
   const { t } = useT("layout");
+  const { t: wikiT } = useT("wiki");
   const { pathname, push } = useNavigation();
   const user = useAuthStore((s) => s.user);
   const userId = useAuthStore((s) => s.user?.id);
@@ -726,6 +728,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
+                    <DropdownMenuItem render={<AppLink href={paths.personalWiki()} />}>
+                      <BookLock className="h-3.5 w-3.5" />
+                      <span data-testid="personal-wiki-menu-label">{wikiT(($) => $.personal.title)}</span>
+                    </DropdownMenuItem>
                     <DropdownMenuItem variant="destructive" onClick={logout}>
                       <LogOut className="h-3.5 w-3.5" />
                       {t(($) => $.sidebar.log_out)}

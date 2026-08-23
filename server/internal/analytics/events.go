@@ -29,6 +29,24 @@ const (
 	EventContactSalesSubmitted         = "contact_sales_submitted"
 	EventSquadCreated                  = "squad_created"
 	EventAutopilotCreated              = "autopilot_created"
+	EventWikiSearch                    = "wiki_search"
+	EventWikiProposalReview            = "wiki_proposal_review"
+	EventLMWikiReview                  = "lm_wiki_review"
+	EventTwinProposalGeneration        = "twin_proposal_generation"
+	EventTwinSignOff                   = "twin_sign_off"
+	EventTwinBriefingCompilation       = "twin_briefing_compilation"
+	EventTwinBriefingUse               = "twin_briefing_use"
+	EventTwinRunFeedback               = "twin_run_feedback"
+	EventTwinTaskRevision              = "twin_task_revision"
+	EventTwinDepositionReview          = "twin_deposition_review"
+	EventRoomCreated                   = "room_created"
+	EventRoomFirstCycleCompleted       = "room_first_cycle_completed"
+	EventRoomSynthesisAccepted         = "room_synthesis_accepted"
+	EventRoomSynthesisRejected         = "room_synthesis_rejected"
+	EventRoomSynthesisRetried          = "room_synthesis_retried"
+	EventRoomArtifactPromoted          = "room_artifact_promoted"
+	EventRoomBudgetRefused             = "room_budget_refused"
+	EventRoomCycleFailed               = "room_cycle_failed"
 )
 
 const EventSchemaVersion = 2
@@ -71,15 +89,33 @@ var metricsOnlyEvents = map[string]struct{}{
 	EventContactSalesSubmitted:         {},
 	EventSquadCreated:                  {},
 	EventAutopilotCreated:              {},
+	EventWikiSearch:                    {},
+	EventWikiProposalReview:            {},
+	EventLMWikiReview:                  {},
+	EventRoomCreated:                   {},
+	EventRoomFirstCycleCompleted:       {},
+	EventRoomSynthesisAccepted:         {},
+	EventRoomSynthesisRejected:         {},
+	EventRoomSynthesisRetried:          {},
+	EventRoomArtifactPromoted:          {},
+	EventRoomBudgetRefused:             {},
+	EventRoomCycleFailed:               {},
 	// High-volume runtime / autopilot execution-lifecycle telemetry — always
 	// Prometheus-only (Grafana already carries the equivalent counters).
-	EventRuntimeRegistered:     {},
-	EventRuntimeReady:          {},
-	EventRuntimeFailed:         {},
-	EventRuntimeOffline:        {},
-	EventAutopilotRunStarted:   {},
-	EventAutopilotRunCompleted: {},
-	EventAutopilotRunFailed:    {},
+	EventRuntimeRegistered:       {},
+	EventRuntimeReady:            {},
+	EventRuntimeFailed:           {},
+	EventRuntimeOffline:          {},
+	EventAutopilotRunStarted:     {},
+	EventAutopilotRunCompleted:   {},
+	EventAutopilotRunFailed:      {},
+	EventTwinProposalGeneration:  {},
+	EventTwinSignOff:             {},
+	EventTwinBriefingCompilation: {},
+	EventTwinBriefingUse:         {},
+	EventTwinRunFeedback:         {},
+	EventTwinTaskRevision:        {},
+	EventTwinDepositionReview:    {},
 }
 
 // IsMetricsOnly reports whether an event name is recorded to Prometheus but must
@@ -117,6 +153,291 @@ type CoreProperties struct {
 }
 
 type TaskContext = CoreProperties
+
+// TwinMetricContext is the complete identity surface accepted by Twin product
+// metrics. In particular, Twin version, assertion, citation, and evidence IDs
+// are deliberately absent: those belong in the auditable operational record,
+// not analytics.
+type TwinMetricContext struct {
+	UserID      string
+	WorkspaceID string
+	TaskID      string
+}
+
+type TwinProposalKind string
+
+const (
+	TwinProposalKindInitial    TwinProposalKind = "initial"
+	TwinProposalKindEvolution  TwinProposalKind = "evolution"
+	TwinProposalKindDeposition TwinProposalKind = "deposition"
+)
+
+type TwinGenerationState string
+
+const (
+	TwinGenerationStateSucceeded TwinGenerationState = "succeeded"
+	TwinGenerationStateFailed    TwinGenerationState = "failed"
+	TwinGenerationStateBlocked   TwinGenerationState = "blocked"
+)
+
+type TwinPolicyScope string
+
+const (
+	TwinPolicyScopeOneOff    TwinPolicyScope = "one_off"
+	TwinPolicyScopeIssue     TwinPolicyScope = "issue"
+	TwinPolicyScopeProject   TwinPolicyScope = "project"
+	TwinPolicyScopeAgent     TwinPolicyScope = "agent"
+	TwinPolicyScopeWorkspace TwinPolicyScope = "workspace"
+)
+
+type TwinCompilationState string
+
+const (
+	TwinCompilationStateCompiled TwinCompilationState = "compiled"
+	TwinCompilationStateExcluded TwinCompilationState = "excluded"
+	TwinCompilationStateFailed   TwinCompilationState = "failed"
+)
+
+type TwinUseState string
+
+const (
+	TwinUseStatePreviewed TwinUseState = "previewed"
+	TwinUseStateInjected  TwinUseState = "injected"
+	TwinUseStateSkipped   TwinUseState = "skipped"
+)
+
+type TwinReviewDecision string
+
+const (
+	TwinReviewDecisionSigned   TwinReviewDecision = "signed"
+	TwinReviewDecisionAccepted TwinReviewDecision = "accepted"
+	TwinReviewDecisionRejected TwinReviewDecision = "rejected"
+)
+
+type TwinFeedbackRating string
+
+const (
+	TwinFeedbackRatingHelped     TwinFeedbackRating = "helped"
+	TwinFeedbackRatingIrrelevant TwinFeedbackRating = "irrelevant"
+	TwinFeedbackRatingMismatch   TwinFeedbackRating = "mismatch"
+)
+
+type TwinTaskRevisionDecision string
+
+const (
+	TwinTaskRevisionAccepted          TwinTaskRevisionDecision = "accepted"
+	TwinTaskRevisionRequestedRevision TwinTaskRevisionDecision = "revision_requested"
+)
+
+type TwinTaskRevisionKind string
+
+const (
+	TwinTaskRevisionKindNone               TwinTaskRevisionKind = "none"
+	TwinTaskRevisionKindInstructionRelated TwinTaskRevisionKind = "instruction_related"
+	TwinTaskRevisionKindOther              TwinTaskRevisionKind = "other"
+)
+
+type TwinExclusionCode string
+
+const (
+	TwinExclusionNone               TwinExclusionCode = "none"
+	TwinExclusionKillSwitch         TwinExclusionCode = "kill_switch"
+	TwinExclusionPolicyOff          TwinExclusionCode = "policy_off"
+	TwinExclusionNoSignedVersion    TwinExclusionCode = "no_signed_version"
+	TwinExclusionIneligibleTask     TwinExclusionCode = "ineligible_task"
+	TwinExclusionStaleVersion       TwinExclusionCode = "stale_version"
+	TwinExclusionUnauthorized       TwinExclusionCode = "unauthorized"
+	TwinExclusionLocalOnly          TwinExclusionCode = "local_only"
+	TwinExclusionBudget             TwinExclusionCode = "budget"
+	TwinExclusionUnsupportedRuntime TwinExclusionCode = "unsupported_runtime"
+)
+
+type TwinProposalGenerationMetric struct {
+	Context                   TwinMetricContext
+	Kind                      TwinProposalKind
+	State                     TwinGenerationState
+	AssertionCount            int
+	CitationCount             int
+	UnsupportedAssertionCount int
+	LatencyMS                 int64
+}
+
+type TwinSignOffMetric struct {
+	Context        TwinMetricContext
+	Kind           TwinProposalKind
+	Decision       TwinReviewDecision
+	AssertionCount int
+	CitationCount  int
+}
+
+type TwinBriefingCompilationMetric struct {
+	Context        TwinMetricContext
+	State          TwinCompilationState
+	Scope          TwinPolicyScope
+	ExclusionCode  TwinExclusionCode
+	AssertionCount int
+	CitationCount  int
+	ExclusionCount int
+	ByteCount      int
+	TokenCount     int
+	LatencyMS      int64
+}
+
+type TwinBriefingUseMetric struct {
+	Context        TwinMetricContext
+	State          TwinUseState
+	Scope          TwinPolicyScope
+	ExclusionCode  TwinExclusionCode
+	AssertionCount int
+	CitationCount  int
+	ByteCount      int
+	TokenCount     int
+}
+
+type TwinRunFeedbackMetric struct {
+	Context TwinMetricContext
+	Rating  TwinFeedbackRating
+}
+
+type TwinTaskRevisionMetric struct {
+	Context       TwinMetricContext
+	Decision      TwinTaskRevisionDecision
+	Kind          TwinTaskRevisionKind
+	RevisionCount int
+}
+
+type TwinDepositionReviewMetric struct {
+	Context        TwinMetricContext
+	Decision       TwinReviewDecision
+	AssertionCount int
+	CitationCount  int
+}
+
+// TwinProposalGeneration builds a metrics-only proposal-generation event. Its
+// typed input intentionally cannot carry generated assertion text or evidence.
+func TwinProposalGeneration(metric TwinProposalGenerationMetric) Event {
+	return twinMetricEvent(EventTwinProposalGeneration, metric.Context, map[string]any{
+		"kind":                        normalizedTwinDimension(metric.Kind, TwinProposalKindInitial, TwinProposalKindEvolution, TwinProposalKindDeposition),
+		"state":                       normalizedTwinDimension(metric.State, TwinGenerationStateSucceeded, TwinGenerationStateFailed, TwinGenerationStateBlocked),
+		"assertion_count":             nonNegative(metric.AssertionCount),
+		"citation_count":              nonNegative(metric.CitationCount),
+		"unsupported_assertion_count": nonNegative(metric.UnsupportedAssertionCount),
+		"latency_ms":                  nonNegative64(metric.LatencyMS),
+	})
+}
+
+func TwinSignOff(metric TwinSignOffMetric) Event {
+	return twinMetricEvent(EventTwinSignOff, metric.Context, map[string]any{
+		"kind":            normalizedTwinDimension(metric.Kind, TwinProposalKindInitial, TwinProposalKindEvolution, TwinProposalKindDeposition),
+		"decision":        normalizedTwinDimension(metric.Decision, TwinReviewDecisionSigned, TwinReviewDecisionRejected),
+		"assertion_count": nonNegative(metric.AssertionCount),
+		"citation_count":  nonNegative(metric.CitationCount),
+	})
+}
+
+func TwinBriefingCompilation(metric TwinBriefingCompilationMetric) Event {
+	return twinMetricEvent(EventTwinBriefingCompilation, metric.Context, map[string]any{
+		"state":           normalizedTwinDimension(metric.State, TwinCompilationStateCompiled, TwinCompilationStateExcluded, TwinCompilationStateFailed),
+		"scope":           normalizedTwinDimension(metric.Scope, TwinPolicyScopeOneOff, TwinPolicyScopeIssue, TwinPolicyScopeProject, TwinPolicyScopeAgent, TwinPolicyScopeWorkspace),
+		"exclusion_code":  normalizedTwinExclusion(metric.ExclusionCode),
+		"assertion_count": nonNegative(metric.AssertionCount),
+		"citation_count":  nonNegative(metric.CitationCount),
+		"exclusion_count": nonNegative(metric.ExclusionCount),
+		"byte_count":      nonNegative(metric.ByteCount),
+		"token_count":     nonNegative(metric.TokenCount),
+		"latency_ms":      nonNegative64(metric.LatencyMS),
+	})
+}
+
+func TwinBriefingUse(metric TwinBriefingUseMetric) Event {
+	return twinMetricEvent(EventTwinBriefingUse, metric.Context, map[string]any{
+		"state":           normalizedTwinDimension(metric.State, TwinUseStatePreviewed, TwinUseStateInjected, TwinUseStateSkipped),
+		"scope":           normalizedTwinDimension(metric.Scope, TwinPolicyScopeOneOff, TwinPolicyScopeIssue, TwinPolicyScopeProject, TwinPolicyScopeAgent, TwinPolicyScopeWorkspace),
+		"exclusion_code":  normalizedTwinExclusion(metric.ExclusionCode),
+		"assertion_count": nonNegative(metric.AssertionCount),
+		"citation_count":  nonNegative(metric.CitationCount),
+		"byte_count":      nonNegative(metric.ByteCount),
+		"token_count":     nonNegative(metric.TokenCount),
+	})
+}
+
+func TwinRunFeedback(metric TwinRunFeedbackMetric) Event {
+	return twinMetricEvent(EventTwinRunFeedback, metric.Context, map[string]any{
+		"rating": normalizedTwinDimension(metric.Rating, TwinFeedbackRatingHelped, TwinFeedbackRatingIrrelevant, TwinFeedbackRatingMismatch),
+	})
+}
+
+func TwinTaskRevision(metric TwinTaskRevisionMetric) Event {
+	return twinMetricEvent(EventTwinTaskRevision, metric.Context, map[string]any{
+		"decision":       normalizedTwinDimension(metric.Decision, TwinTaskRevisionAccepted, TwinTaskRevisionRequestedRevision),
+		"kind":           normalizedTwinDimension(metric.Kind, TwinTaskRevisionKindNone, TwinTaskRevisionKindInstructionRelated, TwinTaskRevisionKindOther),
+		"revision_count": nonNegative(metric.RevisionCount),
+	})
+}
+
+func TwinDepositionReview(metric TwinDepositionReviewMetric) Event {
+	return twinMetricEvent(EventTwinDepositionReview, metric.Context, map[string]any{
+		"decision":        normalizedTwinDimension(metric.Decision, TwinReviewDecisionAccepted, TwinReviewDecisionRejected),
+		"assertion_count": nonNegative(metric.AssertionCount),
+		"citation_count":  nonNegative(metric.CitationCount),
+	})
+}
+
+func twinMetricEvent(name string, context TwinMetricContext, properties map[string]any) Event {
+	if context.WorkspaceID != "" {
+		properties["workspace_id"] = context.WorkspaceID
+	}
+	if context.UserID != "" {
+		properties["user_id"] = context.UserID
+	}
+	if context.TaskID != "" {
+		properties["task_id"] = context.TaskID
+	}
+	return Event{
+		Name:        name,
+		DistinctID:  context.UserID,
+		WorkspaceID: context.WorkspaceID,
+		Properties:  properties,
+	}
+}
+
+func normalizedTwinDimension[T ~string](value T, allowed ...T) string {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return string(value)
+		}
+	}
+	return "unknown"
+}
+
+func normalizedTwinExclusion(value TwinExclusionCode) string {
+	return normalizedTwinDimension(value,
+		TwinExclusionNone,
+		TwinExclusionKillSwitch,
+		TwinExclusionPolicyOff,
+		TwinExclusionNoSignedVersion,
+		TwinExclusionIneligibleTask,
+		TwinExclusionStaleVersion,
+		TwinExclusionUnauthorized,
+		TwinExclusionLocalOnly,
+		TwinExclusionBudget,
+		TwinExclusionUnsupportedRuntime,
+	)
+}
+
+func nonNegative(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func nonNegative64(value int64) int64 {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
 
 // Onboarding completion paths. Keep in sync with packages/core/analytics.
 const (
@@ -716,6 +1037,40 @@ func AutopilotCreated(actorID, workspaceID, autopilotID, cadence, triggerKind st
 			WorkspaceID: workspaceID,
 			Source:      SourceManual,
 		}),
+	}
+}
+
+// WikiSearch records whether a tenanted Wiki search returned at least one
+// result. The constructor intentionally cannot accept the query, paths, IDs,
+// or result content, so sensitive knowledge cannot enter analytics by mistake.
+func WikiSearch(scope string, resultCount int) Event {
+	result := "empty"
+	if resultCount > 0 {
+		result = "hit"
+	}
+	return Event{
+		Name:       EventWikiSearch,
+		DistinctID: "server",
+		Properties: map[string]any{"scope": scope, "result": result},
+	}
+}
+
+// WikiProposalReview records the bounded human review outcome. edited only
+// reports whether the reviewer changed the proposal before accepting it.
+func WikiProposalReview(decision string, edited bool) Event {
+	return Event{
+		Name:       EventWikiProposalReview,
+		DistinctID: "server",
+		Properties: map[string]any{"decision": decision, "edited": edited},
+	}
+}
+
+// LMWikiReview records acceptance/rejection without artifact or citation IDs.
+func LMWikiReview(decision string) Event {
+	return Event{
+		Name:       EventLMWikiReview,
+		DistinctID: "server",
+		Properties: map[string]any{"decision": decision},
 	}
 }
 

@@ -5,7 +5,13 @@ import { isIssueStatusCategory, type IssueStatusCatalog } from "@multica/core/is
 /** The issue fields the gate reads. */
 export type GateIssue = Pick<
   Issue,
-  "id" | "status" | "status_category" | "assignee_type" | "assignee_id"
+  | "id"
+  | "title"
+  | "project_id"
+  | "status"
+  | "status_category"
+  | "assignee_type"
+  | "assignee_id"
 >;
 
 /** Payload for the `issue-run-confirm` modal, or null when nothing to confirm. */
@@ -15,6 +21,8 @@ export type RunConfirmIntent =
       mode: "assign";
       assigneeType: "agent" | "squad";
       assigneeId: string;
+      request: string;
+      projectId?: string;
     }
   | {
       issueIds: [string];
@@ -22,6 +30,8 @@ export type RunConfirmIntent =
       status: string;
       assigneeType: "agent" | "squad";
       assigneeId: string;
+      request: string;
+      projectId?: string;
     };
 
 /**
@@ -88,6 +98,8 @@ export function runConfirmIntent(
       mode: "assign",
       assigneeType: updates.assignee_type,
       assigneeId: updates.assignee_id,
+      request: issue.title,
+      ...(issue.project_id ? { projectId: issue.project_id } : {}),
     };
   }
 
@@ -109,6 +121,8 @@ export function runConfirmIntent(
         status: updates.status,
         assigneeType: owner,
         assigneeId: issue.assignee_id,
+        request: issue.title,
+        ...(issue.project_id ? { projectId: issue.project_id } : {}),
       };
     }
   }

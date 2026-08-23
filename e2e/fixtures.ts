@@ -5,6 +5,7 @@
  */
 
 import "./env";
+import { createHash, randomBytes } from "node:crypto";
 import pg from "pg";
 
 // `||` (not `??`) so an empty `NEXT_PUBLIC_API_URL=` in .env still falls
@@ -22,9 +23,96 @@ interface TestWorkspace {
 export interface TestLMWikiRevision {
   id: string;
   revision_number: number;
+  schema_version: number;
   source_digest: string;
+  source_policy_version: number;
+  source_policy_digest: string;
+  remote_generation_enabled: boolean;
+  content: {
+    schema_version: number;
+    egress_policy: {
+      remote_generation_enabled: boolean;
+      policy_version: number;
+      policy_digest: string;
+    };
+    wiki_pages: TestLMWikiPageEvidence[];
+    [key: string]: unknown;
+  };
   review: { decision: string } | null;
 }
+
+export interface TestLMWikiPageEvidence {
+  citation_key: string;
+  revision_id: string;
+  page_id: string;
+  scope: "workspace" | "project";
+  project_id?: string;
+  revision_number: number;
+  path: string;
+  title: string;
+  content: string;
+  content_digest: string;
+  created_at?: string;
+}
+
+export interface TestLMWikiCitation {
+  citation_key: string;
+  source_type: string;
+  source_id: string;
+  source_digest: string;
+}
+
+export interface TestLMWikiRevisionDetail {
+  revision: TestLMWikiRevision;
+  citations: TestLMWikiCitation[];
+}
+
+export interface TestWikiPage {
+  id: string;
+  scope: "workspace" | "project" | "user";
+  path: string;
+  title: string;
+  content: string;
+  current_revision_number: number;
+  current_revision_id: string;
+  content_digest: string;
+}
+
+export interface TestWikiRevision {
+  id: string;
+  page_id: string;
+  revision_number: number;
+  content: string;
+  content_digest: string;
+  source_kind: string;
+}
+
+export interface TestWikiProposal {
+  id: string;
+  page_id: string;
+  base_revision_number: number;
+  proposed_content: string;
+  status: "pending" | "accepted" | "rejected";
+  accepted_revision_id: string | null;
+}
+
+export interface TestLMWikiSourcePolicy {
+  source_classes: string[];
+  wiki_pages: Array<{ page_id: string; revision_number: number }>;
+  remote_generation_enabled: boolean;
+  policy_version: number;
+  policy_digest: string;
+  exclusions: Array<{
+    source_class: string;
+    state: string;
+    reason: string;
+  }>;
+}
+
+export type TestLMWikiSourcePolicyInput = Pick<
+  TestLMWikiSourcePolicy,
+  "source_classes" | "wiki_pages" | "remote_generation_enabled"
+>;
 
 export interface TestLMWikiOverview {
   latest_revision: TestLMWikiRevision | null;
@@ -57,6 +145,11 @@ export interface TestTwinOverview {
 }
 
 export interface TestWikiTwinArtifactCounts {
+  workspace_wiki_pages: number;
+  workspace_wiki_revisions: number;
+  workspace_wiki_proposals: number;
+  wiki_source_policies: number;
+  wiki_source_selections: number;
   wiki_revisions: number;
   wiki_citations: number;
   wiki_reviews: number;
@@ -162,6 +255,25 @@ export class TestApiClient {
   async getWorkspaces(): Promise<TestWorkspace[]> {
     const res = await this.authedFetch("/api/workspaces");
     return res.json();
+  }
+
+  async resetAppearancePreferences(): Promise<void> {
+    const current = await this.jsonRequest<{
+      appearance_updated_at?: string | null;
+    }>("/api/me");
+    const previous = Date.parse(current.appearance_updated_at ?? "");
+    const updatedAt = new Date(
+      Math.max(Date.now(), Number.isFinite(previous) ? previous + 1 : 0),
+    ).toISOString();
+    await this.jsonRequest("/api/me", {
+      method: "PATCH",
+      body: JSON.stringify({
+        skin: "tension",
+        appearance: "system",
+        appearance_updated_at: updatedAt,
+        appearance_token_version: 1,
+      }),
+    });
   }
 
   setWorkspaceId(id: string) {
@@ -362,8 +474,151 @@ export class TestApiClient {
     return res.json();
   }
 
+  async createWikiPage(input: {
+    scope: "workspace" | "project" | "user";
+    project_id?: string;
+    path: string;
+    title: string;
+    content: string;
+  }): Promise<TestWikiPage> {
+    return this.jsonRequest("/api/wiki/pages/", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+
+  async updateWikiPage(
+    pageId: string,
+    input: { expected_revision_number: number; path?: string; title?: string; content?: string },
+  ): Promise<TestWikiPage> {
+    return this.jsonRequest(`/api/wiki/pages/${pageId}/`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  }
+
+  async deleteWikiPage(pageId: string): Promise<void> {
+    const response = await this.authedFetch(`/api/wiki/pages/${pageId}/`, { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error(`DELETE Wiki page failed: ${response.status} ${await response.text()}`);
+    }
+  }
+
+  async deletePersonalWikiPage(pageId: string): Promise<void> {
+    const response = await this.authedFetch(`/api/personal-wiki/pages/${pageId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(
+        `DELETE Personal Wiki page failed: ${response.status} ${await response.text()}`,
+      );
+    }
+  }
+
+  async getStableWikiRevision(revisionId: string): Promise<TestWikiRevision> {
+    return this.jsonRequest(`/api/wiki/revisions/${revisionId}`);
+  }
+
+  async searchWikiPages(query: string, scope = "all"): Promise<TestWikiPage[]> {
+    return this.jsonRequest(`/api/wiki/search?q=${encodeURIComponent(query)}&scope=${encodeURIComponent(scope)}`);
+  }
+
+  async listWikiRevisions(pageId: string): Promise<TestWikiRevision[]> {
+    return this.jsonRequest(`/api/wiki/pages/${pageId}/revisions`);
+  }
+
+  async getLMWikiSourcePolicy(): Promise<TestLMWikiSourcePolicy> {
+    return this.jsonRequest("/api/lm-wiki/source-policy");
+  }
+
+  async updateLMWikiSourcePolicy(policy: TestLMWikiSourcePolicyInput): Promise<TestLMWikiSourcePolicy> {
+    return this.jsonRequest("/api/lm-wiki/source-policy", {
+      method: "PUT",
+      body: JSON.stringify(policy),
+    });
+  }
+
+  async createWikiAgentCredential(
+    issueId: string,
+  ): Promise<{ agentId: string; taskId: string; taskToken: string }> {
+    if (!this.workspaceId || !this.email) {
+      throw new Error("Cannot create a Wiki Agent credential before login and workspace setup");
+    }
+    const taskToken = `mat_${randomBytes(20).toString("hex")}`;
+    const tokenHash = createHash("sha256").update(taskToken).digest("hex");
+    const suffix = randomBytes(8).toString("hex");
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      const user = await client.query<{ id: string }>(
+        `SELECT id::text FROM "user" WHERE email = $1`,
+        [this.email],
+      );
+      const userId = user.rows[0]?.id;
+      if (!userId) throw new Error(`Cannot resolve Wiki E2E user ${this.email}`);
+      const runtime = await client.query<{ id: string }>(
+        `INSERT INTO agent_runtime (
+           workspace_id, owner_id, name, runtime_mode, provider, status,
+           visibility, device_info, metadata, last_seen_at
+         ) VALUES ($1, $2, $3, 'cloud', $4, 'online',
+                   'private', 'Wiki knowledge E2E', '{}'::jsonb, now())
+         RETURNING id::text`,
+        [this.workspaceId, userId, `Wiki knowledge runtime ${suffix}`, `wiki_e2e_${suffix}`],
+      );
+      const runtimeId = runtime.rows[0]?.id;
+      if (!runtimeId) throw new Error("Cannot create Wiki E2E runtime");
+      const agent = await client.query<{ id: string }>(
+        `INSERT INTO agent (
+           workspace_id, name, description, instructions, runtime_mode,
+           runtime_config, runtime_id, visibility, max_concurrent_tasks, owner_id
+         ) VALUES ($1, $2, 'Proposes reviewed Wiki edits', '', 'cloud',
+                   '{}'::jsonb, $3, 'workspace', 1, $4)
+         RETURNING id::text`,
+        [this.workspaceId, `Wiki proposal Agent ${suffix}`, runtimeId, userId],
+      );
+      const agentId = agent.rows[0]?.id;
+      if (!agentId) throw new Error("Cannot create Wiki E2E Agent");
+      const task = await client.query<{ id: string }>(
+        `INSERT INTO agent_task_queue (agent_id, runtime_id, issue_id, status, priority)
+         VALUES ($1, $2, $3, 'queued', 1)
+         RETURNING id::text`,
+        [agentId, runtimeId, issueId],
+      );
+      const taskId = task.rows[0]?.id;
+      if (!taskId) throw new Error("Cannot create Wiki E2E task");
+      await client.query(
+        `INSERT INTO task_token (token_hash, task_id, agent_id, workspace_id, user_id, expires_at)
+         VALUES ($1, $2, $3, $4, $5, now() + interval '15 minutes')`,
+        [tokenHash, taskId, agentId, this.workspaceId, userId],
+      );
+      await client.query("COMMIT");
+      return { agentId, taskId, taskToken };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      await client.end();
+    }
+  }
+
+  requestWithTaskToken(path: string, taskToken: string, init?: RequestInit) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...((init?.headers as Record<string, string>) ?? {}),
+      Authorization: `Bearer ${taskToken}`,
+    };
+    if (this.workspaceSlug) headers["X-Workspace-Slug"] = this.workspaceSlug;
+    else if (this.workspaceId) headers["X-Workspace-ID"] = this.workspaceId;
+    return fetch(`${API_BASE}${path}`, { ...init, headers });
+  }
+
   async getLMWiki(): Promise<TestLMWikiOverview> {
     return this.jsonRequest("/api/lm-wiki/");
+  }
+
+  async getLMWikiRevision(revisionId: string): Promise<TestLMWikiRevisionDetail> {
+    return this.jsonRequest(`/api/lm-wiki/revisions/${revisionId}`);
   }
 
   async refreshLMWiki(): Promise<{ created: boolean; revision: TestLMWikiRevision }> {
@@ -438,6 +693,11 @@ export class TestApiClient {
       const result = await client.query<TestWikiTwinArtifactCounts>(
         `
           SELECT
+            (SELECT count(*)::int FROM wiki_page WHERE workspace_id = $1) AS workspace_wiki_pages,
+            (SELECT count(*)::int FROM wiki_page_revision WHERE workspace_id = $1) AS workspace_wiki_revisions,
+            (SELECT count(*)::int FROM wiki_page_edit_proposal WHERE workspace_id = $1) AS workspace_wiki_proposals,
+            (SELECT count(*)::int FROM lm_wiki_source_policy WHERE workspace_id = $1) AS wiki_source_policies,
+            (SELECT count(*)::int FROM lm_wiki_source_wiki_page WHERE workspace_id = $1) AS wiki_source_selections,
             (SELECT count(*)::int FROM lm_wiki_revision WHERE workspace_id = $1) AS wiki_revisions,
             (SELECT count(*)::int FROM lm_wiki_citation WHERE workspace_id = $1) AS wiki_citations,
             (SELECT count(*)::int FROM lm_wiki_review WHERE workspace_id = $1) AS wiki_reviews,

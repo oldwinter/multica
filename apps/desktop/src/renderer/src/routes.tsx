@@ -32,7 +32,14 @@ import { ChatPage } from "@multica/views/chat";
 import { RoomsPage } from "@multica/views/rooms";
 import { SettingsPage } from "@multica/views/settings";
 import { TwinsPage } from "@multica/views/twins";
-import { WikiDetailPage, WikiListPage } from "./pages/wiki-page";
+import {
+  PersonalWikiDetailPage,
+  PersonalWikiListPage,
+  PersonalWikiRevisionPage,
+  WikiDetailPage,
+  WikiListPage,
+  WikiRevisionPage,
+} from "./pages/wiki-page";
 import { useT } from "@multica/views/i18n";
 import { Download, Server } from "lucide-react";
 import { DaemonSettingsTab } from "./components/daemon-settings-tab";
@@ -215,9 +222,29 @@ export const appRoutes: RouteObject[] = [
           { path: "twins", element: <TwinsPage />, handle: { title: "Twin" } },
           { path: "wiki", element: <WikiListPage />, handle: { title: "Wiki" } },
           {
+            path: "wiki/revisions/:revisionId",
+            element: <WikiRevisionPage />,
+            handle: { title: "Wiki Revision" },
+          },
+          {
             path: "wiki/:id",
             element: <WikiDetailPage />,
             handle: { title: "Wiki" },
+          },
+          {
+            path: "personal-wiki",
+            element: <PersonalWikiListPage />,
+            handle: { title: "Personal Wiki" },
+          },
+          {
+            path: "personal-wiki/revisions/:revisionId",
+            element: <PersonalWikiRevisionPage />,
+            handle: { title: "Personal Wiki Revision" },
+          },
+          {
+            path: "personal-wiki/:id",
+            element: <PersonalWikiDetailPage />,
+            handle: { title: "Personal Wiki" },
           },
           {
             path: "members/:id",

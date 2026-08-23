@@ -11,13 +11,153 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createWikiPage = `-- name: CreateWikiPage :one
-INSERT INTO wiki_page (
-    workspace_id, scope, project_id, owner_user_id, path, title, content, created_by
-) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+const acceptWikiPageEditProposal = `-- name: AcceptWikiPageEditProposal :one
+WITH candidate AS (
+    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at
+    FROM wiki_page_edit_proposal proposal
+    JOIN wiki_page page
+      ON page.workspace_id = proposal.workspace_id
+     AND page.id = proposal.page_id
+    WHERE proposal.workspace_id = $1
+      AND proposal.page_id = $2
+      AND proposal.id = $3
+      AND proposal.status = 'pending'
+      AND proposal.base_revision_number = $4
+      AND page.current_revision_number = $4
+    FOR UPDATE OF proposal, page
+), updated AS (
+    UPDATE wiki_page page SET
+        path = COALESCE($5::text, candidate.proposed_path),
+        title = COALESCE($6::text, candidate.proposed_title),
+        content = COALESCE($7::text, candidate.proposed_content),
+        content_digest = 'sha256:' || encode(sha256(convert_to(COALESCE($7::text, candidate.proposed_content), 'UTF8')), 'hex'),
+        current_revision_number = page.current_revision_number + 1,
+        current_revision_id = gen_random_uuid(),
+        last_source_kind = 'agent_proposal',
+        last_actor_type = 'member',
+        last_actor_id = $8,
+        updated_at = now()
+    FROM candidate
+    WHERE page.id = candidate.page_id
+    RETURNING page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id, candidate.id AS proposal_id
+), revision AS (
+    INSERT INTO wiki_page_revision (
+        id, workspace_id, owner_user_id, page_id, revision_number, path, title,
+        content, content_digest, actor_type, actor_id, source_kind, source_ref_id
+    )
+    SELECT current_revision_id, workspace_id, owner_user_id, id, current_revision_number, path, title,
+           content, content_digest, 'member', $8, 'agent_proposal', proposal_id
+    FROM updated
+    RETURNING id, page_id
+), reviewed AS (
+    UPDATE wiki_page_edit_proposal proposal SET
+        status = 'accepted',
+        reviewed_by_id = $8,
+        review_reason = $9,
+        reviewed_at = now(),
+        accepted_revision_id = revision.id
+    FROM revision
+    WHERE proposal.id = $3
+    RETURNING proposal.id
 )
-RETURNING id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at
+SELECT updated.id, updated.workspace_id, updated.scope, updated.project_id,
+       updated.owner_user_id, updated.path, updated.title, updated.content,
+       updated.created_by, updated.created_at, updated.updated_at,
+       updated.current_revision_number, updated.current_revision_id, updated.content_digest,
+       updated.last_source_kind, updated.last_actor_type, updated.last_actor_id
+FROM updated JOIN reviewed ON reviewed.id = updated.proposal_id
+`
+
+type AcceptWikiPageEditProposalParams struct {
+	WorkspaceID            pgtype.UUID `json:"workspace_id"`
+	PageID                 pgtype.UUID `json:"page_id"`
+	ProposalID             pgtype.UUID `json:"proposal_id"`
+	ExpectedRevisionNumber int64       `json:"expected_revision_number"`
+	OverridePath           pgtype.Text `json:"override_path"`
+	OverrideTitle          pgtype.Text `json:"override_title"`
+	OverrideContent        pgtype.Text `json:"override_content"`
+	ReviewerID             pgtype.UUID `json:"reviewer_id"`
+	ReviewReason           pgtype.Text `json:"review_reason"`
+}
+
+type AcceptWikiPageEditProposalRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	Content               string             `json:"content"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
+}
+
+func (q *Queries) AcceptWikiPageEditProposal(ctx context.Context, arg AcceptWikiPageEditProposalParams) (AcceptWikiPageEditProposalRow, error) {
+	row := q.db.QueryRow(ctx, acceptWikiPageEditProposal,
+		arg.WorkspaceID,
+		arg.PageID,
+		arg.ProposalID,
+		arg.ExpectedRevisionNumber,
+		arg.OverridePath,
+		arg.OverrideTitle,
+		arg.OverrideContent,
+		arg.ReviewerID,
+		arg.ReviewReason,
+	)
+	var i AcceptWikiPageEditProposalRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Scope,
+		&i.ProjectID,
+		&i.OwnerUserID,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
+	)
+	return i, err
+}
+
+const createWikiPage = `-- name: CreateWikiPage :one
+WITH created AS (
+    INSERT INTO wiki_page (
+        workspace_id, scope, project_id, owner_user_id, path, title, content,
+        content_digest, created_by, last_actor_id
+    ) VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7,
+        'sha256:' || encode(sha256(convert_to($7, 'UTF8')), 'hex'),
+        $8, $8
+    )
+    RETURNING id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at, current_revision_number, current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id
+), revision AS (
+    INSERT INTO wiki_page_revision (
+        id, workspace_id, owner_user_id, page_id, revision_number, path, title,
+        content, content_digest, actor_type, actor_id, source_kind
+    )
+    SELECT current_revision_id, workspace_id, owner_user_id, id, current_revision_number, path, title,
+           content, content_digest, 'member', created_by, 'human'
+    FROM created
+    RETURNING page_id
+)
+SELECT created.id, created.workspace_id, created.scope, created.project_id, created.owner_user_id, created.path, created.title, created.content, created.created_by, created.created_at, created.updated_at, created.current_revision_number, created.current_revision_id, created.content_digest, created.last_source_kind, created.last_actor_type, created.last_actor_id FROM created JOIN revision ON revision.page_id = created.id
 `
 
 type CreateWikiPageParams struct {
@@ -31,7 +171,27 @@ type CreateWikiPageParams struct {
 	CreatedBy   pgtype.UUID `json:"created_by"`
 }
 
-func (q *Queries) CreateWikiPage(ctx context.Context, arg CreateWikiPageParams) (WikiPage, error) {
+type CreateWikiPageRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	Content               string             `json:"content"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
+}
+
+func (q *Queries) CreateWikiPage(ctx context.Context, arg CreateWikiPageParams) (CreateWikiPageRow, error) {
 	row := q.db.QueryRow(ctx, createWikiPage,
 		arg.WorkspaceID,
 		arg.Scope,
@@ -42,7 +202,7 @@ func (q *Queries) CreateWikiPage(ctx context.Context, arg CreateWikiPageParams) 
 		arg.Content,
 		arg.CreatedBy,
 	)
-	var i WikiPage
+	var i CreateWikiPageRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -55,22 +215,253 @@ func (q *Queries) CreateWikiPage(ctx context.Context, arg CreateWikiPageParams) 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
+	)
+	return i, err
+}
+
+const createWikiPageEditProposal = `-- name: CreateWikiPageEditProposal :one
+WITH existing AS (
+    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at
+    FROM wiki_page_edit_proposal proposal
+    WHERE proposal.workspace_id = $1
+      AND proposal.agent_id = $2
+      AND proposal.idempotency_key = $3
+), inserted AS (
+    INSERT INTO wiki_page_edit_proposal (
+        workspace_id, page_id, base_revision_number, proposed_path,
+        proposed_title, proposed_content, content_digest, rationale,
+        evidence_refs, agent_id, idempotency_key
+    )
+    SELECT page.workspace_id, page.id, $4,
+           $5, $6, $7,
+           'sha256:' || encode(sha256(convert_to($7, 'UTF8')), 'hex'),
+           $8, $9::jsonb,
+           $2, $3
+    FROM wiki_page page
+    WHERE page.id = $10
+      AND page.workspace_id = $1
+      AND page.scope IN ('workspace', 'project')
+      AND page.current_revision_number = $4
+      AND NOT EXISTS (SELECT 1 FROM existing)
+    ON CONFLICT (workspace_id, agent_id, idempotency_key) DO NOTHING
+    RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at
+)
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM inserted
+UNION ALL
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM existing
+LIMIT 1
+`
+
+type CreateWikiPageEditProposalParams struct {
+	WorkspaceID        pgtype.UUID `json:"workspace_id"`
+	AgentID            pgtype.UUID `json:"agent_id"`
+	IdempotencyKey     string      `json:"idempotency_key"`
+	BaseRevisionNumber int64       `json:"base_revision_number"`
+	ProposedPath       string      `json:"proposed_path"`
+	ProposedTitle      string      `json:"proposed_title"`
+	ProposedContent    string      `json:"proposed_content"`
+	Rationale          string      `json:"rationale"`
+	EvidenceRefs       []byte      `json:"evidence_refs"`
+	PageID             pgtype.UUID `json:"page_id"`
+}
+
+type CreateWikiPageEditProposalRow struct {
+	ID                 pgtype.UUID        `json:"id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	PageID             pgtype.UUID        `json:"page_id"`
+	BaseRevisionNumber int64              `json:"base_revision_number"`
+	ProposedPath       string             `json:"proposed_path"`
+	ProposedTitle      string             `json:"proposed_title"`
+	ProposedContent    string             `json:"proposed_content"`
+	ContentDigest      string             `json:"content_digest"`
+	Rationale          string             `json:"rationale"`
+	EvidenceRefs       []byte             `json:"evidence_refs"`
+	AgentID            pgtype.UUID        `json:"agent_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	Status             string             `json:"status"`
+	ReviewedByID       pgtype.UUID        `json:"reviewed_by_id"`
+	ReviewReason       pgtype.Text        `json:"review_reason"`
+	ReviewedAt         pgtype.Timestamptz `json:"reviewed_at"`
+	AcceptedRevisionID pgtype.UUID        `json:"accepted_revision_id"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) CreateWikiPageEditProposal(ctx context.Context, arg CreateWikiPageEditProposalParams) (CreateWikiPageEditProposalRow, error) {
+	row := q.db.QueryRow(ctx, createWikiPageEditProposal,
+		arg.WorkspaceID,
+		arg.AgentID,
+		arg.IdempotencyKey,
+		arg.BaseRevisionNumber,
+		arg.ProposedPath,
+		arg.ProposedTitle,
+		arg.ProposedContent,
+		arg.Rationale,
+		arg.EvidenceRefs,
+		arg.PageID,
+	)
+	var i CreateWikiPageEditProposalRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.PageID,
+		&i.BaseRevisionNumber,
+		&i.ProposedPath,
+		&i.ProposedTitle,
+		&i.ProposedContent,
+		&i.ContentDigest,
+		&i.Rationale,
+		&i.EvidenceRefs,
+		&i.AgentID,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.ReviewedByID,
+		&i.ReviewReason,
+		&i.ReviewedAt,
+		&i.AcceptedRevisionID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createWikiPageWithProvenance = `-- name: CreateWikiPageWithProvenance :one
+WITH created AS (
+    INSERT INTO wiki_page (
+        workspace_id, scope, project_id, owner_user_id, path, title, content,
+        content_digest, created_by, last_source_kind, last_actor_type, last_actor_id
+    ) VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7,
+        'sha256:' || encode(sha256(convert_to($7, 'UTF8')), 'hex'),
+        $8, $9, $10, $8
+    )
+    RETURNING id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at, current_revision_number, current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id
+), revision AS (
+    INSERT INTO wiki_page_revision (
+        id, workspace_id, owner_user_id, page_id, revision_number, path, title,
+        content, content_digest, actor_type, actor_id, source_kind, source_ref_id
+    )
+    SELECT current_revision_id, workspace_id, owner_user_id, id, current_revision_number, path, title,
+           content, content_digest, $10, $8,
+           $9, $11
+    FROM created
+    RETURNING page_id
+)
+SELECT created.id, created.workspace_id, created.scope, created.project_id, created.owner_user_id, created.path, created.title, created.content, created.created_by, created.created_at, created.updated_at, created.current_revision_number, created.current_revision_id, created.content_digest, created.last_source_kind, created.last_actor_type, created.last_actor_id FROM created JOIN revision ON revision.page_id = created.id
+`
+
+type CreateWikiPageWithProvenanceParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Scope       string      `json:"scope"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	OwnerUserID pgtype.UUID `json:"owner_user_id"`
+	Path        string      `json:"path"`
+	Title       string      `json:"title"`
+	Content     string      `json:"content"`
+	ActorID     pgtype.UUID `json:"actor_id"`
+	SourceKind  string      `json:"source_kind"`
+	ActorType   string      `json:"actor_type"`
+	SourceRefID pgtype.UUID `json:"source_ref_id"`
+}
+
+type CreateWikiPageWithProvenanceRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	Content               string             `json:"content"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
+}
+
+func (q *Queries) CreateWikiPageWithProvenance(ctx context.Context, arg CreateWikiPageWithProvenanceParams) (CreateWikiPageWithProvenanceRow, error) {
+	row := q.db.QueryRow(ctx, createWikiPageWithProvenance,
+		arg.WorkspaceID,
+		arg.Scope,
+		arg.ProjectID,
+		arg.OwnerUserID,
+		arg.Path,
+		arg.Title,
+		arg.Content,
+		arg.ActorID,
+		arg.SourceKind,
+		arg.ActorType,
+		arg.SourceRefID,
+	)
+	var i CreateWikiPageWithProvenanceRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Scope,
+		&i.ProjectID,
+		&i.OwnerUserID,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
 	)
 	return i, err
 }
 
 const deleteWikiPage = `-- name: DeleteWikiPage :exec
-DELETE FROM wiki_page
-WHERE id = $1
+WITH deleted_policy_selection AS (
+    DELETE FROM lm_wiki_source_wiki_page WHERE page_id = $1
+), deleted_proposals AS (
+    DELETE FROM wiki_page_edit_proposal WHERE page_id = $1
+)
+DELETE FROM wiki_page page WHERE page.id = $1::uuid
 `
 
-func (q *Queries) DeleteWikiPage(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteWikiPage, id)
+func (q *Queries) DeleteWikiPage(ctx context.Context, deletedPageID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWikiPage, deletedPageID)
 	return err
 }
 
+const getRoomArtifactInWorkspaceForWikiEvidence = `-- name: GetRoomArtifactInWorkspaceForWikiEvidence :one
+SELECT id FROM room_artifact
+WHERE id = $1
+  AND workspace_id = $2
+`
+
+type GetRoomArtifactInWorkspaceForWikiEvidenceParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Evidence validation needs a tenant-bound existence check. Returning only the
+// identifier prevents proposal validation from loading unrelated room content.
+func (q *Queries) GetRoomArtifactInWorkspaceForWikiEvidence(ctx context.Context, arg GetRoomArtifactInWorkspaceForWikiEvidenceParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getRoomArtifactInWorkspaceForWikiEvidence, arg.ID, arg.WorkspaceID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getWikiPage = `-- name: GetWikiPage :one
-SELECT id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at FROM wiki_page
+SELECT id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at, current_revision_number, current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id FROM wiki_page
 WHERE id = $1
 `
 
@@ -89,12 +480,143 @@ func (q *Queries) GetWikiPage(ctx context.Context, id pgtype.UUID) (WikiPage, er
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
+	)
+	return i, err
+}
+
+const getWikiPageEditProposal = `-- name: GetWikiPageEditProposal :one
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM wiki_page_edit_proposal
+WHERE workspace_id = $1
+  AND page_id = $2
+  AND id = $3
+`
+
+type GetWikiPageEditProposalParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	PageID      pgtype.UUID `json:"page_id"`
+	ID          pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetWikiPageEditProposal(ctx context.Context, arg GetWikiPageEditProposalParams) (WikiPageEditProposal, error) {
+	row := q.db.QueryRow(ctx, getWikiPageEditProposal, arg.WorkspaceID, arg.PageID, arg.ID)
+	var i WikiPageEditProposal
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.PageID,
+		&i.BaseRevisionNumber,
+		&i.ProposedPath,
+		&i.ProposedTitle,
+		&i.ProposedContent,
+		&i.ContentDigest,
+		&i.Rationale,
+		&i.EvidenceRefs,
+		&i.AgentID,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.ReviewedByID,
+		&i.ReviewReason,
+		&i.ReviewedAt,
+		&i.AcceptedRevisionID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getWikiPageEditProposalByIdempotencyKey = `-- name: GetWikiPageEditProposalByIdempotencyKey :one
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM wiki_page_edit_proposal
+WHERE workspace_id = $1
+  AND agent_id = $2
+  AND idempotency_key = $3
+`
+
+type GetWikiPageEditProposalByIdempotencyKeyParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	AgentID        pgtype.UUID `json:"agent_id"`
+	IdempotencyKey string      `json:"idempotency_key"`
+}
+
+func (q *Queries) GetWikiPageEditProposalByIdempotencyKey(ctx context.Context, arg GetWikiPageEditProposalByIdempotencyKeyParams) (WikiPageEditProposal, error) {
+	row := q.db.QueryRow(ctx, getWikiPageEditProposalByIdempotencyKey, arg.WorkspaceID, arg.AgentID, arg.IdempotencyKey)
+	var i WikiPageEditProposal
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.PageID,
+		&i.BaseRevisionNumber,
+		&i.ProposedPath,
+		&i.ProposedTitle,
+		&i.ProposedContent,
+		&i.ContentDigest,
+		&i.Rationale,
+		&i.EvidenceRefs,
+		&i.AgentID,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.ReviewedByID,
+		&i.ReviewReason,
+		&i.ReviewedAt,
+		&i.AcceptedRevisionID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getWikiPageForActor = `-- name: GetWikiPageForActor :one
+SELECT id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at, current_revision_number, current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id FROM wiki_page page
+WHERE page.id = $1
+  AND (
+      (page.scope IN ('workspace', 'project')
+       AND page.workspace_id = $2::uuid)
+      OR
+      (page.scope = 'user'
+       AND page.workspace_id IS NULL
+       AND page.owner_user_id = $3::uuid)
+  )
+`
+
+type GetWikiPageForActorParams struct {
+	PageID      pgtype.UUID `json:"page_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	OwnerUserID pgtype.UUID `json:"owner_user_id"`
+}
+
+// Authorization belongs in the predicate so an unauthorized row's content is
+// never returned to the API process. workspace_id is nullable for personal
+// library calls that do not have an active workspace.
+func (q *Queries) GetWikiPageForActor(ctx context.Context, arg GetWikiPageForActorParams) (WikiPage, error) {
+	row := q.db.QueryRow(ctx, getWikiPageForActor, arg.PageID, arg.WorkspaceID, arg.OwnerUserID)
+	var i WikiPage
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Scope,
+		&i.ProjectID,
+		&i.OwnerUserID,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
 	)
 	return i, err
 }
 
 const getWikiPageInWorkspace = `-- name: GetWikiPageInWorkspace :one
-SELECT id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at FROM wiki_page
+SELECT id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at, current_revision_number, current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id FROM wiki_page
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -118,13 +640,187 @@ func (q *Queries) GetWikiPageInWorkspace(ctx context.Context, arg GetWikiPageInW
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
 	)
 	return i, err
 }
 
+const getWikiPageRevision = `-- name: GetWikiPageRevision :one
+SELECT id, workspace_id, owner_user_id, page_id, revision_number, path, title, content, content_digest, actor_type, actor_id, source_kind, source_ref_id, created_at FROM wiki_page_revision
+WHERE page_id = $1
+  AND id = $2
+`
+
+type GetWikiPageRevisionParams struct {
+	PageID pgtype.UUID `json:"page_id"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetWikiPageRevision(ctx context.Context, arg GetWikiPageRevisionParams) (WikiPageRevision, error) {
+	row := q.db.QueryRow(ctx, getWikiPageRevision, arg.PageID, arg.ID)
+	var i WikiPageRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.OwnerUserID,
+		&i.PageID,
+		&i.RevisionNumber,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.ContentDigest,
+		&i.ActorType,
+		&i.ActorID,
+		&i.SourceKind,
+		&i.SourceRefID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getWikiPageRevisionForActor = `-- name: GetWikiPageRevisionForActor :one
+SELECT id, workspace_id, owner_user_id, page_id, revision_number, path, title, content, content_digest, actor_type, actor_id, source_kind, source_ref_id, created_at FROM wiki_page_revision revision
+WHERE revision.id = $1
+  AND (
+      revision.workspace_id = $2::uuid
+      OR
+      (revision.workspace_id IS NULL
+       AND revision.owner_user_id = $3::uuid)
+  )
+`
+
+type GetWikiPageRevisionForActorParams struct {
+	RevisionID  pgtype.UUID `json:"revision_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	OwnerUserID pgtype.UUID `json:"owner_user_id"`
+}
+
+// Stable evidence lookup is independent of the live page row. Authorization is
+// evaluated on the immutable revision's own tenant/owner columns before its
+// content is returned to the API process.
+func (q *Queries) GetWikiPageRevisionForActor(ctx context.Context, arg GetWikiPageRevisionForActorParams) (WikiPageRevision, error) {
+	row := q.db.QueryRow(ctx, getWikiPageRevisionForActor, arg.RevisionID, arg.WorkspaceID, arg.OwnerUserID)
+	var i WikiPageRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.OwnerUserID,
+		&i.PageID,
+		&i.RevisionNumber,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.ContentDigest,
+		&i.ActorType,
+		&i.ActorID,
+		&i.SourceKind,
+		&i.SourceRefID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listWikiPageEditProposals = `-- name: ListWikiPageEditProposals :many
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM wiki_page_edit_proposal
+WHERE workspace_id = $1
+  AND page_id = $2
+ORDER BY created_at DESC
+`
+
+type ListWikiPageEditProposalsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	PageID      pgtype.UUID `json:"page_id"`
+}
+
+func (q *Queries) ListWikiPageEditProposals(ctx context.Context, arg ListWikiPageEditProposalsParams) ([]WikiPageEditProposal, error) {
+	rows, err := q.db.Query(ctx, listWikiPageEditProposals, arg.WorkspaceID, arg.PageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiPageEditProposal{}
+	for rows.Next() {
+		var i WikiPageEditProposal
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.PageID,
+			&i.BaseRevisionNumber,
+			&i.ProposedPath,
+			&i.ProposedTitle,
+			&i.ProposedContent,
+			&i.ContentDigest,
+			&i.Rationale,
+			&i.EvidenceRefs,
+			&i.AgentID,
+			&i.IdempotencyKey,
+			&i.Status,
+			&i.ReviewedByID,
+			&i.ReviewReason,
+			&i.ReviewedAt,
+			&i.AcceptedRevisionID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWikiPageRevisions = `-- name: ListWikiPageRevisions :many
+SELECT id, workspace_id, owner_user_id, page_id, revision_number, path, title, content, content_digest, actor_type, actor_id, source_kind, source_ref_id, created_at FROM wiki_page_revision
+WHERE page_id = $1
+ORDER BY revision_number DESC
+`
+
+func (q *Queries) ListWikiPageRevisions(ctx context.Context, pageID pgtype.UUID) ([]WikiPageRevision, error) {
+	rows, err := q.db.Query(ctx, listWikiPageRevisions, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiPageRevision{}
+	for rows.Next() {
+		var i WikiPageRevision
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.OwnerUserID,
+			&i.PageID,
+			&i.RevisionNumber,
+			&i.Path,
+			&i.Title,
+			&i.Content,
+			&i.ContentDigest,
+			&i.ActorType,
+			&i.ActorID,
+			&i.SourceKind,
+			&i.SourceRefID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWikiPagesByOwner = `-- name: ListWikiPagesByOwner :many
 SELECT id, workspace_id, scope, project_id, owner_user_id, path, title,
-       created_by, created_at, updated_at
+       created_by, created_at, updated_at, current_revision_number,
+       current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id
 FROM wiki_page
 WHERE scope = 'user'
   AND owner_user_id = $1
@@ -132,16 +828,22 @@ ORDER BY path ASC
 `
 
 type ListWikiPagesByOwnerRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	Scope       string             `json:"scope"`
-	ProjectID   pgtype.UUID        `json:"project_id"`
-	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
-	Path        string             `json:"path"`
-	Title       string             `json:"title"`
-	CreatedBy   pgtype.UUID        `json:"created_by"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
 }
 
 // Personal wiki is cross-workspace: keyed only by owner_user_id.
@@ -165,6 +867,12 @@ func (q *Queries) ListWikiPagesByOwner(ctx context.Context, ownerUserID pgtype.U
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
 		); err != nil {
 			return nil, err
 		}
@@ -178,7 +886,8 @@ func (q *Queries) ListWikiPagesByOwner(ctx context.Context, ownerUserID pgtype.U
 
 const listWikiPagesByProject = `-- name: ListWikiPagesByProject :many
 SELECT id, workspace_id, scope, project_id, owner_user_id, path, title,
-       created_by, created_at, updated_at
+       created_by, created_at, updated_at, current_revision_number,
+       current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id
 FROM wiki_page
 WHERE workspace_id = $1
   AND scope = 'project'
@@ -192,16 +901,22 @@ type ListWikiPagesByProjectParams struct {
 }
 
 type ListWikiPagesByProjectRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	Scope       string             `json:"scope"`
-	ProjectID   pgtype.UUID        `json:"project_id"`
-	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
-	Path        string             `json:"path"`
-	Title       string             `json:"title"`
-	CreatedBy   pgtype.UUID        `json:"created_by"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
 }
 
 func (q *Queries) ListWikiPagesByProject(ctx context.Context, arg ListWikiPagesByProjectParams) ([]ListWikiPagesByProjectRow, error) {
@@ -224,6 +939,12 @@ func (q *Queries) ListWikiPagesByProject(ctx context.Context, arg ListWikiPagesB
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
 		); err != nil {
 			return nil, err
 		}
@@ -237,7 +958,8 @@ func (q *Queries) ListWikiPagesByProject(ctx context.Context, arg ListWikiPagesB
 
 const listWikiPagesByWorkspaceScope = `-- name: ListWikiPagesByWorkspaceScope :many
 SELECT id, workspace_id, scope, project_id, owner_user_id, path, title,
-       created_by, created_at, updated_at
+       created_by, created_at, updated_at, current_revision_number,
+       current_revision_id, content_digest, last_source_kind, last_actor_type, last_actor_id
 FROM wiki_page
 WHERE workspace_id = $1
   AND scope = 'workspace'
@@ -245,16 +967,22 @@ ORDER BY path ASC
 `
 
 type ListWikiPagesByWorkspaceScopeRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	Scope       string             `json:"scope"`
-	ProjectID   pgtype.UUID        `json:"project_id"`
-	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
-	Path        string             `json:"path"`
-	Title       string             `json:"title"`
-	CreatedBy   pgtype.UUID        `json:"created_by"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
 }
 
 func (q *Queries) ListWikiPagesByWorkspaceScope(ctx context.Context, workspaceID pgtype.UUID) ([]ListWikiPagesByWorkspaceScopeRow, error) {
@@ -277,6 +1005,12 @@ func (q *Queries) ListWikiPagesByWorkspaceScope(ctx context.Context, workspaceID
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
 		); err != nil {
 			return nil, err
 		}
@@ -288,31 +1022,134 @@ func (q *Queries) ListWikiPagesByWorkspaceScope(ctx context.Context, workspaceID
 	return items, nil
 }
 
-const updateWikiPage = `-- name: UpdateWikiPage :one
-UPDATE wiki_page SET
-    path = COALESCE($2, path),
-    title = COALESCE($3, title),
-    content = COALESCE($4, content),
-    updated_at = now()
-WHERE id = $1
-RETURNING id, workspace_id, scope, project_id, owner_user_id, path, title, content, created_by, created_at, updated_at
+const rejectWikiPageEditProposal = `-- name: RejectWikiPageEditProposal :one
+UPDATE wiki_page_edit_proposal SET
+    status = 'rejected',
+    reviewed_by_id = $1,
+    review_reason = $2,
+    reviewed_at = now()
+WHERE workspace_id = $3
+  AND page_id = $4
+  AND id = $5
+  AND status = 'pending'
+RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at
 `
 
-type UpdateWikiPageParams struct {
-	ID      pgtype.UUID `json:"id"`
-	Path    pgtype.Text `json:"path"`
-	Title   pgtype.Text `json:"title"`
-	Content pgtype.Text `json:"content"`
+type RejectWikiPageEditProposalParams struct {
+	ReviewerID   pgtype.UUID `json:"reviewer_id"`
+	ReviewReason pgtype.Text `json:"review_reason"`
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
+	PageID       pgtype.UUID `json:"page_id"`
+	ID           pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) UpdateWikiPage(ctx context.Context, arg UpdateWikiPageParams) (WikiPage, error) {
-	row := q.db.QueryRow(ctx, updateWikiPage,
+func (q *Queries) RejectWikiPageEditProposal(ctx context.Context, arg RejectWikiPageEditProposalParams) (WikiPageEditProposal, error) {
+	row := q.db.QueryRow(ctx, rejectWikiPageEditProposal,
+		arg.ReviewerID,
+		arg.ReviewReason,
+		arg.WorkspaceID,
+		arg.PageID,
 		arg.ID,
-		arg.Path,
-		arg.Title,
-		arg.Content,
 	)
-	var i WikiPage
+	var i WikiPageEditProposal
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.PageID,
+		&i.BaseRevisionNumber,
+		&i.ProposedPath,
+		&i.ProposedTitle,
+		&i.ProposedContent,
+		&i.ContentDigest,
+		&i.Rationale,
+		&i.EvidenceRefs,
+		&i.AgentID,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.ReviewedByID,
+		&i.ReviewReason,
+		&i.ReviewedAt,
+		&i.AcceptedRevisionID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const restoreWikiPageRevision = `-- name: RestoreWikiPageRevision :one
+WITH restored AS (
+    SELECT revision.id, revision.workspace_id, revision.owner_user_id, revision.page_id, revision.revision_number, revision.path, revision.title, revision.content, revision.content_digest, revision.actor_type, revision.actor_id, revision.source_kind, revision.source_ref_id, revision.created_at
+    FROM wiki_page_revision revision
+    WHERE revision.page_id = $1
+      AND revision.id = $2
+), updated AS (
+    UPDATE wiki_page page SET
+        path = restored.path,
+        title = restored.title,
+        content = restored.content,
+        content_digest = restored.content_digest,
+        current_revision_number = page.current_revision_number + 1,
+        current_revision_id = gen_random_uuid(),
+        last_source_kind = 'restore',
+        last_actor_type = 'member',
+        last_actor_id = $3,
+        updated_at = now()
+    FROM restored
+    WHERE page.id = restored.page_id
+      AND page.current_revision_number = $4
+    RETURNING page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id, restored.id AS restored_revision_id
+), revision AS (
+    INSERT INTO wiki_page_revision (
+        id, workspace_id, owner_user_id, page_id, revision_number, path, title,
+        content, content_digest, actor_type, actor_id, source_kind, source_ref_id
+    )
+    SELECT current_revision_id, workspace_id, owner_user_id, id, current_revision_number, path, title,
+           content, content_digest, 'member', $3, 'restore', restored_revision_id
+    FROM updated
+    RETURNING page_id
+)
+SELECT updated.id, updated.workspace_id, updated.scope, updated.project_id,
+       updated.owner_user_id, updated.path, updated.title, updated.content,
+       updated.created_by, updated.created_at, updated.updated_at,
+       updated.current_revision_number, updated.current_revision_id, updated.content_digest,
+       updated.last_source_kind, updated.last_actor_type, updated.last_actor_id
+FROM updated JOIN revision ON revision.page_id = updated.id
+`
+
+type RestoreWikiPageRevisionParams struct {
+	PageID                 pgtype.UUID `json:"page_id"`
+	RevisionID             pgtype.UUID `json:"revision_id"`
+	ActorID                pgtype.UUID `json:"actor_id"`
+	ExpectedRevisionNumber int64       `json:"expected_revision_number"`
+}
+
+type RestoreWikiPageRevisionRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	Content               string             `json:"content"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
+}
+
+func (q *Queries) RestoreWikiPageRevision(ctx context.Context, arg RestoreWikiPageRevisionParams) (RestoreWikiPageRevisionRow, error) {
+	row := q.db.QueryRow(ctx, restoreWikiPageRevision,
+		arg.PageID,
+		arg.RevisionID,
+		arg.ActorID,
+		arg.ExpectedRevisionNumber,
+	)
+	var i RestoreWikiPageRevisionRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
@@ -325,6 +1162,373 @@ func (q *Queries) UpdateWikiPage(ctx context.Context, arg UpdateWikiPageParams) 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
+	)
+	return i, err
+}
+
+const searchWikiPagesAll = `-- name: SearchWikiPagesAll :many
+WITH needle AS (
+    SELECT websearch_to_tsquery('simple', $3) AS query
+)
+SELECT page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id FROM wiki_page page CROSS JOIN needle
+WHERE (
+        (workspace_id = $1 AND scope IN ('workspace', 'project'))
+        OR (workspace_id IS NULL AND scope = 'user' AND owner_user_id = $2)
+      )
+  AND (
+      to_tsvector('simple', title || ' ' || path || ' ' || content) @@ needle.query
+      OR LOWER(title || ' ' || path || ' ' || content) LIKE '%' || LOWER($3) || '%'
+  )
+ORDER BY
+  ts_rank_cd(to_tsvector('simple', title || ' ' || path || ' ' || content), needle.query) DESC,
+  CASE WHEN LOWER(title) LIKE '%' || LOWER($3) || '%' THEN 0
+       WHEN LOWER(path) LIKE '%' || LOWER($3) || '%' THEN 1
+       ELSE 2 END,
+  scope ASC, updated_at DESC, path ASC
+LIMIT $4
+`
+
+type SearchWikiPagesAllParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	OwnerUserID pgtype.UUID `json:"owner_user_id"`
+	SearchQuery string      `json:"search_query"`
+	ResultLimit int32       `json:"result_limit"`
+}
+
+func (q *Queries) SearchWikiPagesAll(ctx context.Context, arg SearchWikiPagesAllParams) ([]WikiPage, error) {
+	rows, err := q.db.Query(ctx, searchWikiPagesAll,
+		arg.WorkspaceID,
+		arg.OwnerUserID,
+		arg.SearchQuery,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiPage{}
+	for rows.Next() {
+		var i WikiPage
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Scope,
+			&i.ProjectID,
+			&i.OwnerUserID,
+			&i.Path,
+			&i.Title,
+			&i.Content,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchWikiPagesByOwner = `-- name: SearchWikiPagesByOwner :many
+WITH needle AS (
+    SELECT websearch_to_tsquery('simple', $2) AS query
+)
+SELECT page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id FROM wiki_page page CROSS JOIN needle
+WHERE scope = 'user'
+  AND owner_user_id = $1
+  AND (
+      to_tsvector('simple', title || ' ' || path || ' ' || content) @@ needle.query
+      OR LOWER(title || ' ' || path || ' ' || content) LIKE '%' || LOWER($2) || '%'
+  )
+ORDER BY
+  ts_rank_cd(to_tsvector('simple', title || ' ' || path || ' ' || content), needle.query) DESC,
+  CASE WHEN LOWER(title) LIKE '%' || LOWER($2) || '%' THEN 0
+       WHEN LOWER(path) LIKE '%' || LOWER($2) || '%' THEN 1
+       ELSE 2 END,
+  updated_at DESC, path ASC
+LIMIT $3
+`
+
+type SearchWikiPagesByOwnerParams struct {
+	OwnerUserID pgtype.UUID `json:"owner_user_id"`
+	SearchQuery string      `json:"search_query"`
+	ResultLimit int32       `json:"result_limit"`
+}
+
+func (q *Queries) SearchWikiPagesByOwner(ctx context.Context, arg SearchWikiPagesByOwnerParams) ([]WikiPage, error) {
+	rows, err := q.db.Query(ctx, searchWikiPagesByOwner, arg.OwnerUserID, arg.SearchQuery, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiPage{}
+	for rows.Next() {
+		var i WikiPage
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Scope,
+			&i.ProjectID,
+			&i.OwnerUserID,
+			&i.Path,
+			&i.Title,
+			&i.Content,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchWikiPagesInProject = `-- name: SearchWikiPagesInProject :many
+WITH needle AS (
+    SELECT websearch_to_tsquery('simple', $3) AS query
+)
+SELECT page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id FROM wiki_page page CROSS JOIN needle
+WHERE page.workspace_id = $1
+  AND scope = 'project'
+  AND project_id = $2
+  AND (
+      to_tsvector('simple', title || ' ' || path || ' ' || content) @@ needle.query
+      OR LOWER(title || ' ' || path || ' ' || content) LIKE '%' || LOWER($3) || '%'
+  )
+ORDER BY
+  ts_rank_cd(to_tsvector('simple', title || ' ' || path || ' ' || content), needle.query) DESC,
+  CASE WHEN LOWER(title) LIKE '%' || LOWER($3) || '%' THEN 0
+       WHEN LOWER(path) LIKE '%' || LOWER($3) || '%' THEN 1
+       ELSE 2 END,
+  updated_at DESC, path ASC
+LIMIT $4
+`
+
+type SearchWikiPagesInProjectParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	SearchQuery string      `json:"search_query"`
+	ResultLimit int32       `json:"result_limit"`
+}
+
+func (q *Queries) SearchWikiPagesInProject(ctx context.Context, arg SearchWikiPagesInProjectParams) ([]WikiPage, error) {
+	rows, err := q.db.Query(ctx, searchWikiPagesInProject,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.SearchQuery,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiPage{}
+	for rows.Next() {
+		var i WikiPage
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Scope,
+			&i.ProjectID,
+			&i.OwnerUserID,
+			&i.Path,
+			&i.Title,
+			&i.Content,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchWikiPagesInWorkspace = `-- name: SearchWikiPagesInWorkspace :many
+WITH needle AS (
+    SELECT websearch_to_tsquery('simple', $2) AS query
+)
+SELECT page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id FROM wiki_page page CROSS JOIN needle
+WHERE page.workspace_id = $1
+  AND scope IN ('workspace', 'project')
+  AND (
+      to_tsvector('simple', title || ' ' || path || ' ' || content) @@ needle.query
+      OR LOWER(title || ' ' || path || ' ' || content) LIKE '%' || LOWER($2) || '%'
+  )
+ORDER BY
+  ts_rank_cd(to_tsvector('simple', title || ' ' || path || ' ' || content), needle.query) DESC,
+  CASE WHEN LOWER(title) LIKE '%' || LOWER($2) || '%' THEN 0
+       WHEN LOWER(path) LIKE '%' || LOWER($2) || '%' THEN 1
+       ELSE 2 END,
+  updated_at DESC, path ASC
+LIMIT $3
+`
+
+type SearchWikiPagesInWorkspaceParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	SearchQuery string      `json:"search_query"`
+	ResultLimit int32       `json:"result_limit"`
+}
+
+func (q *Queries) SearchWikiPagesInWorkspace(ctx context.Context, arg SearchWikiPagesInWorkspaceParams) ([]WikiPage, error) {
+	rows, err := q.db.Query(ctx, searchWikiPagesInWorkspace, arg.WorkspaceID, arg.SearchQuery, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WikiPage{}
+	for rows.Next() {
+		var i WikiPage
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Scope,
+			&i.ProjectID,
+			&i.OwnerUserID,
+			&i.Path,
+			&i.Title,
+			&i.Content,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CurrentRevisionNumber,
+			&i.CurrentRevisionID,
+			&i.ContentDigest,
+			&i.LastSourceKind,
+			&i.LastActorType,
+			&i.LastActorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateWikiPage = `-- name: UpdateWikiPage :one
+WITH updated AS (
+    UPDATE wiki_page page SET
+        path = COALESCE($1::text, page.path),
+        title = COALESCE($2::text, page.title),
+        content = COALESCE($3::text, page.content),
+        content_digest = 'sha256:' || encode(sha256(convert_to(COALESCE($3::text, page.content), 'UTF8')), 'hex'),
+        current_revision_number = page.current_revision_number + 1,
+        current_revision_id = gen_random_uuid(),
+        last_source_kind = 'human',
+        last_actor_type = 'member',
+        last_actor_id = $4,
+        updated_at = now()
+    WHERE page.id = $5
+      AND page.current_revision_number = $6
+    RETURNING page.id, page.workspace_id, page.scope, page.project_id, page.owner_user_id, page.path, page.title, page.content, page.created_by, page.created_at, page.updated_at, page.current_revision_number, page.current_revision_id, page.content_digest, page.last_source_kind, page.last_actor_type, page.last_actor_id
+), revision AS (
+    INSERT INTO wiki_page_revision (
+        id, workspace_id, owner_user_id, page_id, revision_number, path, title,
+        content, content_digest, actor_type, actor_id, source_kind
+    )
+    SELECT current_revision_id, workspace_id, owner_user_id, id, current_revision_number, path, title,
+           content, content_digest, 'member', $4, 'human'
+    FROM updated
+    RETURNING page_id
+)
+SELECT updated.id, updated.workspace_id, updated.scope, updated.project_id, updated.owner_user_id, updated.path, updated.title, updated.content, updated.created_by, updated.created_at, updated.updated_at, updated.current_revision_number, updated.current_revision_id, updated.content_digest, updated.last_source_kind, updated.last_actor_type, updated.last_actor_id FROM updated JOIN revision ON revision.page_id = updated.id
+`
+
+type UpdateWikiPageParams struct {
+	NewPath                pgtype.Text `json:"new_path"`
+	NewTitle               pgtype.Text `json:"new_title"`
+	NewContent             pgtype.Text `json:"new_content"`
+	ActorID                pgtype.UUID `json:"actor_id"`
+	PageID                 pgtype.UUID `json:"page_id"`
+	ExpectedRevisionNumber int64       `json:"expected_revision_number"`
+}
+
+type UpdateWikiPageRow struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	Scope                 string             `json:"scope"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OwnerUserID           pgtype.UUID        `json:"owner_user_id"`
+	Path                  string             `json:"path"`
+	Title                 string             `json:"title"`
+	Content               string             `json:"content"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	CurrentRevisionNumber int64              `json:"current_revision_number"`
+	CurrentRevisionID     pgtype.UUID        `json:"current_revision_id"`
+	ContentDigest         string             `json:"content_digest"`
+	LastSourceKind        string             `json:"last_source_kind"`
+	LastActorType         string             `json:"last_actor_type"`
+	LastActorID           pgtype.UUID        `json:"last_actor_id"`
+}
+
+func (q *Queries) UpdateWikiPage(ctx context.Context, arg UpdateWikiPageParams) (UpdateWikiPageRow, error) {
+	row := q.db.QueryRow(ctx, updateWikiPage,
+		arg.NewPath,
+		arg.NewTitle,
+		arg.NewContent,
+		arg.ActorID,
+		arg.PageID,
+		arg.ExpectedRevisionNumber,
+	)
+	var i UpdateWikiPageRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Scope,
+		&i.ProjectID,
+		&i.OwnerUserID,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CurrentRevisionNumber,
+		&i.CurrentRevisionID,
+		&i.ContentDigest,
+		&i.LastSourceKind,
+		&i.LastActorType,
+		&i.LastActorID,
 	)
 	return i, err
 }

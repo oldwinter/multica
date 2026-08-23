@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/pkg/taskfailure"
 )
 
@@ -34,6 +35,12 @@ const (
 	labelOp           = "op"
 	labelGate         = "gate"
 	labelOutcome      = "outcome"
+	labelState        = "state"
+	labelScope        = "scope"
+	labelDecision     = "decision"
+	labelEdited       = "edited"
+	labelRating       = "rating"
+	labelExclusion    = "exclusion_code"
 )
 
 var businessMetricLabels = map[string][]string{
@@ -92,12 +99,78 @@ var businessMetricLabels = map[string][]string{
 	"multica_feedback_submitted_total":                 {labelKind, labelPlatform},
 	"multica_contact_sales_submitted_total":            {labelSource},
 	"multica_chat_output_local_path_total":             {labelKind},
+	"multica_twin_proposal_generation_total":           {labelKind, labelState},
+	"multica_twin_proposal_generation_seconds":         {labelKind, labelState},
+	"multica_twin_sign_off_total":                      {labelKind, labelDecision},
+	"multica_twin_briefing_compilation_total":          {labelState, labelScope, labelExclusion},
+	"multica_twin_briefing_compilation_seconds":        {labelState, labelScope},
+	"multica_twin_briefing_use_total":                  {labelState, labelScope, labelExclusion},
+	"multica_twin_briefing_bytes":                      {labelState, labelScope},
+	"multica_twin_briefing_tokens":                     {labelState, labelScope},
+	"multica_twin_run_feedback_total":                  {labelRating},
+	"multica_twin_task_revision_total":                 {labelDecision, labelKind},
+	"multica_twin_deposition_review_total":             {labelDecision},
+	"multica_room_outcome_total":                       {labelEventKind, labelSource, labelReason, labelKind},
 	"multica_entitlement_cache_total":                  {labelOutcome},
 	"multica_entitlement_refresh_total":                {labelOutcome},
 	"multica_entitlement_refresh_duration_seconds":     {labelOutcome},
 	"multica_entitlement_decision_total":               {labelGate, labelAction, labelReason},
 	"multica_entitlement_version_regression_total":     {labelSource},
 	"multica_autopilot_quota_decision_total":           {labelAction, labelSource, labelResult},
+	"multica_wiki_search_total":                        {labelScope, labelResult},
+	"multica_wiki_proposal_review_total":               {labelDecision, labelEdited},
+	"multica_lm_wiki_review_total":                     {labelDecision},
+}
+
+var knownRoomEvents = map[string]string{
+	analytics.EventRoomCreated:             "created",
+	analytics.EventRoomFirstCycleCompleted: "first_cycle_completed",
+	analytics.EventRoomSynthesisAccepted:   "synthesis_accepted",
+	analytics.EventRoomSynthesisRejected:   "synthesis_rejected",
+	analytics.EventRoomSynthesisRetried:    "synthesis_retried",
+	analytics.EventRoomArtifactPromoted:    "artifact_promoted",
+	analytics.EventRoomBudgetRefused:       "budget_refused",
+	analytics.EventRoomCycleFailed:         "cycle_failed",
+}
+
+var (
+	knownRoomSources = map[string]string{
+		"agent": "agent", "manual": "manual", "mention": "mention",
+		"message": "message", "schedule": "schedule", "other": "other",
+	}
+	knownRoomReasons = map[string]string{
+		"budget_exhausted": "budget_exhausted", "daily_turn_limit": "daily_turn_limit",
+		"facilitator_unavailable": "facilitator_unavailable", "malformed_synthesis": "malformed_synthesis",
+		"participant_failed": "participant_failed", "review_rejected": "review_rejected",
+		"room_paused": "room_paused", "synthesis_failed": "synthesis_failed", "other": "other",
+	}
+	knownRoomKinds = map[string]string{
+		"decision": "decision", "issue": "issue", "wiki": "wiki", "other": "other",
+	}
+)
+
+func NormalizeRoomEvent(value string) string {
+	return normalizeBounded(value, knownRoomEvents, "other")
+}
+
+func NormalizeRoomSource(value string) string {
+	return normalizeBounded(value, knownRoomSources, "other")
+}
+
+func NormalizeRoomReason(value string) string {
+	return normalizeBounded(value, knownRoomReasons, "none")
+}
+
+func NormalizeRoomKind(value string) string {
+	return normalizeBounded(value, knownRoomKinds, "none")
+}
+
+func normalizeBounded(value string, allowed map[string]string, fallback string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if normalized, ok := allowed[value]; ok {
+		return normalized
+	}
+	return fallback
 }
 
 var forbiddenMetricLabels = map[string]struct{}{

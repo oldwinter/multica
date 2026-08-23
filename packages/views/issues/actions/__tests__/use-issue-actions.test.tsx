@@ -182,6 +182,7 @@ describe("useIssueActions", () => {
       mode: "assign",
       assigneeType: "agent",
       assigneeId: "agent-1",
+      request: "Example",
     });
     expect(mockUpdateMutate).not.toHaveBeenCalled();
   });
@@ -226,6 +227,7 @@ describe("useIssueActions", () => {
       status: "rework",
       assigneeType: "agent",
       assigneeId: "agent-1",
+      request: "Example",
     });
     expect(mockUpdateMutate).not.toHaveBeenCalled();
   });

@@ -363,6 +363,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	invitationRateLimits.Recipient.Limit = envNonNegativeInt("RATE_LIMIT_INVITATION_RECIPIENT_24H", invitationRateLimits.Recipient.Limit)
 	h.InvitationRateLimiters = handler.NewMemoryInvitationRateLimiters(invitationRateLimits)
 	h.Metrics = opts.BusinessMetrics
+	if rooms, ok := h.Rooms.(interface {
+		SetAnalytics(analytics.Client, *obsmetrics.BusinessMetrics)
+	}); ok {
+		rooms.SetAnalytics(analyticsClient, opts.BusinessMetrics)
+	}
 	h.FeatureFlags = opts.FeatureFlags
 	h.TaskService.FeatureFlags = opts.FeatureFlags
 	h.TaskService.Metrics = opts.BusinessMetrics
@@ -1709,27 +1714,56 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			})
 		})
 
+		r.Route("/api/personal-wiki", func(r chi.Router) {
+			r.Use(handler.RequireHumanActor)
+			r.Get("/search", h.SearchPersonalWikiPages)
+			r.Get("/revisions/{revisionId}", h.GetStablePersonalWikiPageRevision)
+			r.Route("/pages", func(r chi.Router) {
+				r.Get("/", h.ListPersonalWikiPages)
+				r.Post("/", h.CreatePersonalWikiPage)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetPersonalWikiPage)
+					r.Put("/", h.UpdatePersonalWikiPage)
+					r.Delete("/", h.DeletePersonalWikiPage)
+					r.Get("/revisions", h.ListPersonalWikiPageRevisions)
+					r.Get("/revisions/{revisionId}", h.GetPersonalWikiPageRevision)
+					r.Post("/revisions/{revisionId}/restore", h.RestorePersonalWikiPageRevision)
+				})
+			})
+		})
+
 		// --- Workspace-scoped routes (all require workspace membership) ---
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireWorkspaceMember(queries))
 
 			r.Get("/api/twin/overview", h.GetTwinOverview)
+			r.Get("/api/wiki/search", h.SearchWikiPages)
+			r.Get("/api/wiki/revisions/{revisionId}", h.GetStableWikiPageRevision)
 			r.Route("/api/wiki/pages", func(r chi.Router) {
 				r.Get("/", h.ListWikiPages)
-				r.Post("/", h.CreateWikiPage)
+				r.With(handler.RequireHumanActor).Post("/", h.CreateWikiPage)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetWikiPage)
-					r.Put("/", h.UpdateWikiPage)
-					r.Delete("/", h.DeleteWikiPage)
+					r.With(handler.RequireHumanActor).Put("/", h.UpdateWikiPage)
+					r.With(handler.RequireHumanActor).Delete("/", h.DeleteWikiPage)
+					r.Get("/revisions", h.ListWikiPageRevisions)
+					r.Get("/revisions/{revisionId}", h.GetWikiPageRevision)
+					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/restore", h.RestoreWikiPageRevision)
+					r.Get("/proposals", h.ListWikiPageEditProposals)
+					r.Post("/proposals", h.CreateWikiPageEditProposal)
+					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/accept", h.AcceptWikiPageEditProposal)
+					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/reject", h.RejectWikiPageEditProposal)
 				})
 			})
 
 			r.Route("/api/lm-wiki", func(r chi.Router) {
 				r.Get("/", h.GetLMWiki)
+				r.Get("/source-policy", h.GetLMWikiSourcePolicy)
 				r.Get("/revisions/{revisionId}", h.GetLMWikiRevision)
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceRole(queries, "owner", "admin"))
-					r.Post("/refresh", h.RefreshLMWiki)
+					r.With(handler.RequireHumanActor).Put("/source-policy", h.UpdateLMWikiSourcePolicy)
+					r.With(handler.RequireHumanActor).Post("/refresh", h.RefreshLMWiki)
 					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/accept", h.AcceptLMWikiRevision)
 					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/reject", h.RejectLMWikiRevision)
 				})
@@ -1739,11 +1773,20 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.GetTwins)
 				r.Get("/proposals/{proposalId}", h.GetTwinProposal)
 				r.Get("/versions/{versionId}", h.GetTwinVersion)
+				r.Get("/bindings", h.ListTwinExecutionBindings)
+				r.Post("/briefings/preview", h.PreviewTwinExecutionBriefing)
+				r.Get("/tasks/{taskId}/context", h.GetTwinExecutionTaskContext)
+				r.Get("/metrics", h.GetTwinExecutionMetrics)
+				r.With(handler.RequireHumanActor).Put("/tasks/{taskId}/feedback", h.UpsertTwinExecutionFeedback)
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceRole(queries, "owner", "admin"))
-					r.Post("/proposals", h.CreateTwinProposal)
+					r.With(handler.RequireHumanActor).Post("/proposals", h.CreateTwinProposal)
+					r.With(handler.RequireHumanActor).Post("/bindings", h.UpsertTwinExecutionBinding)
+					r.With(handler.RequireHumanActor).Delete("/bindings/{bindingId}", h.DeleteTwinExecutionBinding)
+					r.With(handler.RequireHumanActor).Post("/tasks/{taskId}/depositions", h.CreateTwinExecutionDeposition)
 					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/accept", h.AcceptTwinProposal)
 					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/reject", h.RejectTwinProposal)
+					r.With(handler.RequireHumanActor).Post("/proposals/{proposalId}/correct", h.CorrectTwinProposal)
 				})
 			})
 
@@ -1755,9 +1798,16 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.With(handler.RequireHumanActor).Post("/", h.CreateRoom)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetRoom)
+					r.With(handler.RequireHumanActor).Get("/preflight", h.GetRoomPreflight)
+					r.Get("/usage", h.GetRoomUsage)
 					r.With(handler.RequireHumanActor).Post("/messages", h.PostRoomMessage)
 					r.With(handler.RequireHumanActor).Post("/wake", h.WakeRoom)
 					r.With(handler.RequireHumanActor).Put("/status", h.SetRoomStatus)
+					r.With(handler.RequireHumanActor, middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/budget", h.UpdateRoomBudget)
+					r.With(handler.RequireHumanActor).Post("/cycles/{cycleId}/synthesis/retry", h.RetryRoomSynthesis)
+					r.With(handler.RequireHumanActor).Post("/cycles/{cycleId}/review", h.ReviewRoomCycle)
+					r.With(handler.RequireHumanActor).Post("/cycles/{cycleId}/cancel", h.CancelRoomCycle)
+					r.With(handler.RequireHumanActor).Post("/memory-revisions/{revisionId}/recommendations/{key}/review", h.ReviewRoomRecommendation)
 					r.With(handler.RequireHumanActor).Post("/promotions", h.PromoteRoomArtifact)
 				})
 			})

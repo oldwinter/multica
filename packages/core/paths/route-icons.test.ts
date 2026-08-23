@@ -14,9 +14,10 @@ import {
 // route that shows up in the sidebar/tab bar must map to a WORKSPACE_PAGES
 // entry.
 describe("workspace page coverage", () => {
-  // `root` aliases `issues` (same segment) and is never rendered as its own
-  // nav item; the parameterized detail routes are resources, not pages.
-  const EXCLUDED_METHODS = new Set(["root"]);
+  // `root` aliases `issues` and personal Wiki is a sidebar account action;
+  // neither is rendered as a workspace page nav item. Parameterized detail
+  // routes are resources, not pages.
+  const EXCLUDED_METHODS = new Set(["root", "personalWiki"]);
   const KNOWN_SEGMENTS = new Set(
     (Object.keys(WORKSPACE_PAGES) as WorkspacePageKey[]).map(
       (k) => WORKSPACE_PAGES[k].segment,

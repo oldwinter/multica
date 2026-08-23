@@ -12,6 +12,7 @@ import { source } from "@/lib/source";
 import { i18n, type Lang } from "@/lib/i18n";
 import { uiTranslations, localeLabels } from "@/lib/translations";
 import { DocsSettings } from "@/components/docs-settings";
+import { DocsAppearanceProvider } from "@/components/docs-appearance-provider";
 
 // Inter (Latin UI face) is exposed under `--font-inter`. The full `--font-sans`
 // stack — Inter + the per-locale CJK fallback chain, including the Japanese-first
@@ -88,7 +89,7 @@ export default async function Layout({
     >
       <body className="font-sans">
         <Script id="multica-docs-skin" strategy="beforeInteractive">
-          {`try{var s=localStorage.getItem("multica-skin");document.documentElement.dataset.skin=["tension","relay","field"].includes(s)?s:"tension"}catch(e){document.documentElement.dataset.skin="tension"}`}
+          {`var e=document.documentElement,m=false,s="tension",a="system",d=false;try{m=matchMedia("(prefers-color-scheme: dark)").matches}catch(_){}try{var r=localStorage.getItem("multica-appearance-preferences"),p=null;try{p=r?JSON.parse(r):null}catch(_){}var f=p&&(p.version>1||p.tokenContractVersion>1),v=p&&p.version===1&&p.tokenContractVersion===1;s=f?"tension":v?p.skin:localStorage.getItem("multica-skin");a=f?"system":v?p.requestedAppearance:localStorage.getItem("theme");d=a==="dark"||(a!=="light"&&m);if(v)localStorage.setItem("theme",a)}catch(_){s="tension";a="system";d=m}e.dataset.skin=["tension","relay","field"].includes(s)?s:"tension";e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light"`}
         </Script>
         <SkinProvider>
           <RootProvider
@@ -99,15 +100,17 @@ export default async function Layout({
             }}
             search={{ options: { api: "/docs/api/search" } }}
           >
-            <DocsLayout
-              tree={source.getPageTree(lang)}
-              themeSwitch={{ enabled: false }}
-              searchToggle={{ enabled: false }}
-              sidebar={{ footer: <DocsSettings locale={lang} /> }}
-              {...baseOptions}
-            >
-              {children}
-            </DocsLayout>
+            <DocsAppearanceProvider>
+              <DocsLayout
+                tree={source.getPageTree(lang)}
+                themeSwitch={{ enabled: false }}
+                searchToggle={{ enabled: false }}
+                sidebar={{ footer: <DocsSettings locale={lang} /> }}
+                {...baseOptions}
+              >
+                {children}
+              </DocsLayout>
+            </DocsAppearanceProvider>
           </RootProvider>
         </SkinProvider>
       </body>

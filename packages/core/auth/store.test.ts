@@ -1,14 +1,21 @@
+// @vitest-environment node
+
 import { describe, expect, it, vi } from "vitest";
+import { EMPTY_USER } from "../api/schemas";
 import type { ApiClient } from "../api/client";
 import type { StorageAdapter, User } from "../types";
-import { createAuthStore } from "./store";
+import {
+  AUTHENTICATED_ACCOUNT_STORAGE_KEY,
+  createAuthStore,
+} from "./store";
 
 const fakeUser: User = {
+  ...EMPTY_USER,
   id: "u1",
   name: "Alice",
   email: "alice@example.com",
   avatar_url: null,
-} as User;
+};
 
 function makeStorage(initial: Record<string, string> = {}): StorageAdapter & {
   snapshot: () => Record<string, string>;
@@ -26,9 +33,10 @@ function makeStorage(initial: Record<string, string> = {}): StorageAdapter & {
   };
 }
 
-function makeApi(): ApiClient {
+function makeApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     setToken: vi.fn(),
+    ...overrides,
   } as unknown as ApiClient;
 }
 
@@ -46,7 +54,10 @@ describe("authStore", () => {
   });
 
   it("explicit logout still clears credentials and publishes unauthenticated state", () => {
-    const storage = makeStorage({ multica_token: "t" });
+    const storage = makeStorage({
+      multica_token: "t",
+      [AUTHENTICATED_ACCOUNT_STORAGE_KEY]: fakeUser.id,
+    });
     const api = makeApi();
     const onLogout = vi.fn();
     const store = createAuthStore({ api, storage, onLogout });
@@ -55,9 +66,42 @@ describe("authStore", () => {
     store.getState().logout();
 
     expect(storage.snapshot().multica_token).toBeUndefined();
+    expect(storage.snapshot()[AUTHENTICATED_ACCOUNT_STORAGE_KEY]).toBeUndefined();
     expect(api.setToken).toHaveBeenCalledWith(null);
     expect(onLogout).toHaveBeenCalledOnce();
     expect(store.getState().user).toBeNull();
     expect(store.getState().status).toBe("unauthenticated");
+  });
+
+  it("merges a refreshed appearance without reverting newer profile state", async () => {
+    let resolveRefresh!: (user: User) => void;
+    const refresh = new Promise<User>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const api = makeApi({ getMe: vi.fn(() => refresh) });
+    const store = createAuthStore({ api, storage: makeStorage() });
+    store.setState({
+      user: { ...fakeUser, name: "Before refresh" },
+      status: "authenticated",
+      isLoading: false,
+    });
+
+    const pending = store.getState().refreshAppearancePreferences();
+    store.setState({ user: { ...fakeUser, name: "Saved while refreshing" } });
+    resolveRefresh({
+      ...fakeUser,
+      name: "Before refresh",
+      skin: "field",
+      appearance: "dark",
+      appearanceUpdatedAt: "2026-08-23T12:00:00.000Z",
+      appearanceTokenVersion: 1,
+    });
+    await pending;
+
+    expect(store.getState().user).toMatchObject({
+      name: "Saved while refreshing",
+      skin: "field",
+      appearance: "dark",
+    });
   });
 });

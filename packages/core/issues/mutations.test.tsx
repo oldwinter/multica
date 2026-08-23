@@ -306,6 +306,29 @@ describe("useUpdateIssue — optimistic move keeps every bucketed board in sync"
     expect(qc.getQueryData<Issue>(detailKey)?.description).toBe("local edit");
   });
 
+  it("sends twin_use without leaking the run snapshot into Issue caches", async () => {
+    let resolve!: (issue: Issue) => void;
+    updateIssue.mockReturnValue(new Promise<Issue>((r) => { resolve = r; }));
+    const detailKey = issueKeys.detail(WS_ID, "issue-1");
+    qc.setQueryData<Issue>(detailKey, makeIssue(1));
+    const { result } = renderHook(() => useUpdateIssue(), { wrapper: createWrapper(qc) });
+
+    act(() => {
+      result.current.mutate({
+        id: "issue-1",
+        twin_use: { state: "enabled", twin_version_id: "version-1" },
+      });
+    });
+
+    await waitFor(() => expect(updateIssue).toHaveBeenCalledWith("issue-1", {
+      twin_use: { state: "enabled", twin_version_id: "version-1" },
+    }));
+    expect(qc.getQueryData(detailKey)).not.toHaveProperty("twin_use");
+
+    await act(async () => { resolve(makeIssue(1)); });
+    expect(qc.getQueryData(detailKey)).not.toHaveProperty("twin_use");
+  });
+
   it("uses server move intent while keeping provisional position optimistic-only", async () => {
     moveIssue.mockResolvedValue(
       makeIssue(1, { status: "in_progress", position: 15 }),
@@ -686,6 +709,28 @@ describe("useBatchUpdateIssues — optimistic patch covers filtered boards too",
     await act(async () => {
       resolve({ updated: 1 });
     });
+  });
+
+  it("keeps batch twin_use snapshots out of Issue caches", async () => {
+    let resolve!: (result: { updated: number }) => void;
+    batchUpdateIssues.mockReturnValue(new Promise<{ updated: number }>((r) => { resolve = r; }));
+    const detailKey = issueKeys.detail(WS_ID, "issue-1");
+    qc.setQueryData<Issue>(detailKey, makeIssue(1));
+    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
+
+    act(() => {
+      result.current.mutate({
+        ids: ["issue-1"],
+        updates: { twin_use: { state: "preview", twin_version_id: "version-1" } },
+      });
+    });
+
+    await waitFor(() => expect(batchUpdateIssues).toHaveBeenCalledWith(["issue-1"], {
+      twin_use: { state: "preview", twin_version_id: "version-1" },
+    }));
+    expect(qc.getQueryData(detailKey)).not.toHaveProperty("twin_use");
+
+    await act(async () => { resolve({ updated: 1 }); });
   });
 
   it("rolls both caches back when the request fails", async () => {

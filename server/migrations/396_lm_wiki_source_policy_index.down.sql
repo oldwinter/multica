@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS lm_wiki_source_policy_workspace_uidx;

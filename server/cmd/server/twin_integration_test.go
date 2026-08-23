@@ -9,11 +9,16 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func TestTwinHTTPThroughRouterAuthorizationAndLifecycle(t *testing.T) {
 	// Given
+	productionGenerator := testHandler.TwinService.ProposalGenerator
+	testHandler.TwinService.ProposalGenerator = service.InventoryTwinProposalGenerator{}
+	t.Cleanup(func() { testHandler.TwinService.ProposalGenerator = productionGenerator })
+
 	ctx := context.Background()
 	queries := db.New(testPool)
 	var workspaceID, revisionID pgtype.UUID

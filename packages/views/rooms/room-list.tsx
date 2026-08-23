@@ -1,8 +1,10 @@
 "use client";
 
-import { MessageSquareText, Plus } from "lucide-react";
-import type { Room } from "@multica/core/rooms";
+import { useMemo, useState } from "react";
+import { MessageSquareText, Plus, Search } from "lucide-react";
+import { filterRooms, type Room } from "@multica/core/rooms";
 import { Button } from "@multica/ui/components/ui/button";
+import { Input } from "@multica/ui/components/ui/input";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { cn } from "@multica/ui/lib/utils";
 import { useT, useTimeAgo } from "../i18n";
@@ -25,6 +27,8 @@ export function RoomList({
 }: RoomListProps) {
   const { t } = useT("rooms");
   const timeAgo = useTimeAgo();
+  const [query, setQuery] = useState("");
+  const filteredRooms = useMemo(() => filterRooms(rooms, query), [rooms, query]);
 
   return (
     <aside
@@ -55,6 +59,23 @@ export function RoomList({
         </Button>
       </div>
 
+      {rooms.length > 0 ? (
+        <div className="relative border-b border-surface-border px-3 py-2">
+          <Search
+            className="pointer-events-none absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t(($) => $.list.search)}
+            aria-label={t(($) => $.list.search)}
+            className="pl-7"
+          />
+        </div>
+      ) : null}
+
       <div data-testid="room-list-scroll" className="min-h-0 overflow-y-auto p-2">
         {loading ? (
           <div className="space-y-2 p-1" aria-label={t(($) => $.states.loading)}>
@@ -75,9 +96,13 @@ export function RoomList({
               {t(($) => $.actions.new_room)}
             </Button>
           </div>
+        ) : filteredRooms.length === 0 ? (
+          <p className="px-3 py-8 text-center text-caption text-muted-foreground">
+            {t(($) => $.list.no_results)}
+          </p>
         ) : (
           <ul className="space-y-0.5">
-            {rooms.map((room) => {
+            {filteredRooms.map((room) => {
               const selected = room.id === selectedId;
               return (
                 <li key={room.id}>

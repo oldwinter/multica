@@ -24,6 +24,7 @@ interface RoomTranscriptProps {
   readonly onMentionChange: (agentId: string, selected: boolean) => void;
   readonly onPost: (input: PostRoomMessageInput) => void;
   readonly onPromoteEntry: (entryId: string, title: string) => void;
+  readonly className?: string;
 }
 
 export function RoomTranscript({
@@ -34,6 +35,7 @@ export function RoomTranscript({
   onMentionChange,
   onPost,
   onPromoteEntry,
+  className,
 }: RoomTranscriptProps) {
   const { t } = useT("rooms");
   const timeAgo = useTimeAgo();
@@ -42,7 +44,7 @@ export function RoomTranscript({
     useRoomTranscriptScroll(detail.room.id, detail.entries.length);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-page-canvas" aria-labelledby="room-transcript-heading">
+    <section className={cn("min-h-0 flex-1 flex-col bg-page-canvas", className)} aria-labelledby="room-transcript-heading">
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-surface-border px-4">
         <h2 id="room-transcript-heading" className="text-body font-medium text-foreground">
           {t(($) => $.detail.transcript)}
@@ -97,9 +99,11 @@ export function RoomTranscript({
                 return (
                   <li
                     key={entry.id}
+                    id={`room-entry-${entry.id}`}
+                    tabIndex={-1}
                     data-testid={`room-entry-${entry.id}`}
                     className={cn(
-                      "group flex gap-3 rounded-lg px-2 py-2.5",
+                      "group flex gap-3 rounded-lg px-2 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       entry.type === "system" && "bg-muted/40",
                     )}
                   >

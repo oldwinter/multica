@@ -20,13 +20,15 @@ const (
 )
 
 var (
-	ErrTwinNotFound        = errors.New("twin artifact not found")
-	ErrTwinWikiNotAccepted = errors.New("twin source wiki revision is not accepted")
-	ErrTwinAlreadyCurrent  = errors.New("twin source wiki revision is already current")
-	ErrTwinAlreadyDecided  = errors.New("twin proposal is already decided")
-	ErrTwinBaseStale       = errors.New("twin proposal base version is stale")
-	ErrTwinWikiStale       = errors.New("twin proposal wiki revision is stale")
-	ErrTwinInvalidReview   = errors.New("invalid twin proposal review")
+	ErrTwinNotFound           = errors.New("twin artifact not found")
+	ErrTwinWikiNotAccepted    = errors.New("twin source wiki revision is not accepted")
+	ErrTwinAlreadyCurrent     = errors.New("twin source wiki revision is already current")
+	ErrTwinAlreadyDecided     = errors.New("twin proposal is already decided")
+	ErrTwinBaseStale          = errors.New("twin proposal base version is stale")
+	ErrTwinWikiStale          = errors.New("twin proposal wiki revision is stale")
+	ErrTwinInvalidReview      = errors.New("invalid twin proposal review")
+	ErrTwinProposalSuperseded = errors.New("twin proposal is superseded")
+	ErrTwinProposalUnchanged  = errors.New("twin proposal edit has no changes")
 )
 
 type TwinTxStarter interface {
@@ -36,6 +38,8 @@ type TwinTxStarter interface {
 type TwinService struct {
 	Queries             *db.Queries
 	TxStarter           TwinTxStarter
+	ProposalGenerator   TwinProposalGenerator
+	EvidenceProvider    TwinEvidenceProvider
 	beforeVersionCreate func() error
 }
 
@@ -49,8 +53,18 @@ type TwinVersionResult struct {
 	Version db.TwinVersion
 }
 
+type TwinProposalReviewResult struct {
+	Created  bool
+	Proposal TwinProposalDetail
+}
+
 func NewTwinService(queries *db.Queries, txStarter TwinTxStarter) *TwinService {
-	return &TwinService{Queries: queries, TxStarter: txStarter}
+	return &TwinService{
+		Queries:           queries,
+		TxStarter:         txStarter,
+		ProposalGenerator: InventoryTwinProposalGenerator{},
+		EvidenceProvider:  NewDBTwinEvidenceProvider(queries),
+	}
 }
 
 func (s *TwinService) AcceptProposal(ctx context.Context, workspaceID, proposalID, reviewerID pgtype.UUID) (TwinVersionResult, error) {
@@ -58,14 +72,15 @@ func (s *TwinService) AcceptProposal(ctx context.Context, workspaceID, proposalI
 	return result.Version, err
 }
 
-func (s *TwinService) RejectProposal(ctx context.Context, workspaceID, proposalID, reviewerID pgtype.UUID, reason string) (TwinProposalDetail, error) {
+func (s *TwinService) RejectProposal(ctx context.Context, workspaceID, proposalID, reviewerID pgtype.UUID, reason string) (TwinProposalReviewResult, error) {
 	result, err := s.reviewProposal(ctx, workspaceID, proposalID, reviewerID, "rejected", reason)
-	return result.Proposal, err
+	return TwinProposalReviewResult{Created: result.ReviewCreated, Proposal: result.Proposal}, err
 }
 
 type twinReviewResult struct {
-	Proposal TwinProposalDetail
-	Version  TwinVersionResult
+	ReviewCreated bool
+	Proposal      TwinProposalDetail
+	Version       TwinVersionResult
 }
 
 func (s *TwinService) reviewProposal(ctx context.Context, workspaceID, proposalID, reviewerID pgtype.UUID, decision, reason string) (twinReviewResult, error) {
@@ -110,10 +125,16 @@ func (s *TwinService) reviewProposal(ctx context.Context, workspaceID, proposalI
 			if err := persistSignedTwinProfile(ctx, queries, workspaceID, currentProposal, currentVersion); err != nil {
 				return twinReviewResult{}, err
 			}
+			if err := syncTwinDepositionReview(ctx, queries, workspaceID, proposal, decision); err != nil {
+				return twinReviewResult{}, err
+			}
 			if err := tx.Commit(ctx); err != nil {
 				return twinReviewResult{}, fmt.Errorf("commit repeated twin review: %w", err)
 			}
 			return twinReviewResult{Version: TwinVersionResult{Version: version}}, nil
+		}
+		if err := syncTwinDepositionReview(ctx, queries, workspaceID, proposal, decision); err != nil {
+			return twinReviewResult{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return twinReviewResult{}, fmt.Errorf("commit repeated twin review: %w", err)
@@ -127,16 +148,25 @@ func (s *TwinService) reviewProposal(ctx context.Context, workspaceID, proposalI
 	if err := validateTwinProposalFreshness(ctx, queries, workspaceID, proposal); err != nil {
 		return twinReviewResult{}, err
 	}
+	if err := validateTwinProposalHead(ctx, queries, workspaceID, proposal); err != nil {
+		return twinReviewResult{}, err
+	}
+	if err := validateTwinDepositionReview(ctx, queries, workspaceID, proposal, decision); err != nil {
+		return twinReviewResult{}, err
+	}
 	_, err = queries.CreateTwinProposalReview(ctx, db.CreateTwinProposalReviewParams{WorkspaceID: workspaceID, ProposalID: proposalID, Decision: decision, ReviewerID: reviewerID, Reason: pgtype.Text{String: reason, Valid: reason != ""}})
 	if err != nil {
 		return twinReviewResult{}, fmt.Errorf("create twin proposal review: %w", err)
 	}
 	if decision == "rejected" {
+		if err := syncTwinDepositionReview(ctx, queries, workspaceID, proposal, decision); err != nil {
+			return twinReviewResult{}, err
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return twinReviewResult{}, fmt.Errorf("commit twin rejection: %w", err)
 		}
 		detail, detailErr := s.ProposalDetail(ctx, workspaceID, proposalID)
-		return twinReviewResult{Proposal: detail}, detailErr
+		return twinReviewResult{ReviewCreated: true, Proposal: detail}, detailErr
 	}
 	if s.beforeVersionCreate != nil {
 		if err := s.beforeVersionCreate(); err != nil {
@@ -150,6 +180,12 @@ func (s *TwinService) reviewProposal(ctx context.Context, workspaceID, proposalI
 	if err := queries.RejectOtherPendingTwinProposals(ctx, db.RejectOtherPendingTwinProposalsParams{WorkspaceID: workspaceID, AcceptedProposalID: proposalID, ReviewerID: reviewerID, Reason: twinSupersededProposalReason}); err != nil {
 		return twinReviewResult{}, fmt.Errorf("reject superseded twin proposals: %w", err)
 	}
+	if err := queries.RejectReviewedTwinDepositions(ctx, workspaceID); err != nil {
+		return twinReviewResult{}, fmt.Errorf("reject superseded Twin depositions: %w", err)
+	}
+	if err := syncTwinDepositionReview(ctx, queries, workspaceID, proposal, decision); err != nil {
+		return twinReviewResult{}, err
+	}
 	version, err := queries.GetTwinVersion(ctx, db.GetTwinVersionParams{WorkspaceID: workspaceID, ID: created.ID})
 	if err != nil {
 		return twinReviewResult{}, fmt.Errorf("load created twin version: %w", err)
@@ -160,12 +196,31 @@ func (s *TwinService) reviewProposal(ctx context.Context, workspaceID, proposalI
 	if err := tx.Commit(ctx); err != nil {
 		return twinReviewResult{}, fmt.Errorf("commit twin acceptance: %w", err)
 	}
-	return twinReviewResult{Version: TwinVersionResult{Created: true, Version: version}}, nil
+	return twinReviewResult{ReviewCreated: true, Version: TwinVersionResult{Created: true, Version: version}}, nil
+}
+
+func syncTwinDepositionReview(ctx context.Context, queries *db.Queries, workspaceID pgtype.UUID, proposal db.TwinProposal, decision string) error {
+	if proposal.Kind != "deposition" {
+		return nil
+	}
+	deposition, err := queries.GetTwinDepositionByProposal(ctx, db.GetTwinDepositionByProposalParams{WorkspaceID: workspaceID, ProposalID: proposal.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrTwinNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("load reviewed Twin deposition: %w", err)
+	}
+	if _, err := queries.UpdateTwinDepositionState(ctx, db.UpdateTwinDepositionStateParams{WorkspaceID: workspaceID, ID: deposition.ID, State: decision}); errors.Is(err, pgx.ErrNoRows) {
+		return ErrTwinAlreadyDecided
+	} else if err != nil {
+		return fmt.Errorf("sync Twin deposition review: %w", err)
+	}
+	return nil
 }
 
 func persistSignedTwinProfile(ctx context.Context, queries *db.Queries, workspaceID pgtype.UUID, proposal db.TwinProposal, version db.TwinVersion) error {
 	reviewSteps := initialTwinReviewSteps
-	if proposal.Kind == "evolution" {
+	if proposal.BaseTwinVersionID.Valid || proposal.Kind == "deposition" {
 		reviewSteps = evolvedTwinReviewSteps
 	}
 	if _, err := queries.UpsertSignedTwinProfile(ctx, db.UpsertSignedTwinProfileParams{
@@ -174,6 +229,20 @@ func persistSignedTwinProfile(ctx context.Context, queries *db.Queries, workspac
 		ReviewSteps:  []byte(reviewSteps),
 	}); err != nil {
 		return fmt.Errorf("persist signed twin review profile: %w", err)
+	}
+	return nil
+}
+
+func validateTwinProposalHead(ctx context.Context, queries *db.Queries, workspaceID pgtype.UUID, proposal db.TwinProposal) error {
+	_, err := queries.GetTwinProposalReplacement(ctx, db.GetTwinProposalReplacementParams{
+		WorkspaceID: workspaceID,
+		ProposalID:  proposal.ID,
+	})
+	if err == nil {
+		return ErrTwinProposalSuperseded
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("load Twin proposal replacement: %w", err)
 	}
 	return nil
 }

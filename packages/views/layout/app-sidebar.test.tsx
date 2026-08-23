@@ -119,7 +119,10 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
   // nav to derive each item's icon from its href) stay intact; only the
   // workspace/context hooks below are stubbed to control routes in tests.
   ...(await importOriginal<typeof import("@multica/core/paths")>()),
-  paths: { workspace: (slug: string) => ({ issues: () => `/${slug}/issues` }) },
+  paths: {
+    personalWiki: () => "/personal-wiki",
+    workspace: (slug: string) => ({ issues: () => `/${slug}/issues` }),
+  },
   useCurrentWorkspace: () => ({ id: "ws-1", name: "Acme", slug: "acme" }),
   useWorkspacePaths: () => ({
     inbox: () => "/acme/inbox",
@@ -237,6 +240,13 @@ describe("PinRow", () => {
       "true",
     );
     expect(container.querySelector('button[data-href="/acme/issues"]')).not.toHaveAttribute("data-active");
+  });
+});
+
+describe("Personal Wiki discoverability", () => {
+  it("shows Personal Wiki in the account menu", () => {
+    render(<AppSidebar />);
+    expect(screen.getByTestId("personal-wiki-menu-label")).toBeTruthy();
   });
 });
 

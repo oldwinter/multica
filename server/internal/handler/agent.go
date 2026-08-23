@@ -308,6 +308,16 @@ type ActiveSiblingRunData struct {
 	StartedAt       string `json:"started_at,omitempty"`
 }
 
+// TwinBriefingData is the bounded, signed working context a capable daemon
+// appends to the current turn. It deliberately excludes mutable proposals,
+// raw evidence, policy internals, paths, credentials, and tool grants.
+type TwinBriefingData struct {
+	Briefing        string `json:"briefing"`
+	VersionID       string `json:"version_id"`
+	BriefingDigest  string `json:"briefing_digest"`
+	CompilerVersion string `json:"compiler_version"`
+}
+
 type AgentTaskResponse struct {
 	ID                   string                 `json:"id"`
 	AgentID              string                 `json:"agent_id"`
@@ -329,7 +339,9 @@ type AgentTaskResponse struct {
 	// as `## Workspace Context` so every agent running in this workspace —
 	// regardless of issue / chat / autopilot / quick-create — sees the same
 	// shared context. Empty when the workspace owner hasn't set it.
-	WorkspaceContext   string                 `json:"workspace_context,omitempty"`
+	WorkspaceContext   string            `json:"workspace_context,omitempty"`
+	TwinBriefing       *TwinBriefingData `json:"twin_briefing,omitempty"`
+	twinAttribution    *service.TwinClaimAttribution
 	ActiveSiblingRuns  []ActiveSiblingRunData `json:"active_sibling_runs,omitempty"`
 	ThreadName         string                 `json:"thread_name,omitempty"` // semantic title for provider-native session/thread history
 	Status             string                 `json:"status"`
@@ -418,6 +430,7 @@ type AgentTaskResponse struct {
 	RoomInstructions         string                 `json:"room_instructions,omitempty"`
 	RoomMemory               json.RawMessage        `json:"room_memory,omitempty"`
 	RoomTranscript           json.RawMessage        `json:"room_transcript,omitempty"`
+	RoomCostLimitTicks       *int64                 `json:"room_cost_limit_ticks,omitempty"`
 	QuickCreatePrompt        string                 `json:"quick_create_prompt,omitempty"`         // user's natural-language input for quick-create tasks
 	QuickCreatePriority      string                 `json:"quick_create_priority,omitempty"`       // explicit priority selected in quick-create
 	QuickCreateDueDate       string                 `json:"quick_create_due_date,omitempty"`       // explicit calendar due date selected in quick-create

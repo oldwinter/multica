@@ -2,7 +2,7 @@
   "page": {
     "eyebrow": "ワークスペース Wiki",
     "title": "Wiki",
-    "description": "ワークスペース・プロジェクト・個人向けの Markdown 知識ベースです。"
+    "description": "ワークスペース、プロジェクト、個人メモの検索・履歴対応 Markdown ナレッジです。"
   },
   "scopes": {
     "workspace": "ワークスペース",
@@ -10,7 +10,7 @@
     "user": "個人"
   },
   "scope_hints": {
-    "user": "個人ページはすべてのワークスペースで共有されます。"
+    "user": "個人ページはすべてのワークスペースで利用でき、LM Wiki の証拠にはなりません。"
   },
   "actions": {
     "new_page": "新規ページ",
@@ -19,25 +19,158 @@
     "edit": "編集",
     "preview": "プレビュー",
     "cancel": "キャンセル",
-    "create": "作成"
+    "create": "作成",
+    "retry": "再試行",
+    "back": "戻る"
   },
   "fields": {
     "path": "パス",
-    "path_hint": "相対 .md パス（例: index.md / concepts/agents.md）",
+    "path_hint": "index.md や concepts/agents.md などの相対 .md パス",
     "title": "タイトル",
-    "content": "本文",
+    "content": "内容",
     "project": "プロジェクト"
   },
   "empty": {
-    "title": "Wiki ページがありません",
-    "description": "Markdown ページを作成して、このスコープに知識を蓄積しましょう。",
-    "pick_project": "プロジェクトを選択して Wiki を表示します。"
+    "title": "Wiki ページはまだありません",
+    "description": "Markdown ページを作成して知識を記録しましょう。",
+    "pick_project": "Wiki を表示するプロジェクトを選択してください。"
   },
   "states": {
     "loading": "Wiki を読み込み中…",
     "error": "Wiki ページを読み込めませんでした。",
     "saving": "保存中…",
-    "saved": "保存しました"
+    "saved": "保存しました",
+    "action_error": "操作を完了できませんでした。再試行してください。"
   },
-  "delete_confirm": "この Wiki ページを削除しますか？元に戻せません。"
+  "search": {
+    "label": "Wiki を検索",
+    "placeholder": "タイトル、パス、内容を検索",
+    "clear": "検索をクリア",
+    "minimum": "2 文字以上入力してください。",
+    "loading": "Wiki を検索中…",
+    "error": "検索できません。再試行してください。",
+    "empty": "一致する Wiki ページはありません。"
+  },
+  "tabs": {
+    "document": "文書",
+    "proposals": "提案"
+  },
+  "meta": {
+    "revision": "リビジョン {{number}}",
+    "provenance": "{{actor}} による {{source}}",
+    "copy_citation": "リビジョン引用をコピー",
+    "copied": "リビジョン引用をコピーしました"
+  },
+  "history": {
+    "action": "履歴",
+    "title": "リビジョン履歴",
+    "description": "変更不可のリビジョンを比較し、旧版を新しいリビジョンとして復元します。",
+    "loading": "履歴を読み込み中…",
+    "error": "履歴を読み込めませんでした。",
+    "empty": "リビジョンはありません。",
+    "empty_content": "空のページ",
+    "timeline": "リビジョンの時系列",
+    "revision_label": "リビジョン {{number}}",
+    "compare_from": "比較元",
+    "compare_to": "比較先",
+    "provenance": "{{actor}} による {{source}}",
+    "restore": "復元",
+    "restore_title": "このリビジョンを復元しますか？",
+    "restore_description": "リビジョン {{number}} を新しいリビジョンとして復元します。既存の履歴は変わりません。"
+  },
+  "proposals": {
+    "loading": "提案を読み込み中…",
+    "error": "提案を読み込めませんでした。",
+    "empty_title": "提案はありません",
+    "empty_description": "Agent の編集は共有知識を変更する前にここで確認できます。",
+    "list_label": "Wiki の提案",
+    "review_title": "編集提案を確認",
+    "base_revision": "リビジョン {{number}} に基づく",
+    "no_rationale": "理由はありません。",
+    "evidence": "証拠",
+    "accept": "提案を承認",
+    "reject": "却下",
+    "reject_title": "この提案を却下しますか？",
+    "reject_description": "提案と確認結果は履歴に残ります。",
+    "reason": "理由（任意）",
+    "review_reason": "確認理由：{{reason}}",
+    "stale": "この提案は古いリビジョンに基づいています。最新版を読み込んで再確認してください。"
+  },
+  "conflict": {
+    "title": "編集中にページが変更されました",
+    "description": "サーバーはリビジョン {{number}} です。最新版を読み込むか、下書きを保持して手動で統合してください。",
+    "reload": "サーバー版を読み込む",
+    "merge": "下書きを統合",
+    "merge_title": "統合内容を確認",
+    "merge_description": "下書きは保持されています。保存前にサーバー版と比較してください。",
+    "server_version": "現在のサーバー版を表示",
+    "stale_restore": "復元前にページが変更されました。履歴を再読み込みしてください。"
+  },
+  "delete_dialog": {
+    "title": "この Wiki ページを削除しますか？",
+    "description": "ページと共有参照が削除されます。この操作は元に戻せません。"
+  },
+  "personal": {
+    "eyebrow": "非公開ナレッジ",
+    "title": "個人 Wiki",
+    "description": "自分だけが閲覧・編集でき、ワークスペースをまたいで使える非公開 Markdown ノートです。個人ページが共有 LM Wiki の証拠になることはありません。",
+    "search_label": "個人 Wiki を検索",
+    "search_placeholder": "タイトル、パス、内容を検索",
+    "empty_title": "個人ページはまだありません",
+    "empty_description": "ワークスペースを離れても利用できる非公開 Markdown ページを作成します。",
+    "stable_revision": "固定リビジョン",
+    "delete_description": "現在のページは削除されます。不変のリビジョンリンクは引き続き自分だけが利用できます。"
+  },
+  "revision": {
+    "title": "Wiki リビジョン",
+    "shared_eyebrow": "ワークスペースの証拠",
+    "personal_eyebrow": "非公開の証拠",
+    "read_only": "読み取り専用",
+    "description": "この不変スナップショットは、引用されたリビジョンの正確な内容と来歴を保持します。",
+    "loading": "リビジョンを読み込み中...",
+    "error": "このリビジョンを読み込めないか、アクセス権がありません。",
+    "citation": "正規引用",
+    "digest": "コンテンツダイジェスト",
+    "revision_number": "リビジョン番号",
+    "provenance": "来歴",
+    "created_at": "作成日時",
+    "open_stable": "固定リビジョンを開く",
+    "copy_error": "引用をコピーできませんでした。"
+  },
+  "source_policy": {
+    "title": "LM Wiki のソース",
+    "description": "証拠クラスと正確な Wiki リビジョンを次回の更新用に固定します。",
+    "remote_title": "リモート生成",
+    "remote_description": "デフォルトではオフです。このワークスペースでリモート生成を許可する場合のみ有効にします。",
+    "remote_label": "リモート生成を許可",
+    "remote_owner_only": "リモート生成を変更できるのはワークスペースの owner と admin のみです。",
+    "remote_exclusions": "ローカル限定ソースと個人 Wiki ページは常に除外されます。",
+    "exclusions_title": "永続的な除外",
+    "exclusion_always": "常に除外",
+    "exclusion_personal": "個人 Wiki ページ",
+    "exclusion_personal_reason": "非公開の個人スコープは共有証拠になりません。",
+    "exclusion_local_only": "ローカル限定ソース",
+    "exclusion_local_only_reason": "ローカル限定コンテンツが owner のデーモン外に出ることはありません。",
+    "classes": "ソースクラス",
+    "pages": "固定した Wiki リビジョン",
+    "save": "ソースポリシーを保存",
+    "saving": "保存中…",
+    "saved": "ソースポリシーを保存しました",
+    "loading": "ポリシーを読み込み中…",
+    "error": "ポリシーを読み込めませんでした。",
+    "save_error": "ポリシーを保存できませんでした。",
+    "read_only": "変更できるのは owner と admin のみです。",
+    "empty_pages": "利用できる Wiki ページはありません。",
+    "revision": "リビジョン {{number}}",
+    "digest": "ダイジェスト {{digest}}",
+    "provenance": "{{actor}} による {{source}}",
+    "personal_excluded": "個人ページは非公開のため LM Wiki の証拠にはできません。",
+    "eligible": "対象",
+    "excluded": "除外",
+    "classes_issue": "タスク",
+    "classes_project": "プロジェクト",
+    "classes_project_resource": "プロジェクトリソース",
+    "classes_autopilot_run": "完了した自動化実行",
+    "classes_wiki_page": "固定した Wiki ページ"
+  }
 }

@@ -34,7 +34,10 @@ export async function reloadAppPage(page: Page) {
  *
  * Returns the E2E workspace slug so callers can build workspace-scoped URLs.
  */
-export async function loginAsDefault(page: Page): Promise<string> {
+export async function loginAsDefaultWithApi(
+  page: Page,
+  options: { navigate?: boolean } = {},
+): Promise<{ api: TestApiClient; workspaceSlug: string }> {
   const api = new TestApiClient();
   await api.login(DEFAULT_E2E_EMAIL, DEFAULT_E2E_NAME);
   const workspace = await api.ensureWorkspace(
@@ -43,6 +46,20 @@ export async function loginAsDefault(page: Page): Promise<string> {
   );
   await api.markUserOnboarded();
 
+  await authenticatePageWithApi(page, api);
+  if (options.navigate !== false) {
+    await page.goto(`/${workspace.slug}/issues`, {
+      waitUntil: "domcontentloaded",
+    });
+    await waitForIssuesPage(page);
+  }
+  return { api, workspaceSlug: workspace.slug };
+}
+
+export async function authenticatePageWithApi(
+  page: Page,
+  api: TestApiClient,
+): Promise<void> {
   const token = api.getToken();
   if (!token) {
     throw new Error("E2E login did not return an auth token");
@@ -52,9 +69,14 @@ export async function loginAsDefault(page: Page): Promise<string> {
     localStorage.setItem("multica_token", t);
     localStorage.setItem("multica:chat:isOpen", "false");
   }, token);
-  await page.goto(`/${workspace.slug}/issues`, { waitUntil: "domcontentloaded" });
-  await waitForIssuesPage(page);
-  return workspace.slug;
+}
+
+export async function loginAsDefault(
+  page: Page,
+  options: { navigate?: boolean } = {},
+): Promise<string> {
+  const { workspaceSlug } = await loginAsDefaultWithApi(page, options);
+  return workspaceSlug;
 }
 
 /**

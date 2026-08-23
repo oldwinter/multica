@@ -1,4 +1,4 @@
-import type { WSMessage, WSEventType } from "../types/events";
+import type { WSMessage, WSEventPayload, WSEventType } from "../types/events";
 import { type Logger, noopLogger } from "../logger";
 
 type EventHandler = (payload: unknown, actorId?: string, actorType?: string) => void;
@@ -214,13 +214,21 @@ export class WSClient {
     this.onReconnectCallbacks.clear();
   }
 
-  on(event: WSEventType, handler: EventHandler) {
+  on<E extends WSEventType>(
+    event: E,
+    handler: (
+      payload: WSEventPayload<E>,
+      actorId?: string,
+      actorType?: string,
+    ) => void,
+  ) {
+    const eventHandler = handler as EventHandler;
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
-    this.handlers.get(event)!.add(handler);
+    this.handlers.get(event)!.add(eventHandler);
     return () => {
-      this.handlers.get(event)?.delete(handler);
+      this.handlers.get(event)?.delete(eventHandler);
     };
   }
 

@@ -28,13 +28,20 @@ export type ThemeTransitionOrigin = {
   y: number;
 };
 
+export type ThemeTransitionOptions = {
+  origin?: ThemeTransitionOrigin;
+  animate?: boolean;
+};
+
+type ThemeTransitionInput = ThemeTransitionOrigin | ThemeTransitionOptions;
+
 type ViewTransitionDocument = Document & {
   startViewTransition(update: () => void): { finished: Promise<void> };
 };
 
 type SkinContextValue = {
   skin: Skin;
-  setSkin: (skin: Skin, origin?: ThemeTransitionOrigin) => void;
+  setSkin: (skin: Skin, options?: ThemeTransitionInput) => void;
 };
 
 const SkinContext = createContext<SkinContextValue | null>(null);
@@ -79,12 +86,26 @@ function activeControlOrigin(): ThemeTransitionOrigin | undefined {
   };
 }
 
+function transitionOptions(
+  input?: ThemeTransitionInput,
+): ThemeTransitionOptions {
+  if (!input) return {};
+  if ("x" in input && "y" in input) return { origin: input };
+  return input;
+}
+
 function useThemeTransition() {
   const reduceMotion = useReducedMotion() ?? false;
 
   return useCallback(
-    (update: () => void, origin?: ThemeTransitionOrigin) => {
-      if (reduceMotion || !supportsViewTransitions(document)) {
+    (update: () => void, input?: ThemeTransitionInput) => {
+      const { origin, animate = true } = transitionOptions(input);
+      if (
+        !animate ||
+        reduceMotion ||
+        document.visibilityState === "hidden" ||
+        !supportsViewTransitions(document)
+      ) {
         update();
         return;
       }
@@ -128,13 +149,13 @@ export function SkinProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSkin = useCallback(
-    (next: Skin, origin?: ThemeTransitionOrigin) => {
+    (next: Skin, options?: ThemeTransitionInput) => {
       if (next === skin) return;
       transition(() => {
         applySkin(next);
         setSkinState(next);
         persistSkin(next);
-      }, origin);
+      }, options);
     },
     [skin, transition],
   );
@@ -153,13 +174,13 @@ export function useTheme() {
   const value = useNextTheme();
   const transition = useThemeTransition();
   const setTheme = useCallback(
-    (next: string, origin?: ThemeTransitionOrigin) => {
+    (next: string, options?: ThemeTransitionInput) => {
       if (next === value.theme) return;
       if (next === "system") {
         value.setTheme(next);
         return;
       }
-      transition(() => value.setTheme(next), origin);
+      transition(() => value.setTheme(next), options);
     },
     [transition, value],
   );

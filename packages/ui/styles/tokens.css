@@ -31,9 +31,23 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-disabled-foreground: var(--disabled-foreground);
+    --color-control-border: var(--control-border);
     --color-success: var(--success);
     --color-warning: var(--warning);
     --color-info: var(--info);
+    --color-status-backlog: var(--status-backlog);
+    --color-status-todo: var(--status-todo);
+    --color-status-in-progress: var(--status-in-progress);
+    --color-status-done: var(--status-done);
+    --color-status-cancelled: var(--status-cancelled);
+    --color-code-background: var(--code-background);
+    --color-code-foreground: var(--code-foreground);
+    --color-editor-selection: var(--editor-selection);
+    --color-editor-selection-foreground: var(--editor-selection-foreground);
+    --color-platform-chrome: var(--platform-chrome);
+    --color-platform-chrome-foreground: var(--platform-chrome-foreground);
     --color-brand: var(--brand);
     --color-brand-foreground: var(--brand-foreground);
     --color-accent-foreground: var(--accent-foreground);
@@ -180,11 +194,14 @@
        for a third readable step (AA caps a lighter text tone at L 0.523 here,
        0.018 away from muted — a difference no one can see). */
     --faint-foreground: oklch(0.606 0.016 285.938);
+    --disabled-foreground: var(--faint-foreground);
     --accent: oklch(0.944 0.025 25);
     --accent-foreground: oklch(0.42 0.15 28);
     --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: var(--primary-foreground);
     --border: oklch(0.945 0.003 286.32);
-    --input: oklch(0.92 0.004 286.32);
+    --control-border: oklch(0.61 0.004 286.32);
+    --input: var(--control-border);
     --ring: oklch(0.56 0.205 28);
     /* Brand-derived blue gradient (h=255 = brand hue). chart-1 equals brand
        so the most important series visually anchors to the product colour;
@@ -193,14 +210,14 @@
        for attention as five equally-weighted greys. */
     --chart-1: oklch(0.56 0.205 28);
     --chart-2: oklch(0.58 0.13 190);
-    --chart-3: oklch(0.72 0.14 80);
+    --chart-3: oklch(0.64 0.14 80);
     --chart-4: oklch(0.56 0.13 300);
     --chart-5: oklch(0.62 0.10 145);
     --radius: 0.5rem;
     --sidebar: oklch(0.958 0.004 25);
     --sidebar-foreground: oklch(0.141 0.005 285.823);
     --sidebar-primary: oklch(0.56 0.205 28);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-accent: oklch(0.928 0.018 25);
     --sidebar-accent-foreground: oklch(0.32 0.08 28);
     --sidebar-border: oklch(0.92 0.004 286.32);
@@ -210,6 +227,27 @@
     --success: oklch(0.55 0.16 145);
     --warning: oklch(0.75 0.16 85);
     --info: oklch(0.55 0.18 250);
+    /* Contract v1 extension tokens. These aliases give every platform and
+       product surface one semantic vocabulary without duplicating palettes. */
+    --overlay-backdrop: oklch(0 0 0 / 48%);
+    --code-background: var(--surface);
+    --code-foreground: var(--surface-foreground);
+    --editor-selection: var(--surface-selected);
+    --editor-selection-foreground: var(--surface-selected-foreground);
+    --platform-chrome: var(--app-shell);
+    --platform-chrome-foreground: var(--foreground);
+    --status-backlog: var(--muted-foreground);
+    --status-todo: var(--foreground);
+    --status-in-progress: var(--info);
+    --status-done: var(--success);
+    --status-cancelled: var(--faint-foreground);
+    /* Decorative spectrum is centralized here so effects never smuggle a
+       second product palette into shared component CSS. */
+    --effect-spectrum-1: oklch(0.82 0.12 65);
+    --effect-spectrum-2: oklch(0.72 0.19 25);
+    --effect-spectrum-3: oklch(0.72 0.16 350);
+    --effect-spectrum-4: oklch(0.66 0.17 300);
+    --effect-spectrum-5: oklch(0.68 0.16 255);
     --scrollbar-thumb: oklch(0 0 0 / 10%);
     --scrollbar-thumb-hover: oklch(0 0 0 / 18%);
     --scrollbar-track: transparent;
@@ -256,7 +294,8 @@
     --accent-foreground: oklch(0.91 0.06 28);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 6%);
-    --input: oklch(1 0 0 / 15%);
+    --control-border: oklch(0.55 0.008 25);
+    --input: var(--control-border);
     --ring: oklch(0.68 0.19 28);
     /* Dark mode mirrors light mode's "primary → secondary" gradient on the
        brand hue, but flips the lightness curve: the most important series
@@ -270,7 +309,7 @@
     --sidebar: oklch(0.21 0.006 285.885);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.68 0.19 28);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-accent: oklch(0.275 0.025 25);
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
@@ -300,7 +339,7 @@
     --ring: oklch(0.48 0.12 190);
     --chart-1: oklch(0.48 0.12 190);
     --chart-2: oklch(0.62 0.18 32);
-    --chart-3: oklch(0.7 0.13 82);
+    --chart-3: oklch(0.64 0.13 82);
     --chart-4: oklch(0.56 0.13 285);
     --chart-5: oklch(0.58 0.11 145);
     --sidebar: oklch(0.955 0.009 210);
@@ -348,7 +387,7 @@
     --accent-foreground: oklch(0.35 0.095 145);
     --ring: oklch(0.46 0.115 145);
     --chart-1: oklch(0.46 0.115 145);
-    --chart-2: oklch(0.72 0.15 82);
+    --chart-2: oklch(0.64 0.15 82);
     --chart-3: oklch(0.58 0.13 28);
     --chart-4: oklch(0.53 0.11 240);
     --chart-5: oklch(0.56 0.1 305);

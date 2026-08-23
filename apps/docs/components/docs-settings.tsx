@@ -1,8 +1,8 @@
 "use client";
 
-import { Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Monitor, Moon, Palette, RotateCcw, Sun } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -10,18 +10,14 @@ import {
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { cn } from "@multica/ui/lib/utils";
-import {
-  SKIN_IDS,
-  parseSkin,
-  useSkin,
-  useTheme,
-  type Skin,
-} from "@multica/ui/components/common/theme-provider";
+import { SKIN_IDS, type SkinId } from "@multica/core/appearance";
 import { i18n } from "@/lib/i18n";
 import { localeLabels } from "@/lib/translations";
+import { useDocsAppearance } from "@/components/docs-appearance-provider";
 
 // Sidebar-footer chrome: a language switch on the left and a theme switch
 // on the right. Replaces Fumadocs's default icon-only row, which buried
@@ -51,24 +47,30 @@ const THEME_OPTIONS: { value: string; label: string; icon: ReactNode }[] = [
   { value: "system", label: "System", icon: <Monitor className="size-4" /> },
 ];
 
-const SKIN_LABELS: Record<Skin, string> = {
+const SKIN_LABELS: Record<SkinId, string> = {
   tension: "Tension",
   relay: "Relay",
   field: "Field",
 };
 
+const RESET_APPEARANCE_LABELS: Record<string, string> = {
+  en: "Reset appearance",
+  "zh-Hans": "重置外观",
+  ja: "外観をリセット",
+  ko: "화면 표시 재설정",
+};
+
 export function DocsSettings({ locale }: { locale: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { theme, setTheme } = useTheme();
-  const { skin, setSkin } = useSkin();
-
-  // Gate theme reads until mount — next-themes is SSR-incompatible and
-  // would otherwise cause a hydration flash of the wrong icon.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  const activeTheme = mounted ? (theme ?? "system") : "system";
+  const {
+    preferences,
+    selectSkin,
+    selectAppearance,
+    reset: resetAppearance,
+  } = useDocsAppearance();
+  const skin = preferences.skin;
+  const activeTheme = preferences.requestedAppearance;
   const activeThemeOption =
     THEME_OPTIONS.find((o) => o.value === activeTheme) ?? THEME_OPTIONS[2]!;
 
@@ -125,7 +127,7 @@ export function DocsSettings({ locale }: { locale: string }) {
         <DropdownMenuContent align="end" side="top" className="min-w-[140px]">
           <DropdownMenuRadioGroup
             value={skin}
-            onValueChange={(value) => setSkin(parseSkin(value))}
+            onValueChange={(value) => selectSkin(value as SkinId)}
           >
             {SKIN_IDS.map((option) => (
               <DropdownMenuRadioItem
@@ -137,6 +139,14 @@ export function DocsSettings({ locale }: { locale: string }) {
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={resetAppearance}
+            className="min-h-11 gap-2 md:min-h-8"
+          >
+            <RotateCcw className="size-4" aria-hidden="true" />
+            {RESET_APPEARANCE_LABELS[locale] ?? RESET_APPEARANCE_LABELS.en}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -159,7 +169,9 @@ export function DocsSettings({ locale }: { locale: string }) {
         <DropdownMenuContent align="end" side="top" className="min-w-[140px]">
           <DropdownMenuRadioGroup
             value={activeTheme}
-            onValueChange={(value) => setTheme(value)}
+            onValueChange={(value) =>
+              selectAppearance(value as "system" | "light" | "dark")
+            }
           >
             {THEME_OPTIONS.map((opt) => (
               <DropdownMenuRadioItem

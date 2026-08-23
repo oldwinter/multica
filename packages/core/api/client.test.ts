@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY, clientErrorMessage } from "./client";
 import { EMPTY_PLUGIN_PREVIEW } from "./schemas";
@@ -37,6 +39,32 @@ describe("ApiClient error logging", () => {
       expect.objectContaining({ error: "missing authorization" }),
     );
     expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("ApiClient appearance boundary", () => {
+  it("serializes camelCase appearance fields to the wire contract", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "user-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new ApiClient("https://api.example.test").updateMe({
+      skin: "relay",
+      appearance: "dark",
+      appearanceUpdatedAt: "2026-08-23T12:00:00.000Z",
+      appearanceTokenVersion: 1,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      skin: "relay",
+      appearance: "dark",
+      appearance_updated_at: "2026-08-23T12:00:00.000Z",
+      appearance_token_version: 1,
+    });
   });
 });
 

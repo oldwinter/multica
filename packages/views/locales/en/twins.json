@@ -4,7 +4,7 @@
     "title": "LM Wiki and Twin",
     "description": "Inspect workspace knowledge and approve the Twin versions built from it."
   },
-  "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder" },
+  "tabs": { "wiki": "LM Wiki", "twin": "Twin Builder", "use": "Use" },
   "states": {
     "loading": "Loading LM Wiki and Twin",
     "loading_description": "Retrieving the latest review history.",
@@ -34,6 +34,24 @@
     "awaiting_wiki": "Accept a Wiki revision to start Twin Builder.",
     "rejected_guidance": "Refresh the Wiki after its sources change to build another evolution proposal.",
     "empty_assertions": "No assertions are present."
+  },
+  "assertions": { "applicability": "Applies to", "confidence": "{{value}}% confidence", "provenance": "Provenance" },
+  "deposition": { "evidence_title": "Sanitized run evidence", "task": "Task", "base_version": "Base Twin version", "status": "Run status", "completed": "Completed", "feedback": "Run feedback", "evidence_digest": "Evidence digest", "sanitized_notice": "Only audit metadata is retained here. Raw output and local paths are never included.", "edit_action": "Edit deposition", "edit_title": "Edit deposition assertions", "edit_description": "Saving creates a replacement proposal. The current proposal remains unchanged.", "edit_label": "Assertions JSON", "edit_invalid_json": "Enter valid JSON.", "edit_array_required": "Provide an array of assertions. Use [] to remove all.", "edit_assertion_required": "Every assertion needs a non-empty id and text.", "edit_duplicate_id": "Assertion ids must be unique.", "edit_no_changes": "Make a change before creating a replacement.", "edit_ready": "Changes are ready for review.", "edit_submit": "Create replacement", "edit_saving": "Creating replacement" },
+  "correction": { "edit_action": "Edit proposal", "edit_title": "Edit proposal assertions", "edit_description": "Saving creates a validated correction. This proposal and signed versions remain unchanged.", "edit_label": "Assertions JSON", "edit_no_changes": "Make a change before creating a correction.", "edit_ready": "Changes are ready for validation.", "edit_submit": "Create correction", "edit_saving": "Creating correction" },
+  "use": {
+    "title": "Twin execution policy", "description": "Explicitly choose where a signed Twin may preview or shape an agent run. New scopes stay off until saved.",
+    "loading": "Loading Twin execution policy", "error_title": "Execution policy unavailable", "error_description": "The latest bindings and metrics could not be loaded.", "stale_title": "Showing the last known policy", "stale_description": "The latest policy could not be reached. Review this cached state before making changes.", "try_again": "Try again",
+    "kill_switch_title": "Twin execution is paused", "kill_switch_fallback": "An operator disabled Twin execution. Existing audit history remains readable.", "read_only": "You can inspect policies and previews. An owner or admin manages bindings.",
+    "binding_title": "Policy binding", "binding_description": "More specific scopes override broader scopes. Every binding pins an immutable signed version.",
+    "scope": "Scope", "scope_workspace": "Workspace", "scope_agent": "Agent", "scope_project": "Project", "scope_issue": "Issue", "scope_id": "Scope ID", "scope_id_placeholder": "UUID for the selected scope", "version": "Signed version", "state": "Mode",
+    "state_off": "Off", "state_preview": "Preview", "state_enabled": "Enabled", "state_off_description": "No briefing is injected.", "state_preview_description": "Compile and inspect only; no briefing bytes leave the control plane.", "state_enabled_description": "Inject the bounded signed briefing into eligible runs.", "default_off": "Default: off",
+    "save_binding": "Save binding", "saving_binding": "Saving binding", "configured_title": "Configured bindings", "configured_empty": "No explicit bindings. Twin execution is off by default.", "delete_binding": "Delete binding",
+    "preview_title": "Briefing preview", "preview_description": "Resolve precedence and compile the exact bounded briefing before enabling it.", "agent_id": "Agent ID", "project_id": "Project ID (optional)", "issue_id": "Issue ID (optional)", "run_id": "One-off run ID (optional)", "request": "Run request", "request_placeholder": "Describe the work this run will perform", "tags": "Tags (comma separated)", "preview_action": "Compile preview", "previewing": "Compiling preview",
+    "effective_policy": "Effective policy", "effective_source": "Effective source", "no_effective_source": "No explicit binding", "exclusions": "Exclusions", "exact_briefing": "Exact briefing", "empty_briefing": "No briefing bytes will be injected for this policy.", "compiler": "Compiler", "budget": "{{bytes}} bytes · {{tokens}} tokens",
+    "metrics_title": "Execution feedback", "attributed_runs": "Attributed runs", "helpfulness": "Helpfulness", "feedback": "Feedback", "depositions": "Depositions", "bindings": "Bindings", "feedback_summary": "{{total}} · {{helped}} helped", "deposition_summary": "{{total}} · {{pending}} pending", "not_available": "Not enough feedback yet", "mutation_failed": "The policy change could not be saved. Try again.", "preview_failed": "The briefing preview could not be compiled. Check the IDs and try again."
+  },
+  "task_context": {
+    "title": "Twin run context", "version": "Twin v{{number}}", "policy": "Policy", "compiler": "Compiler", "budget": "{{bytes}} bytes · {{tokens}} tokens", "briefing_digest": "Briefing digest", "version_digest": "Version digest", "exact_briefing": "Dispatched briefing", "assertions": "Assertions", "citations": "Citations", "feedback_prompt": "Was this Twin context useful?", "feedback_helped": "Helped", "feedback_irrelevant": "Irrelevant", "feedback_mismatch": "Mismatch", "feedback_saved": "Feedback saved", "deposition_action": "Propose deposition", "deposition_pending": "Creating deposition", "deposition_created": "Deposition proposal created", "deposition_exists": "{{count}} deposition proposals", "action_failed": "The Twin action failed. Try again.", "unavailable": "No signed Twin context was dispatched for this run."
   },
   "selectors": {
     "wiki_revision": "Wiki revision",
@@ -75,7 +93,8 @@
     "title": "Assertion changes",
     "added": "Added assertions",
     "removed": "Removed assertions",
-    "unchanged": "Unchanged assertions"
+    "unchanged": "Unchanged assertions",
+    "changed": "Changed assertions"
   },
   "review": {
     "title": "Twin review progress",

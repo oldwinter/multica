@@ -40,6 +40,7 @@ const proposal = {
   content: { schema_version: 1, assertions: [] },
   content_digest: "sha256:twin",
   requested_by_id: null,
+  replaces_proposal_id: null,
   created_at: "2026-08-11T00:00:00Z",
   review: null,
   signed_version: null,
@@ -145,6 +146,19 @@ describe("Twin wire schemas", () => {
     expect(parsed.proposal.kind).toBe("reconciled");
     expect(parsed.proposal.review?.decision).toBe("deferred");
     expect(parsed.future_server_field).toBe("kept");
+  });
+
+  it("keeps append-only proposal replacement identity backward compatible", () => {
+    const legacy = TwinOverviewSchema.parse({ pending_proposal: proposal });
+    expect(legacy.pending_proposal?.replaces_proposal_id).toBeNull();
+
+    const corrected = TwinOverviewSchema.parse({
+      pending_proposal: { ...proposal, kind: "correction", replaces_proposal_id: "proposal-0" },
+    });
+    expect(corrected.pending_proposal?.replaces_proposal_id).toBe("proposal-0");
+    expect(TwinOverviewSchema.safeParse({
+      pending_proposal: { ...proposal, replaces_proposal_id: { invalid: true } },
+    }).success).toBe(false);
   });
 
   it("rejects Twin details that lose a critical id, content, or citations array", () => {

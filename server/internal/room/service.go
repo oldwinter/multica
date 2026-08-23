@@ -18,6 +18,8 @@ import (
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
+const maxRoomConfigJSONBytes = 65536
+
 type TxStarter interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -31,12 +33,13 @@ type EventSink interface {
 }
 
 type Service struct {
-	queries *db.Queries
-	tx      TxStarter
-	tasks   TaskEnqueuer
-	targets ArtifactTargetCreator
-	events  EventSink
-	now     func() time.Time
+	queries   *db.Queries
+	tx        TxStarter
+	tasks     TaskEnqueuer
+	targets   ArtifactTargetCreator
+	events    EventSink
+	analytics roomAnalyticsRecorder
+	now       func() time.Time
 }
 
 func NewService(queries *db.Queries, tx TxStarter, tasks TaskEnqueuer, targets ArtifactTargetCreator, eventSink EventSink) *Service {
@@ -61,7 +64,16 @@ func (s *Service) Get(ctx context.Context, workspaceID, roomID pgtype.UUID) (Det
 func (s *Service) Create(ctx context.Context, input CreateInput) (Detail, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Instructions = strings.TrimSpace(input.Instructions)
+	input.Objective = strings.TrimSpace(input.Objective)
+	input.TemplateID = strings.TrimSpace(input.TemplateID)
+	if input.Objective == "" {
+		input.Objective = input.Title
+	}
 	if !input.WorkspaceID.Valid || !input.ActorUserID.Valid || input.Title == "" || len([]rune(input.Title)) > 160 || len([]rune(input.Instructions)) > 20000 {
+		return Detail{}, ErrInvalidInput
+	}
+	if len([]rune(input.Objective)) > 4000 || !validRoomStringList(input.SuccessCriteria) || !validRoomStringList(input.StopConditions) ||
+		(input.TemplateID != "" && !validRoomTemplate(input.TemplateID)) || (input.MaxCostTicks != nil && *input.MaxCostTicks <= 0) {
 		return Detail{}, ErrInvalidInput
 	}
 	if input.FacilitatorAgentID.Valid == input.FacilitatorSquadID.Valid {
@@ -92,6 +104,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Detail, error)
 		}
 		return Detail{}, fmt.Errorf("validate room creator: %w", err)
 	}
+	workspace, err := queries.GetWorkspace(ctx, input.WorkspaceID)
+	if err != nil {
+		return Detail{}, fmt.Errorf("load Room workspace capability: %w", err)
+	}
+	capabilityVersion := roomOutcomeCapabilityVersion(workspace.Settings)
 
 	facilitatorID := input.FacilitatorAgentID
 	participants := append([]ParticipantInput(nil), input.Participants...)
@@ -131,6 +148,18 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Detail, error)
 	if input.DailyTurnLimit != nil {
 		limit = pgtype.Int4{Int32: *input.DailyTurnLimit, Valid: true}
 	}
+	criteriaJSON, err := marshalRoomStringList(input.SuccessCriteria)
+	if err != nil {
+		return Detail{}, err
+	}
+	stopJSON, err := marshalRoomStringList(input.StopConditions)
+	if err != nil {
+		return Detail{}, err
+	}
+	maxCost := pgtype.Int8{}
+	if input.MaxCostTicks != nil {
+		maxCost = pgtype.Int8{Int64: *input.MaxCostTicks, Valid: true}
+	}
 	roomRow, err := queries.CreateRoom(ctx, db.CreateRoomParams{
 		WorkspaceID:             input.WorkspaceID,
 		Title:                   input.Title,
@@ -141,6 +170,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Detail, error)
 		DailyTurnLimit:          limit,
 		ScheduleIntervalMinutes: interval,
 		NextWakeAt:              nextWake,
+		Objective:               input.Objective,
+		SuccessCriteria:         criteriaJSON,
+		StopConditions:          stopJSON,
+		TemplateID:              pgtype.Text{String: input.TemplateID, Valid: input.TemplateID != ""},
+		MaxCostTicks:            maxCost,
+		CapabilityVersion:       capabilityVersion,
 	})
 	if err != nil {
 		return Detail{}, fmt.Errorf("create room: %w", err)
@@ -172,7 +207,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Detail, error)
 	if err := tx.Commit(ctx); err != nil {
 		return Detail{}, fmt.Errorf("commit create room: %w", err)
 	}
-	s.publish("room:created", roomRow, input.ActorUserID, map[string]any{"room": roomRow})
+	s.recordRoomCreated(roomRow, input.ActorUserID)
+	s.publish(EventRoomCreated, roomRow, input.ActorUserID, roomEventPayload(roomRow))
 	return created, nil
 }
 
@@ -223,10 +259,12 @@ func (s *Service) PostMessage(ctx context.Context, input MessageInput) (MessageR
 			return MessageResult{}, resultErr
 		}
 		targets := input.MentionAgents
+		source := "mention"
 		if len(targets) == 0 {
 			targets = []pgtype.UUID{roomRow.FacilitatorAgentID}
+			source = "message"
 		}
-		if err := authorizeWakeReplay(ctx, queries, roomRow, input.ActorUserID, targets, result.Turns); err != nil {
+		if err := authorizeWakeReplay(ctx, queries, roomRow, existing, input.ActorUserID, source, entry.ID, targets, result.Turns); err != nil {
 			return MessageResult{}, err
 		}
 		result.replayed = true
@@ -280,7 +318,7 @@ func (s *Service) PostMessage(ctx context.Context, input MessageInput) (MessageR
 	if !result.replayed {
 		s.afterWake(ctx, roomRow, input.ActorUserID, result)
 	}
-	s.publish("room:entry", roomRow, input.ActorUserID, map[string]any{"room_id": util.UUIDToString(roomRow.ID), "entry": entry})
+	s.publish(EventRoomEntry, roomRow, input.ActorUserID, roomEntryEventPayload(entry))
 	return MessageResult{Entry: entry, WakeResult: result}, nil
 }
 
@@ -347,31 +385,15 @@ func (s *Service) SetStatus(ctx context.Context, workspaceID, roomID pgtype.UUID
 	if err := tx.Commit(ctx); err != nil {
 		return db.Room{}, fmt.Errorf("commit room status update: %w", err)
 	}
-	s.publish("room:updated", updated, pgtype.UUID{}, map[string]any{"room": updated})
+	s.publish(EventRoomUpdated, updated, pgtype.UUID{}, roomEventPayload(updated))
 	return updated, nil
 }
 
 func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Room, input WakeInput) (WakeResult, error) {
-	targetIDs := canonicalUUIDs(input.TargetAgentIDs)
-	if len(targetIDs) == 0 {
-		targetIDs = []pgtype.UUID{roomRow.FacilitatorAgentID}
-	}
-	participants, err := queries.ListRoomParticipants(ctx, db.ListRoomParticipantsParams{WorkspaceID: input.WorkspaceID, RoomID: input.RoomID})
+	targetIDs, err := resolveWakeTargets(ctx, queries, roomRow, input.Source, input.TargetAgentIDs)
 	if err != nil {
-		return WakeResult{}, fmt.Errorf("list room wake participants: %w", err)
+		return WakeResult{}, err
 	}
-	allowed := make(map[pgtype.UUID]struct{}, len(participants))
-	for _, participant := range participants {
-		if participant.ParticipantType == "agent" {
-			allowed[participant.ParticipantID] = struct{}{}
-		}
-	}
-	for _, targetID := range targetIDs {
-		if _, ok := allowed[targetID]; !ok {
-			return WakeResult{}, ErrInvalidParticipant
-		}
-	}
-
 	invokerID := input.ActorUserID
 	if !invokerID.Valid {
 		if input.Source != "schedule" {
@@ -388,80 +410,32 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		if err != nil {
 			return WakeResult{}, err
 		}
-		if input.Source != "schedule" {
-			if err := authorizeWakeReplay(ctx, queries, roomRow, invokerID, targetIDs, result.Turns); err != nil {
-				return WakeResult{}, err
-			}
+		if err := authorizeWakeReplay(ctx, queries, roomRow, existing, invokerID, input.Source, input.TriggeringEntryID, targetIDs, result.Turns); err != nil {
+			return WakeResult{}, err
 		}
 		result.replayed = true
 		return result, nil
 	} else if !errors.Is(existingErr, pgx.ErrNoRows) {
 		return WakeResult{}, fmt.Errorf("check room wake identity: %w", existingErr)
 	}
-	unavailable := errors.Is(memberErr, pgx.ErrNoRows)
-	invocationDenied := unavailable && input.Source == "schedule"
-	agents := make([]db.Agent, 0, len(targetIDs))
-	for _, targetID := range targetIDs {
-		agent, agentErr := queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{ID: targetID, WorkspaceID: roomRow.WorkspaceID})
-		if agentErr != nil {
-			if errors.Is(agentErr, pgx.ErrNoRows) {
-				unavailable = true
-				continue
-			}
-			return WakeResult{}, fmt.Errorf("load room target agent: %w", agentErr)
-		}
-		if !canMemberInvokeAgent(ctx, queries, agent, invokerID, roomRow.WorkspaceID) {
-			if input.Source != "schedule" {
-				return WakeResult{}, ErrInvocationNotAllowed
-			}
-			invocationDenied = true
-			continue
-		}
-		ready, readyErr := roomAgentReady(ctx, queries, agent)
-		if readyErr != nil {
-			return WakeResult{}, fmt.Errorf("check room target readiness: %w", readyErr)
-		}
-		if !ready {
-			unavailable = true
-		}
-		agents = append(agents, agent)
+	preflight, err := s.evaluatePreflight(ctx, queries, roomRow, invokerID, input.Source, targetIDs)
+	if err != nil {
+		return WakeResult{}, err
 	}
-
-	reason := ""
-	switch roomRow.Status {
-	case "paused":
-		reason = "room_paused"
-	case "archived":
-		reason = "room_archived"
-	default:
-		if roomRow.ActiveCycleID.Valid {
-			reason = "cycle_active"
-		}
+	reason := preflight.result.RefusalReason
+	agents := preflight.agents
+	if reason == "invocation_not_allowed" && input.Source != "schedule" {
+		return WakeResult{}, ErrInvocationNotAllowed
 	}
-	if reason == "" && invocationDenied {
-		reason = "invocation_not_allowed"
-	}
-	if reason == "" && unavailable {
+	if reason == "agent_unavailable" {
 		reason = "no_targets"
-	}
-	if reason == "" && roomRow.DailyTurnLimit.Valid {
-		now := s.now().UTC()
-		used, err := queries.CountRoomTurnsSince(ctx, db.CountRoomTurnsSinceParams{
-			WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID,
-			SinceAt: pgtype.Timestamptz{Time: time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC), Valid: true},
-		})
-		if err != nil {
-			return WakeResult{}, fmt.Errorf("count room turn budget: %w", err)
-		}
-		if used+int64(len(targetIDs)) > int64(roomRow.DailyTurnLimit.Int32) {
-			reason = "budget_exhausted"
-		}
 	}
 	if reason != "" {
 		cycle, err := queries.CreateRoomCycle(ctx, db.CreateRoomCycleParams{
 			WorkspaceID: input.WorkspaceID, RoomID: input.RoomID, Source: input.Source,
 			WakeKey: input.WakeKey, TriggeringEntryID: input.TriggeringEntryID,
-			Status: "refused", RefusalReason: pgtype.Text{String: reason, Valid: true}, PlannedAt: input.PlannedAt,
+			Status: "refused", Phase: "refused", RefusalReason: pgtype.Text{String: reason, Valid: true},
+			PlannedAt: input.PlannedAt, ExpectedMaxTurns: preflight.result.ExpectedMaxTurns,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			cycle, err = queries.GetRoomCycleByWakeKey(ctx, db.GetRoomCycleByWakeKeyParams{WorkspaceID: input.WorkspaceID, RoomID: input.RoomID, WakeKey: input.WakeKey})
@@ -470,7 +444,7 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 				if loadErr != nil {
 					return WakeResult{}, loadErr
 				}
-				if replayErr := authorizeWakeReplay(ctx, queries, roomRow, invokerID, targetIDs, result.Turns); replayErr != nil {
+				if replayErr := authorizeWakeReplay(ctx, queries, roomRow, cycle, invokerID, input.Source, input.TriggeringEntryID, targetIDs, result.Turns); replayErr != nil {
 					return WakeResult{}, replayErr
 				}
 				result.replayed = true
@@ -484,7 +458,7 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		for _, targetID := range targetIDs {
 			turn, turnErr := queries.CreateRoomTurn(ctx, db.CreateRoomTurnParams{
 				WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID, CycleID: cycle.ID,
-				AgentID: targetID, SquadID: roomRow.FacilitatorSquadID, Status: "refused",
+				AgentID: targetID, SquadID: roomRow.FacilitatorSquadID, TurnKind: "participant", Attempt: 1, Status: "refused",
 				RefusalReason: pgtype.Text{String: reason, Valid: true},
 			})
 			if turnErr != nil {
@@ -498,7 +472,9 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 	cycle, err := queries.CreateRoomCycle(ctx, db.CreateRoomCycleParams{
 		WorkspaceID: input.WorkspaceID, RoomID: input.RoomID, Source: input.Source,
 		WakeKey: input.WakeKey, TriggeringEntryID: input.TriggeringEntryID,
-		Status: "queued", PlannedAt: input.PlannedAt,
+		Status: "queued", Phase: "gathering", PlannedAt: input.PlannedAt,
+		ExpectedMaxTurns: preflight.result.ExpectedMaxTurns,
+		CostLimitTicks:   nullableRoomCostLimit(preflight.result.Budget.RemainingCostTicks),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, existingErr := queries.GetRoomCycleByWakeKey(ctx, db.GetRoomCycleByWakeKeyParams{WorkspaceID: input.WorkspaceID, RoomID: input.RoomID, WakeKey: input.WakeKey})
@@ -506,8 +482,14 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 			return WakeResult{}, fmt.Errorf("reload repeated room wake: %w", existingErr)
 		}
 		result, loadErr := loadWakeResult(ctx, queries, existing)
-		result.replayed = loadErr == nil
-		return result, loadErr
+		if loadErr != nil {
+			return WakeResult{}, loadErr
+		}
+		if replayErr := authorizeWakeReplay(ctx, queries, roomRow, existing, invokerID, input.Source, input.TriggeringEntryID, targetIDs, result.Turns); replayErr != nil {
+			return WakeResult{}, replayErr
+		}
+		result.replayed = true
+		return result, nil
 	}
 	if err != nil {
 		return WakeResult{}, fmt.Errorf("create room cycle: %w", err)
@@ -523,10 +505,11 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 	}
 	entries := roomEntries(entryRows)
 	result := WakeResult{Cycle: cycle, Turns: make([]db.RoomTurn, 0, len(agents)), Tasks: make([]db.AgentTaskQueue, 0, len(agents))}
-	for _, agent := range agents {
+	for index, agent := range agents {
 		turn, err := queries.CreateRoomTurn(ctx, db.CreateRoomTurnParams{
 			WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID, CycleID: cycle.ID,
-			AgentID: agent.ID, SquadID: roomRow.FacilitatorSquadID, Status: "queued",
+			AgentID: agent.ID, SquadID: roomRow.FacilitatorSquadID,
+			TurnKind: "participant", Attempt: 1, Status: "queued",
 		})
 		if err != nil {
 			return WakeResult{}, fmt.Errorf("create room turn: %w", err)
@@ -537,11 +520,19 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		if previousErr != nil && !errors.Is(previousErr, pgx.ErrNoRows) {
 			return WakeResult{}, fmt.Errorf("load room session continuity: %w", previousErr)
 		}
-		contextData, err := protocol.EncodeRoomTaskContextV1(protocol.RoomTaskContextV1{
+		roomContext := protocol.RoomTaskContextV1{
 			WorkspaceID: util.UUIDToString(roomRow.WorkspaceID), RoomID: util.UUIDToString(roomRow.ID),
 			CycleID: util.UUIDToString(cycle.ID), TurnID: util.UUIDToString(turn.ID), Title: roomRow.Title,
-			Instructions: roomRow.Instructions, Memory: roomRow.Memory, Transcript: roomTaskTranscript(entries),
-		})
+			Instructions: participantInstructions(roomRow), Memory: roomRow.Memory, Transcript: roomTaskTranscript(entries),
+			CostLimitTicks: roomTurnCostLimit(cycle.CostLimitTicks, cycle.ExpectedMaxTurns, int32(index)),
+		}
+		var contextData []byte
+		if roomRow.CapabilityVersion >= 2 {
+			roomContext.TurnKind = "participant"
+			contextData, err = protocol.EncodeRoomTaskContextV2(roomContext)
+		} else {
+			contextData, err = protocol.EncodeRoomTaskContextV1(roomContext)
+		}
 		if err != nil {
 			return WakeResult{}, fmt.Errorf("encode room task context: %w", err)
 		}
@@ -574,6 +565,13 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 	return result, nil
 }
 
+func nullableRoomCostLimit(value *int64) pgtype.Int8 {
+	if value == nil || *value <= 0 {
+		return pgtype.Int8{}
+	}
+	return pgtype.Int8{Int64: *value, Valid: true}
+}
+
 func (s *Service) detail(ctx context.Context, queries *db.Queries, roomRow db.Room) (Detail, error) {
 	participants, err := queries.ListRoomParticipants(ctx, db.ListRoomParticipantsParams{WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID})
 	if err != nil {
@@ -596,7 +594,78 @@ func (s *Service) detail(ctx context.Context, queries *db.Queries, roomRow db.Ro
 	if err != nil {
 		return Detail{}, fmt.Errorf("list room artifacts: %w", err)
 	}
-	return Detail{Room: roomRow, Participants: participants, Entries: entries, Cycles: cycles, Turns: turns, Artifacts: artifacts}, nil
+	revisions, err := queries.ListRoomMemoryRevisions(ctx, db.ListRoomMemoryRevisionsParams{WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID})
+	if err != nil {
+		return Detail{}, fmt.Errorf("list Room memory revisions: %w", err)
+	}
+	recommendationReviews, err := queries.ListRoomRecommendationReviews(ctx, db.ListRoomRecommendationReviewsParams{WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID})
+	if err != nil {
+		return Detail{}, fmt.Errorf("list Room recommendation reviews: %w", err)
+	}
+	return Detail{
+		Room: roomRow, Participants: participants, Entries: entries, Cycles: cycles,
+		Turns: turns, Artifacts: artifacts, MemoryRevisions: revisions,
+		RecommendationReviews: recommendationReviews,
+	}, nil
+}
+
+func validRoomStringList(values []string) bool {
+	if len(values) > 50 {
+		return false
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || len([]rune(value)) > 2000 {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeRoomStringList(values []string) []string {
+	result := make([]string, len(values))
+	for index, value := range values {
+		result[index] = strings.TrimSpace(value)
+	}
+	return result
+}
+
+func marshalRoomStringList(values []string) ([]byte, error) {
+	normalized := normalizeRoomStringList(values)
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, fmt.Errorf("encode Room string list: %w", err)
+	}
+	// PostgreSQL's jsonb text form inserts one space after each array comma.
+	// Account for it so application validation cannot pass a payload that the
+	// database's 64 KiB jsonb check then rejects.
+	jsonbTextBytes := len(encoded)
+	if len(normalized) > 1 {
+		jsonbTextBytes += len(normalized) - 1
+	}
+	if jsonbTextBytes > maxRoomConfigJSONBytes {
+		return nil, ErrInvalidInput
+	}
+	return encoded, nil
+}
+
+func validRoomTemplate(value string) bool {
+	switch value {
+	case "research", "planning", "risk", "incident", "decision":
+		return true
+	default:
+		return false
+	}
+}
+
+func roomOutcomeCapabilityVersion(settings []byte) int32 {
+	var values struct {
+		RoomOutcomesV2 bool `json:"room_outcomes_v2"`
+	}
+	if json.Unmarshal(settings, &values) == nil && values.RoomOutcomesV2 {
+		return 2
+	}
+	return 1
 }
 
 func validateParticipant(ctx context.Context, queries *db.Queries, workspaceID, actorUserID pgtype.UUID, participant ParticipantInput) error {
@@ -659,30 +728,22 @@ func canonicalUUIDs(ids []pgtype.UUID) []pgtype.UUID {
 	return result
 }
 
-func sameUUIDs(left, right []pgtype.UUID) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
-}
-
-func authorizeWakeReplay(ctx context.Context, queries *db.Queries, roomRow db.Room, invokerID pgtype.UUID, targetIDs []pgtype.UUID, turns []db.RoomTurn) error {
+func authorizeWakeReplay(ctx context.Context, queries *db.Queries, roomRow db.Room, cycle db.RoomCycle, invokerID pgtype.UUID, source string, triggeringEntryID pgtype.UUID, targetIDs []pgtype.UUID, turns []db.RoomTurn) error {
 	targetIDs = canonicalUUIDs(targetIDs)
-	if len(turns) > 0 {
-		existingTargets := make([]pgtype.UUID, len(turns))
-		for index, turn := range turns {
-			existingTargets[index] = turn.AgentID
+	existingTargets := make([]pgtype.UUID, 0, len(turns))
+	for _, turn := range turns {
+		if turn.TurnKind == "participant" {
+			existingTargets = append(existingTargets, turn.AgentID)
 		}
+	}
+	if len(existingTargets) > 0 {
 		existingTargets = canonicalUUIDs(existingTargets)
-		if !sameUUIDs(existingTargets, targetIDs) {
-			return ErrIdempotencyConflict
-		}
-		targetIDs = existingTargets
+	}
+	if wakeRequestDigest(source, triggeringEntryID, targetIDs) != wakeRequestDigest(cycle.Source, cycle.TriggeringEntryID, existingTargets) {
+		return ErrIdempotencyConflict
+	}
+	if source == "schedule" {
+		return nil
 	}
 	for _, targetID := range targetIDs {
 		agent, err := queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{ID: targetID, WorkspaceID: roomRow.WorkspaceID})
@@ -691,6 +752,14 @@ func authorizeWakeReplay(ctx context.Context, queries *db.Queries, roomRow db.Ro
 		}
 	}
 	return nil
+}
+
+func wakeRequestDigest(source string, triggeringEntryID pgtype.UUID, targetIDs []pgtype.UUID) string {
+	parts := []string{source, util.UUIDToString(triggeringEntryID)}
+	for _, targetID := range canonicalUUIDs(targetIDs) {
+		parts = append(parts, util.UUIDToString(targetID))
+	}
+	return lifecycleDigest(parts...)
 }
 
 func roomEntries(rows []db.RoomEntry) []db.RoomEntry {
@@ -720,6 +789,36 @@ func roomTaskTranscript(entries []db.RoomEntry) []protocol.RoomTaskTranscriptEnt
 	return transcript
 }
 
+func participantInstructions(roomRow db.Room) string {
+	parts := []string{
+		"Room objective:\n" + roomRow.Objective,
+	}
+	if strings.TrimSpace(roomRow.Instructions) != "" {
+		parts = append(parts, "Room instructions:\n"+roomRow.Instructions)
+	}
+	if criteria := roomStringList(roomRow.SuccessCriteria); len(criteria) > 0 {
+		parts = append(parts, "Success criteria:\n- "+strings.Join(criteria, "\n- "))
+	}
+	if conditions := roomStringList(roomRow.StopConditions); len(conditions) > 0 {
+		parts = append(parts, "Stop conditions:\n- "+strings.Join(conditions, "\n- "))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func synthesisInstructions(roomRow db.Room) string {
+	return participantInstructions(roomRow) + `
+
+You are the Room facilitator. Synthesize the participant outputs into exactly one JSON object with no Markdown fence or commentary. Use schema_version 1 and these fields: summary, facts, decisions, open_questions, disagreements, action_items, recommendations, confidence. Each item has text, citation_entry_ids, confidence. Each recommendation has kind (issue, wiki, or decision), title, body, rationale, citation_entry_ids, confidence. Cite only entry IDs present in the Room transcript. Preserve disagreement and uncertainty; do not invent consensus or evidence.`
+}
+
+func roomStringList(raw []byte) []string {
+	var values []string
+	if json.Unmarshal(raw, &values) != nil {
+		return []string{}
+	}
+	return values
+}
+
 func roomAgentReady(ctx context.Context, queries *db.Queries, agent db.Agent) (bool, error) {
 	if agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
 		return false, nil
@@ -729,6 +828,31 @@ func roomAgentReady(ctx context.Context, queries *db.Queries, agent db.Agent) (b
 		return false, err
 	}
 	return runtimeRow.Status == "online", nil
+}
+
+func roomAgentReadyForCapability(ctx context.Context, queries *db.Queries, agent db.Agent, capability string) (bool, error) {
+	if agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
+		return false, nil
+	}
+	runtimeRow, err := queries.GetAgentRuntime(ctx, agent.RuntimeID)
+	if err != nil {
+		return false, err
+	}
+	if runtimeRow.Status != "online" {
+		return false, nil
+	}
+	var metadata struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if json.Unmarshal(runtimeRow.Metadata, &metadata) != nil {
+		return false, nil
+	}
+	for _, advertised := range metadata.Capabilities {
+		if advertised == capability {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func sameMentionIDs(raw json.RawMessage, want []pgtype.UUID) bool {
@@ -790,57 +914,13 @@ func canMemberInvokeAgent(ctx context.Context, queries *db.Queries, agent db.Age
 }
 
 func (s *Service) afterWake(ctx context.Context, roomRow db.Room, actorID pgtype.UUID, result WakeResult) {
+	s.recordRoomBudgetRefused(roomRow, result.Cycle, actorID)
 	for _, task := range result.Tasks {
 		if notifier, ok := s.tasks.(TaskNotifier); ok {
 			notifier.NotifyTaskEnqueued(ctx, task)
 		}
 	}
-	s.publish("room:cycle", roomRow, actorID, map[string]any{"room_id": util.UUIDToString(roomRow.ID), "cycle": result.Cycle, "turns": roomTurnEvents(result.Turns)})
-}
-
-type roomTurnEvent struct {
-	ID            string  `json:"id"`
-	CycleID       string  `json:"cycle_id"`
-	Status        string  `json:"status"`
-	RefusalReason *string `json:"refusal_reason,omitempty"`
-	CreatedAt     string  `json:"created_at"`
-	StartedAt     *string `json:"started_at,omitempty"`
-	CompletedAt   *string `json:"completed_at,omitempty"`
-}
-
-func roomTurnEvents(turns []db.RoomTurn) []roomTurnEvent {
-	result := make([]roomTurnEvent, len(turns))
-	for index, turn := range turns {
-		result[index] = roomTurnEvent{
-			ID: util.UUIDToString(turn.ID), CycleID: util.UUIDToString(turn.CycleID),
-			Status: turn.Status, RefusalReason: nullableText(turn.RefusalReason),
-			CreatedAt: nullableTimestamp(turn.CreatedAt), StartedAt: timestampPointer(turn.StartedAt),
-			CompletedAt: timestampPointer(turn.CompletedAt),
-		}
-	}
-	return result
-}
-
-func nullableText(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
-}
-
-func nullableTimestamp(value pgtype.Timestamptz) string {
-	if !value.Valid {
-		return ""
-	}
-	return value.Time.UTC().Format(time.RFC3339Nano)
-}
-
-func timestampPointer(value pgtype.Timestamptz) *string {
-	if !value.Valid {
-		return nil
-	}
-	formatted := value.Time.UTC().Format(time.RFC3339Nano)
-	return &formatted
+	s.publish(EventRoomCycle, roomRow, actorID, roomCycleEventPayload(result.Cycle))
 }
 
 func (s *Service) publish(eventType string, roomRow db.Room, actorID pgtype.UUID, payload any) {

@@ -12,6 +12,8 @@ import {
   twinVersionOptions,
   useAcceptLMWikiRevision,
   useAcceptTwinProposal,
+  useCorrectTwinProposal,
+  useCreateTwinDeposition,
   useEnsureTwinProposal,
   useRefreshLMWiki,
   useRejectLMWikiRevision,
@@ -19,9 +21,11 @@ import {
   wikiOverviewOptions,
   wikiRevisionOptions,
   type LMWikiOverview,
+  type LifecycleContent,
   type TwinOverview,
 } from "@multica/core/twins";
 import { TwinWorkspaceView, type TwinViewState } from "./components/twin-workspace-view";
+import { LMWikiSourcePolicyContainer } from "../wiki/lm-wiki-source-policy-container";
 import { useT } from "../i18n";
 
 const EMPTY_WIKI: LMWikiOverview = {
@@ -89,7 +93,12 @@ export function TwinsPage() {
   const rejectWiki = useRejectLMWikiRevision(wsId);
   const ensureTwin = useEnsureTwinProposal(wsId);
   const acceptTwin = useAcceptTwinProposal(wsId);
+  const correctTwin = useCorrectTwinProposal(wsId);
   const rejectTwin = useRejectTwinProposal(wsId);
+  const editDeposition = useCreateTwinDeposition(
+    wsId,
+    proposalDetailQuery.data?.run_evidence?.taskId ?? "",
+  );
   const beginLifecycleAction = () => {
     const attempt = ++actionSequence.current;
     setActionFailure(null);
@@ -108,7 +117,9 @@ export function TwinsPage() {
     ? "loading"
     : wikiQuery.isError || twinQuery.isError || twinProfileQuery.isError ? "error" : "ready";
   const wikiMutationPending = refreshWiki.isPending || acceptWiki.isPending || rejectWiki.isPending;
-  const twinMutationPending = ensureTwin.isPending || acceptTwin.isPending || rejectTwin.isPending;
+  const twinMutationPending = ensureTwin.isPending || acceptTwin.isPending || rejectTwin.isPending
+    || correctTwin.isPending
+    || editDeposition.isPending;
   const actionError = messageFrom(
     [
       actionFailure?.error,
@@ -123,6 +134,7 @@ export function TwinsPage() {
 
   return (
     <TwinWorkspaceView
+      wsId={wsId}
       state={state}
       wiki={wiki}
       wikiDetail={wikiDetailQuery.data ?? null}
@@ -143,6 +155,7 @@ export function TwinsPage() {
         (selectedVersionId.length > 0 && versionDetailQuery.isPending)
       }
       actionError={actionError}
+      sourcePolicyPanel={<LMWikiSourcePolicyContainer canManage={wikiPermissions.canMutate} />}
       onSelectRevision={setRevisionId}
       onSelectProposal={setProposalId}
       onSelectVersion={setVersionId}
@@ -206,6 +219,31 @@ export function TwinsPage() {
         try {
           await rejectTwin.mutateAsync({ proposalId: id, reason });
           completeLifecycleAction(attempt);
+        } catch (error) {
+          failLifecycleAction(attempt, error);
+          if (isStaleConflict(error)) return setProposalId("");
+          throw error;
+        }
+      }}
+      onCorrectTwin={async (replacesProposalId, editedAssertions: readonly LifecycleContent[]) => {
+        const attempt = beginLifecycleAction();
+        try {
+          const result = await correctTwin.mutateAsync({ proposalId: replacesProposalId, editedAssertions });
+          completeLifecycleAction(attempt);
+          setProposalId(result.proposal.id);
+        } catch (error) {
+          failLifecycleAction(attempt, error);
+          if (isStaleConflict(error)) return setProposalId("");
+          throw error;
+        }
+      }}
+      onEditDeposition={async (replacesProposalId, editedAssertions: readonly LifecycleContent[]) => {
+        const attempt = beginLifecycleAction();
+        try {
+          const result = await editDeposition.mutateAsync({ replacesProposalId, editedAssertions });
+          if (!result.proposal) throw new Error("Replacement proposal was not returned");
+          completeLifecycleAction(attempt);
+          setProposalId(result.proposal.id);
         } catch (error) {
           failLifecycleAction(attempt, error);
           if (isStaleConflict(error)) return setProposalId("");

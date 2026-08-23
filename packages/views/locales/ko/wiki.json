@@ -2,7 +2,7 @@
   "page": {
     "eyebrow": "워크스페이스 Wiki",
     "title": "Wiki",
-    "description": "워크스페이스·프로젝트·개인용 Markdown 지식 베이스입니다."
+    "description": "워크스페이스, 프로젝트, 개인 메모를 위한 검색 및 이력 지원 Markdown 지식입니다."
   },
   "scopes": {
     "workspace": "워크스페이스",
@@ -10,7 +10,7 @@
     "user": "개인"
   },
   "scope_hints": {
-    "user": "개인 페이지는 모든 워크스페이스에서 공유됩니다."
+    "user": "개인 페이지는 모든 워크스페이스에서 사용할 수 있으며 LM Wiki 근거가 되지 않습니다."
   },
   "actions": {
     "new_page": "새 페이지",
@@ -19,25 +19,158 @@
     "edit": "편집",
     "preview": "미리보기",
     "cancel": "취소",
-    "create": "만들기"
+    "create": "만들기",
+    "retry": "다시 시도",
+    "back": "뒤로"
   },
   "fields": {
     "path": "경로",
-    "path_hint": "상대 .md 경로 (예: index.md, concepts/agents.md)",
+    "path_hint": "index.md 또는 concepts/agents.md 같은 상대 .md 경로",
     "title": "제목",
     "content": "내용",
     "project": "프로젝트"
   },
   "empty": {
-    "title": "Wiki 페이지가 없습니다",
-    "description": "Markdown 페이지를 만들어 이 범위에 지식을 쌓아 보세요.",
-    "pick_project": "Wiki를 보려면 프로젝트를 선택하세요."
+    "title": "아직 Wiki 페이지가 없습니다",
+    "description": "Markdown 페이지를 만들어 지식을 기록하세요.",
+    "pick_project": "Wiki를 볼 프로젝트를 선택하세요."
   },
   "states": {
-    "loading": "Wiki 로딩 중…",
+    "loading": "Wiki 불러오는 중…",
     "error": "Wiki 페이지를 불러오지 못했습니다.",
     "saving": "저장 중…",
-    "saved": "저장됨"
+    "saved": "저장됨",
+    "action_error": "작업을 완료하지 못했습니다. 다시 시도하세요."
   },
-  "delete_confirm": "이 Wiki 페이지를 삭제할까요? 되돌릴 수 없습니다."
+  "search": {
+    "label": "Wiki 검색",
+    "placeholder": "제목, 경로 및 내용 검색",
+    "clear": "검색 지우기",
+    "minimum": "두 글자 이상 입력하세요.",
+    "loading": "Wiki 검색 중…",
+    "error": "검색할 수 없습니다. 다시 시도하세요.",
+    "empty": "일치하는 Wiki 페이지가 없습니다."
+  },
+  "tabs": {
+    "document": "문서",
+    "proposals": "제안"
+  },
+  "meta": {
+    "revision": "리비전 {{number}}",
+    "provenance": "{{actor}}의 {{source}}",
+    "copy_citation": "리비전 인용 복사",
+    "copied": "리비전 인용이 복사됨"
+  },
+  "history": {
+    "action": "이력",
+    "title": "리비전 이력",
+    "description": "변경 불가능한 리비전을 비교하거나 이전 버전을 새 리비전으로 복원합니다.",
+    "loading": "이력 불러오는 중…",
+    "error": "이력을 불러오지 못했습니다.",
+    "empty": "리비전이 없습니다.",
+    "empty_content": "빈 페이지",
+    "timeline": "리비전 타임라인",
+    "revision_label": "리비전 {{number}}",
+    "compare_from": "비교 시작",
+    "compare_to": "비교 대상",
+    "provenance": "{{actor}}의 {{source}}",
+    "restore": "복원",
+    "restore_title": "이 리비전을 복원할까요?",
+    "restore_description": "리비전 {{number}}가 새 리비전이 되며 기존 이력은 유지됩니다."
+  },
+  "proposals": {
+    "loading": "제안 불러오는 중…",
+    "error": "제안을 불러오지 못했습니다.",
+    "empty_title": "제안 없음",
+    "empty_description": "Agent 편집은 공유 지식을 변경하기 전에 여기서 사람이 검토합니다.",
+    "list_label": "Wiki 제안",
+    "review_title": "편집 제안 검토",
+    "base_revision": "리비전 {{number}} 기준",
+    "no_rationale": "근거가 없습니다.",
+    "evidence": "근거",
+    "accept": "제안 승인",
+    "reject": "거절",
+    "reject_title": "이 제안을 거절할까요?",
+    "reject_description": "제안과 검토 결정은 이력에 남습니다.",
+    "reason": "이유(선택)",
+    "review_reason": "검토 이유: {{reason}}",
+    "stale": "이 제안은 이전 리비전을 기준으로 합니다. 최신 내용을 불러와 다시 검토하세요."
+  },
+  "conflict": {
+    "title": "편집 중 페이지가 변경되었습니다",
+    "description": "서버는 현재 리비전 {{number}}입니다. 서버 버전을 다시 불러오거나 초안을 유지하고 수동으로 병합하세요.",
+    "reload": "서버 버전 불러오기",
+    "merge": "내 초안 병합",
+    "merge_title": "병합 내용 검토",
+    "merge_description": "초안이 유지되었습니다. 저장하기 전에 서버 버전과 비교하세요.",
+    "server_version": "현재 서버 버전 보기",
+    "stale_restore": "복원 전에 페이지가 변경되었습니다. 이력을 다시 불러오세요."
+  },
+  "delete_dialog": {
+    "title": "이 Wiki 페이지를 삭제할까요?",
+    "description": "페이지와 공유 참조가 제거됩니다. 이 작업은 되돌릴 수 없습니다."
+  },
+  "personal": {
+    "eyebrow": "비공개 지식",
+    "title": "개인 Wiki",
+    "description": "나만 읽고 편집할 수 있으며 워크스페이스 간에 사용할 수 있는 비공개 Markdown 노트입니다. 개인 페이지는 공유 LM Wiki 근거가 되지 않습니다.",
+    "search_label": "개인 Wiki 검색",
+    "search_placeholder": "내 제목, 경로 및 내용 검색",
+    "empty_title": "개인 페이지가 없습니다",
+    "empty_description": "워크스페이스를 떠난 후에도 사용할 수 있는 비공개 Markdown 페이지를 만드세요.",
+    "stable_revision": "고정 리비전",
+    "delete_description": "현재 페이지가 삭제됩니다. 변경 불가능한 리비전 링크는 계속 본인만 사용할 수 있습니다."
+  },
+  "revision": {
+    "title": "Wiki 리비전",
+    "shared_eyebrow": "워크스페이스 근거",
+    "personal_eyebrow": "비공개 근거",
+    "read_only": "읽기 전용",
+    "description": "이 변경 불가능한 스냅샷은 인용된 리비전의 정확한 내용과 출처를 보존합니다.",
+    "loading": "리비전 불러오는 중...",
+    "error": "이 리비전을 불러올 수 없거나 더 이상 접근 권한이 없습니다.",
+    "citation": "정규 인용",
+    "digest": "콘텐츠 다이제스트",
+    "revision_number": "리비전 번호",
+    "provenance": "출처",
+    "created_at": "생성 시간",
+    "open_stable": "고정 리비전 열기",
+    "copy_error": "인용을 복사하지 못했습니다."
+  },
+  "source_policy": {
+    "title": "LM Wiki 소스",
+    "description": "다음 LM Wiki 새로 고침에 사용할 근거 클래스와 정확한 Wiki 리비전을 고정합니다.",
+    "remote_title": "원격 생성",
+    "remote_description": "기본값은 꺼짐입니다. 이 워크스페이스에서 원격 생성을 허용할 때만 켜세요.",
+    "remote_label": "원격 생성 허용",
+    "remote_owner_only": "워크스페이스 owner와 admin만 원격 생성을 변경할 수 있습니다.",
+    "remote_exclusions": "로컬 전용 소스와 개인 Wiki 페이지는 항상 제외됩니다.",
+    "exclusions_title": "영구 제외",
+    "exclusion_always": "항상 제외",
+    "exclusion_personal": "개인 Wiki 페이지",
+    "exclusion_personal_reason": "비공개 개인 범위는 공유 근거가 되지 않습니다.",
+    "exclusion_local_only": "로컬 전용 소스",
+    "exclusion_local_only_reason": "로컬 전용 콘텐츠는 owner의 데몬을 벗어나지 않습니다.",
+    "classes": "소스 클래스",
+    "pages": "고정된 Wiki 리비전",
+    "save": "소스 정책 저장",
+    "saving": "정책 저장 중…",
+    "saved": "소스 정책 저장됨",
+    "loading": "소스 정책 불러오는 중…",
+    "error": "소스 정책을 불러오지 못했습니다.",
+    "save_error": "소스 정책을 저장하지 못했습니다.",
+    "read_only": "owner와 admin만 이 정책을 변경할 수 있습니다.",
+    "empty_pages": "사용 가능한 Wiki 페이지가 없습니다.",
+    "revision": "리비전 {{number}}",
+    "digest": "다이제스트 {{digest}}",
+    "provenance": "{{actor}}의 {{source}}",
+    "personal_excluded": "개인 페이지는 비공개이므로 LM Wiki 근거로 사용할 수 없습니다.",
+    "eligible": "사용 가능",
+    "excluded": "제외됨",
+    "classes_issue": "태스크",
+    "classes_project": "프로젝트",
+    "classes_project_resource": "프로젝트 리소스",
+    "classes_autopilot_run": "완료된 자동화 실행",
+    "classes_wiki_page": "고정된 Wiki 페이지"
+  }
 }

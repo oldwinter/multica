@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS wiki_page_revision_page_created_idx;

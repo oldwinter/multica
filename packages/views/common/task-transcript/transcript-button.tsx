@@ -17,7 +17,16 @@ import {
 } from "@multica/core/chat/queries";
 import type { AgentTask } from "@multica/core/types/agent";
 import type { TaskMessagePayload } from "@multica/core/types/events";
-import { AgentTranscriptDialog } from "./agent-transcript-dialog";
+import { useWorkspaceId } from "@multica/core/hooks";
+import {
+  twinTaskContextOptions,
+  useCreateTwinDeposition,
+  useSubmitTwinTaskFeedback,
+} from "@multica/core/twins";
+import {
+  AgentTranscriptDialog,
+  type AgentTranscriptDialogProps,
+} from "./agent-transcript-dialog";
 import { buildTimeline, type TimelineItem } from "./build-timeline";
 
 interface TranscriptButtonProps {
@@ -76,6 +85,23 @@ export function TranscriptButton({
   const [loadedItems, setLoadedItems] = useState<TimelineItem[] | null>(null);
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = controlledOnOpenChange ?? setUncontrolledOpen;
+  const wsId = useWorkspaceId();
+  const contextQuery = useQuery({
+    ...twinTaskContextOptions(wsId, task.id),
+    enabled: open && !!wsId && isTaskMessageTaskId(task.id),
+  });
+  const feedbackMutation = useSubmitTwinTaskFeedback(wsId, task.id);
+  const depositionMutation = useCreateTwinDeposition(wsId, task.id);
+  const effectiveTask = useMemo(
+    () => contextQuery.data ? { ...task, twin_context: contextQuery.data } : task,
+    [contextQuery.data, task],
+  );
+  const twinActions = {
+    onTwinFeedback: feedbackMutation.mutateAsync,
+    onCreateTwinDeposition: () => depositionMutation.mutateAsync({}),
+    twinFeedbackPending: feedbackMutation.isPending,
+    twinDepositionPending: depositionMutation.isPending,
+  };
 
   // Live cache mode: the running task feeds the shared task-messages cache, so
   // we render straight off that cache instead of a one-shot local snapshot.
@@ -171,21 +197,23 @@ export function TranscriptButton({
       {open &&
         (liveSession ? (
           <LiveTranscriptDialog
-            task={task}
+            task={effectiveTask}
             agentName={agentName}
             isLive={isLive}
             onOpenChange={setOpen}
             headerSlot={headerSlot}
+            {...twinActions}
           />
         ) : (
           <AgentTranscriptDialog
             open={open}
             onOpenChange={setOpen}
-            task={task}
+            task={effectiveTask}
             items={items}
             agentName={agentName}
             isLive={isLive}
             headerSlot={headerSlot}
+            {...twinActions}
           />
         ))}
     </>
@@ -198,6 +226,10 @@ interface LiveTranscriptDialogProps {
   isLive: boolean;
   onOpenChange: (open: boolean) => void;
   headerSlot?: React.ReactNode;
+  onTwinFeedback: AgentTranscriptDialogProps["onTwinFeedback"];
+  onCreateTwinDeposition: AgentTranscriptDialogProps["onCreateTwinDeposition"];
+  twinFeedbackPending: boolean;
+  twinDepositionPending: boolean;
 }
 
 /**
@@ -217,6 +249,10 @@ function LiveTranscriptDialog({
   isLive,
   onOpenChange,
   headerSlot,
+  onTwinFeedback,
+  onCreateTwinDeposition,
+  twinFeedbackPending,
+  twinDepositionPending,
 }: LiveTranscriptDialogProps) {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -261,6 +297,10 @@ function LiveTranscriptDialog({
       agentName={agentName}
       isLive={isLive}
       headerSlot={headerSlot}
+      onTwinFeedback={onTwinFeedback}
+      onCreateTwinDeposition={onCreateTwinDeposition}
+      twinFeedbackPending={twinFeedbackPending}
+      twinDepositionPending={twinDepositionPending}
     />
   );
 }

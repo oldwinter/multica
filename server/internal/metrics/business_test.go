@@ -164,6 +164,13 @@ func TestBusinessMetricsRegistryExposesAllFamilies(t *testing.T) {
 	exerciseEvent(m, analytics.EventAutopilotRunFailed, map[string]any{"cadence": "manual", "trigger_kind": "manual"})
 	exerciseEvent(m, analytics.EventFeedbackSubmitted, map[string]any{"kind": "general", "platform": "web"})
 	exerciseEvent(m, analytics.EventContactSalesSubmitted, map[string]any{"form_source": "page"})
+	exerciseEvent(m, analytics.EventTwinProposalGeneration, map[string]any{"kind": "initial", "state": "succeeded", "latency_ms": int64(10)})
+	exerciseEvent(m, analytics.EventTwinSignOff, map[string]any{"kind": "initial", "decision": "signed"})
+	exerciseEvent(m, analytics.EventTwinBriefingCompilation, map[string]any{"state": "compiled", "scope": "issue", "exclusion_code": "none", "latency_ms": int64(10)})
+	exerciseEvent(m, analytics.EventTwinBriefingUse, map[string]any{"state": "injected", "scope": "issue", "exclusion_code": "none", "byte_count": 512, "token_count": 128})
+	exerciseEvent(m, analytics.EventTwinRunFeedback, map[string]any{"rating": "helped"})
+	exerciseEvent(m, analytics.EventTwinTaskRevision, map[string]any{"decision": "accepted", "kind": "none"})
+	exerciseEvent(m, analytics.EventTwinDepositionReview, map[string]any{"decision": "accepted"})
 
 	// Direct Record* helpers (no PostHog event source).
 	m.RecordAutopilotRunSkipped("manual", "throttled")

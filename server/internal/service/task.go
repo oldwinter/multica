@@ -992,7 +992,7 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, t
 	if len(triggerCommentID) > 0 {
 		commentID = triggerCommentID[0]
 	}
-	return s.enqueueIssueTask(ctx, issue, commentID, false, "", pgtype.UUID{}, pgtype.UUID{}, pgtype.Timestamptz{})
+	return s.enqueueIssueTask(ctx, issue, commentID, false, "", pgtype.UUID{}, pgtype.UUID{}, pgtype.Timestamptz{}, nil)
 }
 
 // EnqueueDeferredChannelIssueTask persists the assigned task for a media-backed
@@ -1000,7 +1000,7 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, t
 // crash-safe fallback; the channel router promotes the task as soon as the
 // detached attachment transaction settles.
 func (s *TaskService) EnqueueDeferredChannelIssueTask(ctx context.Context, issue db.Issue, fireAt time.Time) (db.AgentTaskQueue, error) {
-	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, pgtype.Timestamptz{Time: fireAt, Valid: true})
+	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, pgtype.Timestamptz{Time: fireAt, Valid: true}, nil)
 }
 
 // createDeferredChannelIssueTaskWithQueries inserts the inert media-gated task
@@ -1011,7 +1011,7 @@ func (s *TaskService) EnqueueDeferredChannelIssueTask(ctx context.Context, issue
 // commit without holding database locks across a network call.
 func (s *TaskService) createDeferredChannelIssueTaskWithQueries(ctx context.Context, q *db.Queries, issue db.Issue, fireAt time.Time) (db.AgentTaskQueue, error) {
 	txService := &TaskService{Queries: q}
-	return txService.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, pgtype.Timestamptz{Time: fireAt, Valid: true})
+	return txService.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, pgtype.Timestamptz{Time: fireAt, Valid: true}, nil)
 }
 
 // hydrateDeferredChannelIssueTaskOverlay fills the optional Composio overlay
@@ -1053,7 +1053,47 @@ func (s *TaskService) hydrateDeferredChannelIssueTaskOverlay(ctx context.Context
 // member who performed the assign/promote and becomes the accountable human for
 // the run (MUL-4302 §4); invalid when the caller has no member actor.
 func (s *TaskService) EnqueueTaskForIssueWithHandoff(ctx context.Context, issue db.Issue, handoffNote string, actorUserID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, handoffNote, actorUserID, pgtype.UUID{}, pgtype.Timestamptz{})
+	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, handoffNote, actorUserID, pgtype.UUID{}, pgtype.Timestamptz{}, nil)
+}
+
+// EnqueueTaskForIssueWithHandoffAndTwin is the manual single-issue run path.
+// The one-off policy is validated against an immutable signed version before
+// it is copied onto the queue row; all other enqueue paths remain unbound.
+func (s *TaskService) EnqueueTaskForIssueWithHandoffAndTwin(ctx context.Context, issue db.Issue, handoffNote string, actorUserID pgtype.UUID, twinUse *TwinOneOffUsePolicyOverride) (db.AgentTaskQueue, error) {
+	canonical, err := s.validateTwinTaskUse(ctx, issue.WorkspaceID, twinUse)
+	if err != nil {
+		return db.AgentTaskQueue{}, err
+	}
+	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, handoffNote, actorUserID, pgtype.UUID{}, pgtype.Timestamptz{}, canonical)
+}
+
+func (s *TaskService) validateTwinTaskUse(ctx context.Context, workspaceID pgtype.UUID, input *TwinOneOffUsePolicyOverride) (*TwinOneOffUsePolicyOverride, error) {
+	if input == nil {
+		return nil, nil
+	}
+	canonical, err := NewTwinExecutionService(s.Queries, featureflags.TwinExecutionEnabled(ctx, s.FeatureFlags)).ValidateTaskUseSnapshot(ctx, workspaceID, *input)
+	if err != nil {
+		return nil, err
+	}
+	return &canonical, nil
+}
+
+func twinTaskUseColumns(input *TwinOneOffUsePolicyOverride) (pgtype.Text, pgtype.UUID, error) {
+	if input == nil {
+		return pgtype.Text{}, pgtype.UUID{}, nil
+	}
+	state := pgtype.Text{String: string(input.State), Valid: true}
+	if input.State == TwinUseOff {
+		if strings.TrimSpace(input.VersionID) != "" {
+			return pgtype.Text{}, pgtype.UUID{}, invalidTwinExecutionInput("off one-off Twin version id")
+		}
+		return state, pgtype.UUID{}, nil
+	}
+	versionID, err := util.ParseUUID(input.VersionID)
+	if err != nil || !validTwinUseState(input.State) {
+		return pgtype.Text{}, pgtype.UUID{}, invalidTwinExecutionInput("one-off Twin task snapshot")
+	}
+	return state, versionID, nil
 }
 
 // enqueueIssueTask is the shared implementation behind EnqueueTaskForIssue
@@ -1101,11 +1141,11 @@ func (s *TaskService) ResolveIssueReviewSHAParam(ctx context.Context, issueID pg
 	return headShaText(s.ResolveIssueReviewSHA(ctx, issueID))
 }
 
-func (s *TaskService) enqueueIssueTask(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, fireAt pgtype.Timestamptz) (db.AgentTaskQueue, error) {
-	return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, nil, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, fireAt)
+func (s *TaskService) enqueueIssueTask(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, fireAt pgtype.Timestamptz, twinUse *TwinOneOffUsePolicyOverride) (db.AgentTaskQueue, error) {
+	return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, nil, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, fireAt, twinUse)
 }
 
-func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, fireAt pgtype.Timestamptz) (db.AgentTaskQueue, error) {
+func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, fireAt pgtype.Timestamptz, twinUse *TwinOneOffUsePolicyOverride) (db.AgentTaskQueue, error) {
 	if !issue.AssigneeID.Valid {
 		slog.Error("task enqueue failed", "issue_id", util.UUIDToString(issue.ID), "error", "issue has no assignee")
 		return db.AgentTaskQueue{}, fmt.Errorf("issue has no assignee")
@@ -1141,6 +1181,10 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 	originatorUserID := attr.UserID
 	runtimeMCPOverlay := s.buildRuntimeMCPOverlay(ctx, originatorUserID, agent)
 	attrSource, attrDelegatedFrom, attrEvidenceKind, attrEvidenceRef := attributionCreateParams(attr)
+	twinUseState, twinVersionID, err := twinTaskUseColumns(twinUse)
+	if err != nil {
+		return db.AgentTaskQueue{}, err
+	}
 	createParams := db.CreateAgentTaskParams{
 		ID:                   dbid.NewV7(),
 		AgentID:              issue.AssigneeID,
@@ -1162,6 +1206,8 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 		DelegatedFromTaskID:  attrDelegatedFrom,
 		TriggerEvidenceKind:  attrEvidenceKind,
 		TriggerEvidenceRefID: attrEvidenceRef,
+		TwinUseState:         twinUseState,
+		TwinVersionID:        twinVersionID,
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
@@ -1192,6 +1238,8 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 			RerunOfTaskID:        createParams.RerunOfTaskID,
 			TriggerEvidenceKind:  createParams.TriggerEvidenceKind,
 			TriggerEvidenceRefID: createParams.TriggerEvidenceRefID,
+			TwinUseState:         createParams.TwinUseState,
+			TwinVersionID:        createParams.TwinVersionID,
 			FireAt:               fireAt,
 		})
 	} else {
@@ -1226,13 +1274,13 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 // Unlike EnqueueTaskForIssue, this takes an explicit agent ID rather than
 // deriving it from the issue assignee.
 func (s *TaskService) EnqueueTaskForMention(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, nil)
 }
 
 // EnqueueTaskForThreadParent creates a queued task for the agent who authored
 // the direct parent comment a member replied to.
 func (s *TaskService) EnqueueTaskForThreadParent(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, nil)
 }
 
 // EnqueueTaskForSquadLeader is the leader-role variant of EnqueueTaskForMention.
@@ -1247,7 +1295,7 @@ func (s *TaskService) EnqueueTaskForThreadParent(ctx context.Context, issue db.I
 // leader task was triggered (comment @squad, issue assign, autopilot,
 // sub-issue done callback). See migration 127.
 func (s *TaskService) EnqueueTaskForSquadLeader(ctx context.Context, issue db.Issue, leaderID pgtype.UUID, squadID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, leaderID, triggerCommentID, true, squadID, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, leaderID, triggerCommentID, true, squadID, false, "", pgtype.UUID{}, pgtype.UUID{}, nil)
 }
 
 // EnqueueTaskForSquadLeaderWithHandoff is the assign/promote variant carrying a
@@ -1256,14 +1304,24 @@ func (s *TaskService) EnqueueTaskForSquadLeader(ctx context.Context, issue db.Is
 // performed the assign/promote and becomes the accountable human (MUL-4302 §4);
 // invalid when the caller has no member actor.
 func (s *TaskService) EnqueueTaskForSquadLeaderWithHandoff(ctx context.Context, issue db.Issue, leaderID pgtype.UUID, squadID pgtype.UUID, handoffNote string, actorUserID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, leaderID, pgtype.UUID{}, true, squadID, false, handoffNote, actorUserID, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, leaderID, pgtype.UUID{}, true, squadID, false, handoffNote, actorUserID, pgtype.UUID{}, nil)
 }
 
-func (s *TaskService) enqueueMentionTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, nil, isLeader, squadID, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID)
+// EnqueueTaskForSquadLeaderWithHandoffAndTwin is the squad counterpart of the
+// manual one-off path. The override belongs to the single leader task only.
+func (s *TaskService) EnqueueTaskForSquadLeaderWithHandoffAndTwin(ctx context.Context, issue db.Issue, leaderID pgtype.UUID, squadID pgtype.UUID, handoffNote string, actorUserID pgtype.UUID, twinUse *TwinOneOffUsePolicyOverride) (db.AgentTaskQueue, error) {
+	canonical, err := s.validateTwinTaskUse(ctx, issue.WorkspaceID, twinUse)
+	if err != nil {
+		return db.AgentTaskQueue{}, err
+	}
+	return s.enqueueMentionTask(ctx, issue, leaderID, pgtype.UUID{}, true, squadID, false, handoffNote, actorUserID, pgtype.UUID{}, canonical)
 }
 
-func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
+func (s *TaskService) enqueueMentionTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, twinUse *TwinOneOffUsePolicyOverride) (db.AgentTaskQueue, error) {
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, nil, isLeader, squadID, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, twinUse)
+}
+
+func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, twinUse *TwinOneOffUsePolicyOverride) (db.AgentTaskQueue, error) {
 	agent, err := s.Queries.GetAgent(ctx, agentID)
 	if err != nil {
 		slog.Error("mention task enqueue failed: agent not found", "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID), "error", err)
@@ -1293,6 +1351,10 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 	originatorUserID := attr.UserID
 	runtimeMCPOverlay := s.buildRuntimeMCPOverlay(ctx, originatorUserID, agent)
 	attrSource, attrDelegatedFrom, attrEvidenceKind, attrEvidenceRef := attributionCreateParams(attr)
+	twinUseState, twinVersionID, err := twinTaskUseColumns(twinUse)
+	if err != nil {
+		return db.AgentTaskQueue{}, err
+	}
 	task, err := s.Queries.CreateAgentTask(ctx, db.CreateAgentTaskParams{
 		ID:                   dbid.NewV7(),
 		AgentID:              agentID,
@@ -1316,6 +1378,8 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 		DelegatedFromTaskID:  attrDelegatedFrom,
 		TriggerEvidenceKind:  attrEvidenceKind,
 		TriggerEvidenceRefID: attrEvidenceRef,
+		TwinUseState:         twinUseState,
+		TwinVersionID:        twinVersionID,
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
@@ -3272,8 +3336,35 @@ func (s *TaskService) FinalizeTaskClaim(
 	recordCommentReceipt bool,
 	daemonTokens ...db.CreateDaemonTokenParams,
 ) ([]pgtype.UUID, error) {
+	return s.FinalizeTaskClaimWithTwin(
+		ctx,
+		task,
+		token,
+		deliveredCommentIDs,
+		recordCommentReceipt,
+		nil,
+		daemonTokens...,
+	)
+}
+
+// FinalizeTaskClaimWithTwin extends FinalizeTaskClaim with an optional signed
+// Twin attribution record. The attribution is written in the same transaction
+// as the task token, daemon token, and comment delivery receipt, so briefing
+// bytes are never released with a partial audit trail.
+func (s *TaskService) FinalizeTaskClaimWithTwin(
+	ctx context.Context,
+	task db.AgentTaskQueue,
+	token db.CreateTaskTokenParams,
+	deliveredCommentIDs []pgtype.UUID,
+	recordCommentReceipt bool,
+	twinAttribution *TwinClaimAttribution,
+	daemonTokens ...db.CreateDaemonTokenParams,
+) ([]pgtype.UUID, error) {
 	if len(daemonTokens) > 1 {
 		return nil, fmt.Errorf("finalize task claim: expected at most one daemon token, got %d", len(daemonTokens))
+	}
+	if twinAttribution != nil && s.TxStarter == nil {
+		return nil, errors.New("finalize task claim: Twin attribution requires a transaction")
 	}
 	receipt := task.DeliveredCommentIds
 	err := s.runInTx(ctx, func(qtx *db.Queries) error {
@@ -3288,6 +3379,15 @@ func (s *TaskService) FinalizeTaskClaim(
 			}
 			if _, err := qtx.CreateDaemonToken(ctx, daemonTokens[0]); err != nil {
 				return fmt.Errorf("create remote MCP daemon token: %w", err)
+			}
+		}
+		if twinAttribution != nil {
+			input, err := twinTaskAttributionInput(task, token, *twinAttribution)
+			if err != nil {
+				return err
+			}
+			if _, err := NewTwinExecutionStore(qtx).CreateTwinTaskAttributionForClaim(ctx, input); err != nil {
+				return fmt.Errorf("create Twin task attribution: %w", err)
 			}
 		}
 		if !recordCommentReceipt {
@@ -4935,9 +5035,9 @@ func (s *TaskService) promoteNewestSurvivingComment(ctx context.Context, ids []p
 func (s *TaskService) enqueueRerunTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
 	if issue.AssigneeType.String == "agent" && issue.AssigneeID.Valid &&
 		util.UUIDToString(issue.AssigneeID) == util.UUIDToString(agentID) {
-		return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, coalescedCommentIDs, true, "", actorUserID, rerunOfTaskID, pgtype.Timestamptz{})
+		return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, coalescedCommentIDs, true, "", actorUserID, rerunOfTaskID, pgtype.Timestamptz{}, nil)
 	}
-	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, true, "", actorUserID, rerunOfTaskID)
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, true, "", actorUserID, rerunOfTaskID, nil)
 }
 
 // HandleFailedTasks runs the post-failure side effects for a batch of

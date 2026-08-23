@@ -374,6 +374,20 @@ func defaultPropsForEvent(name string) map[string]any {
 		return map[string]any{"kind": "general", "platform": "web"}
 	case analytics.EventContactSalesSubmitted:
 		return map[string]any{"form_source": "page"}
+	case analytics.EventTwinProposalGeneration:
+		return map[string]any{"kind": "initial", "state": "succeeded", "latency_ms": int64(10)}
+	case analytics.EventTwinSignOff:
+		return map[string]any{"kind": "initial", "decision": "signed"}
+	case analytics.EventTwinBriefingCompilation:
+		return map[string]any{"state": "compiled", "scope": "issue", "exclusion_code": "none", "latency_ms": int64(10)}
+	case analytics.EventTwinBriefingUse:
+		return map[string]any{"state": "injected", "scope": "issue", "exclusion_code": "none", "byte_count": 512, "token_count": 128}
+	case analytics.EventTwinRunFeedback:
+		return map[string]any{"rating": "helped"}
+	case analytics.EventTwinTaskRevision:
+		return map[string]any{"decision": "accepted", "kind": "none"}
+	case analytics.EventTwinDepositionReview:
+		return map[string]any{"decision": "accepted"}
 	}
 	return map[string]any{}
 }

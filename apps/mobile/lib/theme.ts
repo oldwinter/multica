@@ -1,4 +1,10 @@
 import { DarkTheme, DefaultTheme, type Theme } from "@react-navigation/native";
+import {
+  missingSemanticTokenRoles,
+  SEMANTIC_TOKEN_CONTRACT_VERSION,
+  SEMANTIC_TOKEN_ROLES,
+  type SemanticTokenRole,
+} from "@multica/core/constants/semantic-token-schema";
 
 export const SKIN_IDS = ["tension", "relay", "field"] as const;
 export type AppSkin = (typeof SKIN_IDS)[number];
@@ -40,6 +46,55 @@ export type AppTheme = {
   surface1: string;
   surface2: string;
 };
+
+export const MOBILE_SEMANTIC_TOKEN_CONTRACT_VERSION = SEMANTIC_TOKEN_CONTRACT_VERSION;
+
+const MOBILE_SEMANTIC_ROLE_SOURCES = {
+  canvas: "background",
+  shell: "surface1",
+  surface: "card",
+  raisedSurface: "popover",
+  surfaceHover: "surface2",
+  selection: "accent",
+  selectionForeground: "accentForeground",
+  border: "border",
+  controlBorder: "input",
+  text: "foreground",
+  mutedText: "mutedForeground",
+  disabledText: "mutedForeground",
+  focus: "ring",
+  brand: "brand",
+  brandForeground: "brandForeground",
+  destructive: "destructive",
+  destructiveForeground: "destructiveForeground",
+  success: "success",
+  warning: "warning",
+  info: "info",
+  statusBacklog: "mutedForeground",
+  statusTodo: "foreground",
+  statusInProgress: "info",
+  statusDone: "success",
+  statusCancelled: "mutedForeground",
+  chart1: "chart1",
+  chart2: "chart2",
+  chart3: "chart3",
+  chart4: "chart4",
+  chart5: "chart5",
+  codeSurface: "codeSurface",
+  codeText: "foreground",
+  platformChrome: "surface1",
+  platformChromeForeground: "foreground",
+} satisfies Record<SemanticTokenRole, keyof AppTheme>;
+
+export function validateMobileThemeContract(palette: Partial<AppTheme>) {
+  const values = Object.fromEntries(
+    SEMANTIC_TOKEN_ROLES.map((role) => [role, palette[MOBILE_SEMANTIC_ROLE_SOURCES[role]]]),
+  );
+  return missingSemanticTokenRoles(values).map((role) => ({
+    role,
+    source: MOBILE_SEMANTIC_ROLE_SOURCES[role],
+  }));
+}
 
 const tensionLight: AppTheme = {
   background: "hsl(20 14% 98%)",

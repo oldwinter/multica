@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS twin_binding_id_uidx;

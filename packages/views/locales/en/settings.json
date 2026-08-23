@@ -106,6 +106,15 @@
     "general_title": "General",
     "appearance_title": "Appearance",
     "appearance_hint": "Choose a visual material and how it responds to ambient light.",
+    "appearance_sync": {
+      "default": "Using product defaults",
+      "synced": "Synced across devices",
+      "pending": "Waiting to sync",
+      "local_only": "Saved on this device",
+      "failed": "Sync failed",
+      "retry": "Retry sync",
+      "reset": "Reset appearance"
+    },
     "skin": {
       "title": "Skin",
       "tension": {

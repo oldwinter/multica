@@ -200,7 +200,9 @@ func newServiceFixture(t *testing.T) serviceFixture {
 		pool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE room_turn_id IN (SELECT id FROM room_turn WHERE workspace_id = $1)`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM wiki_page WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM issue WHERE workspace_id = $1`, fixture.workspaceID)
+		pool.Exec(context.Background(), `DELETE FROM room_recommendation_review WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_artifact WHERE workspace_id = $1`, fixture.workspaceID)
+		pool.Exec(context.Background(), `DELETE FROM room_memory_revision WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_turn WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_cycle WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_entry WHERE workspace_id = $1`, fixture.workspaceID)
@@ -356,6 +358,38 @@ func TestMultiTargetWakeReservesWholeDailyBudget(t *testing.T) {
 	}
 	if result.Cycle.Status != "refused" || result.Cycle.RefusalReason.String != "budget_exhausted" || len(result.Tasks) != 0 {
 		t.Fatalf("multi-target budget result = %+v", result)
+	}
+}
+
+func TestCostBudgetRefusesUnderfundedCycleAndPartitionsTaskCeiling(t *testing.T) {
+	fixture := newServiceFixture(t)
+	ctx := context.Background()
+	underfunded := createSingleOutcomeRoom(t, fixture, "Underfunded cost Room", 1)
+	preflight, err := fixture.service.Preflight(ctx, roomTestPreflightInput(fixture, underfunded.Room.ID, "manual"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preflight.Allowed || preflight.RefusalReason != "budget_exhausted" || preflight.ExpectedMaxTurns != 2 {
+		t.Fatalf("underfunded preflight = %+v", preflight)
+	}
+
+	funded := createSingleOutcomeRoom(t, fixture, "Funded cost Room", 3)
+	wake, err := fixture.service.Wake(ctx, WakeInput{
+		WorkspaceID: fixture.workspaceID, RoomID: funded.Room.ID, ActorUserID: fixture.userID,
+		Source: "manual", WakeKey: "manual:partition-cost-ceiling",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Cycle.CostLimitTicks.Valid || wake.Cycle.CostLimitTicks.Int64 != 3 || len(wake.Tasks) != 1 {
+		t.Fatalf("funded wake = %+v", wake)
+	}
+	context, err := protocol.ParseRoomTaskContext(wake.Tasks[0].Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if context.CostLimitTicks == nil || *context.CostLimitTicks != 2 || wake.Tasks[0].MaxAttempts != 1 {
+		t.Fatalf("participant budget/max attempts = context %+v task %+v", context, wake.Tasks[0])
 	}
 }
 

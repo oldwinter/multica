@@ -70,6 +70,7 @@ func TestUuidPtrStringAndWikiSummary(t *testing.T) {
 		"notes.md", "Notes",
 		pgtype.Timestamptz{Time: time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC), Valid: true},
 		pgtype.Timestamptz{Time: time.Date(2026, 8, 5, 1, 0, 0, 0, time.UTC), Valid: true},
+		1, id, "sha256:digest", "human", "member", id,
 	)
 	if resp.WorkspaceID != nil {
 		t.Fatalf("personal page should have null workspace_id, got %v", resp.WorkspaceID)
@@ -87,6 +88,37 @@ func TestUuidPtrStringAndWikiSummary(t *testing.T) {
 	})
 	if full.Content != "# hi" || full.WorkspaceID != nil {
 		t.Fatalf("response = %+v", full)
+	}
+}
+
+func TestDecodeWikiProposalUsesFrozenAgentContract(t *testing.T) {
+	t.Parallel()
+	body := `{"base_revision_number":3,"proposed_path":"playbook/review.md","proposed_title":"Review","proposed_content":"# Review","rationale":"evidence","evidence_refs":["issue:1"],"agent_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","idempotency_key":"run-1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/wiki/pages/page/proposals", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	var got createWikiProposalRequest
+
+	if !decodeWikiJSON(w, req, &got) {
+		t.Fatalf("frozen proposal body was rejected: status=%d body=%s", w.Code, w.Body.String())
+	}
+	if got.ProposedPath == nil || *got.ProposedPath != "playbook/review.md" || got.AgentID != "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" {
+		t.Fatalf("decoded proposal = %+v", got)
+	}
+}
+
+func TestRequireWikiHumanRejectsCloudMachineCredential(t *testing.T) {
+	t.Parallel()
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodPut, "/api/wiki/pages/page", nil)
+	req.Header.Set("X-User-ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	req.Header.Set("X-Actor-Source", "cloud_pat")
+	w := httptest.NewRecorder()
+
+	if _, ok := h.requireWikiHuman(w, req, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"); ok {
+		t.Fatal("cloud machine credential must not pass the human Wiki guard")
+	}
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }
 
@@ -172,6 +204,12 @@ func (r *wikiMockRows) Scan(dest ...interface{}) error {
 	*(dest[7].(*pgtype.UUID)) = p.CreatedBy
 	*(dest[8].(*pgtype.Timestamptz)) = p.CreatedAt
 	*(dest[9].(*pgtype.Timestamptz)) = p.UpdatedAt
+	*(dest[10].(*int64)) = p.CurrentRevisionNumber
+	*(dest[11].(*pgtype.UUID)) = p.CurrentRevisionID
+	*(dest[12].(*string)) = p.ContentDigest
+	*(dest[13].(*string)) = p.LastSourceKind
+	*(dest[14].(*string)) = p.LastActorType
+	*(dest[15].(*pgtype.UUID)) = p.LastActorID
 	return nil
 }
 
@@ -218,6 +256,12 @@ func (r *wikiMockRow) Scan(dest ...interface{}) error {
 	*(dest[8].(*pgtype.UUID)) = p.CreatedBy
 	*(dest[9].(*pgtype.Timestamptz)) = p.CreatedAt
 	*(dest[10].(*pgtype.Timestamptz)) = p.UpdatedAt
+	*(dest[11].(*int64)) = p.CurrentRevisionNumber
+	*(dest[12].(*pgtype.UUID)) = p.CurrentRevisionID
+	*(dest[13].(*string)) = p.ContentDigest
+	*(dest[14].(*string)) = p.LastSourceKind
+	*(dest[15].(*string)) = p.LastActorType
+	*(dest[16].(*pgtype.UUID)) = p.LastActorID
 	return nil
 }
 
@@ -367,6 +411,51 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		}
 	})
 
+	t.Run("task_token_cannot_read_personal_page", func(t *testing.T) {
+		mock := &wikiMockDB{page: db.WikiPage{
+			ID: pageUUID, Scope: "user", OwnerUserID: userUUID, Path: "secret.md", Content: "private",
+		}}
+		h := newHandler(mock)
+		w := httptest.NewRecorder()
+		req := withChiID(authReq(http.MethodGet, "/api/wiki/pages/"+pageID, ""), pageID)
+		req.Header.Set("X-Actor-Source", "task_token")
+		req.Header.Set("X-Agent-ID", "ffffffff-ffff-ffff-ffff-ffffffffffff")
+		h.GetWikiPage(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("task_token_cannot_directly_update_shared_page", func(t *testing.T) {
+		mock := &wikiMockDB{page: db.WikiPage{
+			ID: pageUUID, WorkspaceID: wsUUID, Scope: "workspace", Path: "shared.md", CurrentRevisionNumber: 1,
+		}}
+		h := newHandler(mock)
+		w := httptest.NewRecorder()
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"content":"forbidden"}`), pageID)
+		req.Header.Set("X-Actor-Source", "task_token")
+		req.Header.Set("X-Agent-ID", "ffffffff-ffff-ffff-ffff-ffffffffffff")
+		h.UpdateWikiPage(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("task_token_cannot_delete_shared_page", func(t *testing.T) {
+		mock := &wikiMockDB{page: db.WikiPage{
+			ID: pageUUID, WorkspaceID: wsUUID, Scope: "workspace", Path: "shared.md", CurrentRevisionNumber: 1,
+		}}
+		h := newHandler(mock)
+		w := httptest.NewRecorder()
+		req := withChiID(authReq(http.MethodDelete, "/api/wiki/pages/"+pageID, ""), pageID)
+		req.Header.Set("X-Actor-Source", "task_token")
+		req.Header.Set("X-Agent-ID", "ffffffff-ffff-ffff-ffff-ffffffffffff")
+		h.DeleteWikiPage(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("get_workspace_page_wrong_workspace", func(t *testing.T) {
 		otherWS := util.MustParseUUID("99999999-9999-9999-9999-999999999999")
 		mock := &wikiMockDB{page: db.WikiPage{
@@ -485,7 +574,7 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		}
 		h := newHandler(mock)
 		w := httptest.NewRecorder()
-		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"content":"new"}`), pageID)
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"content":"new"}`), pageID)
 		h.UpdateWikiPage(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
@@ -496,7 +585,7 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		mock := &wikiMockDB{page: db.WikiPage{ID: pageUUID, Scope: "user", OwnerUserID: userUUID, Path: "me.md"}}
 		h := newHandler(mock)
 		w := httptest.NewRecorder()
-		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"path":"/abs.md"}`), pageID)
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"path":"/abs.md"}`), pageID)
 		h.UpdateWikiPage(w, req)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("status=%d", w.Code)
@@ -738,7 +827,7 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		}
 		h := newHandler(mock)
 		w := httptest.NewRecorder()
-		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"path":"new.md","title":"New","content":"c"}`), pageID)
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"path":"new.md","title":"New","content":"c"}`), pageID)
 		h.UpdateWikiPage(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
@@ -752,10 +841,36 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		}
 		h := newHandler(mock)
 		w := httptest.NewRecorder()
-		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"path":"dup.md"}`), pageID)
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"path":"dup.md"}`), pageID)
 		h.UpdateWikiPage(w, req)
 		if w.Code != http.StatusConflict {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("stale_update_returns_structured_revision_conflict", func(t *testing.T) {
+		mock := &wikiMockDB{
+			page: db.WikiPage{
+				ID: pageUUID, Scope: "user", OwnerUserID: userUUID, Path: "old.md", CurrentRevisionNumber: 3,
+			},
+			writeErr: pgx.ErrNoRows,
+		}
+		h := newHandler(mock)
+		w := httptest.NewRecorder()
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":2,"content":"stale"}`), pageID)
+		h.UpdateWikiPage(w, req)
+		if w.Code != http.StatusConflict {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		var response struct {
+			Code                  string `json:"code"`
+			CurrentRevisionNumber int64  `json:"current_revision_number"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode conflict: %v", err)
+		}
+		if response.Code != "wiki_revision_conflict" || response.CurrentRevisionNumber != 3 {
+			t.Fatalf("conflict=%+v body=%s", response, w.Body.String())
 		}
 	})
 
@@ -766,7 +881,7 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		}
 		h := newHandler(mock)
 		w := httptest.NewRecorder()
-		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"title":"x"}`), pageID)
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"title":"x"}`), pageID)
 		h.UpdateWikiPage(w, req)
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status=%d", w.Code)
@@ -776,7 +891,7 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 	t.Run("update_load_fail", func(t *testing.T) {
 		h := newHandler(&wikiMockDB{pageErr: pgx.ErrNoRows})
 		w := httptest.NewRecorder()
-		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"title":"x"}`), pageID)
+		req := withChiID(authReq(http.MethodPut, "/api/wiki/pages/"+pageID, `{"expected_revision_number":1,"title":"x"}`), pageID)
 		h.UpdateWikiPage(w, req)
 		if w.Code != http.StatusNotFound {
 			t.Fatalf("status=%d", w.Code)
@@ -859,10 +974,11 @@ func TestWikiHandlersWithMockDB(t *testing.T) {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/api/wiki/pages/"+pageID, nil)
 		req.Header.Set("X-User-ID", userID)
-		// no workspace header → resolveWorkspaceID empty → bad request
+		// No workspace identity means the tenant-bound query cannot authorize the
+		// row. Keep existence private with the same 404 as any other denied read.
 		req = withChiID(req, pageID)
 		h.GetWikiPage(w, req)
-		if w.Code != http.StatusBadRequest {
+		if w.Code != http.StatusNotFound {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 		}
 	})

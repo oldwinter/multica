@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -1506,20 +1508,60 @@ func requestHasClientCapability(r *http.Request, capability string) bool {
 	return false
 }
 
-func daemonCanClaimTask(r *http.Request, task db.AgentTaskQueue) bool {
-	return !task.RoomTurnID.Valid || requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
+type roomTaskClaimCompatibility uint8
+
+const (
+	roomTaskClaimCompatible roomTaskClaimCompatibility = iota
+	roomTaskClaimUnsupported
+	roomTaskClaimInvalid
+)
+
+func daemonRoomTaskCompatibility(r *http.Request, task db.AgentTaskQueue) roomTaskClaimCompatibility {
+	if !task.RoomTurnID.Valid {
+		return roomTaskClaimCompatible
+	}
+	roomContext, err := protocol.ParseRoomTaskContext(task.Context)
+	if err != nil {
+		return roomTaskClaimInvalid
+	}
+	if roomContext.CostLimitTicks != nil && !requestHasClientCapability(r, protocol.DaemonCapabilityRoomCostLimitsV1) {
+		return roomTaskClaimUnsupported
+	}
+	if roomContext.SchemaVersion >= protocol.RoomTaskContextSchemaV2 {
+		if requestHasClientCapability(r, protocol.DaemonCapabilityRoomOutcomesV2) {
+			return roomTaskClaimCompatible
+		}
+		return roomTaskClaimUnsupported
+	}
+	if requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1) {
+		return roomTaskClaimCompatible
+	}
+	return roomTaskClaimUnsupported
 }
 
-func (h *Handler) requeueUnsupportedRoomTask(ctx context.Context, task db.AgentTaskQueue) error {
-	requeued, err := h.Queries.RequeueAgentTaskAfterClaimFailure(ctx, db.RequeueAgentTaskAfterClaimFailureParams{
-		TaskID:       task.ID,
-		RuntimeID:    task.RuntimeID,
-		DispatchedAt: task.DispatchedAt,
+const (
+	unsupportedRoomTaskRetryDelay = 30 * time.Second
+	unsupportedRoomTaskScanLimit  = 32
+)
+
+func (h *Handler) deferUnsupportedRoomTask(ctx context.Context, task db.AgentTaskQueue) error {
+	deferred, err := h.Queries.DeferUnsupportedRoomTaskAfterClaim(ctx, db.DeferUnsupportedRoomTaskAfterClaimParams{
+		RetryAfterSecs: unsupportedRoomTaskRetryDelay.Seconds(),
+		TaskID:         task.ID,
+		RuntimeID:      task.RuntimeID,
+		DispatchedAt:   task.DispatchedAt,
 	})
 	if err != nil {
-		return fmt.Errorf("requeue unsupported Room task: %w", err)
+		return fmt.Errorf("defer unsupported Room task: %w", err)
 	}
-	h.TaskService.ReconcileAgentStatus(ctx, requeued.AgentID)
+	h.TaskService.ReconcileAgentStatus(ctx, deferred.AgentID)
+	return nil
+}
+
+func (h *Handler) cancelInvalidRoomTask(ctx context.Context, task db.AgentTaskQueue) error {
+	if _, err := h.TaskService.CancelTask(ctx, task.ID); err != nil {
+		return fmt.Errorf("cancel invalid Room task: %w", err)
+	}
 	return nil
 }
 
@@ -1695,103 +1737,146 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	includeRoomTasks := requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
-	claimed, err := h.TaskService.ClaimTasksForRuntimesCapabilities(r.Context(), authorized, maxTasks, includeRoomTasks)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to claim tasks: "+err.Error())
+	supportsRoomTasksV1 := requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
+	supportsRoomOutcomesV2 := requestHasClientCapability(r, protocol.DaemonCapabilityRoomOutcomesV2)
+	includeRoomTasks := supportsRoomTasksV1 || supportsRoomOutcomesV2
+	if _, err := h.Queries.MakeSupportedDeferredRoomTasksDue(r.Context(), db.MakeSupportedDeferredRoomTasksDueParams{
+		RuntimeIds:             authorized,
+		SupportsRoomTasksV1:    supportsRoomTasksV1,
+		SupportsRoomOutcomesV2: supportsRoomOutcomesV2,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to restore supported Room tasks")
 		return
 	}
-
-	out := make([]AgentTaskResponse, 0, len(claimed))
-	for i := range claimed {
-		task := claimed[i]
-		rt, ok := runtimeByID[uuidToString(task.RuntimeID)]
-		if !ok {
-			// Service guards claims to the authorized set; a miss here would be
-			// a stray cross-daemon claim. Leave it for the owning daemon's
-			// reclaim path rather than shipping it to the wrong machine.
-			continue
-		}
-		rtWorkspaceID := uuidToString(rt.WorkspaceID)
-		if !daemonCanClaimTask(r, task) {
-			if err := h.requeueUnsupportedRoomTask(r.Context(), task); err != nil {
-				slog.Error("batch claim: requeue unsupported Room task failed",
-					"task_id", uuidToString(task.ID), "error", err)
+	out := make([]AgentTaskResponse, 0, maxTasks)
+	for claimRound := 0; claimRound < unsupportedRoomTaskScanLimit && len(out) < maxTasks; claimRound++ {
+		claimed, claimErr := h.TaskService.ClaimTasksForRuntimesCapabilities(
+			r.Context(), authorized, maxTasks-len(out), includeRoomTasks,
+		)
+		if claimErr != nil {
+			if len(out) == 0 {
+				writeError(w, http.StatusInternalServerError, "failed to claim tasks: "+claimErr.Error())
+				return
 			}
-			continue
+			slog.Error("batch claim: refill failed after partial success",
+				"claimed", len(out), "error", claimErr)
+			break
 		}
-		// Stale comment-plan repair must run for the batch path too: otherwise a
-		// task whose trigger was deleted (only coalesced survive) would be
-		// finalized+dispatched with no comment input, silently dropping the
-		// surviving user comment. On repair (or hard failure) the task is
-		// cancelled / left for reclaim and omitted from the batch.
-		if handled, _ := h.repairStaleCommentPlanIfNeeded(r.Context(), &task, rtWorkspaceID); handled {
-			continue
+		if len(claimed) == 0 {
+			break
 		}
-		resp, deliveredCommentIDs, _, _, failure := h.buildClaimedTaskResponse(r, &task, rt, uuidToString(task.RuntimeID), rtWorkspaceID)
-		if failure != nil {
-			// Builder rejected this task (workspace isolation / chat-input);
-			// it has already cancelled the task where the failure requires it.
-			// Skip it — non-cancelling failures leave the task dispatched for
-			// the reclaim path.
-			continue
-		}
-		if !rt.OwnerID.Valid {
-			slog.Error("batch claim: runtime owner missing; cancelling task to avoid unscoped agent credentials",
-				"task_id", uuidToString(task.ID), "runtime_id", uuidToString(task.RuntimeID))
-			if _, cerr := h.TaskService.CancelTask(r.Context(), task.ID); cerr != nil {
-				slog.Error("batch claim: cancel after missing runtime owner failed",
-					"task_id", uuidToString(task.ID), "error", cerr)
+		deferredUnsupported := false
+		for i := range claimed {
+			task := claimed[i]
+			rt, ok := runtimeByID[uuidToString(task.RuntimeID)]
+			if !ok {
+				// Service guards claims to the authorized set; a miss here would be
+				// a stray cross-daemon claim. Leave it for the owning daemon's
+				// reclaim path rather than shipping it to the wrong machine.
+				continue
 			}
-			continue
-		}
-		tokenStr, terr := auth.GenerateAgentTaskToken()
-		if terr != nil {
-			slog.Error("batch claim: generate task token failed; requeueing claim",
-				"task_id", uuidToString(task.ID), "error", terr)
-			if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), task); rerr != nil {
-				slog.Error("batch claim: requeue after token-gen failure failed",
-					"task_id", uuidToString(task.ID), "error", rerr)
+			rtWorkspaceID := uuidToString(rt.WorkspaceID)
+			switch daemonRoomTaskCompatibility(r, task) {
+			case roomTaskClaimUnsupported:
+				if err := h.deferUnsupportedRoomTask(r.Context(), task); err != nil {
+					slog.Error("batch claim: defer unsupported Room task failed",
+						"task_id", uuidToString(task.ID), "error", err)
+				} else {
+					deferredUnsupported = true
+				}
+				continue
+			case roomTaskClaimInvalid:
+				if err := h.cancelInvalidRoomTask(r.Context(), task); err != nil {
+					slog.Error("batch claim: cancel invalid Room task failed",
+						"task_id", uuidToString(task.ID), "error", err)
+				}
+				continue
 			}
-			continue
-		}
-		remoteMCPToken, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, rt)
-		if derr != nil {
-			slog.Error("batch claim: generate Remote MCP daemon token failed; requeueing claim",
-				"task_id", uuidToString(task.ID), "error", derr)
-			if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), task); rerr != nil {
-				slog.Error("batch claim: requeue after Remote MCP token failure failed",
-					"task_id", uuidToString(task.ID), "error", rerr)
+			// Stale comment-plan repair must run for the batch path too: otherwise a
+			// task whose trigger was deleted (only coalesced survive) would be
+			// finalized+dispatched with no comment input, silently dropping the
+			// surviving user comment. On repair (or hard failure) the task is
+			// cancelled / left for reclaim and omitted from the batch.
+			if handled, _ := h.repairStaleCommentPlanIfNeeded(r.Context(), &task, rtWorkspaceID); handled {
+				continue
 			}
-			continue
-		}
-		// Route through the SAME finalization as the per-runtime endpoint so the
-		// token and the comment-delivery receipt (delivered_comment_ids for
-		// comment/coalesced-comment tasks) are persisted atomically; on failure
-		// the exact claim is requeued and omitted from this batch.
-		commentBackedTask := task.TriggerCommentID.Valid || len(task.CoalescedCommentIds) > 0
-		receipt, ferr := h.TaskService.FinalizeTaskClaim(r.Context(), task, db.CreateTaskTokenParams{
-			ID:          dbid.NewV7(),
-			TokenHash:   auth.HashToken(tokenStr),
-			TaskID:      task.ID,
-			AgentID:     task.AgentID,
-			WorkspaceID: parseUUID(resp.WorkspaceID),
-			UserID:      rt.OwnerID,
-			ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
-		}, deliveredCommentIDs, commentBackedTask, daemonTokens...)
-		if ferr != nil {
-			slog.Error("batch claim: finalize task claim failed; requeueing claim",
-				"task_id", uuidToString(task.ID), "error", ferr)
-			if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), task); rerr != nil {
-				slog.Error("batch claim: requeue after finalize failure failed",
-					"task_id", uuidToString(task.ID), "error", rerr)
+			resp, deliveredCommentIDs, _, _, failure := h.buildClaimedTaskResponse(r, &task, rt, uuidToString(task.RuntimeID), rtWorkspaceID)
+			if failure != nil {
+				// Builder rejected this task (workspace isolation / chat-input);
+				// it has already cancelled the task where the failure requires it.
+				// Skip it — non-cancelling failures leave the task dispatched for
+				// the reclaim path.
+				continue
 			}
-			continue
+			if !rt.OwnerID.Valid {
+				slog.Error("batch claim: runtime owner missing; cancelling task to avoid unscoped agent credentials",
+					"task_id", uuidToString(task.ID), "runtime_id", uuidToString(task.RuntimeID))
+				if _, cerr := h.TaskService.CancelTask(r.Context(), task.ID); cerr != nil {
+					slog.Error("batch claim: cancel after missing runtime owner failed",
+						"task_id", uuidToString(task.ID), "error", cerr)
+				}
+				continue
+			}
+			tokenStr, terr := auth.GenerateAgentTaskToken()
+			if terr != nil {
+				slog.Error("batch claim: generate task token failed; requeueing claim",
+					"task_id", uuidToString(task.ID), "error", terr)
+				if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), task); rerr != nil {
+					slog.Error("batch claim: requeue after token-gen failure failed",
+						"task_id", uuidToString(task.ID), "error", rerr)
+				}
+				continue
+			}
+			remoteMCPToken, daemonTokens, derr := remoteMCPDaemonTokenForClaim(resp, rt)
+			if derr != nil {
+				slog.Error("batch claim: generate Remote MCP daemon token failed; requeueing claim",
+					"task_id", uuidToString(task.ID), "error", derr)
+				if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), task); rerr != nil {
+					slog.Error("batch claim: requeue after Remote MCP token failure failed",
+						"task_id", uuidToString(task.ID), "error", rerr)
+				}
+				continue
+			}
+			// Route through the SAME finalization as the per-runtime endpoint so the
+			// token and the comment-delivery receipt (delivered_comment_ids for
+			// comment/coalesced-comment tasks) are persisted atomically; on failure
+			// the exact claim is requeued and omitted from this batch.
+			commentBackedTask := task.TriggerCommentID.Valid || len(task.CoalescedCommentIds) > 0
+			receipt, ferr := h.finalizeTaskClaim(r.Context(), task, db.CreateTaskTokenParams{
+				ID:          dbid.NewV7(),
+				TokenHash:   auth.HashToken(tokenStr),
+				TaskID:      task.ID,
+				AgentID:     task.AgentID,
+				WorkspaceID: parseUUID(resp.WorkspaceID),
+				UserID:      rt.OwnerID,
+				ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
+			}, deliveredCommentIDs, commentBackedTask, resp.twinAttribution, daemonTokens...)
+			if ferr != nil {
+				slog.Error("batch claim: finalize task claim failed; requeueing claim",
+					"task_id", uuidToString(task.ID), "error", ferr)
+				if _, rerr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), task); rerr != nil {
+					slog.Error("batch claim: requeue after finalize failure failed",
+						"task_id", uuidToString(task.ID), "error", rerr)
+				}
+				continue
+			}
+			if resp.twinAttribution != nil {
+				obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.TwinBriefingUse(analytics.TwinBriefingUseMetric{
+					Context: analytics.TwinMetricContext{UserID: uuidToString(rt.OwnerID), WorkspaceID: resp.WorkspaceID, TaskID: uuidToString(task.ID)},
+					State:   analytics.TwinUseStateInjected, Scope: analytics.TwinPolicyScope(resp.twinAttribution.PolicyScope),
+					ExclusionCode: analytics.TwinExclusionNone, AssertionCount: len(resp.twinAttribution.SelectedAssertionIDs),
+					CitationCount: len(resp.twinAttribution.CitationIDs), ByteCount: resp.twinAttribution.ByteCount,
+					TokenCount: resp.twinAttribution.TokenCount,
+				}))
+			}
+			resp.AuthToken = tokenStr
+			resp.RemoteMCPDaemonToken = remoteMCPToken
+			resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
+			out = append(out, resp)
 		}
-		resp.AuthToken = tokenStr
-		resp.RemoteMCPDaemonToken = remoteMCPToken
-		resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
-		out = append(out, resp)
+		if !deferredUnsupported {
+			break
+		}
 	}
 
 	if len(out) > 0 {
@@ -1811,6 +1896,198 @@ type claimBuildFailure struct {
 	outcome string
 	status  int
 	message string
+}
+
+var ErrTwinBriefingCapabilityRequired = errors.New("daemon does not support Twin briefing v1")
+
+type TwinBriefingClaimInput = service.TwinBriefingClaimInput
+type TwinBriefingClaimResolution = service.TwinBriefingClaimResolution
+
+// TwinBriefingClaimResolver resolves the effective opt-in policy and compiles
+// only a signed, task-relevant Twin version. The claim assembler never forwards
+// compiled bytes for off, preview, stale, unauthorized, or local-only input.
+type TwinBriefingClaimResolver interface {
+	ResolveTwinBriefingForClaim(context.Context, TwinBriefingClaimInput) (TwinBriefingClaimResolution, error)
+}
+
+// TaskClaimFinalizer owns the complete existing task-token/comment-receipt
+// finalization transaction and the optional Twin attribution insert. It is not
+// an after-commit callback: returning success promises that all writes are
+// durable together.
+type TaskClaimFinalizer interface {
+	FinalizeTaskClaimWithTwin(
+		context.Context,
+		db.AgentTaskQueue,
+		db.CreateTaskTokenParams,
+		[]pgtype.UUID,
+		bool,
+		*service.TwinClaimAttribution,
+		...db.CreateDaemonTokenParams,
+	) ([]pgtype.UUID, error)
+}
+
+func (h *Handler) finalizeTaskClaim(
+	ctx context.Context,
+	task db.AgentTaskQueue,
+	token db.CreateTaskTokenParams,
+	deliveredCommentIDs []pgtype.UUID,
+	recordCommentReceipt bool,
+	attribution *service.TwinClaimAttribution,
+	daemonTokens ...db.CreateDaemonTokenParams,
+) ([]pgtype.UUID, error) {
+	if h.TwinTaskClaimFinalizer != nil {
+		return h.TwinTaskClaimFinalizer.FinalizeTaskClaimWithTwin(
+			ctx,
+			task,
+			token,
+			deliveredCommentIDs,
+			recordCommentReceipt,
+			attribution,
+			daemonTokens...,
+		)
+	}
+	if attribution != nil {
+		return nil, errors.New("Twin task attribution finalizer is not configured")
+	}
+	return h.TaskService.FinalizeTaskClaim(ctx, task, token, deliveredCommentIDs, recordCommentReceipt, daemonTokens...)
+}
+
+const twinTaskRelevanceRequestMaxBytes = 8 * 1024
+
+// twinTaskRelevanceInput builds bounded, in-memory-only matching context. It
+// prefers the current user turn, then durable snapshots/titles that survive a
+// source edit. Neither the request nor these tags are sent to the daemon or
+// persisted in Twin attribution.
+func twinTaskRelevanceInput(resp AgentTaskResponse) (string, []string) {
+	values := []string{
+		resp.TriggerCommentContent,
+		resp.ChatMessage,
+		resp.QuickCreatePrompt,
+		resp.HandoffNote,
+	}
+	if resp.TriggerSummary != nil {
+		values = append(values, *resp.TriggerSummary)
+	}
+	values = append(values,
+		resp.ThreadName,
+		resp.AutopilotTitle,
+		resp.AutopilotDescription,
+		resp.RoomTitle,
+		resp.RoomInstructions,
+	)
+
+	var request strings.Builder
+	request.Grow(min(twinTaskRelevanceRequestMaxBytes, 1024))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || request.Len() >= twinTaskRelevanceRequestMaxBytes {
+			continue
+		}
+		if request.Len() > 0 {
+			request.WriteByte('\n')
+		}
+		remaining := twinTaskRelevanceRequestMaxBytes - request.Len()
+		request.WriteString(twinUTF8Prefix(value, remaining))
+	}
+
+	kind := "issue"
+	switch {
+	case resp.TriggerCommentID != nil || resp.TriggerCommentContent != "":
+		kind = "comment"
+	case resp.ChatSessionID != "" || resp.ChatMessage != "":
+		kind = "chat"
+	case resp.QuickCreatePrompt != "":
+		kind = "quick_create"
+	case resp.AutopilotRunID != "" || resp.AutopilotTitle != "":
+		kind = "autopilot"
+	case resp.RoomID != "":
+		kind = "room"
+	}
+	tags := []string{"kind:" + kind}
+	if resp.ProjectID != "" {
+		tags = append(tags, "project:"+resp.ProjectID)
+	}
+	if resp.IssueID != "" {
+		tags = append(tags, "issue:"+resp.IssueID)
+	}
+	return request.String(), tags
+}
+
+func twinUTF8Prefix(value string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	end := maxBytes
+	for end > 0 && !utf8.ValidString(value[:end]) {
+		end--
+	}
+	return value[:end]
+}
+
+func twinBriefingClaimPayload(
+	ctx context.Context,
+	resolver TwinBriefingClaimResolver,
+	input TwinBriefingClaimInput,
+) (*TwinBriefingData, *service.TwinClaimAttribution, error) {
+	if resolver == nil {
+		return nil, nil, nil
+	}
+	resolution, err := resolver.ResolveTwinBriefingForClaim(ctx, input)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve Twin briefing: %w", err)
+	}
+	compiled := resolution.Compiled
+	if !compiled.Inject {
+		return nil, nil, nil
+	}
+	if compiled.PolicyDecision.State != service.TwinUseEnabled {
+		return nil, nil, errors.New("Twin briefing resolver returned injectable context without an enabled policy")
+	}
+	if !input.SupportsTwinBriefing {
+		return nil, nil, ErrTwinBriefingCapabilityRequired
+	}
+	if strings.TrimSpace(compiled.Briefing) == "" || compiled.VersionID == "" || compiled.Digest == "" || compiled.CompilerVersion == "" {
+		return nil, nil, errors.New("Twin briefing resolver returned incomplete injectable context")
+	}
+	byteCount := len([]byte(compiled.Briefing))
+	if byteCount > service.TwinBriefingMaxBytes || compiled.ByteCount != byteCount || compiled.TokenCount > service.TwinBriefingMaxTokens {
+		return nil, nil, errors.New("Twin briefing resolver returned invalid briefing bounds")
+	}
+	authorityOrder := make([]string, 0, len(compiled.AuthorityOrder))
+	for _, authority := range compiled.AuthorityOrder {
+		authorityOrder = append(authorityOrder, string(authority))
+	}
+	if !slices.Equal(authorityOrder, []string{
+		string(service.TwinAuthoritySystemSafety),
+		string(service.TwinAuthorityWorkspacePermission),
+		string(service.TwinAuthorityUserRequest),
+		string(service.TwinAuthoritySignedBriefing),
+	}) {
+		return nil, nil, errors.New("Twin briefing resolver returned an invalid instruction authority order")
+	}
+	return &TwinBriefingData{
+			Briefing:        compiled.Briefing,
+			VersionID:       compiled.VersionID,
+			BriefingDigest:  compiled.Digest,
+			CompilerVersion: compiled.CompilerVersion,
+		}, &service.TwinClaimAttribution{
+			Briefing:             compiled.Briefing,
+			VersionID:            compiled.VersionID,
+			BriefingDigest:       compiled.Digest,
+			SelectedAssertionIDs: append([]string(nil), compiled.SelectedAssertionIDs...),
+			CitationIDs:          append([]string(nil), compiled.CitationIDs...),
+			PolicyState:          string(compiled.PolicyDecision.State),
+			PolicyScope:          string(compiled.PolicyDecision.Scope),
+			PolicyScopeID:        compiled.PolicyDecision.ScopeID,
+			PolicyBindingID:      compiled.PolicyDecision.BindingID,
+			CompilerVersion:      compiled.CompilerVersion,
+			AuthorityOrder:       authorityOrder,
+			ByteCount:            compiled.ByteCount,
+			TokenCount:           compiled.TokenCount,
+		}, nil
 }
 
 // remoteMCPDaemonTokenForClaim prepares the short-lived credential the daemon
@@ -2807,7 +3084,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 
 	hasRoom := false
 	if task.RoomTurnID.Valid {
-		roomContext, roomContextErr := protocol.ParseRoomTaskContextV1(task.Context)
+		roomContext, roomContextErr := protocol.ParseRoomTaskContext(task.Context)
 		if roomContextErr == nil && roomContext.TurnID == uuidToString(task.RoomTurnID) {
 			transcript, transcriptErr := json.Marshal(roomContext.Transcript)
 			if transcriptErr != nil {
@@ -2823,6 +3100,7 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 				resp.RoomInstructions = roomContext.Instructions
 				resp.RoomMemory = roomContext.Memory
 				resp.RoomTranscript = transcript
+				resp.RoomCostLimitTicks = roomContext.CostLimitTicks
 				if task.SessionID.Valid {
 					resp.PriorSessionID = task.SessionID.String
 				}
@@ -3130,6 +3408,66 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 	}
 
+	supportsTwinBriefing := requestHasClientCapability(r, protocol.DaemonCapabilityTwinBriefingV1)
+	twinRequest, twinTags := twinTaskRelevanceInput(resp)
+	var oneOffTwinUse *service.TwinOneOffUsePolicyOverride
+	if task.TwinUseState.Valid {
+		oneOffTwinUse = &service.TwinOneOffUsePolicyOverride{
+			State:     service.TwinUsePolicyState(task.TwinUseState.String),
+			VersionID: uuidToString(task.TwinVersionID),
+		}
+	}
+	twinBriefing, twinAttribution, twinErr := twinBriefingClaimPayload(
+		r.Context(),
+		h.TwinBriefingResolver,
+		TwinBriefingClaimInput{
+			TaskID:               resp.ID,
+			WorkspaceID:          resp.WorkspaceID,
+			AgentID:              resp.AgentID,
+			ProjectID:            resp.ProjectID,
+			IssueID:              resp.IssueID,
+			RunID:                resp.ID,
+			Request:              twinRequest,
+			Tags:                 twinTags,
+			OneOffPolicy:         oneOffTwinUse,
+			SupportsTwinBriefing: supportsTwinBriefing,
+		},
+	)
+	if twinErr != nil {
+		status := http.StatusServiceUnavailable
+		message := "Twin briefing could not be prepared; the task was returned to the queue"
+		outcome := "error_twin_briefing"
+		if errors.Is(twinErr, ErrTwinBriefingCapabilityRequired) {
+			status = http.StatusUnprocessableEntity
+			message = "This task requires Twin briefing support. Update the Multica daemon on this machine, then retry."
+			outcome = "error_twin_briefing_daemon_version"
+		}
+		slog.Error("task claim: refusing to dispatch without required Twin briefing",
+			"task_id", resp.ID,
+			"runtime_id", runtimeID,
+			"supports_twin_briefing", supportsTwinBriefing,
+			"error", twinErr,
+		)
+		if _, requeueErr := h.TaskService.RequeueTaskAfterClaimFailure(r.Context(), *task); requeueErr != nil {
+			slog.Error("task claim: requeue after Twin briefing failure failed; stale reclaim will recover it",
+				"task_id", resp.ID,
+				"error", requeueErr,
+			)
+			return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+				outcome: outcome + "_requeue",
+				status:  http.StatusInternalServerError,
+				message: "failed to return a Twin briefing task to the queue",
+			}
+		}
+		return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+			outcome: outcome,
+			status:  status,
+			message: message,
+		}
+	}
+	resp.TwinBriefing = twinBriefing
+	resp.twinAttribution = twinAttribution
+
 	return resp, deliveredCommentIDs, agentSkillCount, builtinSkillCount, nil
 }
 
@@ -3212,8 +3550,59 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	authMs = time.Since(start).Milliseconds()
 
 	claimStart := time.Now()
-	includeRoomTasks := requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
-	task, err := h.TaskService.ClaimTaskForRuntimeCapabilities(r.Context(), parseUUID(runtimeID), includeRoomTasks)
+	supportsRoomTasksV1 := requestHasClientCapability(r, protocol.DaemonCapabilityRoomTasksV1)
+	supportsRoomOutcomesV2 := requestHasClientCapability(r, protocol.DaemonCapabilityRoomOutcomesV2)
+	includeRoomTasks := supportsRoomTasksV1 || supportsRoomOutcomesV2
+	parsedRuntimeID := parseUUID(runtimeID)
+	if _, err := h.Queries.MakeSupportedDeferredRoomTasksDue(r.Context(), db.MakeSupportedDeferredRoomTasksDueParams{
+		RuntimeIds:             []pgtype.UUID{parsedRuntimeID},
+		SupportsRoomTasksV1:    supportsRoomTasksV1,
+		SupportsRoomOutcomesV2: supportsRoomOutcomesV2,
+	}); err != nil {
+		claimMs = time.Since(claimStart).Milliseconds()
+		outcome = "error_restore_supported_room_tasks"
+		writeError(w, http.StatusInternalServerError, "failed to restore supported Room tasks")
+		return
+	}
+	var (
+		task *db.AgentTaskQueue
+		err  error
+	)
+	for range unsupportedRoomTaskScanLimit {
+		task, err = h.TaskService.ClaimTaskForRuntimeCapabilities(r.Context(), parsedRuntimeID, includeRoomTasks)
+		if err != nil || task == nil {
+			break
+		}
+		switch daemonRoomTaskCompatibility(r, *task) {
+		case roomTaskClaimCompatible:
+			break
+		case roomTaskClaimUnsupported:
+			if deferErr := h.deferUnsupportedRoomTask(r.Context(), *task); deferErr != nil {
+				claimMs = time.Since(claimStart).Milliseconds()
+				outcome = "error_room_capability_defer"
+				slog.Error("task claim: defer unsupported Room task failed",
+					"task_id", uuidToString(task.ID), "error", deferErr)
+				writeError(w, http.StatusInternalServerError, "failed to defer unsupported Room task")
+				return
+			}
+			task = nil
+			continue
+		case roomTaskClaimInvalid:
+			if cancelErr := h.cancelInvalidRoomTask(r.Context(), *task); cancelErr != nil {
+				claimMs = time.Since(claimStart).Milliseconds()
+				outcome = "error_room_context_cancel"
+				slog.Error("task claim: cancel invalid Room task failed",
+					"task_id", uuidToString(task.ID), "error", cancelErr)
+				writeError(w, http.StatusInternalServerError, "failed to cancel invalid Room task")
+				return
+			}
+			task = nil
+			continue
+		}
+		if task != nil {
+			break
+		}
+	}
 	claimMs = time.Since(claimStart).Milliseconds()
 	if err != nil {
 		outcome = "error_claim"
@@ -3225,18 +3614,6 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("no task to claim", "runtime_id", runtimeID)
 		payloadBytes, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"task": nil})
 		outcome = "no_task"
-		return
-	}
-	if !daemonCanClaimTask(r, *task) {
-		if err := h.requeueUnsupportedRoomTask(r.Context(), *task); err != nil {
-			outcome = "error_room_capability_requeue"
-			slog.Error("task claim: requeue unsupported Room task failed",
-				"task_id", uuidToString(task.ID), "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to requeue unsupported Room task")
-			return
-		}
-		outcome = "unsupported_room_task"
-		payloadBytes, _ = writeMeasuredJSON(w, http.StatusOK, map[string]any{"task": nil})
 		return
 	}
 	if !task.TriggerCommentID.Valid && len(task.CoalescedCommentIds) > 0 {
@@ -3315,7 +3692,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to mint Remote MCP daemon token")
 		return
 	}
-	receipt, ferr := h.TaskService.FinalizeTaskClaim(r.Context(), *task, db.CreateTaskTokenParams{
+	receipt, ferr := h.finalizeTaskClaim(r.Context(), *task, db.CreateTaskTokenParams{
 		ID:          dbid.NewV7(),
 		TokenHash:   auth.HashToken(tokenStr),
 		TaskID:      task.ID,
@@ -3323,7 +3700,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: parseUUID(resp.WorkspaceID),
 		UserID:      runtime.OwnerID,
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
-	}, deliveredCommentIDs, commentBackedTask, daemonTokens...)
+	}, deliveredCommentIDs, commentBackedTask, resp.twinAttribution, daemonTokens...)
 	if ferr != nil {
 		outcome = "error_claim_finalize"
 		slog.Error("task claim: failed to finalize token and comment delivery receipt",
@@ -3335,6 +3712,15 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		requeueFailedClaim("token_and_delivery_receipt")
 		writeError(w, http.StatusInternalServerError, "failed to finalize task claim")
 		return
+	}
+	if resp.twinAttribution != nil {
+		obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.TwinBriefingUse(analytics.TwinBriefingUseMetric{
+			Context: analytics.TwinMetricContext{UserID: uuidToString(runtime.OwnerID), WorkspaceID: resp.WorkspaceID, TaskID: uuidToString(task.ID)},
+			State:   analytics.TwinUseStateInjected, Scope: analytics.TwinPolicyScope(resp.twinAttribution.PolicyScope),
+			ExclusionCode: analytics.TwinExclusionNone, AssertionCount: len(resp.twinAttribution.SelectedAssertionIDs),
+			CitationCount: len(resp.twinAttribution.CitationIDs), ByteCount: resp.twinAttribution.ByteCount,
+			TokenCount: resp.twinAttribution.TokenCount,
+		}))
 	}
 	resp.AuthToken = tokenStr
 	resp.RemoteMCPDaemonToken = remoteMCPToken

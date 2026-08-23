@@ -1,5 +1,13 @@
-export { createAuthStore } from "./store";
-export type { AuthStoreOptions, AuthState, AuthStatus } from "./store";
+export {
+  AUTHENTICATED_ACCOUNT_STORAGE_KEY,
+  createAuthStore,
+} from "./store";
+export type {
+  AppearanceUpdateRequest,
+  AuthStoreOptions,
+  AuthState,
+  AuthStatus,
+} from "./store";
 export { sanitizeNextUrl } from "./utils";
 
 import type { createAuthStore as CreateAuthStoreFn } from "./store";

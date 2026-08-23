@@ -2,7 +2,7 @@
   "page": {
     "eyebrow": "工作区 Wiki",
     "title": "Wiki",
-    "description": "面向工作区、项目与个人的 Markdown 知识库。"
+    "description": "支持搜索和版本追溯的 Markdown 知识库，覆盖工作区、项目与个人笔记。"
   },
   "scopes": {
     "workspace": "工作区",
@@ -10,7 +10,7 @@
     "user": "个人"
   },
   "scope_hints": {
-    "user": "个人库跨工作区共享，在任意工作区打开都能看到。"
+    "user": "个人页面跨工作区可用，且永远不会成为 LM Wiki 证据。"
   },
   "actions": {
     "new_page": "新建页面",
@@ -19,7 +19,9 @@
     "edit": "编辑",
     "preview": "预览",
     "cancel": "取消",
-    "create": "创建"
+    "create": "创建",
+    "retry": "重试",
+    "back": "返回"
   },
   "fields": {
     "path": "路径",
@@ -34,10 +36,141 @@
     "pick_project": "选择一个项目以浏览其 Wiki。"
   },
   "states": {
-    "loading": "正在加载 Wiki…",
+    "loading": "正在加载 Wiki...",
     "error": "无法加载 Wiki 页面。",
-    "saving": "保存中…",
-    "saved": "已保存"
+    "saving": "保存中...",
+    "saved": "已保存",
+    "action_error": "操作未完成，请重试。"
   },
-  "delete_confirm": "删除此 Wiki 页面？此操作无法撤销。"
+  "search": {
+    "label": "搜索 Wiki",
+    "placeholder": "搜索标题、路径和内容",
+    "clear": "清除搜索",
+    "minimum": "至少输入两个字符以开始搜索。",
+    "loading": "正在搜索 Wiki...",
+    "error": "搜索暂不可用，请重试。",
+    "empty": "没有匹配的 Wiki 页面。"
+  },
+  "tabs": {
+    "document": "文档",
+    "proposals": "提案"
+  },
+  "meta": {
+    "revision": "修订 {{number}}",
+    "provenance": "{{actor}} · {{source}}",
+    "copy_citation": "复制修订引用",
+    "copied": "修订引用已复制"
+  },
+  "history": {
+    "action": "历史",
+    "title": "修订历史",
+    "description": "比较不可变修订，或将旧版本恢复为一个新修订。",
+    "loading": "正在加载修订历史...",
+    "error": "无法加载修订历史。",
+    "empty": "暂无修订。",
+    "empty_content": "空页面",
+    "timeline": "修订时间线",
+    "revision_label": "修订 {{number}}",
+    "compare_from": "比较起点",
+    "compare_to": "比较终点",
+    "provenance": "{{actor}} · {{source}}",
+    "restore": "恢复",
+    "restore_title": "恢复此修订？",
+    "restore_description": "修订 {{number}} 将成为一个新修订，既有历史保持不变。"
+  },
+  "proposals": {
+    "loading": "正在加载提案...",
+    "error": "无法加载提案。",
+    "empty_title": "暂无提案",
+    "empty_description": "智能体的编辑会先进入这里，经人工审核后才能修改共享知识。",
+    "list_label": "Wiki 提案",
+    "review_title": "审核编辑提案",
+    "base_revision": "基于修订 {{number}}",
+    "no_rationale": "未提供理由。",
+    "evidence": "证据",
+    "accept": "接受提案",
+    "reject": "拒绝",
+    "reject_title": "拒绝此提案？",
+    "reject_description": "提案及审核决定会保留在历史中。",
+    "reason": "原因（可选）",
+    "review_reason": "审核原因：{{reason}}",
+    "stale": "此提案基于旧修订。请重新加载，并基于最新内容审核。"
+  },
+  "conflict": {
+    "title": "编辑期间页面已发生变化",
+    "description": "服务器当前为修订 {{number}}。你可以重新加载服务器版本，或保留草稿并手动合并。",
+    "reload": "加载服务器版本",
+    "merge": "合并我的草稿",
+    "merge_title": "检查合并内容",
+    "merge_description": "你的草稿已保留。保存前请与服务器当前版本进行比较。",
+    "server_version": "查看服务器当前版本",
+    "stale_restore": "恢复完成前页面已变化。请重新加载历史后再试。"
+  },
+  "delete_dialog": {
+    "title": "删除此 Wiki 页面？",
+    "description": "页面及其共享引用将被移除，此操作无法撤销。"
+  },
+  "personal": {
+    "eyebrow": "私有知识",
+    "title": "个人 Wiki",
+    "description": "仅你可读写、跨工作区可用的私有 Markdown 笔记。个人页面永远不会成为共享 LM Wiki 证据。",
+    "search_label": "搜索个人 Wiki",
+    "search_placeholder": "搜索你的标题、路径和内容",
+    "empty_title": "还没有个人页面",
+    "empty_description": "创建一个私有 Markdown 页面，即使离开工作区也能继续使用。",
+    "stable_revision": "稳定修订",
+    "delete_description": "当前页面将被删除，其不可变修订链接仍仅对你可用。"
+  },
+  "revision": {
+    "title": "Wiki 修订",
+    "shared_eyebrow": "工作区证据",
+    "personal_eyebrow": "私有证据",
+    "read_only": "只读",
+    "description": "此不可变快照保留被引用修订的准确内容与来源。",
+    "loading": "正在加载修订...",
+    "error": "无法加载此修订，或你已无权访问。",
+    "citation": "规范引用",
+    "digest": "内容摘要",
+    "revision_number": "修订编号",
+    "provenance": "来源",
+    "created_at": "创建时间",
+    "open_stable": "打开稳定修订",
+    "copy_error": "无法复制引用。"
+  },
+  "source_policy": {
+    "title": "LM Wiki 来源",
+    "description": "选择证据类别，并为下次 LM Wiki 刷新固定准确的 Wiki 修订。",
+    "remote_title": "远程生成",
+    "remote_description": "默认关闭。仅当此工作区允许使用远程服务生成内容时开启。",
+    "remote_label": "允许远程生成",
+    "remote_owner_only": "只有工作区 owner 和 admin 可以更改远程生成设置。",
+    "remote_exclusions": "仅限本地的来源和个人 Wiki 页面始终会被排除。",
+    "exclusions_title": "永久排除项",
+    "exclusion_always": "始终排除",
+    "exclusion_personal": "个人 Wiki 页面",
+    "exclusion_personal_reason": "私有的个人范围永远不会成为共享证据。",
+    "exclusion_local_only": "仅限本地的来源",
+    "exclusion_local_only_reason": "仅限本地的内容永远不会离开 owner 的守护进程。",
+    "classes": "来源类别",
+    "pages": "已固定的 Wiki 修订",
+    "save": "保存来源策略",
+    "saving": "正在保存策略...",
+    "saved": "来源策略已保存",
+    "loading": "正在加载来源策略...",
+    "error": "无法加载来源策略。",
+    "save_error": "无法保存来源策略。",
+    "read_only": "只有工作区 owner 和 admin 可以修改此策略。",
+    "empty_pages": "暂无可用的 Wiki 页面。",
+    "revision": "修订 {{number}}",
+    "digest": "摘要 {{digest}}",
+    "provenance": "{{actor}} · {{source}}",
+    "personal_excluded": "个人页面属于私有内容，不能作为 LM Wiki 证据。",
+    "eligible": "可选",
+    "excluded": "已排除",
+    "classes_issue": "任务",
+    "classes_project": "项目",
+    "classes_project_resource": "项目资源",
+    "classes_autopilot_run": "已完成的自动化运行",
+    "classes_wiki_page": "已固定的 Wiki 页面"
+  }
 }

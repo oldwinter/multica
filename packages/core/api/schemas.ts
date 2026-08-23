@@ -83,6 +83,7 @@ import type {
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 import type { CreateFeedbackResponse } from "../feedback/types";
 import type { TwinOverviewResponse } from "../twins";
+import { TwinTaskContextWireSchema } from "../twins/execution-schemas";
 export {
   EMPTY_LM_WIKI_OVERVIEW,
   EMPTY_TWIN_OVERVIEW,
@@ -1159,31 +1160,6 @@ export const TwinOverviewResponseSchema = z.object({
 
 export const EMPTY_TWIN_OVERVIEW_RESPONSE: TwinOverviewResponse = { twin: null };
 
-const WikiPageSummarySchema = z.object({
-  id: z.string(),
-  workspace_id: z.string().nullable().default(null),
-  scope: z.string(),
-  project_id: z.string().nullable().default(null),
-  owner_user_id: z.string().nullable().default(null),
-  path: z.string(),
-  title: z.string().default(""),
-  created_by: z.string().nullable().default(null),
-  created_at: z.string().default(""),
-  updated_at: z.string().default(""),
-}).loose();
-
-export const WikiPageSchema = WikiPageSummarySchema.extend({
-  content: z.string().default(""),
-}).loose();
-
-export const WikiPageListSchema = z.array(WikiPageSummarySchema).default([]);
-export const EMPTY_WIKI_PAGE_LIST: import("../wiki").WikiPageSummary[] = [];
-export const EMPTY_WIKI_PAGE: import("../wiki").WikiPage = {
-  id: "", workspace_id: null, scope: "workspace", project_id: null,
-  owner_user_id: null, path: "", title: "", content: "", created_by: null,
-  created_at: "", updated_at: "",
-};
-
 const SearchProjectResultSchema = ProjectSchema.extend({
   match_source: z.string(),
   matched_snippet: z.string().optional(),
@@ -1627,6 +1603,9 @@ export const AgentTaskSchema = z.object({
   relative_durable_work_dir: z.string().optional().catch(undefined),
   branch_name: z.string().optional().catch(undefined),
   attribution: TaskAttributionSchema.optional(),
+  // Twin audit metadata is additive. A malformed critical id or digest drops
+  // only this extension so an older Desktop can still render the run.
+  twin_context: TwinTaskContextWireSchema.optional().catch(undefined),
   // Per-run token usage. Same independent-degradation rule as the coverage
   // arrays above: usage is additive display metadata, so one malformed entry
   // must cost the row its usage figure, not erase the whole execution log.
@@ -2136,7 +2115,7 @@ export const EMPTY_WEBHOOK_DELIVERY: WebhookDelivery = {
 // breaking older backends that don't return the column yet.
 // ---------------------------------------------------------------------------
 
-export const UserSchema = z.object({
+const UserWireSchema = z.object({
   id: z.string(),
   name: z.string().default(""),
   email: z.string().default(""),
@@ -2147,9 +2126,21 @@ export const UserSchema = z.object({
   language: z.string().nullable().default(null),
   profile_description: z.string().default(""),
   timezone: z.string().nullable().default(null),
+  skin: z.enum(["tension", "relay", "field"]).nullable().catch(null).default(null),
+  appearance: z.enum(["system", "light", "dark"]).nullable().catch(null).default(null),
+  appearance_updated_at: z.string().nullable().catch(null).default(null),
+  appearance_token_version: z.number().int().nullable().catch(null).default(null),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
+
+export const UserSchema = UserWireSchema.transform(
+  ({ appearance_updated_at, appearance_token_version, ...user }) => ({
+    ...user,
+    appearanceUpdatedAt: appearance_updated_at,
+    appearanceTokenVersion: appearance_token_version,
+  }),
+);
 
 export const EMPTY_USER: User = {
   id: "",
@@ -2162,6 +2153,10 @@ export const EMPTY_USER: User = {
   language: null,
   profile_description: "",
   timezone: null,
+  skin: null,
+  appearance: null,
+  appearanceUpdatedAt: null,
+  appearanceTokenVersion: null,
   created_at: "",
   updated_at: "",
 };

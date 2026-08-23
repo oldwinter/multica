@@ -41,6 +41,11 @@ const (
 	// true rollback requires migrating those issues back to built-in statuses
 	// first (migration 337's down direction refuses precisely because of this).
 	CustomIssueStatuses = "custom_issue_statuses"
+	// TwinExecution is the operational kill switch for new Twin execution-loop
+	// activity. Disabling it stops preview generation, binding writes, runtime
+	// injection, and deposition creation at their respective toggle points. It
+	// must not delete or hide historical task attribution.
+	TwinExecution = "twin_execution"
 	// agentBuilderCompat is no longer a release flag. Keep publishing the key
 	// as enabled so installed desktop clients that still gate the AI creation
 	// entry on this config decision receive the permanently enabled behavior.
@@ -86,11 +91,20 @@ func CustomIssueStatusesEnabled(ctx context.Context, flags *featureflag.Service)
 	return flags.IsEnabled(ctx, CustomIssueStatuses, false)
 }
 
+// TwinExecutionEnabled reports whether new Twin execution-loop activity is
+// allowed. It defaults on so the downstream feature remains usable without a
+// rollout file; Ops can fail it closed immediately with FF_TWIN_EXECUTION=false.
+func TwinExecutionEnabled(ctx context.Context, flags *featureflag.Service) bool {
+	return flags.IsEnabled(ctx, TwinExecution, true)
+}
+
 func EvaluateFrontendPublicFlags(ctx context.Context, flags *featureflag.Service) map[string]bool {
-	out := make(map[string]bool, len(frontendPublicFlags)+3)
+	out := make(map[string]bool, len(frontendPublicFlags)+4)
 	for _, key := range frontendPublicFlags {
 		out[key] = flags.IsEnabled(ctx, key, false)
 	}
+	// Twin is default-on, unlike the release flags in frontendPublicFlags.
+	out[TwinExecution] = TwinExecutionEnabled(ctx, flags)
 	out[agentBuilderCompat] = true
 	out[agentSkillTogglesCompat] = true
 	out[resourceLabelsCompat] = true

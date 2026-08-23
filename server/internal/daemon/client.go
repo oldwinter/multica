@@ -191,9 +191,11 @@ func daemonClientCapabilities() string {
 		protocol.DaemonCapabilitySkillBundlesV1,
 		protocol.DaemonCapabilityCoalescedCommentsV1,
 		protocol.DaemonCapabilityRoomTasksV1,
+		protocol.DaemonCapabilityRoomOutcomesV2,
 		protocol.DaemonCapabilityExecutionManifestV1,
 		protocol.DaemonCapabilityAgentSkillV1,
 		protocol.DaemonCapabilityRemoteMCPV1,
+		protocol.DaemonCapabilityTwinBriefingV1,
 		protocol.DaemonCapabilityLocalWorktreeV1,
 		protocol.DaemonCapabilityRPCV1,
 	}, ",")

@@ -1,19 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpenText, BrainCircuit } from "lucide-react";
+import { BookOpenText, BrainCircuit, SlidersHorizontal } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { useT } from "../../i18n";
 import { PageHeader } from "../../layout/page-header";
 import { TwinPanel } from "./twin-panel";
+import { TwinUsePanel } from "./twin-use-panel";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import { WikiPanel } from "./wiki-panel";
 import { ReadOnlyNotice, WorkspaceState } from "./workspace-state";
 
-type WorkspaceTab = "wiki" | "twin";
+type WorkspaceTab = "wiki" | "twin" | "use";
 
 function isWorkspaceTab(value: unknown): value is WorkspaceTab {
-  return value === "wiki" || value === "twin";
+  return value === "wiki" || value === "twin" || value === "use";
 }
 
 export type { TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
@@ -47,9 +48,18 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
             <TabsList variant="line" className="w-full justify-start">
               <TabsTrigger value="wiki"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
               <TabsTrigger value="twin"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
+              <TabsTrigger value="use"><SlidersHorizontal aria-hidden="true" />{t(($) => $.tabs.use)}</TabsTrigger>
             </TabsList>
             <TabsContent value="wiki"><WikiPanel {...props} /></TabsContent>
             <TabsContent value="twin"><TwinPanel {...props} /></TabsContent>
+            <TabsContent value="use">
+              <TwinUsePanel
+                wsId={props.wsId}
+                versions={props.twin.versions}
+                currentVersionId={props.twin.current_version?.id ?? ""}
+                canManage={props.canManageTwin}
+              />
+            </TabsContent>
           </Tabs>
         ) : <WorkspaceState state={props.state} onRetry={props.onRetry} />}
       </div>

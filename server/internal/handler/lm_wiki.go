@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/analytics"
+	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -17,15 +19,18 @@ import (
 const lmWikiReviewBodyLimit = 32 * 1024
 
 type lmWikiRevisionResponse struct {
-	ID             string                `json:"id"`
-	RevisionNumber int64                 `json:"revision_number"`
-	SchemaVersion  int32                 `json:"schema_version"`
-	SourceDigest   string                `json:"source_digest"`
-	Content        json.RawMessage       `json:"content"`
-	TriggerKind    string                `json:"trigger_kind"`
-	RequestedByID  *string               `json:"requested_by_id"`
-	CreatedAt      time.Time             `json:"created_at"`
-	Review         *lmWikiReviewResponse `json:"review"`
+	ID                      string                `json:"id"`
+	RevisionNumber          int64                 `json:"revision_number"`
+	SchemaVersion           int32                 `json:"schema_version"`
+	SourceDigest            string                `json:"source_digest"`
+	SourcePolicyVersion     int64                 `json:"source_policy_version"`
+	SourcePolicyDigest      string                `json:"source_policy_digest"`
+	RemoteGenerationEnabled bool                  `json:"remote_generation_enabled"`
+	Content                 json.RawMessage       `json:"content"`
+	TriggerKind             string                `json:"trigger_kind"`
+	RequestedByID           *string               `json:"requested_by_id"`
+	CreatedAt               time.Time             `json:"created_at"`
+	Review                  *lmWikiReviewResponse `json:"review"`
 }
 
 type lmWikiReviewResponse struct {
@@ -52,6 +57,55 @@ type lmWikiCitationResponse struct {
 type lmWikiDetailResponse struct {
 	Revision  lmWikiRevisionResponse   `json:"revision"`
 	Citations []lmWikiCitationResponse `json:"citations"`
+}
+
+type lmWikiSourcePolicyRequest struct {
+	SourceClasses           []string                       `json:"source_classes"`
+	WikiPages               []service.LMWikiSourceWikiPage `json:"wiki_pages"`
+	RemoteGenerationEnabled bool                           `json:"remote_generation_enabled"`
+}
+
+func (h *Handler) GetLMWikiSourcePolicy(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	workspaceUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	state, err := h.WikiService.GetSourcePolicy(r.Context(), workspaceUUID)
+	if err != nil {
+		h.writeLMWikiError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (h *Handler) UpdateLMWikiSourcePolicy(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	_, ok := h.requireWikiHuman(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	if !ok {
+		return
+	}
+	workspaceUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	var request lmWikiSourcePolicyRequest
+	if !decodeWikiJSON(w, r, &request) {
+		return
+	}
+	state, err := h.WikiService.UpdateSourcePolicy(r.Context(), workspaceUUID, member.UserID, service.LMWikiSourcePolicy{
+		SourceClasses: request.SourceClasses, WikiPages: request.WikiPages,
+		RemoteGenerationEnabled: request.RemoteGenerationEnabled,
+	})
+	if err != nil {
+		h.writeLMWikiError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (h *Handler) GetLMWiki(w http.ResponseWriter, r *http.Request) {
@@ -96,10 +150,13 @@ func (h *Handler) GetLMWikiRevision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RefreshLMWiki(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	if _, ok := h.requireWikiHuman(w, r, workspaceID); !ok {
+		return
+	}
 	if !requireEmptyLMWikiBody(w, r) {
 		return
 	}
-	workspaceID := h.resolveWorkspaceID(r)
 	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
 	if !ok {
 		return
@@ -121,6 +178,9 @@ func (h *Handler) RefreshLMWiki(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AcceptLMWikiRevision(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireWikiHuman(w, r, h.resolveWorkspaceID(r)); !ok {
+		return
+	}
 	if !requireEmptyLMWikiBody(w, r) {
 		return
 	}
@@ -128,6 +188,9 @@ func (h *Handler) AcceptLMWikiRevision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RejectLMWikiRevision(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireWikiHuman(w, r, h.resolveWorkspaceID(r)); !ok {
+		return
+	}
 	var request struct {
 		Reason string `json:"reason"`
 	}
@@ -174,6 +237,7 @@ func (h *Handler) reviewLMWikiRevision(w http.ResponseWriter, r *http.Request, d
 		h.writeLMWikiError(w, err)
 		return
 	}
+	obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.LMWikiReview(decision))
 	writeJSON(w, http.StatusOK, mapLMWikiDetail(detail))
 }
 
@@ -196,6 +260,8 @@ func (h *Handler) writeLMWikiError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "LM Wiki revision not found", "code": "wiki_revision_not_found"})
 	case errors.Is(err, service.ErrLMWikiInvalidReview):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid LM Wiki review", "code": "wiki_review_invalid"})
+	case errors.Is(err, service.ErrLMWikiInvalidSourcePolicy):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid LM Wiki source policy", "code": "wiki_source_policy_invalid"})
 	case errors.Is(err, service.ErrLMWikiAlreadyDecided):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "LM Wiki revision already decided", "code": "wiki_revision_already_decided"})
 	case errors.Is(err, service.ErrLMWikiStale):
@@ -214,7 +280,14 @@ func mapLMWikiDetail(detail service.LMWikiRevisionDetail) lmWikiDetailResponse {
 }
 
 func mapLMWikiRevision(revision db.LmWikiRevision, review *db.LmWikiReview) lmWikiRevisionResponse {
-	response := lmWikiRevisionResponse{ID: uuidToString(revision.ID), RevisionNumber: revision.RevisionNumber, SchemaVersion: revision.SchemaVersion, SourceDigest: revision.SourceDigest, Content: json.RawMessage(revision.Content), TriggerKind: revision.TriggerKind, RequestedByID: optionalUUID(revision.RequestedByID), CreatedAt: revision.CreatedAt.Time}
+	response := lmWikiRevisionResponse{
+		ID: uuidToString(revision.ID), RevisionNumber: revision.RevisionNumber,
+		SchemaVersion: revision.SchemaVersion, SourceDigest: revision.SourceDigest,
+		SourcePolicyVersion: revision.SourcePolicyVersion, SourcePolicyDigest: revision.SourcePolicyDigest,
+		RemoteGenerationEnabled: revision.RemoteGenerationEnabled,
+		Content:                 json.RawMessage(revision.Content), TriggerKind: revision.TriggerKind,
+		RequestedByID: optionalUUID(revision.RequestedByID), CreatedAt: revision.CreatedAt.Time,
+	}
 	if review != nil {
 		response.Review = &lmWikiReviewResponse{ID: uuidToString(review.ID), Decision: review.Decision, ReviewerID: uuidToString(review.ReviewerID), Reason: optionalText(review.Reason), CreatedAt: review.CreatedAt.Time}
 	}

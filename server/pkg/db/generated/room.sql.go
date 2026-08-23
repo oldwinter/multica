@@ -11,6 +11,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acceptRoomMemoryRevision = `-- name: AcceptRoomMemoryRevision :one
+UPDATE room
+SET accepted_memory_revision_id = $1,
+    memory = $2::jsonb,
+    memory_version = memory_version + 1,
+    active_cycle_id = CASE WHEN active_cycle_id = $3 THEN NULL ELSE active_cycle_id END,
+    updated_at = now()
+WHERE id = $4 AND workspace_id = $5
+  AND memory_version = $6
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
+`
+
+type AcceptRoomMemoryRevisionParams struct {
+	RevisionID            pgtype.UUID `json:"revision_id"`
+	Synthesis             []byte      `json:"synthesis"`
+	CycleID               pgtype.UUID `json:"cycle_id"`
+	ID                    pgtype.UUID `json:"id"`
+	WorkspaceID           pgtype.UUID `json:"workspace_id"`
+	ExpectedMemoryVersion int64       `json:"expected_memory_version"`
+}
+
+func (q *Queries) AcceptRoomMemoryRevision(ctx context.Context, arg AcceptRoomMemoryRevisionParams) (Room, error) {
+	row := q.db.QueryRow(ctx, acceptRoomMemoryRevision,
+		arg.RevisionID,
+		arg.Synthesis,
+		arg.CycleID,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExpectedMemoryVersion,
+	)
+	var i Room
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Instructions,
+		&i.CreatedByUserID,
+		&i.FacilitatorAgentID,
+		&i.FacilitatorSquadID,
+		&i.Status,
+		&i.DailyTurnLimit,
+		&i.ScheduleIntervalMinutes,
+		&i.NextWakeAt,
+		&i.ActiveCycleID,
+		&i.Memory,
+		&i.MemoryVersion,
+		&i.LastEntryOrdinal,
+		&i.LastCycleSequence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
+	)
+	return i, err
+}
+
 const addRoomEntry = `-- name: AddRoomEntry :one
 WITH allocated AS (
     UPDATE room
@@ -121,7 +183,7 @@ UPDATE room
 SET next_wake_at = $1, updated_at = now()
 WHERE id = $2 AND workspace_id = $3
   AND next_wake_at = $4
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type AdvanceRoomScheduleParams struct {
@@ -158,6 +220,81 @@ func (q *Queries) AdvanceRoomSchedule(ctx context.Context, arg AdvanceRoomSchedu
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
+	)
+	return i, err
+}
+
+const cancelRoomCycle = `-- name: CancelRoomCycle :one
+WITH cancelled_tasks AS (
+    UPDATE agent_task_queue
+    SET status = 'cancelled', completed_at = COALESCE(completed_at, now()),
+        prepare_lease_expires_at = NULL
+    WHERE room_turn_id IN (
+        SELECT id FROM room_turn
+        WHERE workspace_id = $3 AND room_id = $4 AND cycle_id = $2
+    ) AND status IN ('queued', 'deferred', 'dispatched', 'preparing', 'running', 'waiting_local_directory')
+), cancelled_turns AS (
+    UPDATE room_turn
+    SET status = 'cancelled', completed_at = COALESCE(completed_at, now())
+    WHERE workspace_id = $3 AND room_id = $4 AND cycle_id = $2
+      AND status IN ('queued', 'dispatched', 'running')
+), cleared_room AS (
+    UPDATE room
+    SET active_cycle_id = NULL, updated_at = now()
+    WHERE id = $4 AND workspace_id = $3 AND active_cycle_id = $2
+)
+UPDATE room_cycle
+SET status = 'cancelled', phase = 'cancelled', completed_at = COALESCE(completed_at, now()),
+    cancel_idempotency_key = $1
+WHERE room_cycle.id = $2 AND room_cycle.workspace_id = $3
+  AND room_cycle.room_id = $4 AND room_cycle.status IN ('queued', 'running')
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type CancelRoomCycleParams struct {
+	IdempotencyKey pgtype.Text `json:"idempotency_key"`
+	CycleID        pgtype.UUID `json:"cycle_id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RoomID         pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) CancelRoomCycle(ctx context.Context, arg CancelRoomCycleParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, cancelRoomCycle,
+		arg.IdempotencyKey,
+		arg.CycleID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
 	)
 	return i, err
 }
@@ -167,7 +304,7 @@ UPDATE room
 SET active_cycle_id = NULL, updated_at = now()
 WHERE id = $1 AND workspace_id = $2
   AND active_cycle_id = $3
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type ClearRoomActiveCycleParams struct {
@@ -198,6 +335,62 @@ func (q *Queries) ClearRoomActiveCycle(ctx context.Context, arg ClearRoomActiveC
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
+	)
+	return i, err
+}
+
+const clearRoomCycleAfterReview = `-- name: ClearRoomCycleAfterReview :one
+UPDATE room
+SET active_cycle_id = CASE WHEN active_cycle_id = $1 THEN NULL ELSE active_cycle_id END,
+    updated_at = now()
+WHERE id = $2 AND workspace_id = $3
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
+`
+
+type ClearRoomCycleAfterReviewParams struct {
+	CycleID     pgtype.UUID `json:"cycle_id"`
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) ClearRoomCycleAfterReview(ctx context.Context, arg ClearRoomCycleAfterReviewParams) (Room, error) {
+	row := q.db.QueryRow(ctx, clearRoomCycleAfterReview, arg.CycleID, arg.ID, arg.WorkspaceID)
+	var i Room
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Instructions,
+		&i.CreatedByUserID,
+		&i.FacilitatorAgentID,
+		&i.FacilitatorSquadID,
+		&i.Status,
+		&i.DailyTurnLimit,
+		&i.ScheduleIntervalMinutes,
+		&i.NextWakeAt,
+		&i.ActiveCycleID,
+		&i.Memory,
+		&i.MemoryVersion,
+		&i.LastEntryOrdinal,
+		&i.LastCycleSequence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }
@@ -205,11 +398,15 @@ func (q *Queries) ClearRoomActiveCycle(ctx context.Context, arg ClearRoomActiveC
 const completeRoomCycle = `-- name: CompleteRoomCycle :one
 UPDATE room_cycle
 SET status = $1,
+    phase = CASE
+        WHEN $1::text IN ('completed', 'failed', 'cancelled') THEN $1::text
+        ELSE phase
+    END,
     started_at = COALESCE(started_at, $2),
     completed_at = COALESCE(completed_at, now())
 WHERE id = $3 AND workspace_id = $4
   AND status IN ('queued', 'running')
-RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
 `
 
 type CompleteRoomCycleParams struct {
@@ -241,6 +438,13 @@ func (q *Queries) CompleteRoomCycle(ctx context.Context, arg CompleteRoomCyclePa
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
 	)
 	return i, err
 }
@@ -254,7 +458,7 @@ SET status = $1,
     started_at = COALESCE(started_at, $5),
     completed_at = COALESCE(completed_at, now())
 WHERE id = $6 AND status IN ('queued', 'dispatched', 'running')
-RETURNING id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at
+RETURNING id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key
 `
 
 type CompleteRoomTurnParams struct {
@@ -291,8 +495,31 @@ func (q *Queries) CompleteRoomTurn(ctx context.Context, arg CompleteRoomTurnPara
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
 	)
 	return i, err
+}
+
+const countRoomTurnsByCycle = `-- name: CountRoomTurnsByCycle :one
+SELECT count(*)::bigint
+FROM room_turn
+WHERE workspace_id = $1 AND room_id = $2
+  AND cycle_id = $3 AND status <> 'refused'
+`
+
+type CountRoomTurnsByCycleParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+	CycleID     pgtype.UUID `json:"cycle_id"`
+}
+
+func (q *Queries) CountRoomTurnsByCycle(ctx context.Context, arg CountRoomTurnsByCycleParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRoomTurnsByCycle, arg.WorkspaceID, arg.RoomID, arg.CycleID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const countRoomTurnsSince = `-- name: CountRoomTurnsSince :one
@@ -318,14 +545,17 @@ const createRoom = `-- name: CreateRoom :one
 INSERT INTO room (
     workspace_id, title, instructions, created_by_user_id,
     facilitator_agent_id, facilitator_squad_id, daily_turn_limit,
-    schedule_interval_minutes, next_wake_at
+    schedule_interval_minutes, next_wake_at, objective, success_criteria,
+    stop_conditions, template_id, max_cost_ticks, capability_version
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6,
     $7, $8,
-    $9
+    $9, $10, $11::jsonb,
+    $12::jsonb, $13, $14,
+    $15
 )
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type CreateRoomParams struct {
@@ -338,6 +568,12 @@ type CreateRoomParams struct {
 	DailyTurnLimit          pgtype.Int4        `json:"daily_turn_limit"`
 	ScheduleIntervalMinutes pgtype.Int4        `json:"schedule_interval_minutes"`
 	NextWakeAt              pgtype.Timestamptz `json:"next_wake_at"`
+	Objective               string             `json:"objective"`
+	SuccessCriteria         []byte             `json:"success_criteria"`
+	StopConditions          []byte             `json:"stop_conditions"`
+	TemplateID              pgtype.Text        `json:"template_id"`
+	MaxCostTicks            pgtype.Int8        `json:"max_cost_ticks"`
+	CapabilityVersion       int32              `json:"capability_version"`
 }
 
 func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, error) {
@@ -351,6 +587,12 @@ func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, e
 		arg.DailyTurnLimit,
 		arg.ScheduleIntervalMinutes,
 		arg.NextWakeAt,
+		arg.Objective,
+		arg.SuccessCriteria,
+		arg.StopConditions,
+		arg.TemplateID,
+		arg.MaxCostTicks,
+		arg.CapabilityVersion,
 	)
 	var i Room
 	err := row.Scan(
@@ -372,6 +614,14 @@ func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, e
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }
@@ -380,31 +630,35 @@ const createRoomArtifact = `-- name: CreateRoomArtifact :one
 INSERT INTO room_artifact (
     id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind,
     idempotency_key, target_id, title, body, rationale, source_digest,
-    created_by_user_id
+    created_by_user_id, memory_revision_id, recommendation_key, citation_entry_ids
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9,
-    $10, $11, $12, $13, $14
+    $10, $11, $12, $13, $14,
+    $15, $16, $17::jsonb
 )
 ON CONFLICT (room_id, kind, idempotency_key) DO NOTHING
-RETURNING id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at
+RETURNING id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at, memory_revision_id, citation_entry_ids, recommendation_key
 `
 
 type CreateRoomArtifactParams struct {
-	ID              pgtype.UUID `json:"id"`
-	WorkspaceID     pgtype.UUID `json:"workspace_id"`
-	RoomID          pgtype.UUID `json:"room_id"`
-	CycleID         pgtype.UUID `json:"cycle_id"`
-	TurnID          pgtype.UUID `json:"turn_id"`
-	EntryID         pgtype.UUID `json:"entry_id"`
-	Kind            string      `json:"kind"`
-	IdempotencyKey  string      `json:"idempotency_key"`
-	TargetID        pgtype.UUID `json:"target_id"`
-	Title           string      `json:"title"`
-	Body            string      `json:"body"`
-	Rationale       pgtype.Text `json:"rationale"`
-	SourceDigest    string      `json:"source_digest"`
-	CreatedByUserID pgtype.UUID `json:"created_by_user_id"`
+	ID                pgtype.UUID `json:"id"`
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	RoomID            pgtype.UUID `json:"room_id"`
+	CycleID           pgtype.UUID `json:"cycle_id"`
+	TurnID            pgtype.UUID `json:"turn_id"`
+	EntryID           pgtype.UUID `json:"entry_id"`
+	Kind              string      `json:"kind"`
+	IdempotencyKey    string      `json:"idempotency_key"`
+	TargetID          pgtype.UUID `json:"target_id"`
+	Title             string      `json:"title"`
+	Body              string      `json:"body"`
+	Rationale         pgtype.Text `json:"rationale"`
+	SourceDigest      string      `json:"source_digest"`
+	CreatedByUserID   pgtype.UUID `json:"created_by_user_id"`
+	MemoryRevisionID  pgtype.UUID `json:"memory_revision_id"`
+	RecommendationKey pgtype.Text `json:"recommendation_key"`
+	CitationEntryIds  []byte      `json:"citation_entry_ids"`
 }
 
 func (q *Queries) CreateRoomArtifact(ctx context.Context, arg CreateRoomArtifactParams) (RoomArtifact, error) {
@@ -423,6 +677,9 @@ func (q *Queries) CreateRoomArtifact(ctx context.Context, arg CreateRoomArtifact
 		arg.Rationale,
 		arg.SourceDigest,
 		arg.CreatedByUserID,
+		arg.MemoryRevisionID,
+		arg.RecommendationKey,
+		arg.CitationEntryIds,
 	)
 	var i RoomArtifact
 	err := row.Scan(
@@ -441,6 +698,9 @@ func (q *Queries) CreateRoomArtifact(ctx context.Context, arg CreateRoomArtifact
 		&i.SourceDigest,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
+		&i.MemoryRevisionID,
+		&i.CitationEntryIds,
+		&i.RecommendationKey,
 	)
 	return i, err
 }
@@ -455,15 +715,17 @@ WITH allocated AS (
 )
 INSERT INTO room_cycle (
     workspace_id, room_id, sequence, source, wake_key, triggering_entry_id,
-    status, refusal_reason, planned_at, completed_at
+    status, phase, refusal_reason, planned_at, completed_at, expected_max_turns,
+    cost_limit_ticks
 )
 SELECT $1, $2, allocated.last_cycle_sequence, $3,
-       $4, $5, $6,
-       $7, $8,
-       CASE WHEN $6 = 'refused' THEN now() ELSE NULL END
+       $4, $5, $6, $7,
+       $8, $9,
+       CASE WHEN $6 = 'refused' THEN now() ELSE NULL END,
+       $10, $11
 FROM allocated
 ON CONFLICT (room_id, wake_key) DO NOTHING
-RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
 `
 
 type CreateRoomCycleParams struct {
@@ -473,8 +735,11 @@ type CreateRoomCycleParams struct {
 	WakeKey           string             `json:"wake_key"`
 	TriggeringEntryID pgtype.UUID        `json:"triggering_entry_id"`
 	Status            string             `json:"status"`
+	Phase             string             `json:"phase"`
 	RefusalReason     pgtype.Text        `json:"refusal_reason"`
 	PlannedAt         pgtype.Timestamptz `json:"planned_at"`
+	ExpectedMaxTurns  int32              `json:"expected_max_turns"`
+	CostLimitTicks    pgtype.Int8        `json:"cost_limit_ticks"`
 }
 
 func (q *Queries) CreateRoomCycle(ctx context.Context, arg CreateRoomCycleParams) (RoomCycle, error) {
@@ -485,8 +750,11 @@ func (q *Queries) CreateRoomCycle(ctx context.Context, arg CreateRoomCycleParams
 		arg.WakeKey,
 		arg.TriggeringEntryID,
 		arg.Status,
+		arg.Phase,
 		arg.RefusalReason,
 		arg.PlannedAt,
+		arg.ExpectedMaxTurns,
+		arg.CostLimitTicks,
 	)
 	var i RoomCycle
 	err := row.Scan(
@@ -503,6 +771,137 @@ func (q *Queries) CreateRoomCycle(ctx context.Context, arg CreateRoomCycleParams
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const createRoomMemoryRevision = `-- name: CreateRoomMemoryRevision :one
+WITH allocated AS (
+    UPDATE room
+    SET last_memory_revision_version = last_memory_revision_version + 1,
+        updated_at = now()
+    WHERE id = $2 AND workspace_id = $1
+    RETURNING last_memory_revision_version
+)
+INSERT INTO room_memory_revision (
+    workspace_id, room_id, cycle_id, synthesis_turn_id, version,
+    schema_version, synthesis, digest, corrected_from_revision_id,
+    creator_type, creator_id
+)
+SELECT $1, $2, $3, $4,
+       allocated.last_memory_revision_version, $5,
+       $6::jsonb, $7, $8,
+       $9, $10
+FROM allocated
+RETURNING id, workspace_id, room_id, cycle_id, synthesis_turn_id, version, schema_version, synthesis, digest, review_status, reviewed_by_user_id, reviewed_at, corrected_from_revision_id, created_at, review_idempotency_key, review_request_digest, creator_type, creator_id
+`
+
+type CreateRoomMemoryRevisionParams struct {
+	WorkspaceID             pgtype.UUID `json:"workspace_id"`
+	RoomID                  pgtype.UUID `json:"room_id"`
+	CycleID                 pgtype.UUID `json:"cycle_id"`
+	SynthesisTurnID         pgtype.UUID `json:"synthesis_turn_id"`
+	SchemaVersion           int32       `json:"schema_version"`
+	Synthesis               []byte      `json:"synthesis"`
+	Digest                  string      `json:"digest"`
+	CorrectedFromRevisionID pgtype.UUID `json:"corrected_from_revision_id"`
+	CreatorType             string      `json:"creator_type"`
+	CreatorID               pgtype.UUID `json:"creator_id"`
+}
+
+func (q *Queries) CreateRoomMemoryRevision(ctx context.Context, arg CreateRoomMemoryRevisionParams) (RoomMemoryRevision, error) {
+	row := q.db.QueryRow(ctx, createRoomMemoryRevision,
+		arg.WorkspaceID,
+		arg.RoomID,
+		arg.CycleID,
+		arg.SynthesisTurnID,
+		arg.SchemaVersion,
+		arg.Synthesis,
+		arg.Digest,
+		arg.CorrectedFromRevisionID,
+		arg.CreatorType,
+		arg.CreatorID,
+	)
+	var i RoomMemoryRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.CycleID,
+		&i.SynthesisTurnID,
+		&i.Version,
+		&i.SchemaVersion,
+		&i.Synthesis,
+		&i.Digest,
+		&i.ReviewStatus,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CorrectedFromRevisionID,
+		&i.CreatedAt,
+		&i.ReviewIdempotencyKey,
+		&i.ReviewRequestDigest,
+		&i.CreatorType,
+		&i.CreatorID,
+	)
+	return i, err
+}
+
+const createRoomRecommendationReview = `-- name: CreateRoomRecommendationReview :one
+INSERT INTO room_recommendation_review (
+    workspace_id, room_id, memory_revision_id, recommendation_key, status,
+    idempotency_key, request_digest, artifact_id, reviewed_by_user_id
+) VALUES (
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9
+)
+ON CONFLICT (room_id, memory_revision_id, recommendation_key) DO NOTHING
+RETURNING id, workspace_id, room_id, memory_revision_id, recommendation_key, status, idempotency_key, request_digest, artifact_id, reviewed_by_user_id, reviewed_at
+`
+
+type CreateRoomRecommendationReviewParams struct {
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	RoomID            pgtype.UUID `json:"room_id"`
+	MemoryRevisionID  pgtype.UUID `json:"memory_revision_id"`
+	RecommendationKey string      `json:"recommendation_key"`
+	Status            string      `json:"status"`
+	IdempotencyKey    string      `json:"idempotency_key"`
+	RequestDigest     string      `json:"request_digest"`
+	ArtifactID        pgtype.UUID `json:"artifact_id"`
+	ReviewedByUserID  pgtype.UUID `json:"reviewed_by_user_id"`
+}
+
+func (q *Queries) CreateRoomRecommendationReview(ctx context.Context, arg CreateRoomRecommendationReviewParams) (RoomRecommendationReview, error) {
+	row := q.db.QueryRow(ctx, createRoomRecommendationReview,
+		arg.WorkspaceID,
+		arg.RoomID,
+		arg.MemoryRevisionID,
+		arg.RecommendationKey,
+		arg.Status,
+		arg.IdempotencyKey,
+		arg.RequestDigest,
+		arg.ArtifactID,
+		arg.ReviewedByUserID,
+	)
+	var i RoomRecommendationReview
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.MemoryRevisionID,
+		&i.RecommendationKey,
+		&i.Status,
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.ArtifactID,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
 	)
 	return i, err
 }
@@ -513,16 +912,16 @@ INSERT INTO agent_task_queue (
     force_fresh_session, squad_id, originator_user_id, accountable_user_id,
     runtime_mcp_overlay, runtime_connected_apps,
     originator_source, trigger_evidence_kind, trigger_evidence_ref_id,
-    room_turn_id, session_id, work_dir
-) VALUES (
+    room_turn_id, session_id, work_dir, max_attempts
+) SELECT
     $1, $2, NULL, 'queued', $3, $4::jsonb,
     $5, $6, $7,
     $8, $9::jsonb,
     $10::jsonb, $11, $12,
     $13, $14, $15,
-    $16
-)
-RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, room_turn_id, branch_name, durable_work_dir
+    $16, 1
+WHERE lock_task_owner_rows($1, NULL, $2)
+RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, room_turn_id, branch_name, durable_work_dir, twin_use_state, twin_version_id
 `
 
 type CreateRoomTaskParams struct {
@@ -544,6 +943,9 @@ type CreateRoomTaskParams struct {
 	WorkDir              pgtype.Text `json:"work_dir"`
 }
 
+// Fenced against workspace teardown: lock_task_owner_rows (migration 284)
+// locks the agent/runtime owners before the task becomes visible, so a room
+// cycle cannot strand work in a workspace that teardown just removed.
 func (q *Queries) CreateRoomTask(ctx context.Context, arg CreateRoomTaskParams) (AgentTaskQueue, error) {
 	row := q.db.QueryRow(ctx, createRoomTask,
 		arg.AgentID,
@@ -619,29 +1021,36 @@ func (q *Queries) CreateRoomTask(ctx context.Context, arg CreateRoomTaskParams) 
 		&i.RoomTurnID,
 		&i.BranchName,
 		&i.DurableWorkDir,
+		&i.TwinUseState,
+		&i.TwinVersionID,
 	)
 	return i, err
 }
 
 const createRoomTurn = `-- name: CreateRoomTurn :one
 INSERT INTO room_turn (
-    workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason
+    workspace_id, room_id, cycle_id, agent_id, squad_id, turn_kind,
+    attempt, status, refusal_reason, idempotency_key
 ) VALUES (
     $1, $2, $3, $4,
-    $5, $6, $7
+    $5, $6, $7, $8, $9,
+    $10
 )
-ON CONFLICT (cycle_id, agent_id) DO NOTHING
-RETURNING id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at
+ON CONFLICT (cycle_id, turn_kind, agent_id, attempt) DO NOTHING
+RETURNING id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key
 `
 
 type CreateRoomTurnParams struct {
-	WorkspaceID   pgtype.UUID `json:"workspace_id"`
-	RoomID        pgtype.UUID `json:"room_id"`
-	CycleID       pgtype.UUID `json:"cycle_id"`
-	AgentID       pgtype.UUID `json:"agent_id"`
-	SquadID       pgtype.UUID `json:"squad_id"`
-	Status        string      `json:"status"`
-	RefusalReason pgtype.Text `json:"refusal_reason"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RoomID         pgtype.UUID `json:"room_id"`
+	CycleID        pgtype.UUID `json:"cycle_id"`
+	AgentID        pgtype.UUID `json:"agent_id"`
+	SquadID        pgtype.UUID `json:"squad_id"`
+	TurnKind       string      `json:"turn_kind"`
+	Attempt        int32       `json:"attempt"`
+	Status         string      `json:"status"`
+	RefusalReason  pgtype.Text `json:"refusal_reason"`
+	IdempotencyKey pgtype.Text `json:"idempotency_key"`
 }
 
 func (q *Queries) CreateRoomTurn(ctx context.Context, arg CreateRoomTurnParams) (RoomTurn, error) {
@@ -651,8 +1060,11 @@ func (q *Queries) CreateRoomTurn(ctx context.Context, arg CreateRoomTurnParams) 
 		arg.CycleID,
 		arg.AgentID,
 		arg.SquadID,
+		arg.TurnKind,
+		arg.Attempt,
 		arg.Status,
 		arg.RefusalReason,
+		arg.IdempotencyKey,
 	)
 	var i RoomTurn
 	err := row.Scan(
@@ -670,12 +1082,115 @@ func (q *Queries) CreateRoomTurn(ctx context.Context, arg CreateRoomTurnParams) 
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
+	)
+	return i, err
+}
+
+const deferUnsupportedRoomTaskAfterClaim = `-- name: DeferUnsupportedRoomTaskAfterClaim :one
+UPDATE agent_task_queue
+SET status = 'deferred',
+    fire_at = now() + make_interval(secs => $1::double precision),
+    dispatched_at = NULL,
+    prepare_lease_expires_at = NULL,
+    delivered_comment_ids = '{}'
+WHERE id = $2
+  AND runtime_id = $3
+  AND room_turn_id IS NOT NULL
+  AND status = 'dispatched'
+  AND started_at IS NULL
+  AND dispatched_at = $4
+RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, room_turn_id, branch_name, durable_work_dir, twin_use_state, twin_version_id
+`
+
+type DeferUnsupportedRoomTaskAfterClaimParams struct {
+	RetryAfterSecs float64            `json:"retry_after_secs"`
+	TaskID         pgtype.UUID        `json:"task_id"`
+	RuntimeID      pgtype.UUID        `json:"runtime_id"`
+	DispatchedAt   pgtype.Timestamptz `json:"dispatched_at"`
+}
+
+// An old daemon can advertise room-tasks-v1 while lacking room-outcomes-v2.
+// Move only the exact unsupported claim out of the hot queue long enough for
+// the same request to make progress on compatible work. The normal deferred
+// promoter makes it eligible again, including immediately after an upgrade.
+func (q *Queries) DeferUnsupportedRoomTaskAfterClaim(ctx context.Context, arg DeferUnsupportedRoomTaskAfterClaimParams) (AgentTaskQueue, error) {
+	row := q.db.QueryRow(ctx, deferUnsupportedRoomTaskAfterClaim,
+		arg.RetryAfterSecs,
+		arg.TaskID,
+		arg.RuntimeID,
+		arg.DispatchedAt,
+	)
+	var i AgentTaskQueue
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.IssueID,
+		&i.Status,
+		&i.Priority,
+		&i.DispatchedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Result,
+		&i.Error,
+		&i.CreatedAt,
+		&i.Context,
+		&i.RuntimeID,
+		&i.SessionID,
+		&i.WorkDir,
+		&i.TriggerCommentID,
+		&i.ChatSessionID,
+		&i.AutopilotRunID,
+		&i.Attempt,
+		&i.MaxAttempts,
+		&i.ParentTaskID,
+		&i.FailureReason,
+		&i.TriggerSummary,
+		&i.ForceFreshSession,
+		&i.IsLeaderTask,
+		&i.WaitReason,
+		&i.InitiatorUserID,
+		&i.HandoffNote,
+		&i.PrepareLeaseExpiresAt,
+		&i.SquadID,
+		&i.RuntimeMcpOverlay,
+		&i.EscalationForTaskID,
+		&i.FireAt,
+		&i.OriginatorUserID,
+		&i.RuntimeConnectedApps,
+		&i.CoalescedCommentIds,
+		&i.DeliveredCommentIds,
+		&i.ChatInputTaskID,
+		&i.ChatFinalizeDeferredAt,
+		&i.OriginatorSource,
+		&i.DelegatedFromTaskID,
+		&i.RetryOfTaskID,
+		&i.RerunOfTaskID,
+		&i.RuleVersionID,
+		&i.TriggerEvidenceKind,
+		&i.TriggerEvidenceRefID,
+		&i.AccountableUserID,
+		&i.SessionRolloutMissing,
+		&i.RetiredSessionID,
+		&i.QuickActionsDisabled,
+		&i.RegenerateQuickActionsFor,
+		&i.RoomTurnID,
+		&i.BranchName,
+		&i.DurableWorkDir,
+		&i.TwinUseState,
+		&i.TwinVersionID,
 	)
 	return i, err
 }
 
 const deleteWorkspaceRoomData = `-- name: DeleteWorkspaceRoomData :exec
-WITH deleted_artifacts AS (
+WITH deleted_recommendation_reviews AS (
+    DELETE FROM room_recommendation_review rrr WHERE rrr.workspace_id = $1
+), deleted_memory_revisions AS (
+    DELETE FROM room_memory_revision rmr WHERE rmr.workspace_id = $1
+), deleted_artifacts AS (
     DELETE FROM room_artifact ra WHERE ra.workspace_id = $1
 ), deleted_turns AS (
     DELETE FROM room_turn rt WHERE rt.workspace_id = $1
@@ -694,8 +1209,97 @@ func (q *Queries) DeleteWorkspaceRoomData(ctx context.Context, targetWorkspaceID
 	return err
 }
 
+const failRoomOutcomeCycle = `-- name: FailRoomOutcomeCycle :one
+UPDATE room_cycle
+SET status = 'failed', phase = 'failed', synthesis_error = $1::jsonb,
+    completed_at = COALESCE(completed_at, now())
+WHERE id = $2 AND workspace_id = $3 AND room_id = $4
+  AND phase = 'gathering' AND status = 'running'
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type FailRoomOutcomeCycleParams struct {
+	SynthesisError []byte      `json:"synthesis_error"`
+	ID             pgtype.UUID `json:"id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RoomID         pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) FailRoomOutcomeCycle(ctx context.Context, arg FailRoomOutcomeCycleParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, failRoomOutcomeCycle,
+		arg.SynthesisError,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const getCorrectedRoomMemoryRevision = `-- name: GetCorrectedRoomMemoryRevision :one
+SELECT id, workspace_id, room_id, cycle_id, synthesis_turn_id, version, schema_version, synthesis, digest, review_status, reviewed_by_user_id, reviewed_at, corrected_from_revision_id, created_at, review_idempotency_key, review_request_digest, creator_type, creator_id FROM room_memory_revision
+WHERE workspace_id = $1 AND room_id = $2
+  AND corrected_from_revision_id = $3
+ORDER BY version DESC
+LIMIT 1
+`
+
+type GetCorrectedRoomMemoryRevisionParams struct {
+	WorkspaceID             pgtype.UUID `json:"workspace_id"`
+	RoomID                  pgtype.UUID `json:"room_id"`
+	CorrectedFromRevisionID pgtype.UUID `json:"corrected_from_revision_id"`
+}
+
+func (q *Queries) GetCorrectedRoomMemoryRevision(ctx context.Context, arg GetCorrectedRoomMemoryRevisionParams) (RoomMemoryRevision, error) {
+	row := q.db.QueryRow(ctx, getCorrectedRoomMemoryRevision, arg.WorkspaceID, arg.RoomID, arg.CorrectedFromRevisionID)
+	var i RoomMemoryRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.CycleID,
+		&i.SynthesisTurnID,
+		&i.Version,
+		&i.SchemaVersion,
+		&i.Synthesis,
+		&i.Digest,
+		&i.ReviewStatus,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CorrectedFromRevisionID,
+		&i.CreatedAt,
+		&i.ReviewIdempotencyKey,
+		&i.ReviewRequestDigest,
+		&i.CreatorType,
+		&i.CreatorID,
+	)
+	return i, err
+}
+
 const getLastCompletedRoomTurnForAgent = `-- name: GetLastCompletedRoomTurnForAgent :one
-SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at FROM room_turn
+SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key FROM room_turn
 WHERE workspace_id = $1 AND room_id = $2
   AND agent_id = $3 AND status = 'completed' AND session_id IS NOT NULL
 ORDER BY completed_at DESC, id DESC
@@ -726,12 +1330,15 @@ func (q *Queries) GetLastCompletedRoomTurnForAgent(ctx context.Context, arg GetL
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
 
 const getLatestTaskForRoomTurn = `-- name: GetLatestTaskForRoomTurn :one
-SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, room_turn_id, branch_name, durable_work_dir FROM agent_task_queue
+SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, attempt, max_attempts, parent_task_id, failure_reason, trigger_summary, force_fresh_session, is_leader_task, wait_reason, initiator_user_id, handoff_note, prepare_lease_expires_at, squad_id, runtime_mcp_overlay, escalation_for_task_id, fire_at, originator_user_id, runtime_connected_apps, coalesced_comment_ids, delivered_comment_ids, chat_input_task_id, chat_finalize_deferred_at, originator_source, delegated_from_task_id, retry_of_task_id, rerun_of_task_id, rule_version_id, trigger_evidence_kind, trigger_evidence_ref_id, accountable_user_id, session_rollout_missing, retired_session_id, quick_actions_disabled, regenerate_quick_actions_for, room_turn_id, branch_name, durable_work_dir, twin_use_state, twin_version_id FROM agent_task_queue
 WHERE room_turn_id = $1
 ORDER BY attempt DESC, created_at DESC, id DESC
 LIMIT 1
@@ -795,12 +1402,14 @@ func (q *Queries) GetLatestTaskForRoomTurn(ctx context.Context, roomTurnID pgtyp
 		&i.RoomTurnID,
 		&i.BranchName,
 		&i.DurableWorkDir,
+		&i.TwinUseState,
+		&i.TwinVersionID,
 	)
 	return i, err
 }
 
 const getRoom = `-- name: GetRoom :one
-SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at FROM room
+SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version FROM room
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -831,12 +1440,20 @@ func (q *Queries) GetRoom(ctx context.Context, arg GetRoomParams) (Room, error) 
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }
 
 const getRoomArtifactByKey = `-- name: GetRoomArtifactByKey :one
-SELECT id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at FROM room_artifact
+SELECT id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at, memory_revision_id, citation_entry_ids, recommendation_key FROM room_artifact
 WHERE workspace_id = $1 AND room_id = $2
   AND kind = $3 AND idempotency_key = $4
 `
@@ -872,12 +1489,15 @@ func (q *Queries) GetRoomArtifactByKey(ctx context.Context, arg GetRoomArtifactB
 		&i.SourceDigest,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
+		&i.MemoryRevisionID,
+		&i.CitationEntryIds,
+		&i.RecommendationKey,
 	)
 	return i, err
 }
 
 const getRoomCycle = `-- name: GetRoomCycle :one
-SELECT id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at FROM room_cycle
+SELECT id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks FROM room_cycle
 WHERE id = $1 AND workspace_id = $2 AND room_id = $3
 `
 
@@ -904,12 +1524,19 @@ func (q *Queries) GetRoomCycle(ctx context.Context, arg GetRoomCycleParams) (Roo
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
 	)
 	return i, err
 }
 
 const getRoomCycleByWakeKey = `-- name: GetRoomCycleByWakeKey :one
-SELECT id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at FROM room_cycle
+SELECT id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks FROM room_cycle
 WHERE workspace_id = $1 AND room_id = $2 AND wake_key = $3
 `
 
@@ -936,7 +1563,45 @@ func (q *Queries) GetRoomCycleByWakeKey(ctx context.Context, arg GetRoomCycleByW
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
 	)
+	return i, err
+}
+
+const getRoomCycleUsageSummary = `-- name: GetRoomCycleUsageSummary :one
+SELECT
+    COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks,
+    count(DISTINCT atq.id) FILTER (
+        WHERE atq.id IS NOT NULL AND (tu.task_id IS NULL OR tu.cost_usd_ticks IS NULL)
+    )::bigint AS uncosted_turns
+FROM room_turn rt
+LEFT JOIN agent_task_queue atq ON atq.room_turn_id = rt.id
+LEFT JOIN task_usage tu ON tu.task_id = atq.id
+WHERE rt.workspace_id = $1 AND rt.room_id = $2
+  AND rt.cycle_id = $3 AND rt.status <> 'refused'
+`
+
+type GetRoomCycleUsageSummaryParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+	CycleID     pgtype.UUID `json:"cycle_id"`
+}
+
+type GetRoomCycleUsageSummaryRow struct {
+	CostTicks     int64 `json:"cost_ticks"`
+	UncostedTurns int64 `json:"uncosted_turns"`
+}
+
+func (q *Queries) GetRoomCycleUsageSummary(ctx context.Context, arg GetRoomCycleUsageSummaryParams) (GetRoomCycleUsageSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getRoomCycleUsageSummary, arg.WorkspaceID, arg.RoomID, arg.CycleID)
+	var i GetRoomCycleUsageSummaryRow
+	err := row.Scan(&i.CostTicks, &i.UncostedTurns)
 	return i, err
 }
 
@@ -972,7 +1637,7 @@ func (q *Queries) GetRoomEntry(ctx context.Context, arg GetRoomEntryParams) (Roo
 }
 
 const getRoomForUpdate = `-- name: GetRoomForUpdate :one
-SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at FROM room
+SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version FROM room
 WHERE id = $1 AND workspace_id = $2
 FOR UPDATE
 `
@@ -1004,12 +1669,181 @@ func (q *Queries) GetRoomForUpdate(ctx context.Context, arg GetRoomForUpdatePara
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
+	)
+	return i, err
+}
+
+const getRoomMemoryRevision = `-- name: GetRoomMemoryRevision :one
+SELECT id, workspace_id, room_id, cycle_id, synthesis_turn_id, version, schema_version, synthesis, digest, review_status, reviewed_by_user_id, reviewed_at, corrected_from_revision_id, created_at, review_idempotency_key, review_request_digest, creator_type, creator_id FROM room_memory_revision
+WHERE id = $1 AND workspace_id = $2 AND room_id = $3
+`
+
+type GetRoomMemoryRevisionParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) GetRoomMemoryRevision(ctx context.Context, arg GetRoomMemoryRevisionParams) (RoomMemoryRevision, error) {
+	row := q.db.QueryRow(ctx, getRoomMemoryRevision, arg.ID, arg.WorkspaceID, arg.RoomID)
+	var i RoomMemoryRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.CycleID,
+		&i.SynthesisTurnID,
+		&i.Version,
+		&i.SchemaVersion,
+		&i.Synthesis,
+		&i.Digest,
+		&i.ReviewStatus,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CorrectedFromRevisionID,
+		&i.CreatedAt,
+		&i.ReviewIdempotencyKey,
+		&i.ReviewRequestDigest,
+		&i.CreatorType,
+		&i.CreatorID,
+	)
+	return i, err
+}
+
+const getRoomMemoryRevisionByReviewKey = `-- name: GetRoomMemoryRevisionByReviewKey :one
+SELECT id, workspace_id, room_id, cycle_id, synthesis_turn_id, version, schema_version, synthesis, digest, review_status, reviewed_by_user_id, reviewed_at, corrected_from_revision_id, created_at, review_idempotency_key, review_request_digest, creator_type, creator_id FROM room_memory_revision
+WHERE workspace_id = $1 AND room_id = $2 AND cycle_id = $3
+  AND review_idempotency_key = $4
+`
+
+type GetRoomMemoryRevisionByReviewKeyParams struct {
+	WorkspaceID          pgtype.UUID `json:"workspace_id"`
+	RoomID               pgtype.UUID `json:"room_id"`
+	CycleID              pgtype.UUID `json:"cycle_id"`
+	ReviewIdempotencyKey pgtype.Text `json:"review_idempotency_key"`
+}
+
+func (q *Queries) GetRoomMemoryRevisionByReviewKey(ctx context.Context, arg GetRoomMemoryRevisionByReviewKeyParams) (RoomMemoryRevision, error) {
+	row := q.db.QueryRow(ctx, getRoomMemoryRevisionByReviewKey,
+		arg.WorkspaceID,
+		arg.RoomID,
+		arg.CycleID,
+		arg.ReviewIdempotencyKey,
+	)
+	var i RoomMemoryRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.CycleID,
+		&i.SynthesisTurnID,
+		&i.Version,
+		&i.SchemaVersion,
+		&i.Synthesis,
+		&i.Digest,
+		&i.ReviewStatus,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CorrectedFromRevisionID,
+		&i.CreatedAt,
+		&i.ReviewIdempotencyKey,
+		&i.ReviewRequestDigest,
+		&i.CreatorType,
+		&i.CreatorID,
+	)
+	return i, err
+}
+
+const getRoomRecommendationReview = `-- name: GetRoomRecommendationReview :one
+SELECT id, workspace_id, room_id, memory_revision_id, recommendation_key, status, idempotency_key, request_digest, artifact_id, reviewed_by_user_id, reviewed_at FROM room_recommendation_review
+WHERE workspace_id = $1 AND room_id = $2
+  AND memory_revision_id = $3 AND recommendation_key = $4
+`
+
+type GetRoomRecommendationReviewParams struct {
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	RoomID            pgtype.UUID `json:"room_id"`
+	MemoryRevisionID  pgtype.UUID `json:"memory_revision_id"`
+	RecommendationKey string      `json:"recommendation_key"`
+}
+
+func (q *Queries) GetRoomRecommendationReview(ctx context.Context, arg GetRoomRecommendationReviewParams) (RoomRecommendationReview, error) {
+	row := q.db.QueryRow(ctx, getRoomRecommendationReview,
+		arg.WorkspaceID,
+		arg.RoomID,
+		arg.MemoryRevisionID,
+		arg.RecommendationKey,
+	)
+	var i RoomRecommendationReview
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.MemoryRevisionID,
+		&i.RecommendationKey,
+		&i.Status,
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.ArtifactID,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+	)
+	return i, err
+}
+
+const getRoomSynthesisTurnByKey = `-- name: GetRoomSynthesisTurnByKey :one
+SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key FROM room_turn
+WHERE workspace_id = $1 AND room_id = $2 AND cycle_id = $3
+  AND turn_kind = 'synthesis' AND idempotency_key = $4
+`
+
+type GetRoomSynthesisTurnByKeyParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RoomID         pgtype.UUID `json:"room_id"`
+	CycleID        pgtype.UUID `json:"cycle_id"`
+	IdempotencyKey pgtype.Text `json:"idempotency_key"`
+}
+
+func (q *Queries) GetRoomSynthesisTurnByKey(ctx context.Context, arg GetRoomSynthesisTurnByKeyParams) (RoomTurn, error) {
+	row := q.db.QueryRow(ctx, getRoomSynthesisTurnByKey,
+		arg.WorkspaceID,
+		arg.RoomID,
+		arg.CycleID,
+		arg.IdempotencyKey,
+	)
+	var i RoomTurn
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.CycleID,
+		&i.AgentID,
+		&i.SquadID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.SessionID,
+		&i.WorkDir,
+		&i.Result,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
 
 const getRoomTurn = `-- name: GetRoomTurn :one
-SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at FROM room_turn
+SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key FROM room_turn
 WHERE id = $1 AND workspace_id = $2 AND room_id = $3
 `
 
@@ -1037,12 +1871,15 @@ func (q *Queries) GetRoomTurn(ctx context.Context, arg GetRoomTurnParams) (RoomT
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
 
 const getRoomTurnByTask = `-- name: GetRoomTurnByTask :one
-SELECT rt.id, rt.workspace_id, rt.room_id, rt.cycle_id, rt.agent_id, rt.squad_id, rt.status, rt.refusal_reason, rt.session_id, rt.work_dir, rt.result, rt.created_at, rt.started_at, rt.completed_at FROM room_turn rt
+SELECT rt.id, rt.workspace_id, rt.room_id, rt.cycle_id, rt.agent_id, rt.squad_id, rt.status, rt.refusal_reason, rt.session_id, rt.work_dir, rt.result, rt.created_at, rt.started_at, rt.completed_at, rt.turn_kind, rt.attempt, rt.idempotency_key FROM room_turn rt
 JOIN agent_task_queue atq ON atq.room_turn_id = rt.id
 WHERE atq.id = $1
 `
@@ -1065,12 +1902,73 @@ func (q *Queries) GetRoomTurnByTask(ctx context.Context, taskID pgtype.UUID) (Ro
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
+	)
+	return i, err
+}
+
+const getRoomUsageSummary = `-- name: GetRoomUsageSummary :one
+SELECT
+    count(*) FILTER (WHERE rt.status <> 'refused')::bigint AS turns_total,
+    COALESCE(sum(attempt_usage.cost_ticks), 0)::bigint AS cost_ticks,
+    count(*) FILTER (
+        WHERE rt.status <> 'refused' AND attempt_usage.has_task
+          AND attempt_usage.has_uncosted_usage
+    )::bigint AS uncosted_turns,
+    count(*) FILTER (WHERE rt.status IN ('failed', 'cancelled'))::bigint AS failures,
+    (SELECT count(*) FROM room_memory_revision rmr
+     WHERE rmr.workspace_id = $1 AND rmr.room_id = $2
+       AND rmr.review_status = 'accepted')::bigint AS accepted_syntheses,
+    (SELECT count(*) FROM room_artifact ra
+     WHERE ra.workspace_id = $1 AND ra.room_id = $2
+       AND ra.target_id IS NOT NULL)::bigint AS promoted_artifacts
+FROM room_turn rt
+LEFT JOIN LATERAL (
+    SELECT COALESCE(bool_or(atq.id IS NOT NULL), false) AS has_task,
+           COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks,
+           COALESCE(bool_or(
+               atq.id IS NOT NULL
+               AND (tu.task_id IS NULL OR tu.cost_usd_ticks IS NULL)
+           ), false) AS has_uncosted_usage
+    FROM agent_task_queue atq
+    LEFT JOIN task_usage tu ON tu.task_id = atq.id
+    WHERE atq.room_turn_id = rt.id
+) attempt_usage ON true
+WHERE rt.workspace_id = $1 AND rt.room_id = $2
+`
+
+type GetRoomUsageSummaryParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+}
+
+type GetRoomUsageSummaryRow struct {
+	TurnsTotal        int64 `json:"turns_total"`
+	CostTicks         int64 `json:"cost_ticks"`
+	UncostedTurns     int64 `json:"uncosted_turns"`
+	Failures          int64 `json:"failures"`
+	AcceptedSyntheses int64 `json:"accepted_syntheses"`
+	PromotedArtifacts int64 `json:"promoted_artifacts"`
+}
+
+func (q *Queries) GetRoomUsageSummary(ctx context.Context, arg GetRoomUsageSummaryParams) (GetRoomUsageSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getRoomUsageSummary, arg.WorkspaceID, arg.RoomID)
+	var i GetRoomUsageSummaryRow
+	err := row.Scan(
+		&i.TurnsTotal,
+		&i.CostTicks,
+		&i.UncostedTurns,
+		&i.Failures,
+		&i.AcceptedSyntheses,
+		&i.PromotedArtifacts,
 	)
 	return i, err
 }
 
 const listDueRooms = `-- name: ListDueRooms :many
-SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at FROM room
+SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version FROM room
 WHERE status IN ('active', 'paused')
   AND schedule_interval_minutes IS NOT NULL
   AND next_wake_at IS NOT NULL
@@ -1112,6 +2010,14 @@ func (q *Queries) ListDueRooms(ctx context.Context, arg ListDueRoomsParams) ([]R
 			&i.LastCycleSequence,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Objective,
+			&i.SuccessCriteria,
+			&i.StopConditions,
+			&i.TemplateID,
+			&i.MaxCostTicks,
+			&i.AcceptedMemoryRevisionID,
+			&i.LastMemoryRevisionVersion,
+			&i.CapabilityVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -1124,7 +2030,7 @@ func (q *Queries) ListDueRooms(ctx context.Context, arg ListDueRoomsParams) ([]R
 }
 
 const listRoomArtifacts = `-- name: ListRoomArtifacts :many
-SELECT id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at FROM room_artifact
+SELECT id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at, memory_revision_id, citation_entry_ids, recommendation_key FROM room_artifact
 WHERE workspace_id = $1 AND room_id = $2
 ORDER BY created_at DESC, id
 `
@@ -1159,6 +2065,9 @@ func (q *Queries) ListRoomArtifacts(ctx context.Context, arg ListRoomArtifactsPa
 			&i.SourceDigest,
 			&i.CreatedByUserID,
 			&i.CreatedAt,
+			&i.MemoryRevisionID,
+			&i.CitationEntryIds,
+			&i.RecommendationKey,
 		); err != nil {
 			return nil, err
 		}
@@ -1171,7 +2080,7 @@ func (q *Queries) ListRoomArtifacts(ctx context.Context, arg ListRoomArtifactsPa
 }
 
 const listRoomCycles = `-- name: ListRoomCycles :many
-SELECT id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at FROM room_cycle
+SELECT id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks FROM room_cycle
 WHERE workspace_id = $1 AND room_id = $2
 ORDER BY sequence DESC
 LIMIT $3
@@ -1206,6 +2115,13 @@ func (q *Queries) ListRoomCycles(ctx context.Context, arg ListRoomCyclesParams) 
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.CompletedAt,
+			&i.Phase,
+			&i.SynthesisError,
+			&i.SynthesisTurnID,
+			&i.MemoryRevisionID,
+			&i.ExpectedMaxTurns,
+			&i.CancelIdempotencyKey,
+			&i.CostLimitTicks,
 		); err != nil {
 			return nil, err
 		}
@@ -1239,6 +2155,174 @@ func (q *Queries) ListRoomEntries(ctx context.Context, arg ListRoomEntriesParams
 		arg.AfterOrdinal,
 		arg.LimitCount,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RoomEntry{}
+	for rows.Next() {
+		var i RoomEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RoomID,
+			&i.CycleID,
+			&i.TurnID,
+			&i.Ordinal,
+			&i.EntryType,
+			&i.AuthorType,
+			&i.AuthorID,
+			&i.Body,
+			&i.Mentions,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoomEntriesByIDs = `-- name: ListRoomEntriesByIDs :many
+SELECT id, workspace_id, room_id, cycle_id, turn_id, ordinal, entry_type, author_type, author_id, body, mentions, created_at FROM room_entry
+WHERE workspace_id = $1 AND room_id = $2
+  AND id = ANY($3::uuid[])
+ORDER BY ordinal, id
+`
+
+type ListRoomEntriesByIDsParams struct {
+	WorkspaceID pgtype.UUID   `json:"workspace_id"`
+	RoomID      pgtype.UUID   `json:"room_id"`
+	EntryIds    []pgtype.UUID `json:"entry_ids"`
+}
+
+func (q *Queries) ListRoomEntriesByIDs(ctx context.Context, arg ListRoomEntriesByIDsParams) ([]RoomEntry, error) {
+	rows, err := q.db.Query(ctx, listRoomEntriesByIDs, arg.WorkspaceID, arg.RoomID, arg.EntryIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RoomEntry{}
+	for rows.Next() {
+		var i RoomEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RoomID,
+			&i.CycleID,
+			&i.TurnID,
+			&i.Ordinal,
+			&i.EntryType,
+			&i.AuthorType,
+			&i.AuthorID,
+			&i.Body,
+			&i.Mentions,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoomMemoryRevisions = `-- name: ListRoomMemoryRevisions :many
+WITH selected_revision_ids AS (
+    SELECT recent.id
+    FROM (
+        SELECT revision.id
+        FROM room_memory_revision revision
+        WHERE revision.workspace_id = $1 AND revision.room_id = $2
+        ORDER BY revision.version DESC
+        LIMIT 100
+    ) recent
+    UNION
+    SELECT room.accepted_memory_revision_id
+    FROM room
+    WHERE room.workspace_id = $1 AND room.id = $2
+      AND room.accepted_memory_revision_id IS NOT NULL
+    UNION
+    SELECT active_cycle.memory_revision_id
+    FROM room
+    JOIN room_cycle active_cycle ON active_cycle.id = room.active_cycle_id
+    WHERE room.workspace_id = $1 AND room.id = $2
+      AND active_cycle.memory_revision_id IS NOT NULL
+)
+SELECT revision.id, revision.workspace_id, revision.room_id, revision.cycle_id, revision.synthesis_turn_id, revision.version, revision.schema_version, revision.synthesis, revision.digest, revision.review_status, revision.reviewed_by_user_id, revision.reviewed_at, revision.corrected_from_revision_id, revision.created_at, revision.review_idempotency_key, revision.review_request_digest, revision.creator_type, revision.creator_id
+FROM room_memory_revision revision
+JOIN selected_revision_ids selected ON selected.id = revision.id
+WHERE revision.workspace_id = $1 AND revision.room_id = $2
+ORDER BY revision.version DESC
+`
+
+type ListRoomMemoryRevisionsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) ListRoomMemoryRevisions(ctx context.Context, arg ListRoomMemoryRevisionsParams) ([]RoomMemoryRevision, error) {
+	rows, err := q.db.Query(ctx, listRoomMemoryRevisions, arg.WorkspaceID, arg.RoomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RoomMemoryRevision{}
+	for rows.Next() {
+		var i RoomMemoryRevision
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RoomID,
+			&i.CycleID,
+			&i.SynthesisTurnID,
+			&i.Version,
+			&i.SchemaVersion,
+			&i.Synthesis,
+			&i.Digest,
+			&i.ReviewStatus,
+			&i.ReviewedByUserID,
+			&i.ReviewedAt,
+			&i.CorrectedFromRevisionID,
+			&i.CreatedAt,
+			&i.ReviewIdempotencyKey,
+			&i.ReviewRequestDigest,
+			&i.CreatorType,
+			&i.CreatorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoomParticipantResultEntriesByCycle = `-- name: ListRoomParticipantResultEntriesByCycle :many
+SELECT re.id, re.workspace_id, re.room_id, re.cycle_id, re.turn_id, re.ordinal, re.entry_type, re.author_type, re.author_id, re.body, re.mentions, re.created_at FROM room_entry re
+JOIN room_turn rt ON rt.id = re.turn_id
+WHERE re.workspace_id = $1 AND re.room_id = $2
+  AND re.cycle_id = $3 AND re.entry_type = 'result'
+  AND rt.workspace_id = re.workspace_id AND rt.room_id = re.room_id
+  AND rt.cycle_id = re.cycle_id AND rt.turn_kind = 'participant'
+ORDER BY re.ordinal, re.id
+`
+
+type ListRoomParticipantResultEntriesByCycleParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+	CycleID     pgtype.UUID `json:"cycle_id"`
+}
+
+func (q *Queries) ListRoomParticipantResultEntriesByCycle(ctx context.Context, arg ListRoomParticipantResultEntriesByCycleParams) ([]RoomEntry, error) {
+	rows, err := q.db.Query(ctx, listRoomParticipantResultEntriesByCycle, arg.WorkspaceID, arg.RoomID, arg.CycleID)
 	if err != nil {
 		return nil, err
 	}
@@ -1312,6 +2396,73 @@ func (q *Queries) ListRoomParticipants(ctx context.Context, arg ListRoomParticip
 	return items, nil
 }
 
+const listRoomRecommendationReviews = `-- name: ListRoomRecommendationReviews :many
+WITH selected_revision_ids AS (
+    SELECT recent.id
+    FROM (
+        SELECT revision.id
+        FROM room_memory_revision revision
+        WHERE revision.workspace_id = $1 AND revision.room_id = $2
+        ORDER BY revision.version DESC
+        LIMIT 100
+    ) recent
+    UNION
+    SELECT room.accepted_memory_revision_id
+    FROM room
+    WHERE room.workspace_id = $1 AND room.id = $2
+      AND room.accepted_memory_revision_id IS NOT NULL
+    UNION
+    SELECT active_cycle.memory_revision_id
+    FROM room
+    JOIN room_cycle active_cycle ON active_cycle.id = room.active_cycle_id
+    WHERE room.workspace_id = $1 AND room.id = $2
+      AND active_cycle.memory_revision_id IS NOT NULL
+)
+SELECT review.id, review.workspace_id, review.room_id, review.memory_revision_id, review.recommendation_key, review.status, review.idempotency_key, review.request_digest, review.artifact_id, review.reviewed_by_user_id, review.reviewed_at
+FROM room_recommendation_review review
+JOIN selected_revision_ids selected ON selected.id = review.memory_revision_id
+WHERE review.workspace_id = $1 AND review.room_id = $2
+ORDER BY review.reviewed_at DESC, review.id
+LIMIT 10200
+`
+
+type ListRoomRecommendationReviewsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) ListRoomRecommendationReviews(ctx context.Context, arg ListRoomRecommendationReviewsParams) ([]RoomRecommendationReview, error) {
+	rows, err := q.db.Query(ctx, listRoomRecommendationReviews, arg.WorkspaceID, arg.RoomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RoomRecommendationReview{}
+	for rows.Next() {
+		var i RoomRecommendationReview
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.RoomID,
+			&i.MemoryRevisionID,
+			&i.RecommendationKey,
+			&i.Status,
+			&i.IdempotencyKey,
+			&i.RequestDigest,
+			&i.ArtifactID,
+			&i.ReviewedByUserID,
+			&i.ReviewedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoomResultEntriesByCycle = `-- name: ListRoomResultEntriesByCycle :many
 SELECT id, workspace_id, room_id, cycle_id, turn_id, ordinal, entry_type, author_type, author_id, body, mentions, created_at FROM room_entry
 WHERE workspace_id = $1 AND room_id = $2
@@ -1359,7 +2510,7 @@ func (q *Queries) ListRoomResultEntriesByCycle(ctx context.Context, arg ListRoom
 }
 
 const listRoomTurns = `-- name: ListRoomTurns :many
-SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at FROM room_turn
+SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key FROM room_turn
 WHERE workspace_id = $1 AND room_id = $2
 ORDER BY created_at DESC, id
 `
@@ -1393,6 +2544,9 @@ func (q *Queries) ListRoomTurns(ctx context.Context, arg ListRoomTurnsParams) ([
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.CompletedAt,
+			&i.TurnKind,
+			&i.Attempt,
+			&i.IdempotencyKey,
 		); err != nil {
 			return nil, err
 		}
@@ -1405,7 +2559,7 @@ func (q *Queries) ListRoomTurns(ctx context.Context, arg ListRoomTurnsParams) ([
 }
 
 const listRoomTurnsByCycle = `-- name: ListRoomTurnsByCycle :many
-SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at FROM room_turn
+SELECT id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key FROM room_turn
 WHERE workspace_id = $1 AND room_id = $2 AND cycle_id = $3
 ORDER BY created_at, id
 `
@@ -1440,6 +2594,9 @@ func (q *Queries) ListRoomTurnsByCycle(ctx context.Context, arg ListRoomTurnsByC
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.CompletedAt,
+			&i.TurnKind,
+			&i.Attempt,
+			&i.IdempotencyKey,
 		); err != nil {
 			return nil, err
 		}
@@ -1452,7 +2609,7 @@ func (q *Queries) ListRoomTurnsByCycle(ctx context.Context, arg ListRoomTurnsByC
 }
 
 const listRooms = `-- name: ListRooms :many
-SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at FROM room
+SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version FROM room
 WHERE workspace_id = $1
 ORDER BY updated_at DESC, id
 `
@@ -1485,6 +2642,14 @@ func (q *Queries) ListRooms(ctx context.Context, workspaceID pgtype.UUID) ([]Roo
 			&i.LastCycleSequence,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Objective,
+			&i.SuccessCriteria,
+			&i.StopConditions,
+			&i.TemplateID,
+			&i.MaxCostTicks,
+			&i.AcceptedMemoryRevisionID,
+			&i.LastMemoryRevisionVersion,
+			&i.CapabilityVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -1497,7 +2662,7 @@ func (q *Queries) ListRooms(ctx context.Context, workspaceID pgtype.UUID) ([]Roo
 }
 
 const listUnsyncedTerminalRoomTasks = `-- name: ListUnsyncedTerminalRoomTasks :many
-SELECT task.id, task.agent_id, task.issue_id, task.status, task.priority, task.dispatched_at, task.started_at, task.completed_at, task.result, task.error, task.created_at, task.context, task.runtime_id, task.session_id, task.work_dir, task.trigger_comment_id, task.chat_session_id, task.autopilot_run_id, task.attempt, task.max_attempts, task.parent_task_id, task.failure_reason, task.trigger_summary, task.force_fresh_session, task.is_leader_task, task.wait_reason, task.initiator_user_id, task.handoff_note, task.prepare_lease_expires_at, task.squad_id, task.runtime_mcp_overlay, task.escalation_for_task_id, task.fire_at, task.originator_user_id, task.runtime_connected_apps, task.coalesced_comment_ids, task.delivered_comment_ids, task.chat_input_task_id, task.chat_finalize_deferred_at, task.originator_source, task.delegated_from_task_id, task.retry_of_task_id, task.rerun_of_task_id, task.rule_version_id, task.trigger_evidence_kind, task.trigger_evidence_ref_id, task.accountable_user_id, task.session_rollout_missing, task.retired_session_id, task.quick_actions_disabled, task.regenerate_quick_actions_for, task.room_turn_id, task.branch_name, task.durable_work_dir
+SELECT task.id, task.agent_id, task.issue_id, task.status, task.priority, task.dispatched_at, task.started_at, task.completed_at, task.result, task.error, task.created_at, task.context, task.runtime_id, task.session_id, task.work_dir, task.trigger_comment_id, task.chat_session_id, task.autopilot_run_id, task.attempt, task.max_attempts, task.parent_task_id, task.failure_reason, task.trigger_summary, task.force_fresh_session, task.is_leader_task, task.wait_reason, task.initiator_user_id, task.handoff_note, task.prepare_lease_expires_at, task.squad_id, task.runtime_mcp_overlay, task.escalation_for_task_id, task.fire_at, task.originator_user_id, task.runtime_connected_apps, task.coalesced_comment_ids, task.delivered_comment_ids, task.chat_input_task_id, task.chat_finalize_deferred_at, task.originator_source, task.delegated_from_task_id, task.retry_of_task_id, task.rerun_of_task_id, task.rule_version_id, task.trigger_evidence_kind, task.trigger_evidence_ref_id, task.accountable_user_id, task.session_rollout_missing, task.retired_session_id, task.quick_actions_disabled, task.regenerate_quick_actions_for, task.room_turn_id, task.branch_name, task.durable_work_dir, task.twin_use_state, task.twin_version_id
 FROM agent_task_queue task
 JOIN room_turn turn ON turn.id = task.room_turn_id
 WHERE task.status IN ('completed', 'failed', 'cancelled')
@@ -1576,6 +2741,8 @@ func (q *Queries) ListUnsyncedTerminalRoomTasks(ctx context.Context, limitCount 
 			&i.RoomTurnID,
 			&i.BranchName,
 			&i.DurableWorkDir,
+			&i.TwinUseState,
+			&i.TwinVersionID,
 		); err != nil {
 			return nil, err
 		}
@@ -1601,11 +2768,41 @@ func (q *Queries) LockRoomWorkspaceForWrite(ctx context.Context, workspaceID pgt
 	return id, err
 }
 
+const makeSupportedDeferredRoomTasksDue = `-- name: MakeSupportedDeferredRoomTasksDue :execrows
+UPDATE agent_task_queue
+SET fire_at = now()
+WHERE runtime_id = ANY($1::uuid[])
+  AND room_turn_id IS NOT NULL
+  AND status = 'deferred'
+  AND (
+      ($2::boolean AND context->>'schema_version' = '1')
+      OR ($3::boolean AND context->>'schema_version' = '2')
+  )
+`
+
+type MakeSupportedDeferredRoomTasksDueParams struct {
+	RuntimeIds             []pgtype.UUID `json:"runtime_ids"`
+	SupportsRoomTasksV1    bool          `json:"supports_room_tasks_v1"`
+	SupportsRoomOutcomesV2 bool          `json:"supports_room_outcomes_v2"`
+}
+
+// A daemon may have upgraded after an older process deferred a Room task it
+// could not understand. Make only tasks supported by the current request due;
+// the existing deferred promoter performs the queued transition and side
+// effects before claim candidate selection.
+func (q *Queries) MakeSupportedDeferredRoomTasksDue(ctx context.Context, arg MakeSupportedDeferredRoomTasksDueParams) (int64, error) {
+	result, err := q.db.Exec(ctx, makeSupportedDeferredRoomTasksDue, arg.RuntimeIds, arg.SupportsRoomTasksV1, arg.SupportsRoomOutcomesV2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markRoomCycleRunning = `-- name: MarkRoomCycleRunning :one
 UPDATE room_cycle
 SET status = 'running', started_at = COALESCE(started_at, now())
 WHERE id = $1 AND workspace_id = $2 AND status = 'queued'
-RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
 `
 
 type MarkRoomCycleRunningParams struct {
@@ -1630,6 +2827,13 @@ func (q *Queries) MarkRoomCycleRunning(ctx context.Context, arg MarkRoomCycleRun
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
 	)
 	return i, err
 }
@@ -1638,7 +2842,7 @@ const markRoomTurnRunning = `-- name: MarkRoomTurnRunning :one
 UPDATE room_turn
 SET status = 'running', started_at = COALESCE(started_at, now())
 WHERE id = $1 AND status IN ('queued', 'dispatched')
-RETURNING id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at
+RETURNING id, workspace_id, room_id, cycle_id, agent_id, squad_id, status, refusal_reason, session_id, work_dir, result, created_at, started_at, completed_at, turn_kind, attempt, idempotency_key
 `
 
 func (q *Queries) MarkRoomTurnRunning(ctx context.Context, id pgtype.UUID) (RoomTurn, error) {
@@ -1659,8 +2863,37 @@ func (q *Queries) MarkRoomTurnRunning(ctx context.Context, id pgtype.UUID) (Room
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.CompletedAt,
+		&i.TurnKind,
+		&i.Attempt,
+		&i.IdempotencyKey,
 	)
 	return i, err
+}
+
+const nextRoomSynthesisAttempt = `-- name: NextRoomSynthesisAttempt :one
+SELECT COALESCE(max(attempt), 0)::int + 1
+FROM room_turn
+WHERE workspace_id = $1 AND room_id = $2 AND cycle_id = $3
+  AND turn_kind = 'synthesis' AND agent_id = $4
+`
+
+type NextRoomSynthesisAttemptParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+	CycleID     pgtype.UUID `json:"cycle_id"`
+	AgentID     pgtype.UUID `json:"agent_id"`
+}
+
+func (q *Queries) NextRoomSynthesisAttempt(ctx context.Context, arg NextRoomSynthesisAttemptParams) (int32, error) {
+	row := q.db.QueryRow(ctx, nextRoomSynthesisAttempt,
+		arg.WorkspaceID,
+		arg.RoomID,
+		arg.CycleID,
+		arg.AgentID,
+	)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const removeRoomParticipant = `-- name: RemoveRoomParticipant :one
@@ -1694,12 +2927,66 @@ func (q *Queries) RemoveRoomParticipant(ctx context.Context, arg RemoveRoomParti
 	return i, err
 }
 
+const reviewRoomMemoryRevision = `-- name: ReviewRoomMemoryRevision :one
+UPDATE room_memory_revision
+SET review_status = $1, reviewed_by_user_id = $2,
+    reviewed_at = now(), review_idempotency_key = $3,
+    review_request_digest = $4
+WHERE id = $5 AND workspace_id = $6 AND room_id = $7
+  AND review_status = 'pending'
+RETURNING id, workspace_id, room_id, cycle_id, synthesis_turn_id, version, schema_version, synthesis, digest, review_status, reviewed_by_user_id, reviewed_at, corrected_from_revision_id, created_at, review_idempotency_key, review_request_digest, creator_type, creator_id
+`
+
+type ReviewRoomMemoryRevisionParams struct {
+	ReviewStatus         string      `json:"review_status"`
+	ReviewedByUserID     pgtype.UUID `json:"reviewed_by_user_id"`
+	ReviewIdempotencyKey pgtype.Text `json:"review_idempotency_key"`
+	ReviewRequestDigest  pgtype.Text `json:"review_request_digest"`
+	ID                   pgtype.UUID `json:"id"`
+	WorkspaceID          pgtype.UUID `json:"workspace_id"`
+	RoomID               pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) ReviewRoomMemoryRevision(ctx context.Context, arg ReviewRoomMemoryRevisionParams) (RoomMemoryRevision, error) {
+	row := q.db.QueryRow(ctx, reviewRoomMemoryRevision,
+		arg.ReviewStatus,
+		arg.ReviewedByUserID,
+		arg.ReviewIdempotencyKey,
+		arg.ReviewRequestDigest,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomMemoryRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.CycleID,
+		&i.SynthesisTurnID,
+		&i.Version,
+		&i.SchemaVersion,
+		&i.Synthesis,
+		&i.Digest,
+		&i.ReviewStatus,
+		&i.ReviewedByUserID,
+		&i.ReviewedAt,
+		&i.CorrectedFromRevisionID,
+		&i.CreatedAt,
+		&i.ReviewIdempotencyKey,
+		&i.ReviewRequestDigest,
+		&i.CreatorType,
+		&i.CreatorID,
+	)
+	return i, err
+}
+
 const setRoomActiveCycle = `-- name: SetRoomActiveCycle :one
 UPDATE room
 SET active_cycle_id = $1, updated_at = now()
 WHERE id = $2 AND workspace_id = $3
   AND active_cycle_id IS NOT DISTINCT FROM $4::uuid
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type SetRoomActiveCycleParams struct {
@@ -1736,6 +3023,14 @@ func (q *Queries) SetRoomActiveCycle(ctx context.Context, arg SetRoomActiveCycle
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }
@@ -1744,7 +3039,7 @@ const setRoomArtifactTarget = `-- name: SetRoomArtifactTarget :one
 UPDATE room_artifact
 SET target_id = $1
 WHERE id = $2 AND workspace_id = $3 AND target_id IS NULL
-RETURNING id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at
+RETURNING id, workspace_id, room_id, cycle_id, turn_id, entry_id, kind, idempotency_key, target_id, title, body, rationale, source_digest, created_by_user_id, created_at, memory_revision_id, citation_entry_ids, recommendation_key
 `
 
 type SetRoomArtifactTargetParams struct {
@@ -1772,6 +3067,352 @@ func (q *Queries) SetRoomArtifactTarget(ctx context.Context, arg SetRoomArtifact
 		&i.SourceDigest,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
+		&i.MemoryRevisionID,
+		&i.CitationEntryIds,
+		&i.RecommendationKey,
+	)
+	return i, err
+}
+
+const setRoomCycleAwaitingReview = `-- name: SetRoomCycleAwaitingReview :one
+UPDATE room_cycle
+SET status = 'running', phase = 'awaiting_review', memory_revision_id = $1,
+    synthesis_error = $2::jsonb
+WHERE id = $3 AND workspace_id = $4 AND room_id = $5
+  AND phase = 'synthesizing' AND status = 'running'
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCycleAwaitingReviewParams struct {
+	MemoryRevisionID pgtype.UUID `json:"memory_revision_id"`
+	SynthesisError   []byte      `json:"synthesis_error"`
+	ID               pgtype.UUID `json:"id"`
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	RoomID           pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCycleAwaitingReview(ctx context.Context, arg SetRoomCycleAwaitingReviewParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCycleAwaitingReview,
+		arg.MemoryRevisionID,
+		arg.SynthesisError,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const setRoomCyclePendingRevision = `-- name: SetRoomCyclePendingRevision :one
+UPDATE room_cycle
+SET memory_revision_id = $1, synthesis_error = NULL
+WHERE id = $2 AND workspace_id = $3 AND room_id = $4
+  AND phase = 'awaiting_review' AND status = 'running'
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCyclePendingRevisionParams struct {
+	MemoryRevisionID pgtype.UUID `json:"memory_revision_id"`
+	ID               pgtype.UUID `json:"id"`
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	RoomID           pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCyclePendingRevision(ctx context.Context, arg SetRoomCyclePendingRevisionParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCyclePendingRevision,
+		arg.MemoryRevisionID,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const setRoomCycleReviewRetryable = `-- name: SetRoomCycleReviewRetryable :one
+UPDATE room_cycle
+SET synthesis_error = $1::jsonb
+WHERE id = $2 AND workspace_id = $3 AND room_id = $4
+  AND phase = 'awaiting_review' AND status = 'running'
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCycleReviewRetryableParams struct {
+	SynthesisError []byte      `json:"synthesis_error"`
+	ID             pgtype.UUID `json:"id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RoomID         pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCycleReviewRetryable(ctx context.Context, arg SetRoomCycleReviewRetryableParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCycleReviewRetryable,
+		arg.SynthesisError,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const setRoomCycleReviewed = `-- name: SetRoomCycleReviewed :one
+UPDATE room_cycle
+SET status = $1, phase = $2, completed_at = COALESCE(completed_at, now())
+WHERE id = $3 AND workspace_id = $4 AND room_id = $5
+  AND phase = 'awaiting_review' AND status = 'running'
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCycleReviewedParams struct {
+	Status      string      `json:"status"`
+	Phase       string      `json:"phase"`
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RoomID      pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCycleReviewed(ctx context.Context, arg SetRoomCycleReviewedParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCycleReviewed,
+		arg.Status,
+		arg.Phase,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const setRoomCycleSynthesisBlocked = `-- name: SetRoomCycleSynthesisBlocked :one
+UPDATE room_cycle
+SET status = 'running', phase = 'awaiting_review', synthesis_error = $1::jsonb,
+    started_at = COALESCE(started_at, now())
+WHERE id = $2 AND workspace_id = $3 AND room_id = $4
+  AND phase = 'gathering' AND status IN ('queued', 'running')
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCycleSynthesisBlockedParams struct {
+	SynthesisError []byte      `json:"synthesis_error"`
+	ID             pgtype.UUID `json:"id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	RoomID         pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCycleSynthesisBlocked(ctx context.Context, arg SetRoomCycleSynthesisBlockedParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCycleSynthesisBlocked,
+		arg.SynthesisError,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const setRoomCycleSynthesisRetry = `-- name: SetRoomCycleSynthesisRetry :one
+UPDATE room_cycle
+SET phase = 'synthesizing', synthesis_turn_id = $1, synthesis_error = NULL
+WHERE id = $2 AND workspace_id = $3 AND room_id = $4
+  AND phase = 'awaiting_review' AND synthesis_error IS NOT NULL AND status = 'running'
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCycleSynthesisRetryParams struct {
+	SynthesisTurnID pgtype.UUID `json:"synthesis_turn_id"`
+	ID              pgtype.UUID `json:"id"`
+	WorkspaceID     pgtype.UUID `json:"workspace_id"`
+	RoomID          pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCycleSynthesisRetry(ctx context.Context, arg SetRoomCycleSynthesisRetryParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCycleSynthesisRetry,
+		arg.SynthesisTurnID,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
+	)
+	return i, err
+}
+
+const setRoomCycleSynthesizing = `-- name: SetRoomCycleSynthesizing :one
+UPDATE room_cycle
+SET status = 'running', phase = 'synthesizing', synthesis_turn_id = $1,
+    synthesis_error = NULL, started_at = COALESCE(started_at, now())
+WHERE id = $2 AND workspace_id = $3 AND room_id = $4
+  AND phase = 'gathering' AND status IN ('queued', 'running')
+RETURNING id, workspace_id, room_id, sequence, source, wake_key, triggering_entry_id, status, refusal_reason, planned_at, created_at, started_at, completed_at, phase, synthesis_error, synthesis_turn_id, memory_revision_id, expected_max_turns, cancel_idempotency_key, cost_limit_ticks
+`
+
+type SetRoomCycleSynthesizingParams struct {
+	SynthesisTurnID pgtype.UUID `json:"synthesis_turn_id"`
+	ID              pgtype.UUID `json:"id"`
+	WorkspaceID     pgtype.UUID `json:"workspace_id"`
+	RoomID          pgtype.UUID `json:"room_id"`
+}
+
+func (q *Queries) SetRoomCycleSynthesizing(ctx context.Context, arg SetRoomCycleSynthesizingParams) (RoomCycle, error) {
+	row := q.db.QueryRow(ctx, setRoomCycleSynthesizing,
+		arg.SynthesisTurnID,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.RoomID,
+	)
+	var i RoomCycle
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.RoomID,
+		&i.Sequence,
+		&i.Source,
+		&i.WakeKey,
+		&i.TriggeringEntryID,
+		&i.Status,
+		&i.RefusalReason,
+		&i.PlannedAt,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.Phase,
+		&i.SynthesisError,
+		&i.SynthesisTurnID,
+		&i.MemoryRevisionID,
+		&i.ExpectedMaxTurns,
+		&i.CancelIdempotencyKey,
+		&i.CostLimitTicks,
 	)
 	return i, err
 }
@@ -1780,7 +3421,7 @@ const setRoomStatus = `-- name: SetRoomStatus :one
 UPDATE room
 SET status = $1, updated_at = now()
 WHERE id = $2 AND workspace_id = $3
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type SetRoomStatusParams struct {
@@ -1811,6 +3452,14 @@ func (q *Queries) SetRoomStatus(ctx context.Context, arg SetRoomStatusParams) (R
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }
@@ -1819,17 +3468,27 @@ const updateRoom = `-- name: UpdateRoom :one
 UPDATE room
 SET title = $1,
     instructions = $2,
-    daily_turn_limit = $3,
-    schedule_interval_minutes = $4,
-    next_wake_at = $5,
+    objective = $3,
+    success_criteria = $4::jsonb,
+    stop_conditions = $5::jsonb,
+    template_id = $6,
+    max_cost_ticks = $7,
+    daily_turn_limit = $8,
+    schedule_interval_minutes = $9,
+    next_wake_at = $10,
     updated_at = now()
-WHERE id = $6 AND workspace_id = $7
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+WHERE id = $11 AND workspace_id = $12
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type UpdateRoomParams struct {
 	Title                   string             `json:"title"`
 	Instructions            string             `json:"instructions"`
+	Objective               string             `json:"objective"`
+	SuccessCriteria         []byte             `json:"success_criteria"`
+	StopConditions          []byte             `json:"stop_conditions"`
+	TemplateID              pgtype.Text        `json:"template_id"`
+	MaxCostTicks            pgtype.Int8        `json:"max_cost_ticks"`
 	DailyTurnLimit          pgtype.Int4        `json:"daily_turn_limit"`
 	ScheduleIntervalMinutes pgtype.Int4        `json:"schedule_interval_minutes"`
 	NextWakeAt              pgtype.Timestamptz `json:"next_wake_at"`
@@ -1841,6 +3500,11 @@ func (q *Queries) UpdateRoom(ctx context.Context, arg UpdateRoomParams) (Room, e
 	row := q.db.QueryRow(ctx, updateRoom,
 		arg.Title,
 		arg.Instructions,
+		arg.Objective,
+		arg.SuccessCriteria,
+		arg.StopConditions,
+		arg.TemplateID,
+		arg.MaxCostTicks,
 		arg.DailyTurnLimit,
 		arg.ScheduleIntervalMinutes,
 		arg.NextWakeAt,
@@ -1867,6 +3531,69 @@ func (q *Queries) UpdateRoom(ctx context.Context, arg UpdateRoomParams) (Room, e
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
+	)
+	return i, err
+}
+
+const updateRoomBudget = `-- name: UpdateRoomBudget :one
+UPDATE room
+SET daily_turn_limit = $1::integer,
+    max_cost_ticks = $2::bigint,
+    updated_at = now()
+WHERE id = $3 AND workspace_id = $4
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
+`
+
+type UpdateRoomBudgetParams struct {
+	DailyTurnLimit pgtype.Int4 `json:"daily_turn_limit"`
+	MaxCostTicks   pgtype.Int8 `json:"max_cost_ticks"`
+	ID             pgtype.UUID `json:"id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) UpdateRoomBudget(ctx context.Context, arg UpdateRoomBudgetParams) (Room, error) {
+	row := q.db.QueryRow(ctx, updateRoomBudget,
+		arg.DailyTurnLimit,
+		arg.MaxCostTicks,
+		arg.ID,
+		arg.WorkspaceID,
+	)
+	var i Room
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Title,
+		&i.Instructions,
+		&i.CreatedByUserID,
+		&i.FacilitatorAgentID,
+		&i.FacilitatorSquadID,
+		&i.Status,
+		&i.DailyTurnLimit,
+		&i.ScheduleIntervalMinutes,
+		&i.NextWakeAt,
+		&i.ActiveCycleID,
+		&i.Memory,
+		&i.MemoryVersion,
+		&i.LastEntryOrdinal,
+		&i.LastCycleSequence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }
@@ -1879,7 +3606,7 @@ SET memory = $1::jsonb,
     updated_at = now()
 WHERE id = $3 AND workspace_id = $4
   AND memory_version = $5
-RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at
+RETURNING id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version
 `
 
 type UpdateRoomMemoryParams struct {
@@ -1918,6 +3645,14 @@ func (q *Queries) UpdateRoomMemory(ctx context.Context, arg UpdateRoomMemoryPara
 		&i.LastCycleSequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Objective,
+		&i.SuccessCriteria,
+		&i.StopConditions,
+		&i.TemplateID,
+		&i.MaxCostTicks,
+		&i.AcceptedMemoryRevisionID,
+		&i.LastMemoryRevisionVersion,
+		&i.CapabilityVersion,
 	)
 	return i, err
 }

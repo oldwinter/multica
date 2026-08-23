@@ -24,6 +24,8 @@ const mockToastError = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
 const mockSetTheme = vi.hoisted(() => vi.fn());
 const mockSetSkin = vi.hoisted(() => vi.fn());
+const mockResetAppearance = vi.hoisted(() => vi.fn());
+const mockRetryAppearance = vi.hoisted(() => vi.fn());
 const mockSetUser = vi.hoisted(() => vi.fn());
 const userRef = vi.hoisted(() => ({
   current: null as { id: string; timezone?: string | null } | null,
@@ -33,6 +35,20 @@ vi.mock("@multica/ui/components/common/theme-provider", () => ({
   SKIN_IDS: ["tension", "relay", "field"],
   useTheme: () => ({ theme: "light", setTheme: mockSetTheme }),
   useSkin: () => ({ skin: "tension", setSkin: mockSetSkin }),
+}));
+
+vi.mock("../../appearance", () => ({
+  useAppearancePreferences: () => ({
+    preferences: {
+      skin: "tension",
+      requestedAppearance: "system",
+      syncState: { status: "local-only" },
+    },
+    selectSkin: mockSetSkin,
+    selectAppearance: mockSetTheme,
+    reset: mockResetAppearance,
+    retry: mockRetryAppearance,
+  }),
 }));
 
 vi.mock("@multica/core/i18n/react", async () => {

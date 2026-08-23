@@ -39,6 +39,8 @@ func TestClient_IdentityHeaders_PostJSON(t *testing.T) {
 			protocol.DaemonCapabilitySkillBundlesV1,
 			protocol.DaemonCapabilityCoalescedCommentsV1,
 			protocol.DaemonCapabilityRoomTasksV1,
+			protocol.DaemonCapabilityTwinBriefingV1,
+			protocol.DaemonCapabilityRoomOutcomesV2,
 			// The worktree gate is decided entirely from this header: if the
 			// daemon stops advertising it, every worktree task on this machine
 			// is cancelled with an upgrade prompt (MUL-5707). Pin it here so
@@ -48,6 +50,9 @@ func TestClient_IdentityHeaders_PostJSON(t *testing.T) {
 			if !capabilities[want] {
 				t.Errorf("X-Client-Capabilities missing %q: %v", want, capabilities)
 			}
+		}
+		if capabilities[protocol.DaemonCapabilityRoomCostLimitsV1] {
+			t.Errorf("X-Client-Capabilities must not advertise %q without provider enforcement", protocol.DaemonCapabilityRoomCostLimitsV1)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"ok": "1"})

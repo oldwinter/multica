@@ -17,6 +17,10 @@ export const mockUser: User = {
   language: null,
   timezone: null,
   profile_description: "",
+  skin: null,
+  appearance: null,
+  appearanceUpdatedAt: null,
+  appearanceTokenVersion: null,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 };

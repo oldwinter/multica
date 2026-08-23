@@ -6,14 +6,16 @@ import (
 )
 
 func TestBuildRoomPromptCarriesPersistentContext(t *testing.T) {
+	costLimit := int64(17)
 	out := buildPromptBody(Task{
-		RoomID:           "room-1",
-		RoomCycleID:      "cycle-2",
-		RoomTurnID:       "turn-3",
-		RoomTitle:        "Architecture council",
-		RoomInstructions: "Challenge assumptions.",
-		RoomMemory:       []byte(`{"summary":"Prefer explicit contracts"}`),
-		RoomTranscript:   []byte(`[{"body":"Review the retry boundary."}]`),
+		RoomID:             "room-1",
+		RoomCycleID:        "cycle-2",
+		RoomTurnID:         "turn-3",
+		RoomTitle:          "Architecture council",
+		RoomInstructions:   "Challenge assumptions.",
+		RoomMemory:         []byte(`{"summary":"Prefer explicit contracts"}`),
+		RoomTranscript:     []byte(`[{"body":"Review the retry boundary."}]`),
+		RoomCostLimitTicks: &costLimit,
 	}, "codex")
 	for _, want := range []string{
 		"persistent Multica Room",
@@ -22,6 +24,7 @@ func TestBuildRoomPromptCarriesPersistentContext(t *testing.T) {
 		"Prefer explicit contracts",
 		"Review the retry boundary.",
 		"appended to the Room transcript",
+		"17 cost ticks",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Room prompt missing %q:\n%s", want, out)

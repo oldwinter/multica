@@ -14,6 +14,8 @@ import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { dingtalkKeys } from "../dingtalk/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
+import { wikiKeys as lmWikiKeys } from "../twins/queries";
 import {
   markWorkspaceDeletePending,
   unmarkWorkspaceDeletePending,
@@ -118,11 +120,11 @@ describe("useRealtimeSync — ws instance change", () => {
     rerender({ ws: ws2 });
 
     // Should have called invalidateQueries for all workspace-scoped keys
-    // (17 workspace-scoped [incl. property definitions and rooms] + 6 per-issue
+    // (19 workspace-scoped [incl. Wiki, LM Wiki, properties, and rooms] + 6 per-issue
     // prefixes + the workspace working-agents projection + 5 per-chat
     // prefixes + 1 workspaceKeys.list() + 1 cross-workspace inbox unread
-    // summary = 32 calls)
-    expect(invalidateSpy).toHaveBeenCalledTimes(32);
+    // summary = 34 calls)
+    expect(invalidateSpy).toHaveBeenCalledTimes(34);
   });
 
   it("does not re-invalidate when rerendered with the same ws instance", () => {
@@ -157,6 +159,8 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(["labels", "ws-1"]);
     expect(calls).toContainEqual(["workspaces", "ws-1", "invitations"]);
     expect(calls).toContainEqual(roomKeys.all("ws-1"));
+    expect(calls).toContainEqual(workspaceWikiKeys.all("ws-1"));
+    expect(calls).toContainEqual(lmWikiKeys.all("ws-1"));
     // A catalog edit made while this client was disconnected is otherwise
     // invisible for the query's whole 5-minute staleTime.
     expect(calls).toContainEqual(issueStatusKeys.all("ws-1"));
@@ -346,22 +350,71 @@ describe("useRealtimeSync — Table server membership invalidation", () => {
     });
   });
 
-  it("invalidates Room queries after a Room event", () => {
-    vi.useFakeTimers();
+  it("invalidates Room queries after a malformed Room entry event", () => {
     const ws = createMockWs();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const roomEntry = vi.mocked(ws.on).mock.calls
+      .find(([event]) => event === "room:entry")?.[1];
+    expect(roomEntry).toBeDefined();
+
+    roomEntry!({});
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: roomKeys.all("ws-1"),
+    });
+  });
+
+  it("routes known Wiki events through the targeted handler", () => {
+    const ws = createMockWs();
+    const detailKey = workspaceWikiKeys.detail("ws-1", "page-1");
+    qc.setQueryData(detailKey, {});
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const pageUpdated = vi
+      .mocked(ws.on)
+      .mock.calls.find(([event]) => event === "wiki:page_updated")?.[1];
+    expect(pageUpdated).toBeDefined();
+
+    (pageUpdated as (payload: unknown) => void)({
+      page_id: "page-1",
+      scope: "workspace",
+      revision_id: "revision-2",
+      revision_number: 2,
+    });
+
+    expect(qc.getQueryState(detailKey)?.isInvalidated).toBe(true);
+  });
+
+  it("uses the Wiki prefix fallback for an unknown future event", () => {
+    vi.useFakeTimers();
+    const ws = createMockWs();
+    const listKey = workspaceWikiKeys.list("ws-1", { scope: "workspace" });
+    qc.setQueryData(listKey, []);
     renderHook(() => useRealtimeSync(ws, stores), {
       wrapper: createWrapper(qc),
     });
     const onAny = vi.mocked(ws.onAny).mock.calls[0]?.[0];
     expect(onAny).toBeDefined();
 
-    onAny!({ type: "room:entry", payload: {} });
+    onAny!({ type: "wiki:future_lifecycle", payload: {} } as never);
     vi.advanceTimersByTime(100);
 
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: roomKeys.all("ws-1"),
+    expect(qc.getQueryState(listKey)?.isInvalidated).toBe(true);
+  });
+
+  it("registers the recommendation review handler", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
     });
+
+    expect(vi.mocked(ws.on).mock.calls.some(
+      ([event]) => event === "room:recommendation_review",
+    )).toBe(true);
   });
 
   it("invalidates Table queries after a property definition changes", () => {

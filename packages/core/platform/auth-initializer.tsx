@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getApi } from "../api";
 import { ApiError } from "../api/client";
-import { useAuthStore } from "../auth";
+import {
+  AUTHENTICATED_ACCOUNT_STORAGE_KEY,
+  useAuthStore,
+} from "../auth";
 import {
   captureSignupSource,
   identify as identifyAnalytics,
@@ -192,6 +195,7 @@ export function AuthInitializer({
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     const onAuthSuccess = (user: User) => {
+      storage.setItem(AUTHENTICATED_ACCOUNT_STORAGE_KEY, user.id);
       onLogin?.();
       useAuthStore.setState({
         user,
@@ -208,6 +212,7 @@ export function AuthInitializer({
     };
 
     const onAuthFailure = () => {
+      storage.removeItem(AUTHENTICATED_ACCOUNT_STORAGE_KEY);
       onLogout?.();
       resetAnalytics();
       useAuthStore.setState({

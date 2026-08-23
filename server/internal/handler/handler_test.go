@@ -65,6 +65,9 @@ func TestMain(m *testing.M) {
 	bus := events.New()
 	emailSvc := service.NewEmailService()
 	testHandler = New(queries, pool, hub, bus, emailSvc, nil, nil, analytics.NoopClient{}, Config{AllowSignup: true})
+	// Twin HTTP lifecycle tests use the deterministic adapter explicitly. The
+	// production constructor above remains model-backed for every real server.
+	testHandler.TwinService = service.NewTwinService(queries, pool)
 	// httptest.NewRequest defaults RemoteAddr to 192.0.2.1, so every webhook
 	// test in the suite shares one IP bucket. With the production default
 	// (30/min) the budget runs out partway through the suite and unrelated

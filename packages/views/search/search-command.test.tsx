@@ -281,8 +281,11 @@ vi.mock("../navigation/context", () => {
   };
 });
 
-vi.mock("@multica/ui/components/common/theme-provider", () => ({
-  useTheme: () => ({ theme: mockTheme.current, setTheme: mockSetTheme }),
+vi.mock("../appearance", () => ({
+  useAppearancePreferences: () => ({
+    preferences: { requestedAppearance: mockTheme.current },
+    selectAppearance: mockSetTheme,
+  }),
 }));
 
 vi.mock("sonner", () => ({

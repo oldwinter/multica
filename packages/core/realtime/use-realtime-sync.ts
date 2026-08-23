@@ -65,7 +65,14 @@ import {
   QUICK_ACTIONS_PENDING_TIMEOUT_MS,
 } from "../chat/queries";
 import { useChatStore } from "../chat";
-import { roomKeys } from "../rooms";
+import { roomKeys, subscribeRoomRealtime } from "../rooms";
+import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
+import { twinExecutionKeys } from "../twins/execution-queries";
+import {
+  twinKeys,
+  twinProfileKeys,
+  wikiKeys as lmWikiKeys,
+} from "../twins/queries";
 import { upsertChatMessageToCaches } from "../chat/message-cache";
 import {
   promotePendingChatTask,
@@ -118,6 +125,8 @@ import type {
   ChatMessagesPage,
   ChatSession,
   InvitationCreatedPayload,
+  WikiProposalReviewedPayload,
+  WSEventType,
 } from "../types";
 
 const chatWsLogger = createLogger("chat.ws");
@@ -135,6 +144,9 @@ const chatWsLogger = createLogger("chat.ws");
 const TASK_MESSAGE_FLUSH_MS = 100;
 
 const logger = createLogger("realtime-sync");
+
+type WikiRealtimeEventType = Extract<WSEventType, `wiki:${string}`>;
+type LMWikiRealtimeEventType = Extract<WSEventType, `lm_wiki:${string}`>;
 
 export function invalidateChatMessageQueries(
   qc: QueryClient,
@@ -163,6 +175,81 @@ export function refetchPendingChatAggregate(
 ) {
   if (!wsId) return;
   qc.invalidateQueries({ queryKey: chatKeys.pendingTasks(wsId) });
+}
+
+const TWIN_REALTIME_EVENTS = [
+  "twin:proposal_changed",
+  "twin:version_changed",
+  "twin:binding_changed",
+  "twin:deposition_changed",
+] as const;
+
+type TwinRealtimeEventType = (typeof TWIN_REALTIME_EVENTS)[number];
+
+function twinRealtimeID(payload: unknown, key: string): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function invalidateAllTwinQueries(qc: QueryClient, wsId: string) {
+  qc.invalidateQueries({ queryKey: twinKeys.all(wsId) });
+  qc.invalidateQueries({ queryKey: twinProfileKeys.all(wsId) });
+  qc.invalidateQueries({ queryKey: twinExecutionKeys.all(wsId) });
+}
+
+// Twin frames are invalidation signals only. Known event types target the
+// smallest authoritative query set; malformed or future twin:* frames fall
+// back to all three Twin trees instead of trusting partial payload data.
+export function invalidateTwinRealtimeQueries(
+  qc: QueryClient,
+  wsId: string,
+  eventType: string,
+  payload: unknown,
+) {
+  switch (eventType as TwinRealtimeEventType) {
+    case "twin:proposal_changed": {
+      const proposalId = twinRealtimeID(payload, "proposal_id");
+      if (!proposalId) return invalidateAllTwinQueries(qc, wsId);
+      qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
+      qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      const versionId = twinRealtimeID(payload, "version_id");
+      if (versionId) {
+        qc.invalidateQueries({ queryKey: twinKeys.version(wsId, versionId) });
+      }
+      return;
+    }
+    case "twin:version_changed": {
+      const versionId = twinRealtimeID(payload, "version_id");
+      const proposalId = twinRealtimeID(payload, "proposal_id");
+      if (!versionId || !proposalId) return invalidateAllTwinQueries(qc, wsId);
+      qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
+      qc.invalidateQueries({ queryKey: twinKeys.version(wsId, versionId) });
+      qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      qc.invalidateQueries({ queryKey: twinProfileKeys.overview(wsId) });
+      return;
+    }
+    case "twin:binding_changed": {
+      if (!twinRealtimeID(payload, "binding_id")) {
+        return invalidateAllTwinQueries(qc, wsId);
+      }
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.bindings(wsId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) });
+      return;
+    }
+    case "twin:deposition_changed": {
+      const taskId = twinRealtimeID(payload, "task_id");
+      const proposalId = twinRealtimeID(payload, "proposal_id");
+      if (!taskId || !proposalId) return invalidateAllTwinQueries(qc, wsId);
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.taskContext(wsId, taskId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) });
+      qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
+      qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      return;
+    }
+    default:
+      invalidateAllTwinQueries(qc, wsId);
+  }
 }
 
 /**
@@ -634,6 +721,113 @@ export async function handleInboxNew(
   showWebNotification(payload);
 }
 
+function invalidateWikiCollections(qc: QueryClient, wsId: string): void {
+  qc.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[0] === "wiki" &&
+        key[1] === wsId &&
+        (key[2] === "list" || key[2] === "search")
+      );
+    },
+  });
+}
+
+function wikiPageID(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const pageId = (payload as { page_id?: unknown }).page_id;
+  return typeof pageId === "string" && pageId !== "" ? pageId : null;
+}
+
+/**
+ * Reconcile a mutable Wiki lifecycle hint without placing server state in a
+ * client store. Events intentionally carry no page content, path, or digest,
+ * so the authoritative HTTP queries remain the only source of those fields.
+ */
+export function applyWikiRealtimeEvent(
+  qc: QueryClient,
+  wsId: string,
+  eventType: WikiRealtimeEventType,
+  payload: unknown,
+): void {
+  const pageId = wikiPageID(payload);
+  if (!pageId) {
+    qc.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) });
+    return;
+  }
+
+  switch (eventType) {
+    case "wiki:page_created":
+      invalidateWikiCollections(qc, wsId);
+      return;
+    case "wiki:page_deleted":
+      // detail is the parent key for revisions and proposals, so removing the
+      // subtree prevents a deleted page from surviving in an inactive cache.
+      qc.removeQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId) });
+      invalidateWikiCollections(qc, wsId);
+      return;
+    case "wiki:page_updated":
+      qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
+      invalidateWikiCollections(qc, wsId);
+      return;
+    case "wiki:revision_created":
+    case "wiki:revision_restored":
+      qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
+      qc.invalidateQueries({ queryKey: workspaceWikiKeys.revisions(wsId, pageId) });
+      invalidateWikiCollections(qc, wsId);
+      return;
+    case "wiki:proposal_created":
+      qc.invalidateQueries({ queryKey: workspaceWikiKeys.proposals(wsId, pageId) });
+      return;
+    case "wiki:proposal_reviewed": {
+      qc.invalidateQueries({ queryKey: workspaceWikiKeys.proposals(wsId, pageId) });
+      const status = (payload as Partial<WikiProposalReviewedPayload>).status;
+      switch (status) {
+        case "accepted":
+          qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
+          qc.invalidateQueries({ queryKey: workspaceWikiKeys.revisions(wsId, pageId) });
+          invalidateWikiCollections(qc, wsId);
+          return;
+        case "rejected":
+          return;
+        default:
+          // A newer server may add review outcomes that also create a
+          // revision. Prefer a conservative refetch over silently treating
+          // the state as rejected.
+          qc.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) });
+          return;
+      }
+    }
+    default:
+      // Keep direct callers fail-safe when the server adds a lifecycle event
+      // before this client learns its narrower invalidation contract.
+      qc.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) });
+      return;
+  }
+}
+
+/** LM Wiki events are immutable lifecycle hints; invalidate only its query tree. */
+export function applyLMWikiRealtimeEvent(
+  qc: QueryClient,
+  wsId: string,
+  eventType: LMWikiRealtimeEventType,
+  payload: unknown,
+): void {
+  if (eventType === "lm_wiki:source_policy_changed") {
+    qc.invalidateQueries({ queryKey: workspaceWikiKeys.sourcePolicy(wsId) });
+    qc.invalidateQueries({ queryKey: lmWikiKeys.overview(wsId) });
+    return;
+  }
+
+  qc.invalidateQueries({ queryKey: lmWikiKeys.overview(wsId) });
+  if (!payload || typeof payload !== "object") return;
+  const revisionId = (payload as { revision_id?: unknown }).revision_id;
+  if (typeof revisionId === "string" && revisionId !== "") {
+    qc.invalidateQueries({ queryKey: lmWikiKeys.revision(wsId, revisionId) });
+  }
+}
+
 /**
  * Invalidates all workspace-scoped queries. Used after reconnect and when a
  * new WSClient instance is detected (workspace switch) to recover events
@@ -658,6 +852,8 @@ function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
     qc.invalidateQueries({ queryKey: agentRunCountsKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: chatKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: roomKeys.all(wsId) });
+    qc.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) });
+    qc.invalidateQueries({ queryKey: lmWikiKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: labelKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: propertyKeys.all(wsId) });
     // A catalog edit missed while disconnected would otherwise sit behind the
@@ -853,6 +1049,14 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) qc.invalidateQueries({ queryKey: roomKeys.all(wsId) });
       },
+      wiki: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) });
+      },
+      lm_wiki: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: lmWikiKeys.all(wsId) });
+      },
       github_installation: () => {
         const wsId = getCurrentWsId();
         if (wsId) qc.invalidateQueries({ queryKey: githubKeys.installations(wsId) });
@@ -946,6 +1150,10 @@ export function useRealtimeSync(
         // visible flicker, so the preview now refetches only on input change
         // (signature), mirroring its query design (MUL-3375).
       },
+      twin: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) invalidateAllTwinQueries(qc, wsId);
+      },
     };
 
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -975,11 +1183,21 @@ export function useRealtimeSync(
       // Chat events are handled explicitly below; do not double-invalidate.
       "chat:message", "chat:done", "chat:quick_actions", "chat:cancel_finalized", "chat:session_read",
       "chat:session_deleted", "chat:session_updated",
+      // Known Wiki lifecycle events use targeted invalidation handlers below.
+      // Unknown future wiki:* / lm_wiki:* events still take the generic prefix
+      // path above and invalidate the corresponding query tree safely.
+      "wiki:page_created", "wiki:page_updated", "wiki:page_deleted",
+      "wiki:revision_created", "wiki:revision_restored",
+      "wiki:proposal_created", "wiki:proposal_reviewed",
+      "lm_wiki:source_policy_changed", "lm_wiki:revision_changed", "lm_wiki:review_changed",
+      "room:created", "room:updated", "room:entry", "room:cycle", "room:turn",
+      "room:memory_revision", "room:review", "room:recommendation_review", "room:artifact",
       // task:message stays out of the prefix path because it fires per
       // streamed message during a long run — invalidating the snapshot on
       // every message would flood the network. Specific chat handlers below
       // still receive it via ws.on() (a separate subscription channel).
       "task:message",
+      ...TWIN_REALTIME_EVENTS,
       // task:completed / task:failed deliberately NOT here. They go through
       // both the task-prefix invalidate (refreshes the agent-task-snapshot
       // cache) AND the chat-specific ws.on() handlers below. The two
@@ -993,6 +1211,8 @@ export function useRealtimeSync(
       const refresh = refreshMap[prefix];
       if (refresh) debouncedRefresh(prefix, refresh);
     });
+
+    const unsubRooms = subscribeRoomRealtime(ws, qc, getCurrentWsId);
 
     // --- Specific event handlers (granular cache updates) ---
     // No self-event filtering: actor_id identifies the USER, not the TAB.
@@ -1016,12 +1236,47 @@ export function useRealtimeSync(
       }
     });
 
+    const unsubTwinEvents = TWIN_REALTIME_EVENTS.map((eventType) =>
+      ws.on(eventType, (payload) => {
+        const wsId = getCurrentWsId();
+        if (wsId) invalidateTwinRealtimeQueries(qc, wsId, eventType, payload);
+      }),
+    );
+
     const unsubIssueCreated = ws.on("issue:created", (p) => {
       const { issue } = p as IssueCreatedPayload;
       if (!issue) return;
       const wsId = getCurrentWsId();
       if (wsId) onIssueCreated(qc, wsId, issue);
     });
+
+    const wikiEventTypes = [
+      "wiki:page_created",
+      "wiki:page_updated",
+      "wiki:page_deleted",
+      "wiki:revision_created",
+      "wiki:revision_restored",
+      "wiki:proposal_created",
+      "wiki:proposal_reviewed",
+    ] as const;
+    const unsubWikiEvents = wikiEventTypes.map((eventType) =>
+      ws.on(eventType, (payload) => {
+        const wsId = getCurrentWsId();
+        if (wsId) applyWikiRealtimeEvent(qc, wsId, eventType, payload);
+      }),
+    );
+
+    const lmWikiEventTypes = [
+      "lm_wiki:source_policy_changed",
+      "lm_wiki:revision_changed",
+      "lm_wiki:review_changed",
+    ] as const;
+    const unsubLMWikiEvents = lmWikiEventTypes.map((eventType) =>
+      ws.on(eventType, (payload) => {
+        const wsId = getCurrentWsId();
+        if (wsId) applyLMWikiRealtimeEvent(qc, wsId, eventType, payload);
+      }),
+    );
 
     const unsubIssueDeleted = ws.on("issue:deleted", (p) => {
       const { issue_id } = p as IssueDeletedPayload;
@@ -1690,8 +1945,12 @@ export function useRealtimeSync(
 
     return () => {
       unsubAny();
+      unsubTwinEvents.forEach((unsub) => unsub());
+      unsubRooms();
       unsubIssueUpdated();
       unsubIssueCreated();
+      unsubWikiEvents.forEach((unsub) => unsub());
+      unsubLMWikiEvents.forEach((unsub) => unsub());
       unsubIssueDeleted();
       unsubIssueAttachmentsChanged();
       unsubIssueLabelsChanged();

@@ -4,7 +4,11 @@ import { useEffect, useMemo } from "react";
 import { ApiClient } from "../api/client";
 import { installFreezeWatchdog } from "../diagnostics/freeze-watchdog";
 import { setApiInstance, setSchemaLogger } from "../api";
-import { createAuthStore, registerAuthStore } from "../auth";
+import {
+  AUTHENTICATED_ACCOUNT_STORAGE_KEY,
+  createAuthStore,
+  registerAuthStore,
+} from "../auth";
 import { createChatStore, registerChatStore } from "../chat";
 import {
   I18nProvider,
@@ -57,6 +61,7 @@ function initCore(
     logger: createLogger("api"),
     onUnauthorized: () => {
       storage.removeItem("multica_token");
+      storage.removeItem(AUTHENTICATED_ACCOUNT_STORAGE_KEY);
     },
     identity,
   });

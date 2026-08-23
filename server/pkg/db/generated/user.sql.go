@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO "user" (name, email, avatar_url)
 VALUES ($1, $2, $3)
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version
 `
 
 type CreateUserParams struct {
@@ -41,12 +41,16 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone FROM "user"
+SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version FROM "user"
 WHERE id = $1
 `
 
@@ -68,12 +72,16 @@ func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (User, error) {
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone FROM "user"
+SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version FROM "user"
 WHERE email = $1
 `
 
@@ -95,6 +103,10 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
@@ -145,7 +157,7 @@ UPDATE "user" SET
     cloud_waitlist_reason = $3,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version
 `
 
 type JoinCloudWaitlistParams struct {
@@ -175,6 +187,10 @@ func (q *Queries) JoinCloudWaitlist(ctx context.Context, arg JoinCloudWaitlistPa
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
@@ -184,7 +200,7 @@ UPDATE "user" SET
     onboarded_at = COALESCE(onboarded_at, now()),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version
 `
 
 func (q *Queries) MarkUserOnboarded(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -205,6 +221,10 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id pgtype.UUID) (User, 
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
@@ -214,7 +234,7 @@ UPDATE "user" SET
     onboarding_questionnaire = COALESCE($1, onboarding_questionnaire),
     updated_at = now()
 WHERE id = $2
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version
 `
 
 type PatchUserOnboardingParams struct {
@@ -244,6 +264,10 @@ func (q *Queries) PatchUserOnboarding(ctx context.Context, arg PatchUserOnboardi
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
@@ -253,7 +277,7 @@ UPDATE "user" SET
     starter_content_state = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version
 `
 
 type SetStarterContentStateParams struct {
@@ -284,6 +308,10 @@ func (q *Queries) SetStarterContentState(ctx context.Context, arg SetStarterCont
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }
@@ -299,18 +327,46 @@ UPDATE "user" SET
         WHEN $6::text = ''    THEN NULL
         ELSE $6::text
     END,
+    skin = CASE
+        WHEN $7::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
+        THEN $8::text
+        ELSE skin
+    END,
+    appearance = CASE
+        WHEN $7::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
+        THEN $9::text
+        ELSE appearance
+    END,
+    appearance_token_version = CASE
+        WHEN $7::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
+        THEN $10::integer
+        ELSE appearance_token_version
+    END,
+    appearance_updated_at = CASE
+        WHEN $7::timestamptz IS NOT NULL
+            AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
+        THEN $7::timestamptz
+        ELSE appearance_updated_at
+    END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, skin, appearance, appearance_updated_at, appearance_token_version
 `
 
 type UpdateUserParams struct {
-	ID                 pgtype.UUID `json:"id"`
-	Name               string      `json:"name"`
-	AvatarUrl          pgtype.Text `json:"avatar_url"`
-	Language           pgtype.Text `json:"language"`
-	ProfileDescription pgtype.Text `json:"profile_description"`
-	Timezone           pgtype.Text `json:"timezone"`
+	ID                     pgtype.UUID        `json:"id"`
+	Name                   string             `json:"name"`
+	AvatarUrl              pgtype.Text        `json:"avatar_url"`
+	Language               pgtype.Text        `json:"language"`
+	ProfileDescription     pgtype.Text        `json:"profile_description"`
+	Timezone               pgtype.Text        `json:"timezone"`
+	AppearanceChangeAt     pgtype.Timestamptz `json:"appearance_change_at"`
+	Skin                   pgtype.Text        `json:"skin"`
+	Appearance             pgtype.Text        `json:"appearance"`
+	AppearanceTokenVersion pgtype.Int4        `json:"appearance_token_version"`
 }
 
 // Patches the user-controlled profile fields. Each parameter follows
@@ -325,6 +381,11 @@ type UpdateUserParams struct {
 // to leave the existing column untouched. Folding it into UpdateUser
 // rather than carrying a dedicated UpdateUserTimezone keeps the
 // profile-patch shape uniform between Preferences fields.
+//
+// Appearance preferences use a client-authored explicit-change timestamp.
+// The four values are validated as a complete tuple by the handler and schema.
+// A delayed write from an older device therefore returns the current row
+// without replacing a newer explicit choice.
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUser,
 		arg.ID,
@@ -333,6 +394,10 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		arg.Language,
 		arg.ProfileDescription,
 		arg.Timezone,
+		arg.AppearanceChangeAt,
+		arg.Skin,
+		arg.Appearance,
+		arg.AppearanceTokenVersion,
 	)
 	var i User
 	err := row.Scan(
@@ -350,6 +415,10 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.Language,
 		&i.ProfileDescription,
 		&i.Timezone,
+		&i.Skin,
+		&i.Appearance,
+		&i.AppearanceUpdatedAt,
+		&i.AppearanceTokenVersion,
 	)
 	return i, err
 }

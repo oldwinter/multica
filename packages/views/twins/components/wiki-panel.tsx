@@ -48,6 +48,12 @@ export function WikiPanel(props: TwinWorkspaceProps) {
         ) : null}
       </section>
 
+      {props.sourcePolicyPanel ? (
+        <section className="border-t border-surface-border pt-6" data-testid="lm-wiki-source-policy-slot">
+          {props.sourcePolicyPanel}
+        </section>
+      ) : null}
+
       {props.wiki.revisions.length > 0 ? (
         <WikiRevisionSelector revisions={props.wiki.revisions} value={props.selectedRevisionId} onChange={props.onSelectRevision} disabled={props.detailLoading} />
       ) : (

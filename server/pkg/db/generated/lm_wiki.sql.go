@@ -96,22 +96,29 @@ WITH next_revision AS (
     WHERE workspace_id = $1
 )
 INSERT INTO lm_wiki_revision (
-    workspace_id, revision_number, source_digest, content, trigger_kind,
-    requested_by_id
+	workspace_id, revision_number, schema_version, source_digest, content,
+	source_policy_version, source_policy_digest, remote_generation_enabled,
+	trigger_kind, requested_by_id
 )
-SELECT $1, next_revision.revision_number,
+SELECT $1, next_revision.revision_number, 2,
        $2, $3, $4,
-       $5
+       COALESCE(NULLIF($5, ''),
+           'sha256:0000000000000000000000000000000000000000000000000000000000000000'),
+       $6,
+       $7, $8
 FROM next_revision
-RETURNING id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at
+RETURNING id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at, source_policy_version, source_policy_digest, remote_generation_enabled
 `
 
 type CreateLMWikiRevisionParams struct {
-	WorkspaceID   pgtype.UUID `json:"workspace_id"`
-	SourceDigest  string      `json:"source_digest"`
-	Content       []byte      `json:"content"`
-	TriggerKind   string      `json:"trigger_kind"`
-	RequestedByID pgtype.UUID `json:"requested_by_id"`
+	WorkspaceID             pgtype.UUID `json:"workspace_id"`
+	SourceDigest            string      `json:"source_digest"`
+	Content                 []byte      `json:"content"`
+	SourcePolicyVersion     int64       `json:"source_policy_version"`
+	SourcePolicyDigest      interface{} `json:"source_policy_digest"`
+	RemoteGenerationEnabled bool        `json:"remote_generation_enabled"`
+	TriggerKind             string      `json:"trigger_kind"`
+	RequestedByID           pgtype.UUID `json:"requested_by_id"`
 }
 
 func (q *Queries) CreateLMWikiRevision(ctx context.Context, arg CreateLMWikiRevisionParams) (LmWikiRevision, error) {
@@ -119,6 +126,9 @@ func (q *Queries) CreateLMWikiRevision(ctx context.Context, arg CreateLMWikiRevi
 		arg.WorkspaceID,
 		arg.SourceDigest,
 		arg.Content,
+		arg.SourcePolicyVersion,
+		arg.SourcePolicyDigest,
+		arg.RemoteGenerationEnabled,
 		arg.TriggerKind,
 		arg.RequestedByID,
 	)
@@ -133,12 +143,54 @@ func (q *Queries) CreateLMWikiRevision(ctx context.Context, arg CreateLMWikiRevi
 		&i.TriggerKind,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.SourcePolicyVersion,
+		&i.SourcePolicyDigest,
+		&i.RemoteGenerationEnabled,
 	)
 	return i, err
 }
 
+const createLMWikiSourceWikiPages = `-- name: CreateLMWikiSourceWikiPages :exec
+INSERT INTO lm_wiki_source_wiki_page (
+    workspace_id, page_id, revision_id, revision_number, selected_by_id
+)
+SELECT $1, selected.page_id, selected.revision_id,
+       selected.revision_number, $2
+FROM jsonb_to_recordset($3::jsonb) AS selected(
+    page_id UUID,
+    revision_id UUID,
+    revision_number BIGINT
+)
+ON CONFLICT (workspace_id, page_id) DO UPDATE SET
+    revision_id = EXCLUDED.revision_id,
+    revision_number = EXCLUDED.revision_number,
+    selected_by_id = EXCLUDED.selected_by_id,
+    selected_at = now()
+`
+
+type CreateLMWikiSourceWikiPagesParams struct {
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
+	SelectedByID pgtype.UUID `json:"selected_by_id"`
+	Selections   []byte      `json:"selections"`
+}
+
+func (q *Queries) CreateLMWikiSourceWikiPages(ctx context.Context, arg CreateLMWikiSourceWikiPagesParams) error {
+	_, err := q.db.Exec(ctx, createLMWikiSourceWikiPages, arg.WorkspaceID, arg.SelectedByID, arg.Selections)
+	return err
+}
+
+const deleteLMWikiSourceWikiPages = `-- name: DeleteLMWikiSourceWikiPages :exec
+DELETE FROM lm_wiki_source_wiki_page
+WHERE workspace_id = $1
+`
+
+func (q *Queries) DeleteLMWikiSourceWikiPages(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLMWikiSourceWikiPages, workspaceID)
+	return err
+}
+
 const getAcceptedLMWikiRevision = `-- name: GetAcceptedLMWikiRevision :one
-SELECT revision.id, revision.workspace_id, revision.revision_number, revision.schema_version, revision.source_digest, revision.content, revision.trigger_kind, revision.requested_by_id, revision.created_at
+SELECT revision.id, revision.workspace_id, revision.revision_number, revision.schema_version, revision.source_digest, revision.content, revision.trigger_kind, revision.requested_by_id, revision.created_at, revision.source_policy_version, revision.source_policy_digest, revision.remote_generation_enabled
 FROM lm_wiki_revision revision
 JOIN lm_wiki_review review
   ON review.workspace_id = revision.workspace_id
@@ -166,6 +218,9 @@ func (q *Queries) GetAcceptedLMWikiRevision(ctx context.Context, arg GetAccepted
 		&i.TriggerKind,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.SourcePolicyVersion,
+		&i.SourcePolicyDigest,
+		&i.RemoteGenerationEnabled,
 	)
 	return i, err
 }
@@ -197,7 +252,7 @@ func (q *Queries) GetLMWikiReview(ctx context.Context, arg GetLMWikiReviewParams
 }
 
 const getLMWikiRevision = `-- name: GetLMWikiRevision :one
-SELECT id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at FROM lm_wiki_revision
+SELECT id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at, source_policy_version, source_policy_digest, remote_generation_enabled FROM lm_wiki_revision
 WHERE workspace_id = $1
   AND id = $2
 `
@@ -220,12 +275,34 @@ func (q *Queries) GetLMWikiRevision(ctx context.Context, arg GetLMWikiRevisionPa
 		&i.TriggerKind,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.SourcePolicyVersion,
+		&i.SourcePolicyDigest,
+		&i.RemoteGenerationEnabled,
+	)
+	return i, err
+}
+
+const getLMWikiSourcePolicy = `-- name: GetLMWikiSourcePolicy :one
+SELECT workspace_id, policy_version, source_classes, remote_generation_enabled, updated_by_id, updated_at FROM lm_wiki_source_policy
+WHERE workspace_id = $1
+`
+
+func (q *Queries) GetLMWikiSourcePolicy(ctx context.Context, workspaceID pgtype.UUID) (LmWikiSourcePolicy, error) {
+	row := q.db.QueryRow(ctx, getLMWikiSourcePolicy, workspaceID)
+	var i LmWikiSourcePolicy
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.PolicyVersion,
+		&i.SourceClasses,
+		&i.RemoteGenerationEnabled,
+		&i.UpdatedByID,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getLatestAcceptedLMWikiRevision = `-- name: GetLatestAcceptedLMWikiRevision :one
-SELECT revision.id, revision.workspace_id, revision.revision_number, revision.schema_version, revision.source_digest, revision.content, revision.trigger_kind, revision.requested_by_id, revision.created_at
+SELECT revision.id, revision.workspace_id, revision.revision_number, revision.schema_version, revision.source_digest, revision.content, revision.trigger_kind, revision.requested_by_id, revision.created_at, revision.source_policy_version, revision.source_policy_digest, revision.remote_generation_enabled
 FROM lm_wiki_revision revision
 JOIN lm_wiki_review review
   ON review.workspace_id = revision.workspace_id
@@ -249,12 +326,15 @@ func (q *Queries) GetLatestAcceptedLMWikiRevision(ctx context.Context, workspace
 		&i.TriggerKind,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.SourcePolicyVersion,
+		&i.SourcePolicyDigest,
+		&i.RemoteGenerationEnabled,
 	)
 	return i, err
 }
 
 const getLatestLMWikiRevision = `-- name: GetLatestLMWikiRevision :one
-SELECT id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at FROM lm_wiki_revision
+SELECT id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at, source_policy_version, source_policy_digest, remote_generation_enabled FROM lm_wiki_revision
 WHERE workspace_id = $1
 ORDER BY revision_number DESC
 LIMIT 1
@@ -272,6 +352,49 @@ func (q *Queries) GetLatestLMWikiRevision(ctx context.Context, workspaceID pgtyp
 		&i.Content,
 		&i.TriggerKind,
 		&i.RequestedByID,
+		&i.CreatedAt,
+		&i.SourcePolicyVersion,
+		&i.SourcePolicyDigest,
+		&i.RemoteGenerationEnabled,
+	)
+	return i, err
+}
+
+const getWikiPageRevisionForLMWikiPolicy = `-- name: GetWikiPageRevisionForLMWikiPolicy :one
+SELECT revision.id, revision.workspace_id, revision.owner_user_id, revision.page_id, revision.revision_number, revision.path, revision.title, revision.content, revision.content_digest, revision.actor_type, revision.actor_id, revision.source_kind, revision.source_ref_id, revision.created_at
+FROM wiki_page page
+JOIN wiki_page_revision revision
+  ON revision.workspace_id = page.workspace_id
+ AND revision.page_id = page.id
+WHERE page.workspace_id = $1
+  AND page.id = $2
+  AND page.scope IN ('workspace', 'project')
+  AND revision.revision_number = $3
+`
+
+type GetWikiPageRevisionForLMWikiPolicyParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	PageID         pgtype.UUID `json:"page_id"`
+	RevisionNumber int64       `json:"revision_number"`
+}
+
+func (q *Queries) GetWikiPageRevisionForLMWikiPolicy(ctx context.Context, arg GetWikiPageRevisionForLMWikiPolicyParams) (WikiPageRevision, error) {
+	row := q.db.QueryRow(ctx, getWikiPageRevisionForLMWikiPolicy, arg.WorkspaceID, arg.PageID, arg.RevisionNumber)
+	var i WikiPageRevision
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.OwnerUserID,
+		&i.PageID,
+		&i.RevisionNumber,
+		&i.Path,
+		&i.Title,
+		&i.Content,
+		&i.ContentDigest,
+		&i.ActorType,
+		&i.ActorID,
+		&i.SourceKind,
+		&i.SourceRefID,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -391,7 +514,7 @@ func (q *Queries) ListLMWikiReviews(ctx context.Context, workspaceID pgtype.UUID
 }
 
 const listLMWikiRevisions = `-- name: ListLMWikiRevisions :many
-SELECT id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at FROM lm_wiki_revision
+SELECT id, workspace_id, revision_number, schema_version, source_digest, content, trigger_kind, requested_by_id, created_at, source_policy_version, source_policy_digest, remote_generation_enabled FROM lm_wiki_revision
 WHERE workspace_id = $1
 ORDER BY revision_number DESC
 LIMIT $3 OFFSET $2
@@ -422,6 +545,9 @@ func (q *Queries) ListLMWikiRevisions(ctx context.Context, arg ListLMWikiRevisio
 			&i.TriggerKind,
 			&i.RequestedByID,
 			&i.CreatedAt,
+			&i.SourcePolicyVersion,
+			&i.SourcePolicyDigest,
+			&i.RemoteGenerationEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -648,6 +774,102 @@ func (q *Queries) ListLMWikiSourceProjects(ctx context.Context, workspaceID pgty
 	return items, nil
 }
 
+const listLMWikiSourceWikiPageRevisions = `-- name: ListLMWikiSourceWikiPageRevisions :many
+SELECT revision.id::text AS revision_id, page.id::text AS page_id,
+       page.scope, COALESCE(page.project_id::text, '')::text AS project_id,
+       revision.revision_number, revision.path, revision.title, revision.content,
+       revision.content_digest, revision.created_at
+FROM lm_wiki_source_wiki_page selected
+JOIN wiki_page page
+  ON page.workspace_id = selected.workspace_id
+ AND page.id = selected.page_id
+ AND page.scope IN ('workspace', 'project')
+JOIN wiki_page_revision revision
+  ON revision.workspace_id = selected.workspace_id
+ AND revision.page_id = selected.page_id
+ AND revision.id = selected.revision_id
+ AND revision.revision_number = selected.revision_number
+WHERE selected.workspace_id = $1
+ORDER BY revision.id
+`
+
+type ListLMWikiSourceWikiPageRevisionsRow struct {
+	RevisionID     string             `json:"revision_id"`
+	PageID         string             `json:"page_id"`
+	Scope          string             `json:"scope"`
+	ProjectID      string             `json:"project_id"`
+	RevisionNumber int64              `json:"revision_number"`
+	Path           string             `json:"path"`
+	Title          string             `json:"title"`
+	Content        string             `json:"content"`
+	ContentDigest  string             `json:"content_digest"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ListLMWikiSourceWikiPageRevisions(ctx context.Context, workspaceID pgtype.UUID) ([]ListLMWikiSourceWikiPageRevisionsRow, error) {
+	rows, err := q.db.Query(ctx, listLMWikiSourceWikiPageRevisions, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLMWikiSourceWikiPageRevisionsRow{}
+	for rows.Next() {
+		var i ListLMWikiSourceWikiPageRevisionsRow
+		if err := rows.Scan(
+			&i.RevisionID,
+			&i.PageID,
+			&i.Scope,
+			&i.ProjectID,
+			&i.RevisionNumber,
+			&i.Path,
+			&i.Title,
+			&i.Content,
+			&i.ContentDigest,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLMWikiSourceWikiPages = `-- name: ListLMWikiSourceWikiPages :many
+SELECT workspace_id, page_id, revision_id, revision_number, selected_by_id, selected_at FROM lm_wiki_source_wiki_page
+WHERE workspace_id = $1
+ORDER BY page_id
+`
+
+func (q *Queries) ListLMWikiSourceWikiPages(ctx context.Context, workspaceID pgtype.UUID) ([]LmWikiSourceWikiPage, error) {
+	rows, err := q.db.Query(ctx, listLMWikiSourceWikiPages, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LmWikiSourceWikiPage{}
+	for rows.Next() {
+		var i LmWikiSourceWikiPage
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.PageID,
+			&i.RevisionID,
+			&i.RevisionNumber,
+			&i.SelectedByID,
+			&i.SelectedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockLMWikiLifecycle = `-- name: LockLMWikiLifecycle :exec
 SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text, 0))
 WHERE EXISTS (SELECT 1 FROM workspace WHERE id = $1)
@@ -656,4 +878,46 @@ WHERE EXISTS (SELECT 1 FROM workspace WHERE id = $1)
 func (q *Queries) LockLMWikiLifecycle(ctx context.Context, workspaceID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, lockLMWikiLifecycle, workspaceID)
 	return err
+}
+
+const upsertLMWikiSourcePolicy = `-- name: UpsertLMWikiSourcePolicy :one
+INSERT INTO lm_wiki_source_policy (
+    workspace_id, source_classes, remote_generation_enabled, updated_by_id
+) VALUES (
+    $1, $2::jsonb,
+    $3, $4
+)
+ON CONFLICT (workspace_id) DO UPDATE SET
+    policy_version = lm_wiki_source_policy.policy_version + 1,
+    source_classes = EXCLUDED.source_classes,
+    remote_generation_enabled = EXCLUDED.remote_generation_enabled,
+    updated_by_id = EXCLUDED.updated_by_id,
+    updated_at = now()
+RETURNING workspace_id, policy_version, source_classes, remote_generation_enabled, updated_by_id, updated_at
+`
+
+type UpsertLMWikiSourcePolicyParams struct {
+	WorkspaceID             pgtype.UUID `json:"workspace_id"`
+	SourceClasses           []byte      `json:"source_classes"`
+	RemoteGenerationEnabled bool        `json:"remote_generation_enabled"`
+	UpdatedByID             pgtype.UUID `json:"updated_by_id"`
+}
+
+func (q *Queries) UpsertLMWikiSourcePolicy(ctx context.Context, arg UpsertLMWikiSourcePolicyParams) (LmWikiSourcePolicy, error) {
+	row := q.db.QueryRow(ctx, upsertLMWikiSourcePolicy,
+		arg.WorkspaceID,
+		arg.SourceClasses,
+		arg.RemoteGenerationEnabled,
+		arg.UpdatedByID,
+	)
+	var i LmWikiSourcePolicy
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.PolicyVersion,
+		&i.SourceClasses,
+		&i.RemoteGenerationEnabled,
+		&i.UpdatedByID,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

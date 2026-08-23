@@ -16,6 +16,10 @@
     "promote": "Promote",
     "promoting": "Promoting",
     "retry": "Retry",
+    "retry_synthesis": "Retry synthesis",
+    "retry_preflight": "Retry readiness check",
+    "cancel_cycle": "Cancel cycle",
+    "archive": "Archive",
     "new_activity": "{{count}} new",
     "show_new_activity": "Show {{count}} new updates",
     "new_activity_announcement": "{{count}} new updates available"
@@ -38,11 +42,14 @@
   },
   "list": {
     "participants": "{{count}} participants",
-    "updated": "Updated {{time}}"
+    "updated": "Updated {{time}}",
+    "search": "Search Rooms",
+    "no_results": "No matching Rooms"
   },
   "detail": {
     "participants": "Participants",
     "transcript": "Transcript",
+    "activity": "Activity",
     "memory": "Shared memory",
     "cycles": "Activity",
     "artifacts": "Artifacts",
@@ -85,6 +92,10 @@
     "description": "Choose who facilitates and who joins the room.",
     "fields": {
       "title": "Name",
+      "template": "Template",
+      "objective": "Objective",
+      "success_criteria": "Success criteria",
+      "stop_conditions": "Stop conditions",
       "instructions": "Instructions",
       "facilitator": "Facilitator",
       "agent": "Agent",
@@ -93,10 +104,13 @@
       "agent_participants": "Agents",
       "member_participants": "People",
       "daily_turn_limit": "Daily turn limit",
+      "max_cost_ticks": "Spend limit",
       "schedule_interval": "Schedule interval"
     },
     "placeholders": {
       "title": "Research council",
+      "objective": "State the outcome this room should produce",
+      "one_per_line": "One item per line",
       "instructions": "Set the question, constraints, and expected outcome",
       "select_agent": "Select an agent",
       "select_squad": "Select a squad",
@@ -109,7 +123,26 @@
     "facilitator_modes": {
       "agent": "Agent",
       "squad": "Squad"
+    },
+    "templates": {
+      "research": { "label": "Research", "objective": "Answer the research question with cited evidence and explicit uncertainty.", "success_criteria": "The conclusion cites supporting entries\nMaterial uncertainty is visible", "stop_conditions": "Required sources have been assessed\nNo new evidence changes the conclusion" },
+      "planning": { "label": "Planning", "objective": "Produce an ordered, owner-ready execution plan.", "success_criteria": "Dependencies and risks are explicit\nEvery action has a clear result", "stop_conditions": "The next executable action is clear\nRemaining questions have owners" },
+      "risk": { "label": "Risk review", "objective": "Identify, rank, and mitigate the material risks.", "success_criteria": "Risks are ranked by impact and likelihood\nMitigations are actionable", "stop_conditions": "No unowned critical risk remains" },
+      "incident": { "label": "Incident review", "objective": "Establish the incident timeline, causes, and prevention actions.", "success_criteria": "Facts are separated from hypotheses\nFollow-up actions address root causes", "stop_conditions": "The timeline and contributing factors are supported" },
+      "decision": { "label": "Decision", "objective": "Recommend a decision with tradeoffs, evidence, and dissent preserved.", "success_criteria": "Options and tradeoffs are comparable\nThe recommendation is evidence-backed", "stop_conditions": "A decision can be accepted or explicitly deferred" }
     }
+  },
+  "budget": {
+    "title": "Room budget",
+    "description": "Set admission ceilings for future Room work. Existing commitments cannot be reduced below their reserved usage.",
+    "manage": "Manage budget",
+    "daily_turn_limit": "Daily turn limit",
+    "max_cost_ticks": "Cost tick limit",
+    "daily_hint": "Leave blank for unlimited turns. This ceiling is checked before work is queued.",
+    "cost_hint": "Requires a cost-bound execution backend. Unsupported Agents are refused before tasks are queued; this is not a provider invoice guarantee.",
+    "invalid": "Use a positive whole number or leave the field blank.",
+    "save": "Save budget",
+    "saving": "Saving"
   },
   "promote": {
     "title": "Promote result",
@@ -117,10 +150,12 @@
     "fields": {
       "kind": "Destination",
       "title": "Title",
+      "body": "Body",
       "rationale": "Rationale"
     },
     "placeholders": {
       "title": "Artifact title",
+      "body": "Edit the artifact before it enters the workspace",
       "rationale": "Why this should be promoted"
     },
     "kinds": {
@@ -131,6 +166,55 @@
     "source_entry": "Transcript entry",
     "source_cycle": "Completed cycle"
   },
+  "phase": {
+    "gathering": "Gathering",
+    "synthesizing": "Synthesizing",
+    "awaiting_review": "Awaiting review",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "refused": "Refused",
+    "unknown": "Not started"
+  },
+  "outcome": {
+    "title": "Outcome",
+    "objective": "Objective",
+    "no_objective": "No objective was defined.",
+    "success_criteria": "Success criteria",
+    "stop_conditions": "Stop conditions",
+    "empty": "Run a cycle to produce a reviewable outcome.",
+    "in_progress": "Participants are working toward an outcome.",
+    "synthesis_failed": "Synthesis needs attention",
+    "synthesis_attempt": "Synthesis attempt {{attempt}}",
+    "partial_failure": "{{count}} participant turns failed; completed contributions were preserved.",
+    "changes": "Changes from accepted memory",
+    "disagreements": "Disagreements",
+    "action_items": "Action items",
+    "recommendations": "Recommended artifacts",
+    "citation": "Open citation {{citation}}",
+    "created_by": "Created by {{name}}"
+  },
+  "review": {
+    "actions_label": "Outcome review actions",
+    "accept": "Accept outcome",
+    "reject": "Request another synthesis",
+    "correct": "Correct outcome",
+    "correct_title": "Correct outcome",
+    "correct_description": "Edit the structured result. Existing citations stay attached to each item.",
+    "correct_summary": "Summary",
+    "remove_item": "Remove item",
+    "submit_correction": "Submit correction",
+    "status": { "pending": "Pending review", "accepted": "Accepted", "rejected": "Another synthesis requested", "corrected": "Corrected", "unknown": "Unknown" }
+  },
+  "confidence": { "high": "High confidence", "medium": "Medium confidence", "low": "Low confidence" },
+  "recommendation": {
+    "approve": "Review and promote",
+    "reject": "Reject",
+    "requires_accepted": "Promotion is available after this outcome is accepted and its cycle completes.",
+    "status": { "approved": "Promoted", "rejected": "Rejected", "unknown": "Reviewed" }
+  },
+  "usage": { "title": "Value and usage", "turns": "Turns", "cost": "Cost ticks", "accepted": "Accepted", "promoted": "Promoted", "failures": "Failures", "uncosted": "Uncosted" },
+  "preflight": { "title": "Run estimate", "manual": "Manual", "schedule": "Scheduled", "turns": "{{count}} max turns", "synthesis": "Facilitator synthesis", "direct": "Direct result", "agents_ready": "{{ready}} / {{count}} Agents ready", "ready": "Ready", "blocked": "Blocked", "daily": "{{used}} / {{limit}} daily turns", "cost": "{{used}} / {{limit}} cost ticks", "remaining": "{{count}} remaining", "reserved": "{{count}} reserved for active work", "uncosted": "{{count}} uncosted turns" },
   "cycle": {
     "status": {
       "refused": "Refused",
@@ -155,6 +239,11 @@
     "room_archived": "Room is archived",
     "budget_exhausted": "Daily budget exhausted",
     "cycle_active": "A cycle is already active",
+    "agent_unavailable": "An Agent is unavailable",
+    "daemon_capability_unavailable": "Update and reconnect the Agent daemon to enable Room outcomes",
+    "spend_limit_unsupported": "This Agent has no cost-bound execution backend; no work was queued",
+    "preflight_required": "Checking Agent readiness and budget",
+    "preflight_failed": "Readiness check failed. Retry when the connection is available.",
     "no_targets": "No runnable agents",
     "invocation_not_allowed": "Agent access was revoked",
     "unknown": "Execution refused"
@@ -173,11 +262,27 @@
     "status_updated": "Room status updated",
     "wake_queued": "Cycle queued",
     "promoted": "Artifact promoted",
+    "reviewed": "Outcome review saved",
+    "review_failed": "Outcome review could not be saved",
+    "synthesis_retry_queued": "Synthesis retry queued",
+    "synthesis_retry_failed": "Synthesis could not be retried",
+    "cycle_cancelled": "Cycle cancelled",
+    "cycle_cancel_failed": "Cycle could not be cancelled",
+    "recommendation_rejected": "Recommendation rejected",
+    "recommendation_review_failed": "Recommendation review could not be saved",
     "create_failed": "Room could not be created",
     "message_saved_no_execution": "Message was saved, but execution did not start",
     "message_failed": "Message could not be sent",
     "status_failed": "Room status could not be updated",
+    "budget_updated": "Room budget updated",
+    "budget_failed": "Room budget could not be updated",
     "wake_failed": "Cycle could not be started",
     "promote_failed": "Artifact could not be promoted"
+  },
+  "errors": {
+    "stale_review": "The outcome changed. Review the latest version and try again.",
+    "idempotency_conflict": "This action conflicts with an earlier request.",
+    "synthesis_not_retryable": "This synthesis can no longer be retried.",
+    "recommendation_already_reviewed": "This recommendation was already reviewed."
   }
 }

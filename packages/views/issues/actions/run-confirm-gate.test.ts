@@ -36,6 +36,8 @@ const COLD = buildIssueStatusCatalog(undefined);
 function issue(overrides: Partial<GateIssue> = {}): GateIssue {
   return {
     id: "issue-1",
+    title: "Fix login",
+    project_id: "project-1",
     status: "backlog",
     assignee_type: "agent",
     assignee_id: "agent-1",
@@ -69,7 +71,14 @@ describe("runConfirmIntent — assign", () => {
   it("confirms when the issue is not parked", () => {
     expect(
       runConfirmIntent(issue({ status: "todo" }), { assignee_type: "agent", assignee_id: "a-2" }, CATALOG),
-    ).toEqual({ issueIds: ["issue-1"], mode: "assign", assigneeType: "agent", assigneeId: "a-2" });
+    ).toEqual({
+      issueIds: ["issue-1"],
+      mode: "assign",
+      assigneeType: "agent",
+      assigneeId: "a-2",
+      request: "Fix login",
+      projectId: "project-1",
+    });
   });
 
   it.each([
@@ -115,6 +124,8 @@ describe("runConfirmIntent — promote", () => {
       status: to,
       assigneeType: "agent",
       assigneeId: "agent-1",
+      request: "Fix login",
+      projectId: "project-1",
     });
   });
 

@@ -115,7 +115,7 @@ export function useUpdateIssue() {
       return api.moveIssue(id, { ...target, ...moveIntent });
     },
     onMutate: ({ id, move_intent: _moveIntent, ...data }) => {
-      // suppress_run / handoff_note are write-time control fields, not Issue
+      // Run controls are write-time fields, not Issue resource properties.
       // columns. description_base is merge metadata, while description itself
       // is resolved against that base on the server and therefore is not safe
       // to predict optimistically. Keep the authoritative raw description in
@@ -124,6 +124,7 @@ export function useUpdateIssue() {
       const {
         suppress_run: _suppressRun,
         handoff_note: _handoffNote,
+        twin_use: _twinUse,
         description: _description,
         description_base: _descriptionBase,
         title_base: _titleBase,
@@ -235,6 +236,7 @@ export function useUpdateIssue() {
       const {
         suppress_run: _suppressRun,
         handoff_note: _handoffNote,
+        twin_use: _twinUse,
         description_base: _descriptionBase,
         move_intent: _moveIntent,
         id: _id,
@@ -429,6 +431,7 @@ export function useBatchUpdateIssues() {
       const {
         suppress_run: _suppressRun,
         handoff_note: _handoffNote,
+        twin_use: _twinUse,
         description: _description,
         description_base: _descriptionBase,
         ...patch

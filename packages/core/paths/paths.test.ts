@@ -14,6 +14,11 @@ describe("paths.workspace(slug)", () => {
     expect(ws.twins()).toBe("/acme/twins");
     expect(ws.wiki()).toBe("/acme/wiki");
     expect(ws.wikiPage("p1")).toBe("/acme/wiki/p1");
+    expect(ws.wikiRevision("r1")).toBe("/acme/wiki/revisions/r1");
+    expect(ws.roomDetail("room 1")).toBe("/acme/rooms?room=room%201");
+    expect(ws.personalWiki()).toBe("/acme/personal-wiki");
+    expect(ws.personalWikiPage("p1")).toBe("/acme/personal-wiki/p1");
+    expect(ws.personalWikiRevision("r1")).toBe("/acme/personal-wiki/revisions/r1");
     expect(ws.autopilotDetail("a1")).toBe("/acme/autopilots/a1");
     expect(ws.agents()).toBe("/acme/agents");
     expect(ws.newAgent()).toBe("/acme/agents/new");
@@ -51,6 +56,9 @@ describe("paths (global)", () => {
     expect(paths.newWorkspace()).toBe("/workspaces/new");
     expect(paths.invite("inv-1")).toBe("/invite/inv-1");
     expect(paths.authCallback()).toBe("/auth/callback");
+    expect(paths.personalWiki()).toBe("/personal-wiki");
+    expect(paths.personalWikiPage("p1")).toBe("/personal-wiki/p1");
+    expect(paths.personalWikiRevision("r1")).toBe("/personal-wiki/revisions/r1");
   });
 });
 
@@ -60,6 +68,8 @@ describe("isGlobalPath", () => {
     expect(isGlobalPath("/workspaces/new")).toBe(true);
     expect(isGlobalPath("/invite/abc")).toBe(true);
     expect(isGlobalPath("/auth/callback")).toBe(true);
+    expect(isGlobalPath("/personal-wiki")).toBe(true);
+    expect(isGlobalPath("/personal-wiki/revisions/r1")).toBe(true);
   });
 
   it("returns false for workspace-scoped paths", () => {

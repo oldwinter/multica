@@ -56,6 +56,12 @@ export interface UpdateIssueRequest {
    *  context (MUL-3375). Only consumed when a run actually starts. Control
    *  field — strip from optimistic cache patches. */
   handoff_note?: string;
+  /** Per-run Twin execution snapshot. It controls only the run started by
+   *  this write and is never persisted on the Issue resource. */
+  twin_use?: {
+    state: "off" | "preview" | "enabled";
+    twin_version_id?: string;
+  };
 }
 
 /**
@@ -515,6 +521,11 @@ export interface UpdateMeRequest {
   profile_description?: string;
   /** IANA tz to pin; "" clears back to browser-tz; undefined leaves untouched. */
   timezone?: string;
+  /** Appearance preferences are written as one timestamped tuple. */
+  skin?: "tension" | "relay" | "field";
+  appearance?: "system" | "light" | "dark";
+  appearanceUpdatedAt?: string;
+  appearanceTokenVersion?: number;
 }
 
 export interface CreateMemberRequest {

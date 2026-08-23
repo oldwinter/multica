@@ -469,7 +469,7 @@ export const EMPTY_ACTIVE_TASKS_RESPONSE: ActiveTasksResponse = { tasks: [] };
 // (id, slug, etc.) stay required — a response that genuinely lacks them is
 // unusable and parseWithFallback should fall back to the empty sentinel.
 
-export const UserSchema: z.ZodType<User> = z.object({
+const UserWireSchema = z.object({
   id: z.string(),
   name: z.string().default(""),
   email: z.string().default(""),
@@ -480,14 +480,34 @@ export const UserSchema: z.ZodType<User> = z.object({
   language: z.string().nullable().default(null),
   profile_description: z.string().default(""),
   timezone: z.string().nullable().default(null),
+  skin: z
+    .enum(["tension", "relay", "field"])
+    .nullable()
+    .catch(null)
+    .default(null),
+  appearance: z
+    .enum(["system", "light", "dark"])
+    .nullable()
+    .catch(null)
+    .default(null),
+  appearance_updated_at: z.string().nullable().catch(null).default(null),
+  appearance_token_version: z.number().int().nullable().catch(null).default(null),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
 
+export const UserSchema = UserWireSchema.transform(
+  ({ appearance_updated_at, appearance_token_version, ...user }) => ({
+    ...user,
+    appearanceUpdatedAt: appearance_updated_at,
+    appearanceTokenVersion: appearance_token_version,
+  }) satisfies User,
+);
+
 // `id: ""` is the sentinel for "drifted / unauthenticated"; downstream code
 // that switches on `user.id` will treat empty-string as a logged-out state
 // (the auth hook also clears the cache on 401, so this is rarely seen).
-export const EMPTY_USER: User = {
+const EMPTY_USER_WITH_APPEARANCE = {
   id: "",
   name: "",
   email: "",
@@ -498,9 +518,20 @@ export const EMPTY_USER: User = {
   language: null,
   profile_description: "",
   timezone: null,
+  skin: null,
+  appearance: null,
+  appearanceUpdatedAt: null,
+  appearanceTokenVersion: null,
   created_at: "",
   updated_at: "",
+} satisfies User & {
+  skin: null;
+  appearance: null;
+  appearanceUpdatedAt: null;
+  appearanceTokenVersion: null;
 };
+
+export const EMPTY_USER: User = EMPTY_USER_WITH_APPEARANCE;
 
 export const WorkspaceSchema: z.ZodType<Workspace> = z.object({
   id: z.string(),

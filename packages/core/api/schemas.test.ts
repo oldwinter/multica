@@ -724,6 +724,53 @@ describe("UserSchema timezone drift", () => {
   });
 });
 
+describe("UserSchema appearance drift", () => {
+  const base = {
+    id: "user-1",
+    name: "Ada",
+    email: "ada@example.com",
+  };
+
+  it("defaults fields omitted by an older server to an unset preference", () => {
+    const parsed = UserSchema.parse(base);
+    expect(parsed.skin).toBeNull();
+    expect(parsed.appearance).toBeNull();
+    expect(parsed.appearanceUpdatedAt).toBeNull();
+    expect(parsed.appearanceTokenVersion).toBeNull();
+  });
+
+  it("keeps valid preference fields from a current server", () => {
+    const parsed = UserSchema.parse({
+      ...base,
+      skin: "field",
+      appearance: "system",
+      appearance_updated_at: "2026-08-23T10:00:00.123456Z",
+      appearance_token_version: 1,
+    });
+    expect(parsed).toMatchObject({
+      skin: "field",
+      appearance: "system",
+      appearanceUpdatedAt: "2026-08-23T10:00:00.123456Z",
+      appearanceTokenVersion: 1,
+    });
+  });
+
+  it("isolates malformed additive fields instead of blanking the user", () => {
+    const parsed = UserSchema.parse({
+      ...base,
+      skin: "future-skin",
+      appearance: 42,
+      appearance_updated_at: false,
+      appearance_token_version: "v2",
+    });
+    expect(parsed.id).toBe("user-1");
+    expect(parsed.skin).toBeNull();
+    expect(parsed.appearance).toBeNull();
+    expect(parsed.appearanceUpdatedAt).toBeNull();
+    expect(parsed.appearanceTokenVersion).toBeNull();
+  });
+});
+
 describe("SquadListSchema member preview drift", () => {
   const baseSquad = {
     id: "squad-1",

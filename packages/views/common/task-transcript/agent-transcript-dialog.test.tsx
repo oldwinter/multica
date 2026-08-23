@@ -822,3 +822,77 @@ describe("AgentTranscriptDialog — cancel reason", () => {
     expect(screen.queryByText(/Local directory error/)).not.toBeInTheDocument();
   });
 });
+
+describe("AgentTranscriptDialog — Twin execution loop", () => {
+  const twinTask: AgentTask = {
+    ...baseTask,
+    twin_context: {
+      taskId: "task-1",
+      attribution: {
+        twinVersionId: "version-1",
+        twinVersionNumber: 7,
+        twinVersionDigest: `sha256:${"a".repeat(64)}`,
+        briefing: "优先保护登录流程，并引用安全审查结论。",
+        briefingDigest: `sha256:${"b".repeat(64)}`,
+        assertionIds: ["assertion-1"],
+        citationKeys: ["SEC-1"],
+        policyScopeType: "issue",
+        policyScopeId: "issue-1",
+        policyState: "enabled",
+        compilerVersion: "twin-compiler/2",
+        byteCount: 48,
+        tokenCount: 12,
+      },
+      depositions: [],
+      assertions: [{
+        id: "assertion-1",
+        type: "constraint",
+        text: "Do not weaken session validation.",
+        citationKeys: ["SEC-1"],
+      }],
+      citations: [{
+        key: "SEC-1",
+        label: "Security review",
+        sourceType: "review",
+        locator: "SEC-1#session-validation",
+      }],
+    },
+  };
+
+  it("shows exact attribution and closes the loop with feedback and deposition", async () => {
+    const onFeedback = vi.fn().mockResolvedValue({});
+    const onCreateDeposition = vi.fn().mockResolvedValue({});
+    renderWithI18n(
+      <AgentTranscriptDialog
+        open
+        onOpenChange={vi.fn()}
+        task={twinTask}
+        items={items}
+        agentName="Codex"
+        onTwinFeedback={onFeedback}
+        onCreateTwinDeposition={onCreateDeposition}
+      />,
+    );
+
+    expect(screen.getByText("Twin run context")).toBeInTheDocument();
+    expect(screen.getByText(/Twin v7/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Dispatched briefing"));
+    expect(screen.getByText("优先保护登录流程，并引用安全审查结论。")).toBeInTheDocument();
+    expect(screen.getByText(/Do not weaken session validation/)).toBeInTheDocument();
+    expect(screen.getByText(/SEC-1#session-validation/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Helped" }));
+    expect(onFeedback).toHaveBeenCalledWith({ rating: "helped" });
+    expect(screen.getByRole("button", { name: "Helped" })).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Propose deposition" }));
+    expect(onCreateDeposition).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Deposition proposal created" })).toBeDisabled();
+  });
+
+  it("keeps feedback controls off live runs", () => {
+    renderDialog(items, { task: { ...twinTask, status: "running" }, isLive: true });
+    expect(screen.getByText("Twin run context")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Helped" })).not.toBeInTheDocument();
+  });
+});

@@ -51,6 +51,23 @@ var supportedLanguages = map[string]struct{}{
 	"ja":      {},
 }
 
+const (
+	appearanceTokenVersion int32 = 1
+	appearanceMaxClockSkew       = 5 * time.Minute
+)
+
+var supportedSkins = map[string]struct{}{
+	"tension": {},
+	"relay":   {},
+	"field":   {},
+}
+
+var supportedAppearances = map[string]struct{}{
+	"system": {},
+	"light":  {},
+	"dark":   {},
+}
+
 type UserResponse struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
@@ -59,6 +76,10 @@ type UserResponse struct {
 	Language  *string `json:"language"`
 	// Pinned IANA tz; nil = no preference (use browser-detected tz).
 	Timezone                *string         `json:"timezone"`
+	Skin                    *string         `json:"skin"`
+	Appearance              *string         `json:"appearance"`
+	AppearanceUpdatedAt     *string         `json:"appearance_updated_at"`
+	AppearanceTokenVersion  *int32          `json:"appearance_token_version"`
 	OnboardedAt             *string         `json:"onboarded_at"`
 	OnboardingQuestionnaire json.RawMessage `json:"onboarding_questionnaire"`
 	StarterContentState     *string         `json:"starter_content_state"`
@@ -88,6 +109,10 @@ func (h *Handler) userToResponse(u db.User) UserResponse {
 		AvatarURL:               h.resolveAvatarURLPtr(textToPtr(u.AvatarUrl)),
 		Language:                textToPtr(u.Language),
 		Timezone:                textToPtr(u.Timezone),
+		Skin:                    textToPtr(u.Skin),
+		Appearance:              textToPtr(u.Appearance),
+		AppearanceUpdatedAt:     timestampToNanoPtr(u.AppearanceUpdatedAt),
+		AppearanceTokenVersion:  int4ToPtr(u.AppearanceTokenVersion),
 		OnboardedAt:             timestampToPtr(u.OnboardedAt),
 		OnboardingQuestionnaire: json.RawMessage(q),
 		StarterContentState:     textToPtr(u.StarterContentState),
@@ -472,6 +497,12 @@ type UpdateMeRequest struct {
 	ProfileDescription *string `json:"profile_description"`
 	// IANA tz to pin; "" clears back to NULL; nil leaves untouched.
 	Timezone *string `json:"timezone"`
+	// Appearance fields are one versioned, timestamped tuple. All four are
+	// required for a preference write; omitting all four leaves it untouched.
+	Skin                   *string `json:"skin"`
+	Appearance             *string `json:"appearance"`
+	AppearanceUpdatedAt    *string `json:"appearance_updated_at"`
+	AppearanceTokenVersion *int32  `json:"appearance_token_version"`
 }
 
 type GoogleLoginRequest struct {
@@ -760,6 +791,54 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		params.Timezone = pgtype.Text{String: tz, Valid: true}
+	}
+
+	appearanceFieldCount := 0
+	for _, provided := range []bool{
+		req.Skin != nil,
+		req.Appearance != nil,
+		req.AppearanceUpdatedAt != nil,
+		req.AppearanceTokenVersion != nil,
+	} {
+		if provided {
+			appearanceFieldCount++
+		}
+	}
+	if appearanceFieldCount != 0 && appearanceFieldCount != 4 {
+		writeError(w, http.StatusBadRequest, "skin, appearance, appearance_updated_at, and appearance_token_version must be provided together")
+		return
+	}
+	if appearanceFieldCount == 4 {
+		skin := strings.TrimSpace(*req.Skin)
+		if _, ok := supportedSkins[skin]; !ok {
+			writeError(w, http.StatusBadRequest, "unsupported skin")
+			return
+		}
+
+		appearance := strings.TrimSpace(*req.Appearance)
+		if _, ok := supportedAppearances[appearance]; !ok {
+			writeError(w, http.StatusBadRequest, "unsupported appearance")
+			return
+		}
+
+		appearanceUpdatedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(*req.AppearanceUpdatedAt))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid appearance_updated_at")
+			return
+		}
+		if appearanceUpdatedAt.After(time.Now().Add(appearanceMaxClockSkew)) {
+			writeError(w, http.StatusBadRequest, "appearance_updated_at is too far in the future")
+			return
+		}
+		if *req.AppearanceTokenVersion != appearanceTokenVersion {
+			writeError(w, http.StatusBadRequest, "unsupported appearance_token_version")
+			return
+		}
+
+		params.Skin = pgtype.Text{String: skin, Valid: true}
+		params.Appearance = pgtype.Text{String: appearance, Valid: true}
+		params.AppearanceChangeAt = pgtype.Timestamptz{Time: appearanceUpdatedAt, Valid: true}
+		params.AppearanceTokenVersion = pgtype.Int4{Int32: *req.AppearanceTokenVersion, Valid: true}
 	}
 
 	updatedUser, err := h.Queries.UpdateUser(r.Context(), params)

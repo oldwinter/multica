@@ -89,6 +89,7 @@ type Task struct {
 	// regardless of task kind so the daemon can inject `## Workspace Context`
 	// into the brief. Empty when the owner hasn't set one.
 	WorkspaceContext              string                 `json:"workspace_context,omitempty"`
+	TwinBriefing                  *TwinBriefingData      `json:"twin_briefing,omitempty"`
 	ActiveSiblingRuns             []ActiveSiblingRunData `json:"active_sibling_runs,omitempty"`
 	ThreadName                    string                 `json:"thread_name,omitempty"` // semantic title for provider-native session/thread history
 	Agent                         *AgentData             `json:"agent,omitempty"`
@@ -134,6 +135,7 @@ type Task struct {
 	RoomInstructions              string                 `json:"room_instructions,omitempty"`
 	RoomMemory                    json.RawMessage        `json:"room_memory,omitempty"`
 	RoomTranscript                json.RawMessage        `json:"room_transcript,omitempty"`
+	RoomCostLimitTicks            *int64                 `json:"room_cost_limit_ticks,omitempty"`
 	QuickCreatePrompt             string                 `json:"quick_create_prompt,omitempty"`         // user's natural-language input for quick-create tasks
 	QuickCreatePriority           string                 `json:"quick_create_priority,omitempty"`       // explicit priority selected in quick-create
 	QuickCreateDueDate            string                 `json:"quick_create_due_date,omitempty"`       // explicit calendar due date selected in quick-create
@@ -173,6 +175,15 @@ type Task struct {
 	// Empty or non-task-scoped values are fatal for writable agent tasks; the
 	// daemon must not fall back to its own token. See MUL-3292.
 	AuthToken string `json:"auth_token,omitempty"`
+}
+
+// TwinBriefingData mirrors handler.TwinBriefingData without importing the
+// server HTTP layer into the local daemon.
+type TwinBriefingData struct {
+	Briefing        string `json:"briefing"`
+	VersionID       string `json:"version_id"`
+	BriefingDigest  string `json:"briefing_digest"`
+	CompilerVersion string `json:"compiler_version"`
 }
 
 // ChatAttachmentMeta is the structured attachment metadata the daemon

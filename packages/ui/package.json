@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:tokens": "node styles/check-token-contract.mjs",
+    "test": "node --test styles/*.test.mjs && node styles/check-token-contract.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },

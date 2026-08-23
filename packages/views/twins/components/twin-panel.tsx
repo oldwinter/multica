@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Hammer, History, ShieldCheck } from "lucide-react";
+import { CheckCircle2, FileCheck2, Hammer, History, Pencil, ShieldCheck } from "lucide-react";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
 import { useT } from "../../i18n";
 import { projectTwinAssertions, projectTwinDiff, projectTwinTopics } from "./content-projection";
 import { AssertionDiff, CitationList, ContentList } from "./lifecycle-detail";
+import { assertionsForDepositionEdit, DepositionEditDialog } from "./deposition-edit-dialog";
 import { TwinHistorySelectors } from "./lifecycle-selectors";
 import { ReviewDialog } from "./review-dialog";
 import { TwinReviewSpine } from "./twin-review-spine";
@@ -17,6 +18,7 @@ import type { TwinWorkspaceProps } from "./twin-workspace-types";
 export function TwinPanel(props: TwinWorkspaceProps) {
   const { t } = useT("twins");
   const [dialog, setDialog] = useState<"accept-twin" | "reject-twin" | null>(null);
+  const [editingProposal, setEditingProposal] = useState(false);
   const proposal = props.proposalDetail?.proposal ?? null;
   const currentVersion = props.twin.current_version;
   const selectedVersionIsCurrent = !props.selectedVersionId || props.selectedVersionId === currentVersion?.id;
@@ -31,6 +33,10 @@ export function TwinPanel(props: TwinWorkspaceProps) {
     && !acceptedWikiHasProposal && !acceptedWikiIsCurrent;
   const proposalItems = proposal ? projectTwinAssertions(proposal.content) : [];
   const versionItems = selectedVersion ? projectTwinAssertions(selectedVersion.content) : [];
+  const editableAssertions = proposal ? assertionsForDepositionEdit(proposal.content) : [];
+  const proposalCanBeEdited = proposal?.kind === "deposition"
+    ? Boolean(props.proposalDetail?.run_evidence)
+    : proposal?.kind === "initial" || proposal?.kind === "evolution" || proposal?.kind === "correction";
 
   return (
     <div className="space-y-6">
@@ -83,6 +89,16 @@ export function TwinPanel(props: TwinWorkspaceProps) {
             </div>
             {props.canManageTwin && proposalPending ? (
               <div className="flex flex-wrap gap-2">
+                {proposalCanBeEdited ? (
+                  <Button
+                    variant="outline"
+                    disabled={props.twinMutationPending}
+                    onClick={() => setEditingProposal(true)}
+                  >
+                    <Pencil data-icon="inline-start" aria-hidden="true" />
+                    {proposal.kind === "deposition" ? t(($) => $.deposition.edit_action) : t(($) => $.correction.edit_action)}
+                  </Button>
+                ) : null}
                 <Button variant="outline" disabled={props.twinMutationPending} onClick={() => setDialog("reject-twin")}>{t(($) => $.actions.reject_proposal)}</Button>
                 <Button variant="brand" disabled={props.twinMutationPending} onClick={() => setDialog("accept-twin")}>
                   {props.twinMutationPending ? t(($) => $.actions.saving) : t(($) => $.actions.sign_off)}
@@ -98,6 +114,27 @@ export function TwinPanel(props: TwinWorkspaceProps) {
           <TwinTopics topics={projectTwinTopics(proposal.content)} />
           <Separator />
           <CitationList citations={props.proposalDetail?.citations ?? []} />
+          {proposal.kind === "deposition" && props.proposalDetail?.run_evidence ? (
+            <>
+              <Separator />
+              <section className="space-y-3" aria-label={t(($) => $.deposition.evidence_title)}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FileCheck2 className="size-4 text-muted-foreground" aria-hidden="true" />
+                  <h3 className="text-title font-medium text-foreground">{t(($) => $.deposition.evidence_title)}</h3>
+                  <Badge variant="outline">{props.proposalDetail.run_evidence.taskStatus}</Badge>
+                </div>
+                <dl className="grid min-w-0 gap-3 text-caption sm:grid-cols-2">
+                  <div className="min-w-0"><dt className="text-muted-foreground">{t(($) => $.deposition.task)}</dt><dd className="break-all font-mono text-foreground">{props.proposalDetail.run_evidence.taskId}</dd></div>
+                  <div className="min-w-0"><dt className="text-muted-foreground">{t(($) => $.deposition.base_version)}</dt><dd className="break-all font-mono text-foreground">{props.proposalDetail.run_evidence.baseTwinVersionId}</dd></div>
+                  <div className="min-w-0"><dt className="text-muted-foreground">{t(($) => $.deposition.status)}</dt><dd className="break-words text-foreground">{props.proposalDetail.run_evidence.taskStatus || "-"}</dd></div>
+                  <div className="min-w-0"><dt className="text-muted-foreground">{t(($) => $.deposition.completed)}</dt><dd className="break-words text-foreground">{props.proposalDetail.run_evidence.completedAt ? new Date(props.proposalDetail.run_evidence.completedAt).toLocaleString() : "-"}</dd></div>
+                  <div className="min-w-0 sm:col-span-2"><dt className="text-muted-foreground">{t(($) => $.deposition.feedback)}</dt><dd className="break-words text-foreground">{props.proposalDetail.run_evidence.feedbackRating || "-"}</dd></div>
+                  <div className="min-w-0 sm:col-span-2"><dt className="text-muted-foreground">{t(($) => $.deposition.evidence_digest)}</dt><dd className="break-all font-mono text-foreground">{props.proposalDetail.run_evidence.evidenceDigest}</dd></div>
+                </dl>
+                <p className="text-caption text-muted-foreground">{t(($) => $.deposition.sanitized_notice)}</p>
+              </section>
+            </>
+          ) : null}
         </section>
       ) : (
         <p className="text-body text-muted-foreground">
@@ -126,6 +163,17 @@ export function TwinPanel(props: TwinWorkspaceProps) {
         if (dialog === "reject-twin") return props.onRejectTwin(proposal.id, reason);
         return props.onAcceptTwin(proposal.id);
       }} />
+      {editingProposal && proposal ? (
+        <DepositionEditDialog
+          assertions={editableAssertions}
+          mode={proposal.kind === "deposition" ? "deposition" : "proposal"}
+          pending={props.twinMutationPending}
+          onOpenChange={setEditingProposal}
+          onSubmit={(assertions) => proposal.kind === "deposition"
+            ? props.onEditDeposition(proposal.id, assertions)
+            : props.onCorrectTwin(proposal.id, assertions)}
+        />
+      ) : null}
     </div>
   );
 }

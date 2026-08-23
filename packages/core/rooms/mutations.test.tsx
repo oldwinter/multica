@@ -12,6 +12,7 @@ import {
   usePostRoomMessage,
   usePromoteRoomArtifact,
   useSetRoomStatus,
+	useUpdateRoomBudget,
   useWakeRoom,
 } from "./mutations";
 import { roomKeys } from "./queries";
@@ -24,11 +25,16 @@ const room: Room = {
   workspace_id: "ws-1",
   title: "Research room",
   instructions: "",
+  objective: "Research the release",
+  success_criteria: [],
+  stop_conditions: [],
+  template_id: "research",
   created_by_user_id: "user-1",
   facilitator_agent_id: "agent-1",
   facilitator_squad_id: null,
   status: "active",
   daily_turn_limit: null,
+  max_cost_ticks: null,
   schedule_interval_minutes: null,
   next_wake_at: null,
   active_cycle_id: null,
@@ -40,6 +46,8 @@ const room: Room = {
     recent_contributions: [],
   },
   memory_version: 0,
+  accepted_memory_revision_id: null,
+  capability_version: 1,
   created_at: "2026-08-13T00:00:00Z",
   updated_at: "2026-08-13T00:00:00Z",
 };
@@ -51,6 +59,8 @@ const detail: RoomDetail = {
   cycles: [],
   turns: [],
   artifacts: [],
+  memory_revisions: [],
+  recommendation_reviews: [],
 };
 
 const artifact: RoomArtifact = {
@@ -63,6 +73,9 @@ const artifact: RoomArtifact = {
   title: "Promoted issue",
   body: "Body",
   rationale: null,
+  memory_revision_id: null,
+  recommendation_key: null,
+  citation_entry_ids: [],
   created_by_user_id: "user-1",
   created_at: "2026-08-13T00:00:00Z",
 };
@@ -83,6 +96,7 @@ function roomMutationResponses() {
     postRoomMessage: vi.fn<() => Promise<RoomMessageResult>>(),
     wakeRoom: vi.fn<() => Promise<RoomWakeResult>>(),
     setRoomStatus: vi.fn<() => Promise<Room>>().mockResolvedValue(room),
+		updateRoomBudget: vi.fn<() => Promise<Room>>().mockResolvedValue(room),
     promoteRoomArtifact: vi.fn<() => Promise<RoomArtifact>>().mockResolvedValue(artifact),
   };
 }
@@ -103,7 +117,13 @@ describe("Room mutations", () => {
         wake_key: "message:key-1",
         triggering_entry_id: "entry-1",
         status: "queued",
+        phase: "gathering",
         refusal_reason: null,
+        synthesis_error: null,
+        synthesis_turn_id: null,
+        memory_revision_id: null,
+        expected_max_turns: 1,
+				cost_limit_ticks: null,
         planned_at: null,
         created_at: "2026-08-13T00:00:00Z",
         started_at: null,
@@ -132,7 +152,13 @@ describe("Room mutations", () => {
         wake_key: "manual:key-2",
         triggering_entry_id: null,
         status: "queued",
+        phase: "gathering",
         refusal_reason: null,
+        synthesis_error: null,
+        synthesis_turn_id: null,
+        memory_revision_id: null,
+        expected_max_turns: 1,
+				cost_limit_ticks: null,
         planned_at: null,
         created_at: "2026-08-13T00:00:00Z",
         started_at: null,
@@ -148,18 +174,28 @@ describe("Room mutations", () => {
     const post = renderHook(() => usePostRoomMessage("room-1"), options);
     const wake = renderHook(() => useWakeRoom("room-1"), options);
     const status = renderHook(() => useSetRoomStatus("room-1"), options);
+		const budget = renderHook(() => useUpdateRoomBudget("room-1"), options);
 
     await act(async () => {
-      await create.result.current.mutateAsync({ title: "Research room", facilitator_agent_id: "agent-1" });
+      await create.result.current.mutateAsync({
+        title: "Research room",
+        objective: "Compare the evidence",
+        facilitator_agent_id: "agent-1",
+      });
       await post.result.current.mutateAsync({ body: "Discuss this.", idempotency_key: "message-key-1" });
       await wake.result.current.mutateAsync({ idempotency_key: "wake-key-1" });
       await status.result.current.mutateAsync({ status: "paused" });
+			await budget.result.current.mutateAsync({ daily_turn_limit: 10, max_cost_ticks: null });
     });
 
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: roomKeys.all("ws-1") }),
     );
-    expect(invalidate).toHaveBeenCalledTimes(4);
+	expect(api.updateRoomBudget).toHaveBeenCalledWith("room-1", {
+		daily_turn_limit: 10,
+		max_cost_ticks: null,
+	});
+		expect(invalidate).toHaveBeenCalledTimes(5);
     queryClient.clear();
   });
 

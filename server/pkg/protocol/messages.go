@@ -8,6 +8,11 @@ const (
 	DaemonCapabilityExecutionManifestV1 = "execution-manifest-v1"
 	DaemonCapabilityAgentSkillV1        = "agent-skill-v1"
 	DaemonCapabilityRemoteMCPV1         = "remote-mcp-v1"
+	// DaemonCapabilityTwinBriefingV1 advertises that the daemon understands
+	// the bounded, signed Twin briefing carried on a task claim and appends it
+	// as lower-authority per-turn context. A server must not send briefing
+	// bytes to a daemon that does not advertise this capability.
+	DaemonCapabilityTwinBriefingV1 = "twin-briefing-v1"
 	// DaemonCapabilityLocalWorktreeV1 advertises that the daemon implements
 	// worktree mode for local_directory resources (execution_mode=worktree).
 	//

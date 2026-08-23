@@ -1,8 +1,8 @@
 // Package llm is a thin, reusable wrapper around the official OpenAI Go SDK
 // (github.com/openai/openai-go). It exists so the rest of the server has a
 // single, well-typed entry point for "just call an LLM" needs that do NOT
-// require the full agent runtime — currently chat auto-titling and chat
-// follow-up questions (MUL-4238).
+// require the full agent runtime — currently chat auto-titling, chat follow-up
+// questions, and explicitly requested Twin builds.
 //
 // # Scope: the assist layer, not every model call in the product
 //
@@ -44,16 +44,23 @@
 //     Sends the tail of the conversation: up to 6 messages, the reply being
 //     answered capped at 3000 runes (2000 head + 1000 tail) and each older
 //     message at 800.
+//   - Twin Build — server/internal/service/twin_model_adapter.go. Only an
+//     explicit Build action by a workspace owner or admin sends the accepted,
+//     immutable LM Wiki canonical JSON, safe citation keys, and prior signed
+//     assertions. It excludes mutable Workspace Wiki and personal Wiki content,
+//     local-only evidence, raw paths and basenames, private profile names, and
+//     credentials.
 //
-// Both consumers send private chat content, which is why an unconfigured
-// deployment making zero upstream requests is a contract rather than a side
-// effect: New with no API key and no base URL returns a disabled client whose
-// every call fails with ErrNotConfigured before an HTTP request is ever built,
-// and both consumers check Enabled() before doing any work
+// These consumers can send private chat or workspace evidence, which is why an
+// unconfigured deployment making zero upstream requests is a contract rather
+// than a side effect: New with no API key and no base URL returns a disabled
+// client whose every call fails with ErrNotConfigured before an HTTP request
+// is ever built
 // (TestUnconfiguredClientMakesZeroUpstreamRequests). An operator who must not
-// let THIS layer send chat content leaves MULTICA_LLM_API_KEY and
-// MULTICA_LLM_BASE_URL empty; the product stays whole (client-derived chat
-// titles, no follow-up question buttons).
+// let THIS layer send chat or Twin evidence leaves MULTICA_LLM_API_KEY and
+// MULTICA_LLM_BASE_URL empty. Chat retains client-derived titles, follow-up
+// question buttons stay hidden, and Twin Build is explicitly unavailable.
+// Agent task execution is a separate path and remains unaffected.
 //
 // The wrapper is intentionally small:
 //

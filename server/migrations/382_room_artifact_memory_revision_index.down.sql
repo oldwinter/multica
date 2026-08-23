@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS room_artifact_memory_revision_idx;

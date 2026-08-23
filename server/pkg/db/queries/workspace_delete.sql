@@ -495,6 +495,30 @@ WHERE agent_id IN (SELECT id FROM agent WHERE agent.workspace_id = $1)
 
 -- name: DeleteWorkspaceWikiTwinData :exec
 WITH
+deleted_lm_wiki_source_pages AS (
+    DELETE FROM lm_wiki_source_wiki_page WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_lm_wiki_source_policy AS (
+    DELETE FROM lm_wiki_source_policy WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_wiki_proposals AS (
+    DELETE FROM wiki_page_edit_proposal WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_wiki_revisions AS (
+    DELETE FROM wiki_page_revision WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_run_feedback AS (
+    DELETE FROM twin_run_feedback WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_depositions AS (
+    DELETE FROM twin_deposition WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_task_attributions AS (
+    DELETE FROM twin_task_attribution WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_bindings AS (
+    DELETE FROM twin_binding WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
 deleted_twin_reviews AS (
     DELETE FROM twin_proposal_review WHERE workspace_id = sqlc.arg(workspace_id)::uuid
 ),

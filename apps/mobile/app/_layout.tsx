@@ -14,7 +14,10 @@ import { queryClient } from "@/data/query-client";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { LightboxProvider, prewarmHighlighter } from "@/lib/markdown";
-import { useColorScheme } from "@/lib/use-color-scheme";
+import {
+  useAppearanceSync,
+  useColorScheme,
+} from "@/lib/use-color-scheme";
 
 // Kick off Shiki highlighter init at module load — fires once per process,
 // finishes before the user navigates to any screen with a code block. If
@@ -57,6 +60,7 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  useAppearanceSync();
   const { colorScheme, isDarkColorScheme, navigationTheme, skin } =
     useColorScheme();
   const skinClass = {

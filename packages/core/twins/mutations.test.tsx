@@ -8,6 +8,7 @@ import { setApiInstance } from "../api";
 import {
   useAcceptLMWikiRevision,
   useAcceptTwinProposal,
+  useCorrectTwinProposal,
   useEnsureTwinProposal,
   useRefreshLMWiki,
   useRejectLMWikiRevision,
@@ -25,7 +26,7 @@ const revision = {
 const proposal = {
   id: "proposal-1", kind: "initial", source_wiki_revision_id: "revision-1",
   base_twin_version_id: null, schema_version: 1, content: {}, content_digest: "sha256:twin",
-  requested_by_id: null, created_at: "", review: null, signed_version: null,
+  requested_by_id: null, replaces_proposal_id: null, created_at: "", review: null, signed_version: null,
 };
 const version = {
   id: "version-1", version_number: 1, proposal_id: "proposal-1",
@@ -60,6 +61,7 @@ describe("Wiki and Twin mutations", () => {
     vi.spyOn(client, "acceptLMWikiRevision").mockResolvedValue({ revision, citations: [] });
     vi.spyOn(client, "rejectLMWikiRevision").mockResolvedValue({ revision, citations: [] });
     vi.spyOn(client, "ensureTwinProposal").mockResolvedValue({ created: true, proposal });
+    vi.spyOn(client, "correctTwinProposal").mockResolvedValue({ created: true, proposal });
     vi.spyOn(client, "acceptTwinProposal").mockResolvedValue({ created: true, version });
     vi.spyOn(client, "rejectTwinProposal").mockResolvedValue({ proposal, source_revision: revision, citations: [] });
     queryClient.setQueryData(wikiKeys.overview(WORKSPACE_A), "wiki-a");
@@ -72,6 +74,7 @@ describe("Wiki and Twin mutations", () => {
       acceptWiki: useAcceptLMWikiRevision(WORKSPACE_A),
       rejectWiki: useRejectLMWikiRevision(WORKSPACE_A),
       ensureTwin: useEnsureTwinProposal(WORKSPACE_A),
+      correctTwin: useCorrectTwinProposal(WORKSPACE_A),
       acceptTwin: useAcceptTwinProposal(WORKSPACE_A),
       rejectTwin: useRejectTwinProposal(WORKSPACE_A),
     }), { wrapper: wrapper(queryClient) });
@@ -81,6 +84,7 @@ describe("Wiki and Twin mutations", () => {
       await result.current.acceptWiki.mutateAsync("revision-1");
       await result.current.rejectWiki.mutateAsync({ revisionId: "revision-1", reason: "not ready" });
       await result.current.ensureTwin.mutateAsync("revision-1");
+      await result.current.correctTwin.mutateAsync({ proposalId: "proposal-1", editedAssertions: [] });
       await result.current.acceptTwin.mutateAsync("proposal-1");
       await result.current.rejectTwin.mutateAsync({ proposalId: "proposal-1", reason: "not ready" });
     });

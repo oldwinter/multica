@@ -67,7 +67,21 @@ export type WSEventType =
   | "room:updated"
   | "room:entry"
   | "room:cycle"
+  | "room:turn"
+  | "room:memory_revision"
+  | "room:review"
+  | "room:recommendation_review"
   | "room:artifact"
+  | "wiki:page_created"
+  | "wiki:page_updated"
+  | "wiki:page_deleted"
+  | "wiki:revision_created"
+  | "wiki:revision_restored"
+  | "wiki:proposal_created"
+  | "wiki:proposal_reviewed"
+  | "lm_wiki:source_policy_changed"
+  | "lm_wiki:revision_changed"
+  | "lm_wiki:review_changed"
   | "project:created"
   | "project:updated"
   | "project:deleted"
@@ -94,13 +108,85 @@ export type WSEventType =
   | "github_installation:deleted"
   | "pull_request:linked"
   | "pull_request:updated"
-  | "pull_request:unlinked";
+  | "pull_request:unlinked"
+  | "twin:proposal_changed"
+  | "twin:version_changed"
+  | "twin:binding_changed"
+  | "twin:deposition_changed";
 
 export interface WSMessage<T = unknown> {
   type: WSEventType;
   payload: T;
   actor_id?: string;
   actor_type?: string;
+}
+
+export interface RoomEventPayload {
+  readonly room_id: string;
+  readonly status: string;
+  readonly memory_version: number;
+  readonly active_cycle_id?: string;
+}
+
+export type RoomCreatedPayload = RoomEventPayload;
+
+export type RoomUpdatedPayload = RoomEventPayload;
+
+export interface RoomEntryPayload {
+  readonly room_id: string;
+  readonly entry_id: string;
+  readonly cycle_id?: string;
+  readonly turn_id?: string;
+}
+
+export interface RoomCyclePayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly status: string;
+  readonly phase: string;
+}
+
+export interface RoomTurnPayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly turn_id: string;
+  readonly status: string;
+  readonly turn_kind: string;
+  readonly attempt: number;
+}
+
+export interface RoomMemoryRevisionPayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly memory_revision_id: string;
+  readonly review_status: string;
+  readonly version: number;
+}
+
+export interface RoomReviewPayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly memory_revision_id: string;
+  readonly review_status: string;
+  readonly action: string;
+  readonly memory_version: number;
+}
+
+export interface RoomRecommendationReviewPayload {
+  readonly room_id: string;
+  readonly memory_revision_id: string;
+  readonly recommendation_key: string;
+  readonly status: string;
+  readonly artifact_id?: string;
+}
+
+export interface RoomArtifactPayload {
+  readonly room_id: string;
+  readonly artifact_id: string;
+  readonly kind: string;
+  readonly target_id?: string;
+  readonly memory_revision_id?: string;
+  readonly recommendation_key?: string;
 }
 
 export interface IssueCreatedPayload {
@@ -125,6 +211,32 @@ export interface IssueUpdatedPayload {
 
 export interface IssueDeletedPayload {
   issue_id: string;
+}
+
+export interface TwinProposalChangedPayload {
+  proposal_id: string;
+  state: string;
+  version_id?: string;
+}
+
+export interface TwinVersionChangedPayload {
+  version_id: string;
+  proposal_id: string;
+  version_number: number;
+}
+
+export interface TwinBindingChangedPayload {
+  binding_id: string;
+  state: string;
+  twin_version_id?: string;
+}
+
+export interface TwinDepositionChangedPayload {
+  deposition_id: string;
+  proposal_id: string;
+  task_id: string;
+  base_twin_version_id: string;
+  state: string;
 }
 
 export interface IssueLabelsChangedPayload {
@@ -492,6 +604,50 @@ export interface ChatSessionDeletedPayload {
   chat_session_id: string;
 }
 
+export type WikiRealtimeScope = "workspace" | "project" | "user";
+
+interface WikiScopedEventPayload {
+  page_id: string;
+  scope: WikiRealtimeScope;
+  project_id?: string;
+}
+
+export interface WikiPageChangedPayload extends WikiScopedEventPayload {
+  revision_id?: string;
+  revision_number?: number;
+}
+
+export interface WikiRevisionChangedPayload extends WikiScopedEventPayload {
+  revision_id: string;
+  revision_number: number;
+}
+
+export interface WikiProposalCreatedPayload extends WikiScopedEventPayload {
+  proposal_id: string;
+  base_revision_number: number;
+}
+
+export interface WikiProposalReviewedPayload extends WikiScopedEventPayload {
+  proposal_id: string;
+  status: "accepted" | "rejected";
+  accepted_revision_id?: string;
+  accepted_revision_number?: number;
+}
+
+export interface LMWikiSourcePolicyChangedPayload {
+  policy_version: number;
+}
+
+export interface LMWikiRevisionChangedPayload {
+  revision_id: string;
+  revision_number: number;
+}
+
+export interface LMWikiReviewChangedPayload {
+  revision_id: string;
+  decision: "accepted" | "rejected";
+}
+
 export interface ProjectCreatedPayload {
   project: Project;
 }
@@ -591,11 +747,25 @@ export interface WSEventPayloadMap {
   "chat:session_read": ChatSessionReadPayload;
   "chat:session_deleted": ChatSessionDeletedPayload;
   "chat:session_updated": unknown;
-  "room:created": unknown;
-  "room:updated": unknown;
-  "room:entry": unknown;
-  "room:cycle": unknown;
-  "room:artifact": unknown;
+  "room:created": RoomCreatedPayload;
+  "room:updated": RoomUpdatedPayload;
+  "room:entry": RoomEntryPayload;
+  "room:cycle": RoomCyclePayload;
+  "room:turn": RoomTurnPayload;
+  "room:memory_revision": RoomMemoryRevisionPayload;
+  "room:review": RoomReviewPayload;
+  "room:recommendation_review": RoomRecommendationReviewPayload;
+  "room:artifact": RoomArtifactPayload;
+  "wiki:page_created": WikiPageChangedPayload;
+  "wiki:page_updated": WikiPageChangedPayload;
+  "wiki:page_deleted": WikiPageChangedPayload;
+  "wiki:revision_created": WikiRevisionChangedPayload;
+  "wiki:revision_restored": WikiRevisionChangedPayload;
+  "wiki:proposal_created": WikiProposalCreatedPayload;
+  "wiki:proposal_reviewed": WikiProposalReviewedPayload;
+  "lm_wiki:source_policy_changed": LMWikiSourcePolicyChangedPayload;
+  "lm_wiki:revision_changed": LMWikiRevisionChangedPayload;
+  "lm_wiki:review_changed": LMWikiReviewChangedPayload;
   "project:created": ProjectCreatedPayload;
   "project:updated": ProjectUpdatedPayload;
   "project:deleted": ProjectDeletedPayload;
@@ -624,6 +794,10 @@ export interface WSEventPayloadMap {
   "pull_request:linked": unknown;
   "pull_request:updated": unknown;
   "pull_request:unlinked": unknown;
+  "twin:proposal_changed": TwinProposalChangedPayload;
+  "twin:version_changed": TwinVersionChangedPayload;
+  "twin:binding_changed": TwinBindingChangedPayload;
+  "twin:deposition_changed": TwinDepositionChangedPayload;
 }
 
 /**
