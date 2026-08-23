@@ -1044,7 +1044,7 @@ export function SearchCommand() {
               </CommandPrimitive.Group>
             )}
 
-            {!query.trim() && recentIssues.length > 0 && (
+            {!isLoading && !query.trim() && recentItems.length > 0 && (
               <CommandPrimitive.Group
                 heading={
                   <>
@@ -1052,11 +1052,9 @@ export function SearchCommand() {
                     <span>{t(($) => $.groups.recent)}</span>
                   </>
                 }
-                className={`${GROUP_CLASS} [&_[cmdk-group-heading]]:flex [&_[cmdk-group-heading]]:items-center [&_[cmdk-group-heading]]:gap-2`}
+                className={`${GROUP_CLASS} relative [&_[cmdk-group-heading]]:flex [&_[cmdk-group-heading]]:items-center [&_[cmdk-group-heading]]:gap-2 [&_[cmdk-group-heading]]:min-h-11 sm:[&_[cmdk-group-heading]]:min-h-7`}
               >
-                <div className="flex min-h-11 items-center gap-2 px-3 text-caption font-medium text-muted-foreground sm:min-h-7">
-                  <Clock className="size-3" aria-hidden="true" />
-                  <span>{t(($) => $.groups.recent)}</span>
+                <div className="pointer-events-none absolute inset-x-2 top-0 z-10 flex justify-end">
                   <DeferredTooltip
                     content={t(($) => $.actions.clear_recent)}
                     side="left"
@@ -1065,7 +1063,7 @@ export function SearchCommand() {
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        className="ml-auto size-11 text-muted-foreground hover:text-foreground sm:size-7"
+                        className="pointer-events-auto size-11 text-muted-foreground hover:text-foreground sm:size-7"
                         aria-label={t(($) => $.actions.clear_recent)}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -1102,7 +1100,7 @@ export function SearchCommand() {
               </CommandPrimitive.Group>
             )}
 
-            {!isLoading && !query.trim() && recentIssues.length === 0 && (
+            {!isLoading && !query.trim() && recentItems.length === 0 && (
               <div className="px-5 py-4 text-center text-caption text-muted-foreground">
                 {t(($) => $.empty.type_to_search)}
               </div>

@@ -645,6 +645,19 @@ describe("SearchCommand", () => {
     expect(useSearchStore.getState().open).toBe(true);
   });
 
+  it("allows clearing recent history when issue details cannot be resolved", async () => {
+    const user = userEvent.setup();
+    mockRecentItems.current = [{ id: "deleted-issue", visitedAt: 1000 }];
+
+    renderSearch();
+
+    expect(screen.queryByText("Type to search issues and projects")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear recent issues" }));
+
+    expect(mockClearRecentIssues).toHaveBeenCalledWith("ws-test");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("shows New Issue / New Project under Commands and triggers the modal store", async () => {
     const user = userEvent.setup();
     renderSearch();
