@@ -19,6 +19,13 @@ type lmWikiHTTPRefresh struct {
 	} `json:"revision"`
 }
 
+type lmWikiHTTPSources struct {
+	ProjectID      string
+	IssueID        string
+	ResourceID     string
+	AutopilotRunID string
+}
+
 func resetLMWikiHTTPFixture(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
@@ -106,10 +113,10 @@ func createLMWikiHTTPWorkspace(t *testing.T) string {
 	return id
 }
 
-func seedLMWikiHTTPSources(t *testing.T) (string, string) {
+func seedLMWikiHTTPSources(t *testing.T) lmWikiHTTPSources {
 	t.Helper()
 	ctx := context.Background()
-	var projectID, issueID, resourceID, autopilotID string
+	var projectID, issueID, resourceID, autopilotID, autopilotRunID string
 	if err := testPool.QueryRow(ctx, `INSERT INTO project (workspace_id, title, description, status, priority) VALUES ($1, 'LM Wiki HTTP project', 'public project', 'in_progress', 'medium') RETURNING id`, testWorkspaceID).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}
@@ -126,8 +133,13 @@ func seedLMWikiHTTPSources(t *testing.T) (string, string) {
 	if err := testPool.QueryRow(ctx, `INSERT INTO autopilot (workspace_id, title, description, assignee_id, status, execution_mode, created_by_type, created_by_id) VALUES ($1, 'LM Wiki HTTP autopilot', '', $2, 'active', 'run_only', 'member', $3) RETURNING id`, testWorkspaceID, agentID, testUserID).Scan(&autopilotID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := testPool.Exec(ctx, `INSERT INTO autopilot_run (autopilot_id, source, status, issue_id, completed_at, trigger_payload, result) VALUES ($1, 'manual', 'completed', $2, now(), '{"trigger_payload":"private"}', '{"result-secret":"private"}')`, autopilotID, issueID); err != nil {
+	if err := testPool.QueryRow(ctx, `INSERT INTO autopilot_run (autopilot_id, source, status, issue_id, completed_at, trigger_payload, result) VALUES ($1, 'manual', 'completed', $2, now(), '{"trigger_payload":"private"}', '{"result-secret":"private"}') RETURNING id`, autopilotID, issueID).Scan(&autopilotRunID); err != nil {
 		t.Fatal(err)
 	}
-	return projectID, resourceID
+	return lmWikiHTTPSources{
+		ProjectID:      projectID,
+		IssueID:        issueID,
+		ResourceID:     resourceID,
+		AutopilotRunID: autopilotRunID,
+	}
 }

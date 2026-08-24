@@ -75,7 +75,7 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	previousGenerator := testHandler.TwinService.ProposalGenerator
 	testHandler.TwinService.ProposalGenerator = service.InventoryTwinProposalGenerator{}
 	t.Cleanup(func() { testHandler.TwinService.ProposalGenerator = previousGenerator })
-	projectID, resourceID := seedLMWikiHTTPSources(t)
+	sources := seedLMWikiHTTPSources(t)
 	policyResponse := lmWikiHTTPRequest(
 		t,
 		testToken,
@@ -121,13 +121,26 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 		}
 	}
 	var detail struct {
-		Citations []json.RawMessage `json:"citations"`
+		Citations []struct {
+			CitationKey string `json:"citation_key"`
+		} `json:"citations"`
 	}
 	if err := json.Unmarshal(detailBody, &detail); err != nil {
 		t.Fatalf("decode detail response: %v", err)
 	}
-	if len(detail.Citations) != 4 {
-		t.Fatalf("citation count = %d, want 4", len(detail.Citations))
+	citationKeys := make(map[string]struct{}, len(detail.Citations))
+	for _, citation := range detail.Citations {
+		citationKeys[citation.CitationKey] = struct{}{}
+	}
+	for _, expected := range []string{
+		"autopilot_run:" + sources.AutopilotRunID,
+		"issue:" + sources.IssueID,
+		"project:" + sources.ProjectID,
+		"project_resource:" + sources.ResourceID,
+	} {
+		if _, ok := citationKeys[expected]; !ok {
+			t.Fatalf("citations are missing %q: %+v", expected, detail.Citations)
+		}
 	}
 	malformedID := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/lm-wiki/revisions/not-a-uuid", nil)
 	defer malformedID.Body.Close()
@@ -238,13 +251,13 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	if heads.Accepted.ID != first.Revision.ID || heads.Pending.ID != second.Revision.ID {
 		t.Fatalf("overview heads = %+v", heads)
 	}
-	if _, err := testPool.Exec(context.Background(), `DELETE FROM project_resource WHERE id = $1 AND workspace_id = $2`, resourceID, testWorkspaceID); err != nil {
+	if _, err := testPool.Exec(context.Background(), `DELETE FROM project_resource WHERE id = $1 AND workspace_id = $2`, sources.ResourceID, testWorkspaceID); err != nil {
 		t.Fatalf("delete LM Wiki source: %v", err)
 	}
 	thirdResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/refresh", nil)
 	var third lmWikiHTTPRefresh
 	decodeLMWikiHTTP(t, thirdResponse, &third)
-	if strings.Contains(string(third.Revision.Content), resourceID) || !strings.Contains(string(third.Revision.Content), projectID) {
+	if strings.Contains(string(third.Revision.Content), sources.ResourceID) || !strings.Contains(string(third.Revision.Content), sources.ProjectID) {
 		t.Fatalf("third revision did not reflect source deletion: %s", third.Revision.Content)
 	}
 	longReason := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/revisions/"+third.Revision.ID+"/reject", bytes.NewBufferString(`{"reason":"`+strings.Repeat("x", 2001)+`"}`))
