@@ -76,12 +76,9 @@ jobs:
 
   release:
     needs: verify
-    # Only run on the canonical upstream repo. Forks don't have the
-    # HOMEBREW_TAP_GITHUB_TOKEN secret and should not be publishing to
-    # `multica-ai/homebrew-tap` anyway. Without this guard, every fork's
-    # tag push fails this job (401 against the upstream tap), which makes
-    # downstream CI go red without affecting the actual artifact pipeline.
-    if: github.repository_owner == 'multica-ai'
+    # GoReleaser always publishes CLI archives to the repository that owns
+    # the tag. Its Homebrew upload is independently gated in .goreleaser.yml,
+    # so forks create complete releases without touching the upstream tap.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -390,7 +387,9 @@ jobs:
         run: helm show chart "$OCI_REGISTRY/multica" --version "$CHART_VERSION"
 
   # Build the Desktop installers for Linux and Windows and upload them to
-  # the GitHub Release that the `release` job above just published. macOS
+  # the current repository's GitHub Release that `release` just published.
+  # package.mjs derives that repository from GITHUB_REPOSITORY in Actions,
+  # overriding electron-builder.yml's canonical-upstream default. macOS
   # Desktop continues to ship via the manual `release-desktop` skill so it
   # can be signed + notarized with Apple Developer credentials that are
   # not (yet) wired into CI.

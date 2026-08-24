@@ -8,11 +8,31 @@ import {
   deriveVersion,
   DESCRIBE_ARGS,
   envWithLocalBins,
+  githubPublisherArgs,
   normalizeGitVersion,
   parsePackageArgs,
   resolveBuildMatrix,
   stripLeadingSeparator,
 } from "./package.mjs";
+
+describe("githubPublisherArgs", () => {
+  it("routes GitHub Actions builds to the current repository", () => {
+    expect(githubPublisherArgs("oldwinter/multica")).toEqual([
+      "-c.publish.owner=oldwinter",
+      "-c.publish.repo=multica",
+    ]);
+  });
+
+  it("keeps local builds on the checked-in publisher default", () => {
+    expect(githubPublisherArgs(undefined)).toEqual([]);
+  });
+
+  it("rejects values that are unsafe to forward through a platform shell", () => {
+    expect(() => githubPublisherArgs("oldwinter/multica;whoami")).toThrow(
+      "invalid GITHUB_REPOSITORY",
+    );
+  });
+});
 
 describe("normalizeGitVersion", () => {
   it("returns null for empty / nullish input", () => {
@@ -267,6 +287,34 @@ describe("resolveBuildMatrix", () => {
 });
 
 describe("builderArgsForTarget", () => {
+  it("overrides the publisher for a downstream GitHub Actions build", () => {
+    expect(
+      builderArgsForTarget(
+        { platform: "linux", arch: "x64" },
+        {
+          allPlatforms: false,
+          sharedArgs: ["--publish", "always"],
+          platformTargets: { mac: [], win: [], linux: [] },
+          requestedPlatforms: ["linux"],
+          requestedArchs: ["x64"],
+        },
+        "1.2.3-oldwinter.1",
+        {
+          hostPlatform: "linux",
+          publishRepositoryArgs: githubPublisherArgs("oldwinter/multica"),
+        },
+      ),
+    ).toEqual([
+      "-c.extraMetadata.version=1.2.3-oldwinter.1",
+      "--linux",
+      "--x64",
+      "--publish",
+      "always",
+      "-c.publish.owner=oldwinter",
+      "-c.publish.repo=multica",
+    ]);
+  });
+
   it("adds scoped output directories for multi-target builds", () => {
     expect(
       builderArgsForTarget(
