@@ -69,15 +69,15 @@ func TestRoomConcurrentIndexMigrationsContainOneStatement(t *testing.T) {
 		"305_room_participant_room_index.up.sql":               true,
 		"307_agent_task_room_turn_lookup_index.up.sql":         true,
 		"308_room_entry_turn_result_index.up.sql":              true,
-		"378_room_memory_revision_id_index.up.sql":             true,
-		"380_room_memory_revision_version_index.up.sql":        true,
-		"381_room_cycle_phase_index.up.sql":                    true,
-		"382_room_artifact_memory_revision_index.up.sql":       true,
-		"384_room_recommendation_review_id_index.up.sql":       true,
-		"386_room_recommendation_review_identity_index.up.sql": true,
-		"419_room_turn_kind_attempt_index.up.sql":              true,
-		"421_room_synthesis_retry_key_index.up.sql":            true,
-		"424_room_memory_review_key_index.up.sql":              true,
+		"404_room_memory_revision_id_index.up.sql":             true,
+		"406_room_memory_revision_version_index.up.sql":        true,
+		"407_room_cycle_phase_index.up.sql":                    true,
+		"408_room_artifact_memory_revision_index.up.sql":       true,
+		"410_room_recommendation_review_id_index.up.sql":       true,
+		"412_room_recommendation_review_identity_index.up.sql": true,
+		"445_room_turn_kind_attempt_index.up.sql":              true,
+		"447_room_synthesis_retry_key_index.up.sql":            true,
+		"450_room_memory_review_key_index.up.sql":              true,
 	}
 
 	seen := make(map[string]bool, len(indexFiles))
@@ -108,28 +108,28 @@ func TestRoomConcurrentIndexMigrationsContainOneStatement(t *testing.T) {
 func TestRoomOutcomeConcurrentIndexMigrationsAreCrashReplaySafe(t *testing.T) {
 	dir := realMigrationsDir(t)
 	createFiles := []string{
-		"378_room_memory_revision_id_index.up.sql",
-		"380_room_memory_revision_version_index.up.sql",
-		"381_room_cycle_phase_index.up.sql",
-		"382_room_artifact_memory_revision_index.up.sql",
-		"384_room_recommendation_review_id_index.up.sql",
-		"386_room_recommendation_review_identity_index.up.sql",
-		"418_room_turn_identity_index_drop.down.sql",
-		"419_room_turn_kind_attempt_index.up.sql",
-		"421_room_synthesis_retry_key_index.up.sql",
-		"424_room_memory_review_key_index.up.sql",
+		"404_room_memory_revision_id_index.up.sql",
+		"406_room_memory_revision_version_index.up.sql",
+		"407_room_cycle_phase_index.up.sql",
+		"408_room_artifact_memory_revision_index.up.sql",
+		"410_room_recommendation_review_id_index.up.sql",
+		"412_room_recommendation_review_identity_index.up.sql",
+		"444_room_turn_identity_index_drop.down.sql",
+		"445_room_turn_kind_attempt_index.up.sql",
+		"447_room_synthesis_retry_key_index.up.sql",
+		"450_room_memory_review_key_index.up.sql",
 	}
 	dropFiles := []string{
-		"378_room_memory_revision_id_index.down.sql",
-		"380_room_memory_revision_version_index.down.sql",
-		"381_room_cycle_phase_index.down.sql",
-		"382_room_artifact_memory_revision_index.down.sql",
-		"384_room_recommendation_review_id_index.down.sql",
-		"386_room_recommendation_review_identity_index.down.sql",
-		"418_room_turn_identity_index_drop.up.sql",
-		"419_room_turn_kind_attempt_index.down.sql",
-		"421_room_synthesis_retry_key_index.down.sql",
-		"424_room_memory_review_key_index.down.sql",
+		"404_room_memory_revision_id_index.down.sql",
+		"406_room_memory_revision_version_index.down.sql",
+		"407_room_cycle_phase_index.down.sql",
+		"408_room_artifact_memory_revision_index.down.sql",
+		"410_room_recommendation_review_id_index.down.sql",
+		"412_room_recommendation_review_identity_index.down.sql",
+		"444_room_turn_identity_index_drop.up.sql",
+		"445_room_turn_kind_attempt_index.down.sql",
+		"447_room_synthesis_retry_key_index.down.sql",
+		"450_room_memory_review_key_index.down.sql",
 	}
 
 	createIndex := regexp.MustCompile(`(?is)^CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+IF\s+NOT\s+EXISTS\b.*;\s*$`)
@@ -157,7 +157,7 @@ func TestRoomOutcomeConcurrentIndexMigrationsAreCrashReplaySafe(t *testing.T) {
 }
 
 func TestRoomCapabilityRolloutDoesNotRewriteExistingRooms(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(realMigrationsDir(t), "422_room_capability_rollout.up.sql"))
+	body, err := os.ReadFile(filepath.Join(realMigrationsDir(t), "448_room_capability_rollout.up.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}

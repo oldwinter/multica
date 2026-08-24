@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/attributionbackfill"
+	"github.com/multica-ai/multica/server/internal/dbstartup"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/migrations"
 	"github.com/multica-ai/multica/server/internal/taskusagebackfill"
@@ -252,6 +255,9 @@ var concurrentIndexCleanups = map[string]string{
 	"307_agent_task_room_turn_lookup_index":                     "agent_task_room_turn_idx",
 	"307_dingtalk_group_route_id_unique":                        "idx_dingtalk_group_route_id_unique",
 	"308_room_entry_turn_result_index":                          "room_entry_turn_result_uidx",
+	"384_create_dingtalk_group_presence_identity_index":         "idx_dingtalk_group_presence_installation_conversation",
+	"385_create_dingtalk_group_presence_activity_index":         "idx_dingtalk_group_presence_workspace_activity",
+	"388_create_dingtalk_bot_identity_installation_index":       "idx_dingtalk_bot_identity_installation",
 	"309_agent_runtime_id_index":                                "idx_agent_runtime_id",
 	"311_plugin_identity_scoped_key_index":                      "idx_plugin_identity_scoped_key",
 	"316_workspace_mcp_server_name_unique":                      "idx_workspace_mcp_server_workspace_name",
@@ -283,36 +289,46 @@ var concurrentIndexCleanups = map[string]string{
 	"361_issue_last_activity_index":                             "idx_issue_workspace_last_activity",
 	"363_plugin_invocation_installation_index":                  "idx_plugin_invocation_installation_created",
 	"364_plugin_invocation_created_at_index":                    "idx_plugin_invocation_created_at",
-	"378_room_memory_revision_id_index":                         "room_memory_revision_id_uidx",
-	"380_room_memory_revision_version_index":                    "room_memory_revision_version_uidx",
-	"381_room_cycle_phase_index":                                "room_cycle_phase_idx",
-	"382_room_artifact_memory_revision_index":                   "room_artifact_memory_revision_idx",
-	"384_room_recommendation_review_id_index":                   "room_recommendation_review_id_uidx",
-	"386_room_recommendation_review_identity_index":             "room_recommendation_review_identity_uidx",
-	"389_wiki_page_revision_id_index":                           "wiki_page_revision_id_uidx",
-	"390_wiki_page_revision_number_index":                       "wiki_page_revision_page_number_uidx",
-	"391_wiki_page_revision_list_index":                         "wiki_page_revision_page_created_idx",
-	"392_wiki_page_search_index":                                "wiki_page_search_fts_idx",
-	"393_wiki_page_proposal_id_index":                           "wiki_page_edit_proposal_id_uidx",
-	"394_wiki_page_proposal_idempotency_index":                  "wiki_page_edit_proposal_idempotency_uidx",
-	"395_wiki_page_proposal_list_index":                         "wiki_page_edit_proposal_page_status_idx",
-	"396_lm_wiki_source_policy_index":                           "lm_wiki_source_policy_workspace_uidx",
-	"397_lm_wiki_source_page_index":                             "lm_wiki_source_wiki_page_identity_uidx",
-	"399_twin_binding_id_index":                                 "twin_binding_id_uidx",
-	"400_twin_task_attribution_id_index":                        "twin_task_attribution_id_uidx",
-	"401_twin_run_feedback_id_index":                            "twin_run_feedback_id_uidx",
-	"402_twin_deposition_id_index":                              "twin_deposition_id_uidx",
-	"404_twin_binding_scope_index":                              "twin_binding_workspace_scope_uidx",
-	"405_twin_task_attribution_claim_index":                     "twin_task_attribution_claim_uidx",
-	"406_twin_run_feedback_task_index":                          "twin_run_feedback_workspace_task_uidx",
-	"407_twin_deposition_proposal_index":                        "twin_deposition_workspace_proposal_uidx",
-	"408_twin_deposition_task_index":                            "twin_deposition_workspace_task_idx",
-	"413_twin_proposal_identity_partial_index":                  "twin_proposal_workspace_identity_uidx",
-	"414_twin_deposition_request_index":                         "twin_deposition_workspace_request_uidx",
-	"417_twin_proposal_replacement_index":                       "twin_proposal_workspace_replacement_uidx",
-	"419_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
-	"421_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
-	"424_room_memory_review_key_index":                          "room_memory_review_key_uidx",
+	"378_channel_chat_context_generation_key":                   "channel_chat_context_generation_session_revision_idx",
+	"390_agent_task_queue_dispatched_reclaim_v2_index":          "idx_agent_task_queue_dispatched_reclaim_v2",
+	"393_plugin_package_workspace_key_index":                    "idx_plugin_package_workspace_key",
+	"394_plugin_package_version_unique_index":                   "idx_plugin_package_version_unique",
+	"395_plugin_package_version_package_index":                  "idx_plugin_package_version_package",
+	"396_plugin_package_file_path_index":                        "idx_plugin_package_file_path",
+	"397_plugin_installation_package_version_index":             "idx_plugin_installation_package_version",
+	"398_issue_workspace_status_position_index":                 "idx_issue_workspace_status_position",
+	"400_plugin_hook_schedule_installation_key_index":           "idx_plugin_hook_schedule_installation_key",
+	"401_plugin_hook_schedule_enabled_index":                    "idx_plugin_hook_schedule_enabled",
+	"404_room_memory_revision_id_index":                         "room_memory_revision_id_uidx",
+	"406_room_memory_revision_version_index":                    "room_memory_revision_version_uidx",
+	"407_room_cycle_phase_index":                                "room_cycle_phase_idx",
+	"408_room_artifact_memory_revision_index":                   "room_artifact_memory_revision_idx",
+	"410_room_recommendation_review_id_index":                   "room_recommendation_review_id_uidx",
+	"412_room_recommendation_review_identity_index":             "room_recommendation_review_identity_uidx",
+	"415_wiki_page_revision_id_index":                           "wiki_page_revision_id_uidx",
+	"416_wiki_page_revision_number_index":                       "wiki_page_revision_page_number_uidx",
+	"417_wiki_page_revision_list_index":                         "wiki_page_revision_page_created_idx",
+	"418_wiki_page_search_index":                                "wiki_page_search_fts_idx",
+	"419_wiki_page_proposal_id_index":                           "wiki_page_edit_proposal_id_uidx",
+	"420_wiki_page_proposal_idempotency_index":                  "wiki_page_edit_proposal_idempotency_uidx",
+	"421_wiki_page_proposal_list_index":                         "wiki_page_edit_proposal_page_status_idx",
+	"422_lm_wiki_source_policy_index":                           "lm_wiki_source_policy_workspace_uidx",
+	"423_lm_wiki_source_page_index":                             "lm_wiki_source_wiki_page_identity_uidx",
+	"425_twin_binding_id_index":                                 "twin_binding_id_uidx",
+	"426_twin_task_attribution_id_index":                        "twin_task_attribution_id_uidx",
+	"427_twin_run_feedback_id_index":                            "twin_run_feedback_id_uidx",
+	"428_twin_deposition_id_index":                              "twin_deposition_id_uidx",
+	"430_twin_binding_scope_index":                              "twin_binding_workspace_scope_uidx",
+	"431_twin_task_attribution_claim_index":                     "twin_task_attribution_claim_uidx",
+	"432_twin_run_feedback_task_index":                          "twin_run_feedback_workspace_task_uidx",
+	"433_twin_deposition_proposal_index":                        "twin_deposition_workspace_proposal_uidx",
+	"434_twin_deposition_task_index":                            "twin_deposition_workspace_task_idx",
+	"439_twin_proposal_identity_partial_index":                  "twin_proposal_workspace_identity_uidx",
+	"440_twin_deposition_request_index":                         "twin_deposition_workspace_request_uidx",
+	"443_twin_proposal_replacement_index":                       "twin_proposal_workspace_replacement_uidx",
+	"445_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
+	"447_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
+	"450_room_memory_review_key_index":                          "room_memory_review_key_uidx",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction
@@ -321,7 +337,7 @@ var concurrentIndexCleanups = map[string]string{
 // the retry, while a bare CREATE would stay wedged on "already exists"; both
 // cases need direction-specific cleanup before the rollback can retry safely.
 var concurrentDownIndexCleanups = map[string]string{
-	"418_room_turn_identity_index_drop":                     "room_turn_participant_uidx",
+	"444_room_turn_identity_index_drop":                     "room_turn_participant_uidx",
 	"144_drop_agent_task_queue_chat_pending_v1":             "idx_agent_task_queue_chat_pending",
 	"171_drop_legacy_label_namespace_index":                 "issue_label_workspace_name_lower_idx",
 	"256_drop_agent_task_queue_chat_pending_v2":             "idx_agent_task_queue_chat_pending_v2",
@@ -335,7 +351,8 @@ var concurrentDownIndexCleanups = map[string]string{
 	"312_drop_global_plugin_identity_key_index":             "idx_plugin_identity_key",
 	"371_comment_content_search_index_strategy":             "idx_comment_content_trgm",
 	"375_drop_issue_last_activity_index":                    "idx_issue_workspace_last_activity",
-	"412_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
+	"391_drop_agent_task_queue_dispatched_prepare_index":    "idx_agent_task_queue_dispatched_prepare",
+	"438_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
 }
 
 var preMigrationHooks = func() map[string]preMigrationHook {
@@ -354,8 +371,8 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	for version, index := range concurrentDownIndexCleanups {
 		hooks[version] = cleanupInvalidConcurrentIndexHook(index)
 	}
-	hooks["412_drop_twin_proposal_identity_index"] = chainMigrationHooks(
-		hooks["412_drop_twin_proposal_identity_index"],
+	hooks["438_drop_twin_proposal_identity_index"] = chainMigrationHooks(
+		hooks["438_drop_twin_proposal_identity_index"],
 		blockTwinProposalIdentityRollbackHook(pgx.Identifier{"public", "twin_proposal"}.Sanitize()),
 	)
 
@@ -364,7 +381,7 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	// same (cycle_id, agent_id), so never let CREATE UNIQUE INDEX discover that
 	// incompatibility after starting the build. Clean up an interrupted prior
 	// build first, then fail with an actionable, data-preserving diagnostic.
-	const roomTurnIdentityVersion = "418_room_turn_identity_index_drop"
+	const roomTurnIdentityVersion = "444_room_turn_identity_index_drop"
 	hooks[roomTurnIdentityVersion] = chainMigrationHooks(
 		hooks[roomTurnIdentityVersion],
 		preflightRoomTurnIdentityRollback,
@@ -439,7 +456,7 @@ func preflightRoomTurnIdentityRollback(ctx context.Context, pool *pgxpool.Pool) 
 	}
 
 	return fmt.Errorf(
-		"cannot roll back 418_room_turn_identity_index_drop: room_turn contains %d duplicate (cycle_id, agent_id) group(s), including cycle_id=%s agent_id=%s with %d turns; the v1 unique index cannot represent v2 retry/synthesis history. Recovery: keep the v2 schema, or back up each duplicate group plus agent_task_queue.room_turn_id, room_entry.turn_id, room_artifact.turn_id, room_cycle.synthesis_turn_id, and room_memory_revision.synthesis_turn_id references; choose one legacy-compatible turn per cycle/agent; archive or relink every dependent row before removing extra turns; then verify `SELECT cycle_id, agent_id, count(*) FROM room_turn GROUP BY cycle_id, agent_id HAVING count(*) > 1` returns no rows and rerun migrate down",
+		"cannot roll back 444_room_turn_identity_index_drop: room_turn contains %d duplicate (cycle_id, agent_id) group(s), including cycle_id=%s agent_id=%s with %d turns; the v1 unique index cannot represent v2 retry/synthesis history. Recovery: keep the v2 schema, or back up each duplicate group plus agent_task_queue.room_turn_id, room_entry.turn_id, room_artifact.turn_id, room_cycle.synthesis_turn_id, and room_memory_revision.synthesis_turn_id references; choose one legacy-compatible turn per cycle/agent; archive or relink every dependent row before removing extra turns; then verify `SELECT cycle_id, agent_id, count(*) FROM room_turn GROUP BY cycle_id, agent_id HAVING count(*) > 1` returns no rows and rerun migrate down",
 		duplicateGroups,
 		cycleID,
 		agentID,
@@ -701,18 +718,13 @@ func main() {
 		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
 	}
 
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dbURL)
+	startupSettings := dbstartup.SettingsFromEnv()
+	pool, err := dbstartup.NewPool(context.Background(), dbURL, startupSettings.ConnectTimeout)
 	if err != nil {
 		slog.Error("unable to connect to database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("unable to ping database", "error", err)
-		os.Exit(1)
-	}
 
 	files, err := migrations.Files(direction)
 	if err != nil {
@@ -720,13 +732,50 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := runMigrations(ctx, pool, runOptions{
+	options := runOptions{
 		Direction:  direction,
 		Files:      files,
 		Hooks:      hooksForDirection(direction),
 		Conditions: conditionsForDirection(direction),
-	}); err != nil {
-		slog.Error("migration run failed", "error", err)
+	}
+	startupCtx, stopStartup := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopStartup()
+	retryOptions := startupSettings.RetryOptions()
+	retryOptions.ShouldRetry = dbstartup.IsTransientDatabaseError
+	retryOptions.OnRetry = func(event dbstartup.RetryEvent) {
+		slog.Warn("database unavailable before migrations; retrying",
+			"attempt", event.Attempt,
+			"retry_in", event.Delay,
+			"error", event.Err,
+		)
+	}
+	if err := dbstartup.Retry(startupCtx, retryOptions, pool.Ping); err != nil {
+		slog.Error("unable to ping database", "error", err)
+		os.Exit(1)
+	}
+
+	migrationErr := runMigrations(startupCtx, pool, options)
+	if migrationErr != nil && startupSettings.StartupTimeout > 0 && dbstartup.IsTransientDatabaseError(migrationErr) {
+		slog.Warn("migration interrupted by database unavailability; retrying", "error", migrationErr)
+		migrationRetryOptions := startupSettings.RetryOptions()
+		migrationRetryOptions.ShouldRetry = dbstartup.IsTransientDatabaseError
+		migrationRetryOptions.AllowOperationPastTimeout = true
+		migrationRetryOptions.OnRetry = func(event dbstartup.RetryEvent) {
+			slog.Warn("database unavailable during migration retry",
+				"attempt", event.Attempt,
+				"retry_in", event.Delay,
+				"error", event.Err,
+			)
+		}
+		migrationErr = dbstartup.Retry(startupCtx, migrationRetryOptions, func(attemptCtx context.Context) error {
+			if err := pool.Ping(attemptCtx); err != nil {
+				return fmt.Errorf("ping database: %w", err)
+			}
+			return runMigrations(attemptCtx, pool, options)
+		})
+	}
+	if migrationErr != nil {
+		slog.Error("migration run failed", "error", migrationErr)
 		os.Exit(1)
 	}
 

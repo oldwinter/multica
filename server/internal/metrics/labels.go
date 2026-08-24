@@ -41,6 +41,7 @@ const (
 	labelEdited       = "edited"
 	labelRating       = "rating"
 	labelExclusion    = "exclusion_code"
+	labelSurface      = "surface"
 )
 
 var businessMetricLabels = map[string][]string{
@@ -120,6 +121,7 @@ var businessMetricLabels = map[string][]string{
 	"multica_wiki_search_total":                        {labelScope, labelResult},
 	"multica_wiki_proposal_review_total":               {labelDecision, labelEdited},
 	"multica_lm_wiki_review_total":                     {labelDecision},
+	"multica_issue_window_decision_total":              {labelAction, labelSurface, labelResult},
 }
 
 var knownRoomEvents = map[string]string{

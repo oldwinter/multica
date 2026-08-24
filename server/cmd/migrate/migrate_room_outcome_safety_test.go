@@ -25,13 +25,13 @@ func TestRoomPrimaryKeyMigrationsReplayAfterDDLSuccessBeforeLedger(t *testing.T)
 		pkName    string
 	}{
 		{
-			version:   "379_room_memory_revision_primary_key",
+			version:   "405_room_memory_revision_primary_key",
 			tableName: "room_memory_revision",
 			indexName: "room_memory_revision_id_uidx",
 			pkName:    "room_memory_revision_pkey",
 		},
 		{
-			version:   "385_room_recommendation_review_primary_key",
+			version:   "411_room_recommendation_review_primary_key",
 			tableName: "room_recommendation_review",
 			indexName: "room_recommendation_review_id_uidx",
 			pkName:    "room_recommendation_review_pkey",
@@ -98,7 +98,7 @@ func TestRoomPrimaryKeyMigrationRejectsSameNameWithWrongShape(t *testing.T) {
 		t.Fatalf("create candidate Room revision index: %v", err)
 	}
 
-	path := filepath.Join("..", "..", "migrations", "379_room_memory_revision_primary_key.up.sql")
+	path := filepath.Join("..", "..", "migrations", "405_room_memory_revision_primary_key.up.sql")
 	err := runMigrations(ctx, pool, runOptions{
 		Direction:             "up",
 		Files:                 []string{path},
@@ -128,7 +128,7 @@ func TestRoomTurnIdentityMigrationReplayAndRollbackPreflight(t *testing.T) {
 		t.Fatalf("create v1 Room turn identity index: %v", err)
 	}
 
-	const version = "418_room_turn_identity_index_drop"
+	const version = "444_room_turn_identity_index_drop"
 	upPath := filepath.Join("..", "..", "migrations", version+".up.sql")
 	downPath := filepath.Join("..", "..", "migrations", version+".down.sql")
 	runRoomMigrationFile(t, ctx, pool, schema, "up", upPath, hooksForDirection("up"))
@@ -162,7 +162,7 @@ func TestRoomTurnIdentityMigrationReplayAndRollbackPreflight(t *testing.T) {
 		t.Fatal("rollback unexpectedly accepted duplicate v2 Room turns")
 	}
 	for _, want := range []string{
-		"cannot roll back 418_room_turn_identity_index_drop",
+		"cannot roll back 444_room_turn_identity_index_drop",
 		"duplicate (cycle_id, agent_id) group(s)",
 		cycleID,
 		agentID,
