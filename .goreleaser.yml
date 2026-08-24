@@ -64,6 +64,11 @@ changelog:
       - "^test:"
       - "^chore:"
 
+# Suffix tags (for example v0.4.32-oldwinter.2) are downstream prereleases.
+# GoReleaser defaults to stable releases unless this is explicitly enabled.
+release:
+  prerelease: auto
+
 brews:
   - name: multica
     ids:
