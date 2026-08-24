@@ -21,7 +21,9 @@ jobs:
   # a `go test -race` run. The outputs are consumed by the focused jobs
   # below.
   changes:
-    runs-on: ubuntu-latest
+    # Trusted pushes and same-repository PRs use the repository runner. Code
+    # from external forks stays on an ephemeral GitHub-hosted runner.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     permissions:
       contents: read
       pull-requests: read
@@ -56,6 +58,8 @@ jobs:
               - 'turbo.json'
               - 'knip.jsonc'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/downstream-features.yml'
+              - 'scripts/test-downstream-feature.sh'
               - 'scripts/generate-reserved-slugs.mjs'
               - 'server/internal/handler/reserved_slugs.json'
               - 'scripts/check-ui-wildcard-exports.mjs'
@@ -111,6 +115,8 @@ jobs:
               - 'scripts/makefile-build.test.sh'
               - 'Makefile'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/downstream-features.yml'
+              - 'scripts/test-downstream-feature.sh'
             sqlc:
               - 'server/pkg/db/queries/**'
               - 'server/pkg/db/generated/**'
@@ -167,7 +173,7 @@ jobs:
 
   sqlc-check:
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Checkout
         if: ${{ needs.changes.outputs.sqlc == 'true' }}
@@ -202,7 +208,7 @@ jobs:
   # increases total runner-minutes but reduces wall-clock feedback time.
   frontend-build:
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     env:
       # Pin turbo's filesystem cache somewhere actions/cache can address.
       TURBO_CACHE_DIR: .turbo/cache
@@ -313,7 +319,7 @@ jobs:
 
   frontend-test:
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     env:
       TURBO_CACHE_DIR: .turbo/cache
     steps:
@@ -375,7 +381,7 @@ jobs:
             total: 2
           - index: 2
             total: 2
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     env:
       TURBO_CACHE_DIR: .turbo/cache
     steps:
@@ -432,7 +438,7 @@ jobs:
     # is cancelled by the concurrency group above, and there is no reason to
     # spend a runner reporting a verdict nobody will read.
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Check frontend job results
         env:
@@ -450,7 +456,7 @@ jobs:
 
   backend-tests:
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     # `services` cannot be conditional, so the Postgres and Redis containers
     # still start on a filtered PR. That is ~1 minute of runner time against
     # the several minutes the gated steps below cost; job-level `if` would
@@ -465,7 +471,7 @@ jobs:
           POSTGRES_USER: multica
           POSTGRES_PASSWORD: multica
         ports:
-          - 5432:5432
+          - 55432:5432
         options: >-
           --health-cmd "pg_isready -U multica -d multica"
           --health-interval 5s
@@ -474,19 +480,19 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - 56379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://multica:multica@localhost:5432/multica?sslmode=disable
+      DATABASE_URL: postgres://multica:multica@localhost:55432/multica?sslmode=disable
       # Wires up the RedisLocalSkill*_test.go suite. Distinct from REDIS_URL
       # (which would flip the server binary itself onto the Redis-backed
       # realtime relay + request stores); the tests talk to this Redis
       # directly so they run alongside the Postgres-backed suite.
-      REDIS_TEST_URL: redis://localhost:6379/1
+      REDIS_TEST_URL: redis://localhost:56379/1
     steps:
       - name: Checkout
         if: ${{ needs.changes.outputs.backend == 'true' }}
@@ -538,7 +544,7 @@ jobs:
   # The aggregate backend job below still treats both jobs as one merge gate.
   go-vulnerability-scan:
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Checkout
         if: ${{ needs.changes.outputs.backend == 'true' }}
@@ -564,7 +570,7 @@ jobs:
   backend:
     needs: [backend-tests, sqlc-check, go-vulnerability-scan]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Check backend job results
         env:
@@ -758,7 +764,7 @@ jobs:
     # and the branch it came from was already checked.
     needs: changes
     if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.images == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

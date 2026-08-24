@@ -459,10 +459,11 @@ func TestWikiPageCRUDThroughRouter(t *testing.T) {
 		t.Fatalf("create wiki page: status %d body %s", createResp.StatusCode, body)
 	}
 	var created struct {
-		ID      string `json:"id"`
-		Path    string `json:"path"`
-		Content string `json:"content"`
-		Scope   string `json:"scope"`
+		ID             string `json:"id"`
+		Path           string `json:"path"`
+		Content        string `json:"content"`
+		Scope          string `json:"scope"`
+		RevisionNumber int64  `json:"current_revision_number"`
 	}
 	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
 		t.Fatalf("decode create: %v", err)
@@ -515,7 +516,8 @@ func TestWikiPageCRUDThroughRouter(t *testing.T) {
 	}
 
 	updateResp := authRequest(t, "PUT", "/api/wiki/pages/"+created.ID, map[string]any{
-		"content": "# Home\n\nUpdated.",
+		"content":                  "# Home\n\nUpdated.",
+		"expected_revision_number": created.RevisionNumber,
 	})
 	defer updateResp.Body.Close()
 	if updateResp.StatusCode != http.StatusOK {

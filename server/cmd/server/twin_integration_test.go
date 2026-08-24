@@ -29,13 +29,30 @@ func TestTwinHTTPThroughRouterAuthorizationAndLifecycle(t *testing.T) {
 		t.Fatalf("create Twin router owner: %v", err)
 	}
 	memberID, memberToken := createTwinRouterUser(t, workspaceID, "member")
-	content := json.RawMessage(`{"schema_version":1,"issues":[],"projects":[],"project_resources":[],"autopilot_runs":[]}`)
-	revision, err := queries.CreateLMWikiRevision(ctx, db.CreateLMWikiRevisionParams{WorkspaceID: workspaceID, SourceDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Content: content, TriggerKind: "manual"})
+	wikiService := service.NewWikiService(queries, testPool)
+	policy, err := wikiService.UpdateSourcePolicy(ctx, workspaceID, parseRouterUUID(t, testUserID), service.LMWikiSourcePolicy{
+		SourceClasses: []string{}, RemoteGenerationEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("enable Twin router generation policy: %v", err)
+	}
+	snapshot, err := service.BuildLMWikiSnapshot(service.LMWikiSourceSnapshot{EgressPolicy: service.LMWikiEgressPolicy{
+		RemoteGenerationEnabled: policy.RemoteGenerationEnabled,
+		PolicyVersion:           policy.PolicyVersion, PolicyDigest: policy.PolicyDigest,
+	}})
+	if err != nil {
+		t.Fatalf("build Twin router Wiki: %v", err)
+	}
+	revision, err := queries.CreateLMWikiRevision(ctx, db.CreateLMWikiRevisionParams{
+		WorkspaceID: workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON,
+		SourcePolicyVersion: policy.PolicyVersion, SourcePolicyDigest: policy.PolicyDigest,
+		RemoteGenerationEnabled: true, TriggerKind: "manual", RequestedByID: parseRouterUUID(t, testUserID),
+	})
 	if err != nil {
 		t.Fatalf("create Twin router Wiki: %v", err)
 	}
 	revisionID = revision.ID
-	if _, err := queries.CreateLMWikiReview(ctx, db.CreateLMWikiReviewParams{WorkspaceID: workspaceID, RevisionID: revisionID, Decision: "accepted", ReviewerID: parseRouterUUID(t, testUserID)}); err != nil {
+	if _, err := wikiService.Review(ctx, workspaceID, revisionID, parseRouterUUID(t, testUserID), "accepted", ""); err != nil {
 		t.Fatalf("accept Twin router Wiki: %v", err)
 	}
 	adminID, adminToken := createTwinRouterUser(t, workspaceID, "admin")

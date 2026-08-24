@@ -28,6 +28,8 @@ on:
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/mobile-verify.yml"
+      - ".github/workflows/downstream-features.yml"
+      - "scripts/test-downstream-feature.sh"
   pull_request:
     branches: [main]
     paths:
@@ -38,6 +40,8 @@ on:
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/mobile-verify.yml"
+      - ".github/workflows/downstream-features.yml"
+      - "scripts/test-downstream-feature.sh"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -45,7 +49,8 @@ concurrency:
 
 jobs:
   mobile:
-    runs-on: ubuntu-latest
+    # External fork PRs must not execute arbitrary code on the persistent host.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/multica-ai/multica/server/internal/service"
 )
 
 func TestLMWikiHTTPEmptyAndProtectedRoutes(t *testing.T) {
@@ -70,7 +72,23 @@ func TestLMWikiHTTPEmptyAndProtectedRoutes(t *testing.T) {
 
 func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	resetLMWikiHTTPFixture(t)
+	previousGenerator := testHandler.TwinService.ProposalGenerator
+	testHandler.TwinService.ProposalGenerator = service.InventoryTwinProposalGenerator{}
+	t.Cleanup(func() { testHandler.TwinService.ProposalGenerator = previousGenerator })
 	projectID, resourceID := seedLMWikiHTTPSources(t)
+	policyResponse := lmWikiHTTPRequest(
+		t,
+		testToken,
+		testWorkspaceID,
+		http.MethodPut,
+		"/api/lm-wiki/source-policy",
+		strings.NewReader(`{"source_classes":["autopilot_run","issue","project","project_resource"],"wiki_pages":[],"remote_generation_enabled":true}`),
+	)
+	defer policyResponse.Body.Close()
+	if policyResponse.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(policyResponse.Body)
+		t.Fatalf("enable Twin generation policy status = %d body = %s", policyResponse.StatusCode, body)
+	}
 	badRefresh := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/refresh", bytes.NewBufferString(`{}`))
 	defer badRefresh.Body.Close()
 	if badRefresh.StatusCode != http.StatusBadRequest {
@@ -162,6 +180,28 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	if repeatedAccept.StatusCode != http.StatusOK {
 		t.Fatalf("repeated accept status = %d", repeatedAccept.StatusCode)
 	}
+	afterAcceptResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/twins", nil)
+	var afterAccept struct {
+		Pending   *json.RawMessage  `json:"pending_proposal"`
+		Proposals []json.RawMessage `json:"proposals"`
+	}
+	decodeLMWikiHTTP(t, afterAcceptResponse, &afterAccept)
+	if afterAcceptResponse.StatusCode != http.StatusOK || afterAccept.Pending != nil || len(afterAccept.Proposals) != 0 {
+		t.Fatalf("Twin overview before explicit proposal = %+v, status = %d", afterAccept, afterAcceptResponse.StatusCode)
+	}
+	proposalResponse := lmWikiHTTPRequest(
+		t,
+		testToken,
+		testWorkspaceID,
+		http.MethodPost,
+		"/api/twins/proposals",
+		strings.NewReader(`{"wiki_revision_id":"`+first.Revision.ID+`"}`),
+	)
+	defer proposalResponse.Body.Close()
+	if proposalResponse.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(proposalResponse.Body)
+		t.Fatalf("explicit Twin proposal status = %d body = %s", proposalResponse.StatusCode, body)
+	}
 	twinResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/twins", nil)
 	var twinOverview struct {
 		Pending struct {
@@ -173,7 +213,7 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	}
 	decodeLMWikiHTTP(t, twinResponse, &twinOverview)
 	if twinResponse.StatusCode != http.StatusOK || twinOverview.Pending.Kind != "initial" || twinOverview.Pending.SourceWikiRevisionID != first.Revision.ID || twinOverview.Pending.Review != nil || len(twinOverview.Versions) != 0 {
-		t.Fatalf("automatic Twin overview = %+v, status = %d", twinOverview, twinResponse.StatusCode)
+		t.Fatalf("explicit Twin overview = %+v, status = %d", twinOverview, twinResponse.StatusCode)
 	}
 
 	if _, err := testPool.Exec(context.Background(), `UPDATE issue SET title = 'LM Wiki HTTP changed issue', updated_at = now() WHERE workspace_id = $1 AND title = 'LM Wiki HTTP safe issue'`, testWorkspaceID); err != nil {

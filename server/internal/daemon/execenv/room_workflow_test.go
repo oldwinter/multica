@@ -7,7 +7,7 @@ import (
 
 func TestRoomWorkflowUsesDedicatedRoomPath(t *testing.T) {
 	costLimit := int64(17)
-	content := buildMetaSkillContentSlim("codex", TaskContextForEnv{
+	task := TaskContextForEnv{
 		RoomID:             "room-1",
 		RoomCycleID:        "cycle-1",
 		RoomTurnID:         "turn-1",
@@ -18,7 +18,8 @@ func TestRoomWorkflowUsesDedicatedRoomPath(t *testing.T) {
 		AutopilotID:        "autopilot-sentinel",
 		AgentName:          "Reviewer",
 		AgentID:            "agent-1",
-	})
+	}
+	content := buildMetaSkillContentSlim("codex", task)
 
 	if count := strings.Count(content, "### Workflow"); count != 1 {
 		t.Fatalf("Workflow section count = %d, want 1", count)
@@ -28,7 +29,8 @@ func TestRoomWorkflowUsesDedicatedRoomPath(t *testing.T) {
 			t.Errorf("Room workflow contains Autopilot sentinel %q", sentinel)
 		}
 	}
-	if !strings.Contains(content, "17 ticks") {
-		t.Fatalf("Room workflow omits cost limit:\n%s", content)
+	context := renderIssueContext("codex", task)
+	if !strings.Contains(context, "17 ticks") {
+		t.Fatalf("Room context omits cost limit:\n%s", context)
 	}
 }

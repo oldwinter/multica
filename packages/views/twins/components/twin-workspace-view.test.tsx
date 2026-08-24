@@ -36,7 +36,7 @@ describe("TwinWorkspaceView", () => {
   it("uses the shared mobile page header and reserves localized workspace clearance", () => {
     renderView();
 
-    expect(screen.getByRole("button", { name: "Toggle Sidebar" })).toHaveClass("xl:hidden");
+    expect(screen.getByRole("button", { name: "Toggle left sidebar" })).toHaveClass("xl:hidden");
     expect(screen.getByRole("main")).toHaveAttribute("data-twin-copy");
     expect(screen.getByRole("main").firstElementChild).toHaveClass("border-b");
     expect(screen.getByTestId("twin-workspace-content")).toHaveClass("pb-chat-launcher");
