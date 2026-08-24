@@ -290,6 +290,35 @@ describe("useIssueActions", () => {
     );
   });
 
+  it("copyIdentifier writes the human-readable issue key to the clipboard", async () => {
+    const { result } = renderHook(() => useIssueActions(mockIssue), { wrapper });
+
+    await act(async () => {
+      await result.current.copyIdentifier();
+    });
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("TES-1");
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  it("copyIdentifier reports clipboard failures", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error("blocked")) },
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => false),
+    });
+    const { result } = renderHook(() => useIssueActions(mockIssue), { wrapper });
+
+    await act(async () => {
+      await result.current.copyIdentifier();
+    });
+
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
   it("copyMarkdownLink writes a labeled Markdown reference to the clipboard", async () => {
     const issue = { ...mockIssue, title: "Review [agent] output" } as Issue;
     const { result } = renderHook(() => useIssueActions(issue), { wrapper });

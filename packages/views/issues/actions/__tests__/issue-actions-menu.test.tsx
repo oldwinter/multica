@@ -206,6 +206,7 @@ describe("IssueActionsDropdown", () => {
     expect(screen.getByText("Due date")).toBeInTheDocument();
     expect(screen.getByText("Open in new tab")).toBeInTheDocument();
     expect(screen.getByText("Copy link")).toBeInTheDocument();
+    expect(screen.getByText("Copy identifier")).toBeInTheDocument();
     expect(screen.getByText("Copy as Markdown")).toBeInTheDocument();
     expect(screen.getByText("Relations")).toBeInTheDocument();
     expect(screen.getByText("Delete issue")).toBeInTheDocument();
