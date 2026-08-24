@@ -187,6 +187,10 @@ jobs:
           check-latest: true
           cache-dependency-path: server/go.sum
 
+      - name: Use disk-backed Go temp directory
+        if: ${{ needs.changes.outputs.sqlc == 'true' }}
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Verify generated SQL is up to date
         if: ${{ needs.changes.outputs.sqlc == 'true' }}
         run: |
@@ -281,12 +285,14 @@ jobs:
 
       - name: Build, type check, and lint
         if: ${{ needs.changes.outputs.frontend == 'true' }}
+        env:
+          TURBO_CONCURRENCY: ${{ runner.environment == 'self-hosted' && '1' || '100%' }}
         # Mobile lives in a parallel mobile-verify workflow (path-filtered
         # to apps/mobile/** + packages/core/**) so it doesn't add
         # ~50s of expo-lint + tsc to every web/desktop PR. Keep this
         # filter in sync with the root package.json scripts, which also
         # exclude @multica/mobile.
-        run: pnpm exec turbo build typecheck lint --filter='!@multica/docs' --filter='!@multica/mobile'
+        run: pnpm exec turbo build typecheck lint --concurrency="$TURBO_CONCURRENCY" --filter='!@multica/docs' --filter='!@multica/mobile'
 
       # Blocking from the start: it reports nothing today, and it covers the
       # one regression knip structurally cannot see. packages/ui exports four
@@ -508,6 +514,10 @@ jobs:
           check-latest: true
           cache-dependency-path: server/go.sum
 
+      - name: Use disk-backed Go temp directory
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Setup Helm
         if: ${{ needs.changes.outputs.backend == 'true' }}
         uses: azure/setup-helm@v4
@@ -559,6 +569,10 @@ jobs:
           go-version: "1.26.x"
           check-latest: true
           cache-dependency-path: server/go.sum
+
+      - name: Use disk-backed Go temp directory
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Scan Go vulnerabilities
         if: ${{ needs.changes.outputs.backend == 'true' }}

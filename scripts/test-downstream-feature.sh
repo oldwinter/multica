@@ -64,12 +64,19 @@ case "$feature" in
       twins \
       api/lm-wiki-twin-schemas.test.ts \
       realtime/twin-realtime.test.ts
-    run_vitest packages/views twins
+    run_vitest packages/views \
+      twins \
+      common/task-transcript/agent-transcript-dialog.test.tsx \
+      common/task-transcript/transcript-button.test.tsx \
+      issues/components/issue-agent-header-chip.test.tsx
     ;;
   appearance)
     run_go ./internal/handler -run Appearance
     run_vitest packages/core appearance
-    run_vitest packages/views appearance settings/components/preferences-tab.test.tsx
+    run_vitest packages/views \
+      appearance \
+      locales/parity.test.ts \
+      settings/components/preferences-tab.test.tsx
     run_vitest apps/web app/text-contrast.test.ts
     run_vitest apps/mobile \
       data/appearance-analytics.test.ts \

@@ -148,7 +148,7 @@ describe("bare entity URLs in readonly content", () => {
 
     expect(queryByTestId("issue-chip")).toBeNull();
     expect(
-      container.querySelector(`a[href="${APP_ORIGIN}/acme/issues/MUL-404"]`),
+      container.querySelector('a[href="/acme/issues/MUL-404"]'),
     ).not.toBeNull();
   });
 
@@ -174,7 +174,7 @@ describe("bare entity URLs in readonly content", () => {
     expect(queryByTestId("project-chip")).toBeNull();
     expect(
       container.querySelector(
-        `a[href="${APP_ORIGIN}/other-ws/projects/${PROJECT_ID}"]`,
+        `a[href="/other-ws/projects/${PROJECT_ID}"]`,
       ),
     ).not.toBeNull();
   });

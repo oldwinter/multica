@@ -54,6 +54,9 @@ jobs:
           check-latest: true
           cache-dependency-path: server/go.sum
 
+      - name: Use disk-backed Go temp directory
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 

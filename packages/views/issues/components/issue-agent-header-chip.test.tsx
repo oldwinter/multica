@@ -20,8 +20,11 @@ const mockState = vi.hoisted(() => ({
 vi.mock("@multica/core/api", () => ({
   api: {
     listTaskMessages: vi.fn(),
+    getTwinTaskContext: vi.fn(),
   },
 }));
+
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-test" }));
 
 vi.mock("@multica/core/workspace/hooks", () => ({
   useActorName: () => ({
@@ -135,6 +138,7 @@ vi.mock("@tanstack/react-query", async () => {
 import { IssueAgentHeaderChip } from "./issue-agent-header-chip";
 
 const listTaskMessages = vi.mocked(api.listTaskMessages);
+const getTwinTaskContext = vi.mocked(api.getTwinTaskContext);
 
 const LIVE_TASK_ID = "4a2e8d1c-7f9b-4e2a-9c1d-123456789abc";
 
@@ -186,6 +190,13 @@ beforeEach(() => {
   mockState.triggerProps = undefined;
   listTaskMessages.mockReset();
   listTaskMessages.mockResolvedValue([]);
+  getTwinTaskContext.mockReset();
+  getTwinTaskContext.mockResolvedValue({
+    taskId: LIVE_TASK_ID,
+    depositions: [],
+    assertions: [],
+    citations: [],
+  });
 });
 
 describe("IssueAgentHeaderChip", () => {
