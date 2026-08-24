@@ -7,6 +7,22 @@ version tag such as `v0.18.4`. The Release workflow intentionally has no manual
 trigger: a tag push is the only event that can publish binaries, Homebrew
 formulae, and container images.
 
+The canonical `multica-ai/multica` repository publishes its Homebrew formula to
+`multica-ai/homebrew-tap`. Forks do not need that token: they publish CLI
+archives, checksums, Linux/Windows Desktop installers, update metadata, and
+container images to their own GitHub repository/package namespace, while the
+Homebrew upload is skipped. Use a clearly downstream tag such as
+`v0.18.4-oldwinter.1` so it remains distinct from upstream releases and is
+classified as a prerelease.
+
+The Desktop jobs use the tag workflow's built-in `GITHUB_TOKEN` and the
+`GITHUB_REPOSITORY` identity supplied by Actions. No personal access token is
+required. Linux produces AppImage, deb, and rpm artifacts for x64 and arm64;
+Windows produces NSIS installers for x64 and arm64. These packages are unsigned.
+macOS remains a manual signed/notarized release until the Apple certificate and
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` secrets are wired
+into CI.
+
 The verification job runs the Go tests and `govulncheck` before any publishing
 job starts. The vulnerability scan is fail-closed by default.
 

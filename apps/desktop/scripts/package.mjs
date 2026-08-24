@@ -161,6 +161,24 @@ function uniqueOrdered(values) {
   return [...new Set(values)];
 }
 
+/**
+ * Convert GitHub Actions' `owner/repo` identity into electron-builder CLI
+ * overrides. The checked-in config remains the canonical upstream default,
+ * while tag builds in a fork publish artifacts and update metadata back to
+ * that fork. Restrict the value to GitHub's repository-name character set
+ * because electron-builder is spawned through a platform shell on Windows.
+ */
+export function githubPublisherArgs(repository) {
+  if (!repository) return [];
+  const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(repository);
+  if (!match) {
+    throw new Error(
+      `[package] invalid GITHUB_REPOSITORY value: ${JSON.stringify(repository)}`,
+    );
+  }
+  return [`-c.publish.owner=${match[1]}`, `-c.publish.repo=${match[2]}`];
+}
+
 export function envWithLocalBins(env = process.env, root = desktopRoot) {
   const pathKey =
     Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
@@ -313,6 +331,7 @@ export function builderArgsForTarget(
   {
     disableMacNotarize = false,
     hostPlatform = process.platform,
+    publishRepositoryArgs = [],
     useScopedOutputDir = false,
   } = {},
 ) {
@@ -335,6 +354,9 @@ export function builderArgsForTarget(
   }
   builderArgs.push(`--${target.arch}`);
   builderArgs.push(...parsed.sharedArgs);
+  // Keep these after caller-provided shared args so the trusted Actions
+  // repository identity wins over electron-builder.yml and ad-hoc CLI input.
+  builderArgs.push(...publishRepositoryArgs);
   if (useScopedOutputDir) {
     builderArgs.push(
       `-c.directories.output=dist/${target.platform}-${target.arch}`,
@@ -362,9 +384,17 @@ function main() {
   const passthrough = stripLeadingSeparator(process.argv.slice(2));
   const parsed = parsePackageArgs(passthrough);
   const buildMatrix = resolveBuildMatrix(parsed);
+  const publishRepositoryArgs = githubPublisherArgs(
+    process.env.GITHUB_REPOSITORY,
+  );
   console.log(
     `[package] build matrix → ${buildMatrix.map(formatTarget).join(", ")}`,
   );
+  if (publishRepositoryArgs.length > 0) {
+    console.log(
+      `[package] GitHub publisher → ${process.env.GITHUB_REPOSITORY}`,
+    );
+  }
 
   // Step 0: start every release from an empty output directory. Stale
   // artifacts from a prior run would otherwise be repacked into this run's
@@ -450,6 +480,7 @@ function main() {
     const builderArgs = builderArgsForTarget(target, parsed, version, {
       disableMacNotarize,
       hostPlatform: process.platform,
+      publishRepositoryArgs,
       useScopedOutputDir,
     });
 

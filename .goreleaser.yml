@@ -73,6 +73,11 @@ brews:
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    # Fork releases still publish CLI archives to their own GitHub Release,
+    # but must never attempt to write to the canonical upstream tap. The
+    # Actions runtime always exports GITHUB_REPOSITORY_OWNER; an unset value
+    # also skips the upload, which keeps local/snapshot runs fail-safe.
+    skip_upload: '{{ ne .Env.GITHUB_REPOSITORY_OWNER "multica-ai" }}'
     directory: Formula
     homepage: "https://github.com/multica-ai/multica"
     description: "Multica CLI — local agent runtime and management tool for the Multica platform"
