@@ -185,6 +185,7 @@ jobs:
         with:
           go-version: "1.26.x"
           check-latest: true
+          cache: ${{ runner.environment != 'self-hosted' }}
           cache-dependency-path: server/go.sum
 
       - name: Use disk-backed Go temp directory
@@ -512,6 +513,7 @@ jobs:
           # CI follows the newest 1.26 patch available to setup-go.
           go-version: "1.26.x"
           check-latest: true
+          cache: ${{ runner.environment != 'self-hosted' }}
           cache-dependency-path: server/go.sum
 
       - name: Use disk-backed Go temp directory
@@ -568,6 +570,7 @@ jobs:
           # CI follows the newest 1.26 patch available to setup-go.
           go-version: "1.26.x"
           check-latest: true
+          cache: ${{ runner.environment != 'self-hosted' }}
           cache-dependency-path: server/go.sum
 
       - name: Use disk-backed Go temp directory
