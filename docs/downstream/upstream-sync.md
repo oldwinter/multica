@@ -38,8 +38,34 @@ This sync added three useful proof techniques:
    upstream gate retirement survived.
 
 Targeted verification covered `server/internal/featureflags` and the handler
-config/Twin contract. Both passed with Go 1.26.7, and `git diff --check`, marker
-search, unmerged-path search, and the upstream ancestor check were clean.
+config/Twin contract. Both passed with Go 1.26.7.
+
+The Git merge had only one textual conflict, but the existing downstream
+database exposed a second, runtime-only conflict. Downstream outcome-loop
+migrations had been published, then renumbered twice while their original full
+filename stems remained in `schema_migrations`. `migrate up` therefore tried to
+replay current `414_wiki_knowledge_loop` over a database that had already
+applied the same DDL as `420_wiki_knowledge_loop`, failing on the existing
+`wiki_page.current_revision_number` column.
+
+Commit `56dd91f25` repairs the upgrade path with an explicit, append-only alias
+map for all 52 affected Rooms, Wiki, Twin, and appearance migrations. When an
+old identity is present, the migrator records the current identity without
+executing its SQL; rollback removes both current and old identities. Tests
+prove SQL is skipped on upgrade, rollback does not leave a stale identity, all
+alias targets exist, and both historical `up.sql` generations are byte-for-byte
+identical to the current files. The real pre-merge database then upgraded to
+completion: ten Wiki migrations plus the Wiki primary-key migration were
+reconciled, while genuinely pending Twin and Room migrations executed normally.
+
+This yields a fourth proof technique: always run the merged migrator against a
+database carrying the pre-merge downstream ledger. A clean Git index, fresh
+database, or migration lint cannot reveal a published-filename replay.
+
+TypeScript typecheck passed 7/7 workspace tasks. A broad Vitest pass was stopped
+after it created sustained worker load; its two search-command timeouts passed
+36/36 when isolated. `git diff --check`, marker search, unmerged-path search,
+sqlc regeneration, and the upstream ancestor check were clean.
 
 ## 2026-08-20 Sync
 
@@ -60,7 +86,9 @@ renumbering either history would make existing installations replay DDL. The
 merged checkout therefore freezes the exact duplicate stem sets and registers
 every local concurrent index with the migrator's invalid-index cleanup hooks.
 New migrations must still use the next unique prefix after the repository
-maximum.
+maximum. Later outcome-loop renumbering violated this identity rule; the
+2026-08-25 compatibility map repairs those already-published names, but is not
+permission to rename another migration.
 
 ## 2026-08-17 Sync
 
@@ -105,10 +133,13 @@ Also reserved the `rooms` workspace slug during this sync. New
 
 6. Compare each resolution to both parents; relative to upstream, only the
    intended downstream delta should remain.
-7. Keep local modules out of upstream hubs when a follow-up refactor is
+7. If migrations changed, run `migrate up` against both a fresh database and a
+   database carrying the pre-merge downstream `schema_migrations` ledger. Run
+   it twice on the latter to prove reconciliation is idempotent.
+8. Keep local modules out of upstream hubs when a follow-up refactor is
    cheap. Prefer `packages/core/rooms`, `packages/core/twins`,
    `packages/core/wiki` and thin registration points.
-8. After the merge, search for leftover conflict markers, then run the
+9. After the merge, search for leftover conflict markers, then run the
    narrowest compile/test you can (`make test`, `pnpm typecheck`, or the
    packages you touched).
 
@@ -147,6 +178,13 @@ only during a sync.
    upstream commits is what turned additive patches into hub rewrites.
    Merge `upstream/main` after each local feature lands, not after a
    stack of them.
+9. **Migration identity is immutable after publication.**
+   `schema_migrations` stores the complete filename stem. Never renumber a
+   migration that may have reached a user database, even to remove a numeric
+   collision. Preserve both stems and freeze the duplicate in lint. If a
+   historical rename already shipped, reconcile only byte-identical `up.sql`
+   identities through the migrator's explicit alias map and test an existing
+   ledger; making the DDL broadly idempotent can conceal a different schema.
 
 ## Local Ownership Map
 

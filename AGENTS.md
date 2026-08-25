@@ -67,5 +67,6 @@ as the conflict-history and ownership authority.
 That page records the 2026-08-25 `v0.4.33` sync (21 upstream commits,
 one conflict), earlier high-conflict syncs, and the rules that keep the
 next merge small: own a leaf and register at a point, preserve lifecycle
-intent instead of unioning conflict blocks, regenerate outputs, and sync
-after each local feature rather than after a stack of them.
+intent instead of unioning conflict blocks, preserve published migration
+identities and test an existing downstream ledger, regenerate outputs, and
+sync after each local feature rather than after a stack of them.

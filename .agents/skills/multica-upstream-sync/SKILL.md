@@ -1,6 +1,6 @@
 ---
 name: multica-upstream-sync
-description: Synchronize oldwinter/multica with multica-ai/multica upstream/main, including divergence preview, ownership-aware conflict resolution, generated-file regeneration, and merge validation. Use in this repository when asked to sync or merge upstream or resolve conflicts caused by upstream/main; do not use for ordinary branch merges.
+description: Synchronize oldwinter/multica with multica-ai/multica upstream/main, including divergence preview, ownership-aware conflict resolution, migration-ledger compatibility, generated-file regeneration, and merge validation. Use in this repository when asked to sync or merge upstream or resolve conflicts caused by upstream/main; do not use for ordinary branch merges.
 ---
 
 # Multica Upstream Sync
@@ -45,8 +45,23 @@ entries and auto-merge messages, then compare paths changed on both sides. Do
 not infer the final conflict count from auto-merge output; capture the unique
 unmerged paths immediately after the real merge.
 
+Preview migration history separately. Git can merge two migration sequences
+without a text conflict even though the resulting upgrade path is invalid:
+
+```bash
+merge_base=$(git merge-base main upstream/main)
+git diff --name-status "$merge_base"..main -- server/migrations server/cmd/migrate
+git diff --name-status "$merge_base"..upstream/main -- server/migrations server/cmd/migrate
+```
+
+The ledger key is the complete migration filename stem. Treat every migration
+that may have reached a database as immutable: never rename it to solve a
+numeric-prefix collision. A duplicate numeric prefix is safer than replaying
+published DDL; freeze the exact duplicate stem set in the migration lint.
+
 Completion criterion: likely conflict paths and their ownership classes are
-known before editing begins.
+known before editing begins, and both migration sequences have been compared by
+full identity rather than numeric prefix alone.
 
 ## 3. Merge And Resolve
 
@@ -78,6 +93,10 @@ Resolve by lifecycle and ownership, not by textual union:
   reserved-slug output from their sources rather than merging generated output.
 - Accept upstream deletion of an upstream-owned surface; move a still-required
   local hook to the new extension point.
+- If an already-published migration was renamed in an earlier release, add an
+  explicit current-to-legacy identity mapping in the migrator only after
+  proving the `up.sql` contents are identical. Reconcile the ledger without
+  executing SQL; do not scatter `IF NOT EXISTS` across DDL to hide the replay.
 
 Completion criterion: every hunk has a source-backed intent, with no invented
 compatibility behavior.
@@ -99,6 +118,22 @@ the local feature. Search tracked files for conflict markers and run the
 narrowest tests covering each resolution, followed by the broader checks
 required by the touched surfaces.
 
+When either side changes migrations, test two database histories:
+
+1. A fresh database, which proves the merged migration sequence builds.
+2. A representative database already migrated by the pre-merge downstream,
+   which proves published ledger identities upgrade without replaying DDL.
+
+```bash
+(cd server && go run ./cmd/migrate up)
+(cd server && go test ./cmd/migrate ./internal/migrations -count=1)
+```
+
+If the pre-merge database is unavailable, create a hermetic test that seeds its
+exact `schema_migrations.version` values and the corresponding schema objects.
+Do not claim upgrade compatibility from a fresh-database run alone. Run
+`migrate up` a second time to prove the reconciled ledger is idempotent.
+
 Finish the merge non-interactively and prove its topology:
 
 ```bash
@@ -108,7 +143,8 @@ git show -s --format='%H%n%P%n%s' HEAD
 ```
 
 Completion criterion: there are no unmerged paths or markers, relevant checks
-are green, the merge has two expected parents, and upstream is an ancestor.
+are green, fresh and existing database paths are green when migrations changed,
+the merge has two expected parents, and upstream is an ancestor.
 
 ## 5. Preserve The Learning
 
