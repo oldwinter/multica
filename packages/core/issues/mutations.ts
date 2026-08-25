@@ -139,8 +139,8 @@ export function useUpdateIssue() {
       qc.cancelQueries({ queryKey: issueKeys.myAll(wsId) });
       qc.cancelQueries({ queryKey: issueKeys.flatAll(wsId) });
       qc.cancelQueries({ queryKey: issueKeys.tableAll(wsId) });
-      if (patch.status !== undefined) {
-        qc.cancelQueries({ queryKey: inboxKeys.list(wsId) });
+      if (patch.status !== undefined || patch.priority !== undefined) {
+        qc.cancelQueries({ queryKey: inboxKeys.all(wsId) });
       }
       const prevDetail = qc.getQueryData<Issue>(issueKeys.detail(wsId, id));
       // The coordinator owns the cross-cache rules: surgical patch/rebucket
@@ -440,8 +440,8 @@ export function useBatchUpdateIssues() {
       await qc.cancelQueries({ queryKey: issueKeys.myAll(wsId) });
       await qc.cancelQueries({ queryKey: issueKeys.flatAll(wsId) });
       await qc.cancelQueries({ queryKey: issueKeys.tableAll(wsId) });
-      if (patch.status !== undefined) {
-        await qc.cancelQueries({ queryKey: inboxKeys.list(wsId) });
+      if (patch.status !== undefined || patch.priority !== undefined) {
+        await qc.cancelQueries({ queryKey: inboxKeys.all(wsId) });
       }
 
       // Run every issue through the coordinator — the same rules table the
@@ -458,6 +458,7 @@ export function useBatchUpdateIssues() {
       >();
       const prevDetailById = new Map<string, Issue>();
       let prevInboxList: InboxItem[] | undefined;
+      let prevArchivedInboxList: InboxItem[] | undefined;
       const staleKeys: QueryKey[] = [];
       for (const id of ids) {
         const base = qc.getQueryData<Issue>(issueKeys.detail(wsId, id));
@@ -484,6 +485,12 @@ export function useBatchUpdateIssues() {
         if (change.prevDetail) prevDetailById.set(id, change.prevDetail);
         if (prevInboxList === undefined && change.prevInboxList !== undefined) {
           prevInboxList = change.prevInboxList;
+        }
+        if (
+          prevArchivedInboxList === undefined &&
+          change.prevArchivedInboxList !== undefined
+        ) {
+          prevArchivedInboxList = change.prevArchivedInboxList;
         }
         staleKeys.push(...change.staleKeys);
       }
@@ -513,6 +520,7 @@ export function useBatchUpdateIssues() {
         prevTableRows: [...prevTableRowByHash.values()],
         prevDetailById,
         prevInboxList,
+        prevArchivedInboxList,
         staleKeys,
         prevChildren,
         affectedParentIds,
@@ -541,6 +549,12 @@ export function useBatchUpdateIssues() {
       }
       if (ctx?.prevInboxList !== undefined) {
         qc.setQueryData(inboxKeys.list(wsId), ctx.prevInboxList);
+      }
+      if (ctx?.prevArchivedInboxList !== undefined) {
+        qc.setQueryData(
+          inboxKeys.archived(wsId),
+          ctx.prevArchivedInboxList,
+        );
       }
       if (ctx?.prevChildren) {
         for (const [parentId, snapshot] of ctx.prevChildren) {
