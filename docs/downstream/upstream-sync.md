@@ -7,6 +7,40 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-08-25 Sync
+
+- Downstream start: `017a79956`.
+- Merge base: `0a54725fe`.
+- Upstream ahead: 21 commits through `3c4288dde` (`v0.4.33` plus two commits).
+- Local unique commits: 30.
+- Conflict files: 1.
+- Merge commit: `f93799f74`.
+
+The only conflict was `server/internal/featureflags/keys.go`. Upstream retired
+the `CustomIssueStatuses` rollout gate after custom statuses became generally
+available, and deliberately stopped publishing that key so pre-v0.4.33 clients
+remain fail-closed. The downstream branch had added `TwinExecution` beside the
+old gate. Keeping the whole local block would have silently resurrected the
+retired status gate; taking the whole upstream block would have removed Twin's
+operational kill switch. The resolution accepted the complete upstream
+lifecycle change and reattached only the independent Twin constant, helper, and
+frontend decision.
+
+This sync added three useful proof techniques:
+
+1. `git merge-tree --write-tree main upstream/main` predicted the single
+   conflict before the worktree changed.
+2. The index stages (`git show :1:<path>`, `:2:<path>`, and `:3:<path>`) plus
+   the path's commit history exposed lifecycle intent that conflict markers did
+   not.
+3. `git diff upstream/main -- <path>` proved the resolved file differed from
+   upstream only by Twin, while `git diff ORIG_HEAD -- <path>` proved the
+   upstream gate retirement survived.
+
+Targeted verification covered `server/internal/featureflags` and the handler
+config/Twin contract. Both passed with Go 1.26.7, and `git diff --check`, marker
+search, unmerged-path search, and the upstream ancestor check were clean.
+
 ## 2026-08-20 Sync
 
 - Merge base: `38c992ad` (`v0.4.28`, 2026-08-17).
@@ -53,19 +87,28 @@ Also reserved the `rooms` workspace slug during this sync. New
 
 ## How To Sync Next Time
 
-1. `git fetch upstream main` and merge, do not rebase published `main`.
-2. Classify each conflict before editing: additive list, hub rewrite,
+1. `git fetch upstream main --tags`, record both tips and divergence, then
+   preview with `git merge-tree --write-tree main upstream/main`.
+2. Merge with `git merge --no-ff --no-edit upstream/main`; do not rebase
+   published `main`.
+3. Capture the actual conflict paths, then classify each before editing:
+   additive list, hub rewrite,
    glossary, generated, or deleted surface.
-3. Resolve SQL sources, then regenerate:
+4. Read the base/downstream/upstream index stages and the commits that created
+   each side. A nearby local addition does not keep an upstream-retired
+   lifecycle alive.
+5. Resolve SQL sources, then regenerate:
 
    ```bash
    make sqlc
    ```
 
-4. Keep local modules out of upstream hubs when a follow-up refactor is
+6. Compare each resolution to both parents; relative to upstream, only the
+   intended downstream delta should remain.
+7. Keep local modules out of upstream hubs when a follow-up refactor is
    cheap. Prefer `packages/core/rooms`, `packages/core/twins`,
    `packages/core/wiki` and thin registration points.
-5. After the merge, search for leftover conflict markers, then run the
+8. After the merge, search for leftover conflict markers, then run the
    narrowest compile/test you can (`make test`, `pnpm typecheck`, or the
    packages you touched).
 

@@ -60,11 +60,12 @@ See CLAUDE.md for the authoritative rules and common commands.
 
 This checkout is a fork of `multica-ai/multica`. Before merging
 `upstream/main` or adding a feature that will live beside upstream,
-read [docs/downstream/upstream-sync.md](docs/downstream/upstream-sync.md).
+use [the repository sync skill](.agents/skills/multica-upstream-sync/SKILL.md),
+which reads [docs/downstream/upstream-sync.md](docs/downstream/upstream-sync.md)
+as the conflict-history and ownership authority.
 
-That page records the 2026-08-20 sync (111 upstream commits, 25
-conflicts), the earlier 2026-08-17 sync, how each conflict class was
-resolved, and the rules that keep the next merge small: own a leaf and
-register at a point, do not restyle upstream shells, do not hand-merge
-sqlc output, and sync after each local feature rather than after a stack
-of them.
+That page records the 2026-08-25 `v0.4.33` sync (21 upstream commits,
+one conflict), earlier high-conflict syncs, and the rules that keep the
+next merge small: own a leaf and register at a point, preserve lifecycle
+intent instead of unioning conflict blocks, regenerate outputs, and sync
+after each local feature rather than after a stack of them.
