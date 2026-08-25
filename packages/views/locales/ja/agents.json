@@ -115,6 +115,11 @@
     "archive_dialog_cancel": "キャンセル",
     "archive_dialog_confirm": "アーカイブ"
   },
+  "mention": {
+    "copy": "メンションをコピー",
+    "copied_toast": "メンションをコピーしました",
+    "copy_failed_toast": "メンションをコピーできませんでした"
+  },
   "detail": {
     "back_to_agents": "エージェント",
     "back_to_agents_full": "エージェントに戻る",
