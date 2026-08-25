@@ -36,6 +36,20 @@ Multica Desktop 提供 macOS、Windows 和 Linux 版本。它和 Web 版使用�
 Desktop 内置的 CLI 只供应用管理运行时使用。如果你还要在终端中运行 `multica issue` 等命令，按[快速上手第 2 步](/cloud-quickstart#2-连接一台电脑)单独安装 CLI。
 </Callout>
 
+<Callout type="warning">
+部分社区版或下游版 macOS 安装包没有 Developer ID 签名，也没有经过 Apple 公证。只有在安装包来自你信任的 GitHub 仓库时，才手动放行。
+</Callout>
+
+### macOS：打开未签名版本
+
+如果 macOS 提示无法验证开发者，或无法检查应用是否包含恶意软件：
+
+1. 先尝试打开一次 Multica，然后关闭警告。
+2. 打开 **Apple 菜单 → 系统设置 → 隐私与安全性**，向下找到**安全性**。
+3. 在被拦截的 Multica 旁点击**仍要打开**，完成身份验证后再次确认**打开**。
+
+macOS 会只为这份 Multica 记录例外，之后可以正常双击启动。该按钮需要先触发一次拦截才会出现，而且只会保留一段时间。不要全局关闭 Gatekeeper。系统文字变化时，以 [Apple 当前说明](https://support.apple.com/102445)为准。
+
 ## 桌面标签页
 
 Desktop 会为每个工作区单独保存标签页。例如，你在工作区 A 打开了三个 issue，切到工作区 B 后会看到 B 自己的标签页；切回 A 时，之前的三个标签页仍然保留。
@@ -65,6 +79,7 @@ Desktop 会为每个工作区单独保存标签页。例如，你在工作区 A 
 - Windows arm64 和 macOS x64（Intel）使用各自独立的更新源；
 - 其余架构使用默认更新源；
 - 应用会自动匹配更新源，无需手动选择；
+- 未签名的社区版或下游版 macOS 应用无法自动更新，需要手动安装每个新版本的 `.dmg`；
 - Linux 上自动更新只对 `.AppImage` 生效，`.deb` 和 `.rpm` 通过下载新安装包覆盖安装；
 - 自动更新失败时，同样从下载页获取对应安装包覆盖安装。
 

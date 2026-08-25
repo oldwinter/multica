@@ -9,7 +9,7 @@ formulae, and container images.
 
 The canonical `multica-ai/multica` repository publishes its Homebrew formula to
 `multica-ai/homebrew-tap`. Forks do not need that token: they publish CLI
-archives, checksums, Linux/Windows Desktop installers, update metadata, and
+archives, checksums, macOS/Linux/Windows Desktop installers, update metadata, and
 container images to their own GitHub repository/package namespace, while the
 Homebrew upload is skipped. Use a clearly downstream tag such as
 `v0.18.4-oldwinter.1` so it remains distinct from upstream releases and is
@@ -18,10 +18,19 @@ classified as a prerelease.
 The Desktop jobs use the tag workflow's built-in `GITHUB_TOKEN` and the
 `GITHUB_REPOSITORY` identity supplied by Actions. No personal access token is
 required. Linux produces AppImage, deb, and rpm artifacts for x64 and arm64;
-Windows produces NSIS installers for x64 and arm64. These packages are unsigned.
-macOS remains a manual signed/notarized release until the Apple certificate and
-`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` secrets are wired
-into CI.
+Windows produces NSIS installers for x64 and arm64; macOS produces DMG and ZIP
+artifacts for Intel x64 and Apple Silicon arm64. These packages are unsigned,
+and the macOS packages are not notarized. After the first blocked launch, users
+must open **System Settings → Privacy & Security**, scroll to **Security**, click
+**Open Anyway**, authenticate, and confirm **Open**. This creates an exception
+for Multica without disabling Gatekeeper globally. The user-facing steps live in
+the [Desktop documentation](../apps/docs/content/docs/desktop-app.mdx).
+Automatic updates require a signed macOS app, so users of these temporary
+unsigned builds must install each newer DMG manually.
+
+Signed and notarized macOS releases can replace this temporary path after the
+Apple certificate plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+`APPLE_TEAM_ID` secrets are wired into CI.
 
 The verification job runs the Go tests and `govulncheck` before any publishing
 job starts. The vulnerability scan is fail-closed by default.
