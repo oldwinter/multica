@@ -97,6 +97,12 @@ Resolve by lifecycle and ownership, not by textual union:
   explicit current-to-legacy identity mapping in the migrator only after
   proving the `up.sql` contents are identical. Reconcile the ledger without
   executing SQL; do not scatter `IF NOT EXISTS` across DDL to hide the replay.
+- Do not assume identical current and renamed migration files prove every
+  deployed database has the same schema. Inspect the blob from the actual
+  deployed commit: a migration may have been edited after its first release.
+  If a published migration gained DDL in place, keep it immutable from now on
+  and add a new forward compatibility migration for the missing schema. Never
+  mark that repair as applied through an identity alias.
 
 Completion criterion: every hunk has a source-backed intent, with no invented
 compatibility behavior.
@@ -133,6 +139,9 @@ If the pre-merge database is unavailable, create a hermetic test that seeds its
 exact `schema_migrations.version` values and the corresponding schema objects.
 Do not claim upgrade compatibility from a fresh-database run alone. Run
 `migrate up` a second time to prove the reconciled ledger is idempotent.
+Compare the resulting columns, constraints, and indexes required by current
+code, not only the migration ledger. A successful migrator exit can still hide
+schema drift when an old migration file was modified after publication.
 
 Finish the merge non-interactively and prove its topology:
 

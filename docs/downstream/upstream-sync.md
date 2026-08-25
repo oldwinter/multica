@@ -48,7 +48,8 @@ replay current `414_wiki_knowledge_loop` over a database that had already
 applied the same DDL as `420_wiki_knowledge_loop`, failing on the existing
 `wiki_page.current_revision_number` column.
 
-Commit `56dd91f25` repairs the upgrade path with an explicit, append-only alias
+Commit `56dd91f25` repairs the migration-identity portion of the upgrade path
+with an explicit, append-only alias
 map for all 52 affected Rooms, Wiki, Twin, and appearance migrations. When an
 old identity is present, the migrator records the current identity without
 executing its SQL; rollback removes both current and old identities. Tests
@@ -58,9 +59,29 @@ identical to the current files. The real pre-merge database then upgraded to
 completion: ten Wiki migrations plus the Wiki primary-key migration were
 reconciled, while genuinely pending Twin and Room migrations executed normally.
 
-This yields a fourth proof technique: always run the merged migrator against a
-database carrying the pre-merge downstream ledger. A clean Git index, fresh
-database, or migration lint cannot reveal a published-filename replay.
+That successful migration still left a schema-level conflict. The original
+published `420_wiki_knowledge_loop` did not contain the evidence-egress fields;
+commit `c1b7d048a` later added three `lm_wiki_revision` fields and
+`lm_wiki_source_policy.remote_generation_enabled` to the same migration file.
+Comparing only the two later renumbered generations therefore gave a false
+assurance: their SQL matched each other, but not the blob the database had
+actually executed. The Wiki suite exposed the drift after migration completed.
+
+Migration `455_wiki_evidence_egress_compatibility` is the forward repair. It
+adds the four missing fields idempotently, installs and validates the two
+evidence constraints, and deliberately has a no-op down direction because the
+version-454 application already depends on this schema. This is not a pattern
+for making ordinary migrations broadly idempotent; it is a narrow recovery
+from mutating published history. The pre-merge database then passed the Wiki Go
+suite and all targeted core, views, web, desktop, and mobile Wiki tests. A
+temporary empty database also applied the complete 001-455 sequence and exposed
+all four fields before it was removed.
+
+This yields two additional proof techniques: always run the merged migrator
+against a database carrying the pre-merge downstream ledger, and then exercise
+the affected feature or inspect its required schema. A clean Git index, fresh
+database, migration lint, or successful migration command cannot reveal every
+published-history drift.
 
 TypeScript typecheck passed 7/7 workspace tasks. A broad Vitest pass was stopped
 after it created sustained worker load; its two search-command timeouts passed
@@ -135,7 +156,8 @@ Also reserved the `rooms` workspace slug during this sync. New
    intended downstream delta should remain.
 7. If migrations changed, run `migrate up` against both a fresh database and a
    database carrying the pre-merge downstream `schema_migrations` ledger. Run
-   it twice on the latter to prove reconciliation is idempotent.
+   it twice on the latter to prove reconciliation is idempotent, then run the
+   feature tests that query the migrated schema.
 8. Keep local modules out of upstream hubs when a follow-up refactor is
    cheap. Prefer `packages/core/rooms`, `packages/core/twins`,
    `packages/core/wiki` and thin registration points.
@@ -185,6 +207,12 @@ only during a sync.
    historical rename already shipped, reconcile only byte-identical `up.sql`
    identities through the migrator's explicit alias map and test an existing
    ledger; making the DDL broadly idempotent can conceal a different schema.
+10. **Migration contents are immutable after publication.** Comparing renamed
+   files at today's tips is insufficient: inspect the migration blob from each
+   actually deployed release. If an old file was changed after release, repair
+   the missing schema with a new forward migration and validate the resulting
+   columns and constraints on an old database. Never use a ledger alias to
+   claim unapplied DDL ran.
 
 ## Local Ownership Map
 
