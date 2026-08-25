@@ -20,10 +20,11 @@ const maxLegacyMigrationPrefix = 148
 // was briefly listed and is deliberately absent again — the later of the two
 // migrations was renumbered to 376, which its idempotent DDL made safe.
 //
-// Prefixes 251–309 record the 2026-08-20 merge of two already-published
-// histories: upstream migrations and the downstream Twin, Wiki, and Rooms
-// migrations. Renaming either side would change its schema_migrations identity
-// and re-run DDL on existing installations, so their exact stems stay frozen.
+// Prefixes 251–309 and 403 record merges of already-published upstream and
+// downstream histories. Renaming either side changes its schema_migrations
+// identity and can re-run DDL on existing installations, so their exact stems
+// stay frozen. The migration runner carries explicit aliases for downstream
+// migrations that had already been renumbered before this rule was enforced.
 var legacyDuplicateMigrationStems = map[string][]string{
 	"020": {"020_issue_number", "020_task_session"},
 	"026": {"026_comment_reactions", "026_task_messages"},
@@ -112,6 +113,7 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"307": {"307_agent_task_room_turn_lookup_index", "307_dingtalk_group_route_id_unique"},
 	"308": {"308_agent_task_branch_name", "308_room_entry_turn_result_index"},
 	"309": {"309_agent_runtime_id_index", "309_room_invocation_refusal_reason"},
+	"403": {"403_room_outcome_lifecycle", "403_runtime_profile_add_zeroclaw"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)

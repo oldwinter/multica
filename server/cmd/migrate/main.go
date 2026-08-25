@@ -474,6 +474,72 @@ var upMigrationConditions = map[string]migrationCondition{
 	"371_comment_content_search_index_strategy": whenIndexUsable(commentContentBigramIndex),
 }
 
+// legacyMigrationVersionAliases preserves the schema_migrations identities of
+// the four downstream outcome-loop features across two historical renumbering
+// passes. Those filenames reached self-hosted databases before upstream added
+// migrations in the same numeric range. Replaying the renamed SQL is unsafe:
+// most statements intentionally are not idempotent and would fail on existing
+// columns, tables, or indexes.
+//
+// Keep this map explicit and append-only. A match means the exact migration was
+// already applied under an older filename; runMigrations records the current
+// identity without executing its SQL. New migrations must use a fresh prefix
+// and must never be added here merely to avoid resolving a real DDL conflict.
+var legacyMigrationVersionAliases = map[string][]string{
+	"403_room_outcome_lifecycle":                    {"400_room_outcome_lifecycle", "377_room_outcome_lifecycle"},
+	"404_room_memory_revision_id_index":             {"401_room_memory_revision_id_index", "378_room_memory_revision_id_index"},
+	"405_room_memory_revision_primary_key":          {"402_room_memory_revision_primary_key", "379_room_memory_revision_primary_key"},
+	"406_room_memory_revision_version_index":        {"403_room_memory_revision_version_index", "380_room_memory_revision_version_index"},
+	"407_room_cycle_phase_index":                    {"404_room_cycle_phase_index", "381_room_cycle_phase_index"},
+	"408_room_artifact_memory_revision_index":       {"405_room_artifact_memory_revision_index", "382_room_artifact_memory_revision_index"},
+	"409_room_recommendation_review":                {"406_room_recommendation_review", "383_room_recommendation_review"},
+	"410_room_recommendation_review_id_index":       {"407_room_recommendation_review_id_index", "384_room_recommendation_review_id_index"},
+	"411_room_recommendation_review_primary_key":    {"408_room_recommendation_review_primary_key", "385_room_recommendation_review_primary_key"},
+	"412_room_recommendation_review_identity_index": {"409_room_recommendation_review_identity_index", "386_room_recommendation_review_identity_index"},
+	"413_user_appearance_preferences":               {"410_user_appearance_preferences", "387_user_appearance_preferences"},
+	"414_wiki_knowledge_loop":                       {"420_wiki_knowledge_loop", "388_wiki_knowledge_loop"},
+	"415_wiki_page_revision_id_index":               {"421_wiki_page_revision_id_index", "389_wiki_page_revision_id_index"},
+	"416_wiki_page_revision_number_index":           {"422_wiki_page_revision_number_index", "390_wiki_page_revision_number_index"},
+	"417_wiki_page_revision_list_index":             {"423_wiki_page_revision_list_index", "391_wiki_page_revision_list_index"},
+	"418_wiki_page_search_index":                    {"424_wiki_page_search_index", "392_wiki_page_search_index"},
+	"419_wiki_page_proposal_id_index":               {"425_wiki_page_proposal_id_index", "393_wiki_page_proposal_id_index"},
+	"420_wiki_page_proposal_idempotency_index":      {"426_wiki_page_proposal_idempotency_index", "394_wiki_page_proposal_idempotency_index"},
+	"421_wiki_page_proposal_list_index":             {"427_wiki_page_proposal_list_index", "395_wiki_page_proposal_list_index"},
+	"422_lm_wiki_source_policy_index":               {"428_lm_wiki_source_policy_index", "396_lm_wiki_source_policy_index"},
+	"423_lm_wiki_source_page_index":                 {"429_lm_wiki_source_page_index", "397_lm_wiki_source_page_index"},
+	"424_twin_execution_tables":                     {"430_twin_execution_tables", "398_twin_execution_tables"},
+	"425_twin_binding_id_index":                     {"431_twin_binding_id_index", "399_twin_binding_id_index"},
+	"426_twin_task_attribution_id_index":            {"432_twin_task_attribution_id_index", "400_twin_task_attribution_id_index"},
+	"427_twin_run_feedback_id_index":                {"433_twin_run_feedback_id_index", "401_twin_run_feedback_id_index"},
+	"428_twin_deposition_id_index":                  {"434_twin_deposition_id_index", "402_twin_deposition_id_index"},
+	"429_twin_execution_primary_keys":               {"435_twin_execution_primary_keys", "403_twin_execution_primary_keys"},
+	"430_twin_binding_scope_index":                  {"436_twin_binding_scope_index", "404_twin_binding_scope_index"},
+	"431_twin_task_attribution_claim_index":         {"437_twin_task_attribution_claim_index", "405_twin_task_attribution_claim_index"},
+	"432_twin_run_feedback_task_index":              {"438_twin_run_feedback_task_index", "406_twin_run_feedback_task_index"},
+	"433_twin_deposition_proposal_index":            {"439_twin_deposition_proposal_index", "407_twin_deposition_proposal_index"},
+	"434_twin_deposition_task_index":                {"440_twin_deposition_task_index", "408_twin_deposition_task_index"},
+	"435_twin_schema_v2_and_deposition":             {"441_twin_schema_v2_and_deposition", "409_twin_schema_v2_and_deposition"},
+	"436_agent_task_twin_use_snapshot":              {"442_agent_task_twin_use_snapshot", "410_agent_task_twin_use_snapshot"},
+	"437_twin_deposition_replacement":               {"443_twin_deposition_replacement", "411_twin_deposition_replacement"},
+	"438_drop_twin_proposal_identity_index":         {"444_drop_twin_proposal_identity_index", "412_drop_twin_proposal_identity_index"},
+	"439_twin_proposal_identity_partial_index":      {"445_twin_proposal_identity_partial_index", "413_twin_proposal_identity_partial_index"},
+	"440_twin_deposition_request_index":             {"446_twin_deposition_request_index", "414_twin_deposition_request_index"},
+	"441_twin_deposition_edit_digest":               {"447_twin_deposition_edit_digest", "415_twin_deposition_edit_digest"},
+	"442_twin_proposal_correction":                  {"448_twin_proposal_correction", "416_twin_proposal_correction"},
+	"443_twin_proposal_replacement_index":           {"449_twin_proposal_replacement_index", "417_twin_proposal_replacement_index"},
+	"444_room_turn_identity_index_drop":             {"450_room_turn_identity_index_drop", "418_room_turn_identity_index_drop"},
+	"445_room_turn_kind_attempt_index":              {"451_room_turn_kind_attempt_index", "419_room_turn_kind_attempt_index"},
+	"446_room_lifecycle_idempotency":                {"452_room_lifecycle_idempotency", "420_room_lifecycle_idempotency"},
+	"447_room_synthesis_retry_key_index":            {"453_room_synthesis_retry_key_index", "421_room_synthesis_retry_key_index"},
+	"448_room_capability_rollout":                   {"454_room_capability_rollout", "422_room_capability_rollout"},
+	"449_room_artifact_recommendation_key":          {"455_room_artifact_recommendation_key", "423_room_artifact_recommendation_key"},
+	"450_room_memory_review_key_index":              {"456_room_memory_review_key_index", "424_room_memory_review_key_index"},
+	"451_room_memory_revision_creator":              {"457_room_memory_revision_creator", "425_room_memory_revision_creator"},
+	"452_room_cycle_cost_limit":                     {"458_room_cycle_cost_limit", "426_room_cycle_cost_limit"},
+	"453_room_spend_limit_refusal":                  {"459_room_spend_limit_refusal", "427_room_spend_limit_refusal"},
+	"454_wiki_knowledge_primary_keys":               {"460_wiki_knowledge_primary_keys", "428_wiki_knowledge_primary_keys"},
+}
+
 func hooksForDirection(direction string) map[string]preMigrationHook {
 	switch direction {
 	case "up":
@@ -697,6 +763,10 @@ type runOptions struct {
 	// migration ledger, allowing later migrations to run in environments where
 	// this version's DDL is intentionally unnecessary.
 	Conditions map[string]migrationCondition
+	// VersionAliases maps the current migration identity to older published
+	// identities for the same SQL. Production passes the frozen downstream map;
+	// tests may inject a small fixture map. Never use aliases for different DDL.
+	VersionAliases map[string][]string
 }
 
 func main() {
@@ -733,10 +803,11 @@ func main() {
 	}
 
 	options := runOptions{
-		Direction:  direction,
-		Files:      files,
-		Hooks:      hooksForDirection(direction),
-		Conditions: conditionsForDirection(direction),
+		Direction:      direction,
+		Files:          files,
+		Hooks:          hooksForDirection(direction),
+		Conditions:     conditionsForDirection(direction),
+		VersionAliases: legacyMigrationVersionAliases,
 	}
 	startupCtx, stopStartup := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopStartup()
@@ -862,10 +933,24 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 
 	for _, file := range opts.Files {
 		version := migrations.ExtractVersion(file)
+		aliases := opts.VersionAliases[version]
 
 		var exists bool
 		if err := conn.QueryRow(ctx, existsSQL, version).Scan(&exists); err != nil {
 			return fmt.Errorf("check migration %q: %w", version, err)
+		}
+		legacyVersion := ""
+		if !exists {
+			for _, alias := range aliases {
+				var aliasExists bool
+				if err := conn.QueryRow(ctx, existsSQL, alias).Scan(&aliasExists); err != nil {
+					return fmt.Errorf("check legacy migration %q for %q: %w", alias, version, err)
+				}
+				if aliasExists {
+					legacyVersion = alias
+					break
+				}
+			}
 		}
 
 		if opts.Direction == "up" {
@@ -873,8 +958,15 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 				fmt.Printf("  skip  %s (already applied)\n", version)
 				continue
 			}
+			if legacyVersion != "" {
+				if _, err := conn.Exec(ctx, insertSQL, version); err != nil {
+					return fmt.Errorf("record migration alias %q for %q: %w", legacyVersion, version, err)
+				}
+				fmt.Printf("  skip  %s (already applied as %s; recorded current identity)\n", version, legacyVersion)
+				continue
+			}
 		} else {
-			if !exists {
+			if !exists && legacyVersion == "" {
 				fmt.Printf("  skip  %s (not applied)\n", version)
 				continue
 			}
@@ -916,7 +1008,11 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 		if opts.Direction == "up" {
 			_, err = conn.Exec(ctx, insertSQL, version)
 		} else {
-			_, err = conn.Exec(ctx, deleteSQL, version)
+			for _, recordedVersion := range append([]string{version}, aliases...) {
+				if _, err = conn.Exec(ctx, deleteSQL, recordedVersion); err != nil {
+					break
+				}
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("record migration %q: %w", version, err)
