@@ -40,6 +40,7 @@ type roomHandlerFake struct {
 	preflightResult           roomdomain.PreflightResult
 	budgetInput               roomdomain.UpdateBudgetInput
 	usageResult               roomdomain.UsageSummary
+	valueSignals              []roomdomain.ValueSignal
 	retryInput                roomdomain.RetrySynthesisInput
 	retryResult               roomdomain.RetrySynthesisResult
 	reviewInput               roomdomain.ReviewInput
@@ -55,6 +56,9 @@ type roomHandlerFake struct {
 
 func (f *roomHandlerFake) List(context.Context, pgtype.UUID) ([]db.Room, error) {
 	return nil, f.err
+}
+func (f *roomHandlerFake) ListValueSignals(context.Context, pgtype.UUID) ([]roomdomain.ValueSignal, error) {
+	return f.valueSignals, f.err
 }
 func (f *roomHandlerFake) Get(context.Context, pgtype.UUID, pgtype.UUID) (roomdomain.Detail, error) {
 	return f.createResult, f.err

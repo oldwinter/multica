@@ -45,7 +45,7 @@ import {
   invalidateUpdatedAtSortedIssueLists,
 } from "../issues/cache-coordinator";
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged, onInboxIssueDeleted, onInboxSummaryInvalidate } from "../inbox/ws-updaters";
-import { inboxKeys } from "../inbox/queries";
+import { inboxKeys, isRoomInboxItem } from "../inbox/queries";
 import {
   notificationPreferenceOptions,
   notificationPreferenceKeys,
@@ -78,7 +78,7 @@ import {
   promotePendingChatTask,
   removePendingChatTask,
 } from "../chat/pending";
-import { resolvePostAuthDestination, useHasOnboarded } from "../paths";
+import { paths, resolvePostAuthDestination, useHasOnboarded } from "../paths";
 import type {
   MemberAddedPayload,
   WorkspaceDeletedPayload,
@@ -686,6 +686,7 @@ export async function handleInboxNew(
             notificationPreferenceKeys.all(sourceWsId),
           );
       if (prefData?.preferences?.system_notifications === "muted") return;
+			if (isRoomInboxItem(item) && prefData?.preferences?.rooms === "muted") return;
     } catch {
       // Fall through with default behavior.
     }
@@ -697,12 +698,14 @@ export async function handleInboxNew(
   // client can't see) still shows the banner — the user should learn about
   // the inbox item — but with an empty slug so the click is a no-op
   // (the inbox bridge ignores empty slugs) instead of routing wrong.
+	const targetPath = roomInboxTargetPath(slug, item);
   const payload: SystemNotificationPayload = {
     slug: slug ?? "",
     itemId: item.id,
     issueKey: item.issue_id ?? item.id,
     title: item.title,
-    body: item.body ?? "",
+		body: item.body ?? "",
+		...(targetPath ? { targetPath } : {}),
   };
   const desktopAPI = (
     globalThis as unknown as {
@@ -719,6 +722,13 @@ export async function handleInboxNew(
   // Web: the browser Notification API. No-op without granted permission or on
   // SSR — the in-app inbox + unread badge still reflect the new item.
   showWebNotification(payload);
+}
+
+function roomInboxTargetPath(slug: string | null, item: InboxItem): string | undefined {
+	if (!slug || !isRoomInboxItem(item)) return undefined;
+	const route = item.details?.route;
+	if (!route?.startsWith("/rooms?")) return undefined;
+	return `${paths.workspace(slug).rooms()}${route.slice("/rooms".length)}`;
 }
 
 function invalidateWikiCollections(qc: QueryClient, wsId: string): void {

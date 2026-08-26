@@ -138,6 +138,25 @@ export interface RoomMemory {
   readonly recent_contributions: readonly RoomMemoryContribution[];
 }
 
+export interface RoomValueSignal {
+	readonly last_accepted_revision_id: string | null;
+	readonly last_accepted_at: string | null;
+	readonly last_cycle_id: string | null;
+	readonly last_run_status: RoomCycleStatus | null;
+	readonly last_run_phase: RoomCyclePhase | null;
+	readonly last_run_reason: string | null;
+	readonly last_run_at: string | null;
+	readonly last_run_cost_ticks: number;
+	readonly repeat_run_count: number;
+	readonly accepted_outcomes: number;
+	readonly active_weeks: number;
+	readonly accepted_outcomes_per_active_week: number;
+	readonly median_review_latency_seconds: number;
+	readonly promotion_rate: number;
+	readonly failed_cycles: number;
+	readonly refused_cycles: number;
+}
+
 export interface Room {
   readonly id: string;
   readonly workspace_id: string;
@@ -162,6 +181,7 @@ export interface Room {
   readonly capability_version: number;
   readonly created_at: string;
   readonly updated_at: string;
+	readonly value: RoomValueSignal | null;
 }
 
 export interface RoomParticipant {
@@ -291,6 +311,14 @@ export interface RoomUsage {
   readonly failures: number;
   readonly accepted_syntheses: number;
   readonly promoted_artifacts: number;
+	readonly repeat_run_count: number;
+	readonly active_weeks: number;
+	readonly median_review_latency_seconds: number;
+	readonly accepted_outcomes_per_active_week: number;
+	readonly promotion_rate: number;
+	readonly failed_cycles: number;
+	readonly refused_cycles: number;
+	readonly cost_ticks_per_accepted_outcome: number;
 }
 
 export interface RoomWakeResult {
@@ -330,6 +358,7 @@ export type CreateRoomInput = RoomFacilitator & {
   readonly daily_turn_limit?: number;
   readonly max_cost_ticks?: number;
   readonly schedule_interval_minutes?: number;
+  readonly start_paused?: boolean;
 };
 
 export interface PostRoomMessageInput {

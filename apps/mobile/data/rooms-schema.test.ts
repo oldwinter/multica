@@ -6,6 +6,7 @@ import {
   RoomDetailSchema,
   RoomPreflightSchema,
   RoomSchema,
+  RoomUsageSchema,
 } from "./rooms-schema";
 
 describe("Room mobile wire schemas", () => {
@@ -21,6 +22,46 @@ describe("Room mobile wire schemas", () => {
     expect(room.success_criteria).toEqual([]);
     expect(room.max_cost_ticks).toBeNull();
     expect(room.accepted_memory_revision_id).toBeNull();
+		expect(room.value).toBeNull();
+  });
+
+  it("preserves Room value signals and additive usage metrics", () => {
+    const room = RoomSchema.parse({
+      id: "room-value",
+      workspace_id: "ws-1",
+      status: "active",
+      value: {
+        last_run_status: "completed",
+        last_run_phase: "completed",
+        last_run_cost_ticks: 18,
+        repeat_run_count: 2,
+        accepted_outcomes: 3,
+        promotion_rate: 0.5,
+      },
+    });
+    const usage = RoomUsageSchema.parse({
+      repeat_run_count: 2,
+      active_weeks: 2,
+      accepted_outcomes_per_active_week: 1.5,
+      median_review_latency_seconds: 90,
+      promotion_rate: 0.5,
+      failed_cycles: 1,
+      refused_cycles: 2,
+      cost_ticks_per_accepted_outcome: 6,
+    });
+
+    expect(room.value).toMatchObject({
+      last_run_status: "completed",
+      last_run_cost_ticks: 18,
+      repeat_run_count: 2,
+      accepted_outcomes: 3,
+      promotion_rate: 0.5,
+    });
+    expect(usage).toMatchObject({
+      accepted_outcomes_per_active_week: 1.5,
+      median_review_latency_seconds: 90,
+      cost_ticks_per_accepted_outcome: 6,
+    });
   });
 
   it("renders future enum values as unknown instead of dropping detail", () => {

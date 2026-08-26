@@ -1,5 +1,5 @@
 /**
- * Notification preferences subscreen. 6 inbox groups + system_notifications
+ * Notification preferences subscreen. 7 inbox groups + system_notifications
  * toggle, each backed by an optimistic PATCH /api/notification-preferences.
  *
  * Copy mirrors packages/views/settings/components/notifications-tab.tsx but
@@ -20,11 +20,11 @@ import { useWorkspaceStore } from "@/data/workspace-store";
 import { notificationPreferenceOptions } from "@/data/queries/notification-preferences";
 import { useUpdateNotificationPreferences } from "@/data/mutations/notification-preferences";
 
-const INBOX_GROUPS: Array<{
+const INBOX_GROUPS: {
   key: Exclude<NotificationGroupKey, "system_notifications">;
   label: string;
   description: string;
-}> = [
+}[] = [
   {
     key: "assignments",
     label: "Assignments",
@@ -54,6 +54,11 @@ const INBOX_GROUPS: Array<{
     key: "agent_activity",
     label: "Agent activity",
     description: "When an agent picks up, runs, or completes a task.",
+  },
+  {
+    key: "rooms",
+    label: "Rooms",
+    description: "Review gates, failed cycles, and blocked Room runs.",
   },
 ];
 

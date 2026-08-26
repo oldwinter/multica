@@ -73,7 +73,17 @@ export function deduplicateInboxItems(items: InboxItem[]): InboxItem[] {
   const active = items.filter((i) => !i.archived);
   const groups = new Map<string, InboxItem[]>();
   for (const item of active) {
-    const key = item.issue_id ?? item.id;
+		const key = item.issue_id
+			? `issue:${item.issue_id}`
+			: item.room_id
+				? [
+						"room",
+						item.room_id,
+						item.room_cycle_id ?? "current",
+						item.type,
+						item.room_review_identity ?? "current",
+					].join(":")
+				: `item:${item.id}`;
     const group = groups.get(key) ?? [];
     group.push(item);
     groups.set(key, group);

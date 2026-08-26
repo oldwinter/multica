@@ -132,6 +132,7 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 		return PromotionResult{}, fmt.Errorf("finalize Room artifact target: %w", err)
 	}
 	var recommendationReview *db.RoomRecommendationReview
+	var archivedAttention []db.ArchiveRoomInboxItemsRow
 	if isRecommendation {
 		reviewDigest := lifecycleDigest("approve", recommendationKey, digest)
 		review, reviewErr := queries.CreateRoomRecommendationReview(ctx, db.CreateRoomRecommendationReviewParams{
@@ -152,12 +153,19 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 			return PromotionResult{}, fmt.Errorf("approve Room recommendation: %w", reviewErr)
 		}
 		recommendationReview = &review
+		archivedAttention, err = archiveRoomAttention(
+			ctx, queries, roomRow, cycleID, RoomInboxRecommendationReviewRequired, recommendationKey,
+		)
+		if err != nil {
+			return PromotionResult{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return PromotionResult{}, fmt.Errorf("commit Room promotion: %w", err)
 	}
 	s.recordRoomArtifactPromoted(roomRow, artifact, input.ActorUserID)
 	if recommendationReview != nil {
+		s.publishRoomAttentionArchived(roomRow.WorkspaceID, archivedAttention)
 		s.publish(EventRoomRecommendationReview, roomRow, input.ActorUserID, roomRecommendationReviewEventPayload(*recommendationReview))
 	}
 	s.publish(EventRoomArtifact, roomRow, input.ActorUserID, roomArtifactEventPayload(artifact))

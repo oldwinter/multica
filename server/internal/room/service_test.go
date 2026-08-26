@@ -197,6 +197,7 @@ func newServiceFixture(t *testing.T) serviceFixture {
 	fixture.events = &recordingEvents{}
 	fixture.service = NewService(db.New(pool), pool, fixture.notifier, &testArtifactTargets{}, fixture.events)
 	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM inbox_item WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE room_turn_id IN (SELECT id FROM room_turn WHERE workspace_id = $1)`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM wiki_page WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM issue WHERE workspace_id = $1`, fixture.workspaceID)
@@ -242,6 +243,28 @@ func TestCreateExpandsSquadParticipants(t *testing.T) {
 		if participant.ParticipantType == "agent" && !participant.SourceSquadID.Valid {
 			t.Fatalf("squad agent participant missing source squad: %+v", participant)
 		}
+	}
+}
+
+func TestCreateScheduledCopyStartsPausedWithoutLifecycleData(t *testing.T) {
+	fixture := newServiceFixture(t)
+	interval := int32(60)
+	created, err := fixture.service.Create(context.Background(), CreateInput{
+		WorkspaceID: fixture.workspaceID, ActorUserID: fixture.userID,
+		Title: "Copied recurring Room", Objective: "A separate objective",
+		FacilitatorAgentID:      fixture.leaderID,
+		Participants:            []ParticipantInput{{Type: "agent", ID: fixture.workerID}},
+		ScheduleIntervalMinutes: &interval,
+		StartPaused:             true,
+	})
+	if err != nil {
+		t.Fatalf("Create scheduled copy: %v", err)
+	}
+	if created.Room.Status != "paused" || !created.Room.NextWakeAt.Valid {
+		t.Fatalf("scheduled copy = %#v", created.Room)
+	}
+	if len(created.Entries) != 0 || len(created.Cycles) != 0 || len(created.MemoryRevisions) != 0 || len(created.Artifacts) != 0 || created.Room.MemoryVersion != 0 {
+		t.Fatalf("scheduled copy retained lifecycle data: %#v", created)
 	}
 }
 

@@ -74,6 +74,7 @@ type CreateInput struct {
 	DailyTurnLimit          *int32
 	MaxCostTicks            *int64
 	ScheduleIntervalMinutes *int32
+	StartPaused             bool
 }
 
 type MessageInput struct {
@@ -108,10 +109,12 @@ type Detail struct {
 }
 
 type WakeResult struct {
-	Cycle    db.RoomCycle
-	Turns    []db.RoomTurn
-	Tasks    []db.AgentTaskQueue
-	replayed bool
+	Cycle             db.RoomCycle
+	Turns             []db.RoomTurn
+	Tasks             []db.AgentTaskQueue
+	attentionItems    []db.InboxItem
+	archivedAttention []db.ArchiveRoomInboxItemsRow
+	replayed          bool
 }
 
 type MessageResult struct {
@@ -196,12 +199,40 @@ type PreflightResult struct {
 }
 
 type UsageSummary struct {
-	TurnsTotal        int64
-	CostTicks         int64
-	UncostedTurns     int64
-	Failures          int64
-	AcceptedSyntheses int64
-	PromotedArtifacts int64
+	TurnsTotal                    int64
+	CostTicks                     int64
+	UncostedTurns                 int64
+	Failures                      int64
+	AcceptedSyntheses             int64
+	PromotedArtifacts             int64
+	RepeatRunCount                int64
+	ActiveWeeks                   int64
+	MedianReviewLatencySeconds    float64
+	AcceptedOutcomesPerActiveWeek float64
+	PromotionRate                 float64
+	FailedCycles                  int64
+	RefusedCycles                 int64
+	CostTicksPerAcceptedOutcome   float64
+}
+
+type ValueSignal struct {
+	RoomID                        pgtype.UUID
+	LastAcceptedRevisionID        pgtype.UUID
+	LastAcceptedAt                pgtype.Timestamptz
+	LastCycleID                   pgtype.UUID
+	LastRunStatus                 string
+	LastRunPhase                  string
+	LastRunReason                 pgtype.Text
+	LastRunAt                     pgtype.Timestamptz
+	LastRunCostTicks              int64
+	RepeatRunCount                int64
+	AcceptedOutcomes              int64
+	ActiveWeeks                   int64
+	AcceptedOutcomesPerActiveWeek float64
+	MedianReviewLatencySeconds    float64
+	PromotionRate                 float64
+	FailedCycles                  int64
+	RefusedCycles                 int64
 }
 
 type RetrySynthesisInput struct {
@@ -256,6 +287,7 @@ type RecommendationReviewInput struct {
 
 type Rooms interface {
 	List(context.Context, pgtype.UUID) ([]db.Room, error)
+	ListValueSignals(context.Context, pgtype.UUID) ([]ValueSignal, error)
 	Get(context.Context, pgtype.UUID, pgtype.UUID) (Detail, error)
 	Create(context.Context, CreateInput) (Detail, error)
 	PostMessage(context.Context, MessageInput) (MessageResult, error)

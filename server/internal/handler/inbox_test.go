@@ -59,6 +59,50 @@ func TestListInboxProjectsCurrentIssueStatusAndPriority(t *testing.T) {
 	}
 }
 
+func TestListInboxProjectsBoundedRoomIdentityWithoutContent(t *testing.T) {
+	workspaceID := dbfx.Workspace(t, "Room inbox projection", "room-inbox-"+uuid.NewString())
+	dbfx.Member(t, workspaceID, testUserID, "owner")
+	roomID := uuid.NewString()
+	cycleID := uuid.NewString()
+	revisionID := uuid.NewString()
+	dbfx.Insert(t, "inbox_item", testutil.Cols{
+		"workspace_id":         workspaceID,
+		"recipient_type":       "member",
+		"recipient_id":         testUserID,
+		"type":                 "room_outcome_review_required",
+		"severity":             "action_required",
+		"room_id":              roomID,
+		"room_cycle_id":        cycleID,
+		"room_review_identity": revisionID,
+		"room_attention_key":   "room:" + roomID + ":cycle:" + cycleID + ":outcome:" + revisionID,
+		"title":                "Room outcome needs review",
+		"details": testutil.Raw(`jsonb_build_object(
+			'room_id', '` + roomID + `',
+			'cycle_id', '` + cycleID + `',
+			'memory_revision_id', '` + revisionID + `',
+			'focus', 'outcome_review',
+			'route', '/rooms?room=` + roomID + `&tab=outcome'
+		)`),
+	})
+
+	var items []InboxItemResponse
+	testutil.Call(t, inboxWorkspaceHandler(testHandler.ListInbox),
+		inboxRequest(http.MethodGet, "/api/inbox", workspaceID)).
+		Want(http.StatusOK).
+		JSON(&items)
+
+	if len(items) != 1 {
+		t.Fatalf("inbox items = %d, want 1: %+v", len(items), items)
+	}
+	item := items[0]
+	if item.IssueID != nil || item.RoomID == nil || *item.RoomID != roomID ||
+		item.RoomCycleID == nil || *item.RoomCycleID != cycleID ||
+		item.RoomReviewIdentity == nil || *item.RoomReviewIdentity != revisionID ||
+		item.Body != nil || strings.Contains(string(item.Details), "objective") {
+		t.Fatalf("Room Inbox wire projection = %+v", item)
+	}
+}
+
 func TestListArchivedInboxLimitsIssueGroupsNotRows(t *testing.T) {
 	workspaceID := dbfx.Workspace(t, "Archived inbox groups", "archived-groups-"+uuid.NewString())
 	dbfx.Member(t, workspaceID, testUserID, "owner")

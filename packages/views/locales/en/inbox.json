@@ -69,7 +69,11 @@
     "reaction_added": "Reacted",
     "quick_create_done": "Created with agent",
     "quick_create_failed": "Create with agent failed",
-    "quick_create_unconfirmed": "Create with agent unconfirmed"
+    "quick_create_unconfirmed": "Create with agent unconfirmed",
+    "room_outcome_review_required": "Room outcome review",
+    "room_recommendation_review_required": "Room recommendation review",
+    "room_cycle_failed": "Room cycle failed",
+    "room_cycle_blocked": "Room run blocked"
   },
   "labels": {
     "set_status_to": "Set status to",

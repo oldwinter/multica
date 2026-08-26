@@ -612,6 +612,10 @@
       "agent_activity": {
         "label": "Agent activity",
         "description": "When an agent task completes or fails"
+      },
+      "rooms": {
+        "label": "Rooms",
+        "description": "Review gates, failed cycles, and blocked Room runs"
       }
     },
     "system": {

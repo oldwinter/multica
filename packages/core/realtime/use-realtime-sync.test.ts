@@ -854,6 +854,66 @@ describe("handleInboxNew", () => {
     expect(showNotification).not.toHaveBeenCalled();
   });
 
+  it("keeps Room attention durable while the rooms banner group is muted", async () => {
+    const qc = createQueryClient();
+    qc.setQueryData<Workspace[]>(workspaceKeys.list(), [workspace()]);
+    qc.setQueryData(notificationPreferenceKeys.all("ws-a"), {
+      preferences: { system_notifications: "all", rooms: "muted" },
+    });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const showNotification = stubDesktopAPI();
+
+    await handleInboxNew(
+      qc,
+      inboxItem({
+        issue_id: null,
+        room_id: "room-1",
+        room_cycle_id: "cycle-1",
+        room_review_identity: "revision-1",
+        type: "room_outcome_review_required",
+        details: {
+          route:
+            "/rooms?room=room-1&tab=outcome&focus=outcome_review&cycle_id=cycle-1&memory_revision_id=revision-1",
+        },
+      }),
+    );
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: inboxKeys.all("ws-a") });
+    expect(showNotification).not.toHaveBeenCalled();
+  });
+
+  it("passes the exact bounded Room route to native notification bridges", async () => {
+    const qc = createQueryClient();
+    qc.setQueryData<Workspace[]>(workspaceKeys.list(), [workspace()]);
+    qc.setQueryData(notificationPreferenceKeys.all("ws-a"), {
+      preferences: { system_notifications: "all" },
+    });
+    const showNotification = stubDesktopAPI();
+
+    await handleInboxNew(
+      qc,
+      inboxItem({
+        issue_id: null,
+        room_id: "room-1",
+        room_cycle_id: "cycle-1",
+        room_review_identity: "recommendation-1",
+        type: "room_recommendation_review_required",
+        details: {
+          route:
+            "/rooms?room=room-1&tab=outcome&focus=recommendation_review&cycle_id=cycle-1&memory_revision_id=revision-1&recommendation_key=recommendation-1",
+        },
+      }),
+    );
+
+    expect(showNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueKey: "item-1",
+        targetPath:
+          "/workspace-a/rooms?room=room-1&tab=outcome&focus=recommendation_review&cycle_id=cycle-1&memory_revision_id=revision-1&recommendation_key=recommendation-1",
+      }),
+    );
+  });
+
   // The tests below exercise the COLD-cache mute path (source preference not
   // yet cached), where the request — not just the query key — must be scoped
   // to the source workspace (#3766 follow-up). They install a fake API so the

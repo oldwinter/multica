@@ -24,7 +24,11 @@ export type InboxItemType =
   // Quick create whose outcome could not be verified. Distinct from
   // quick_create_failed because it must NOT be rendered with failure framing:
   // the issue may actually have been created.
-  | "quick_create_unconfirmed";
+  | "quick_create_unconfirmed"
+  | "room_outcome_review_required"
+  | "room_recommendation_review_required"
+  | "room_cycle_failed"
+  | "room_cycle_blocked";
 
 /**
  * One workspace's unread inbox count in the cross-workspace summary
@@ -47,6 +51,9 @@ export interface InboxItem {
   type: InboxItemType;
   severity: InboxSeverity;
   issue_id: string | null;
+	room_id?: string | null;
+	room_cycle_id?: string | null;
+	room_review_identity?: string | null;
   title: string;
   body: string | null;
   issue_status: IssueStatus | null;

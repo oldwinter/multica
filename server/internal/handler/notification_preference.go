@@ -24,6 +24,7 @@ var validNotifGroups = map[string]bool{
 	"mentions":             true,
 	"updates":              true,
 	"agent_activity":       true,
+	"rooms":                true,
 	"system_notifications": true,
 }
 
