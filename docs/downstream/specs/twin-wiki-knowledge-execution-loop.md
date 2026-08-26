@@ -1,6 +1,10 @@
 # Spec: Twin And Wiki Knowledge-To-Execution Loop
 
-Triage: `ready-for-agent`
+Status: `baseline-shipped`
+
+Follow-ups: [Wiki Guided Knowledge Activation](./wiki-guided-knowledge-activation-loop.md) and [Twin Guided Execution Effectiveness](./twin-guided-execution-effectiveness-loop.md)
+
+> Historical baseline: the problem and solution below describe the pre-implementation state and the contract that was delivered. Use the follow-up spec for current gaps.
 
 ## Problem Statement
 

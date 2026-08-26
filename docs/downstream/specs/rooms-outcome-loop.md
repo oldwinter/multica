@@ -1,6 +1,10 @@
 # Spec: Rooms Outcome Loop
 
-Triage: `ready-for-agent`
+Status: `baseline-shipped`
+
+Follow-up: [Rooms Attention And Reuse Loop](./rooms-attention-and-reuse-loop.md)
+
+> Historical baseline: the problem and solution below describe the pre-implementation state and the contract that was delivered. Use the follow-up spec for current gaps.
 
 ## Problem Statement
 
