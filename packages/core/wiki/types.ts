@@ -151,6 +151,86 @@ export interface UpdateLMWikiSourcePolicyInput {
   sourceClasses: readonly LMWikiSourceClass[];
   wikiPages: readonly LMWikiSourceWikiPage[];
   remoteGenerationEnabled: boolean;
+  expectedPolicyVersion?: number;
+  expectedPolicyDigest?: string;
+}
+
+export interface PinWikiRevisionAsLMWikiEvidenceInput {
+  pageId: string;
+  revisionId: string;
+  expectedPolicyVersion: number;
+  expectedPolicyDigest: string;
+}
+
+export type WikiKnowledgeSourceState =
+  | "eligible_unpinned"
+  | "pinned_current"
+  | "newer_revision_available"
+  | "source_deleted"
+  | "excluded"
+  | "policy_stale";
+
+export type WikiKnowledgeNextActionKind =
+  | "none"
+  | "pin_revision"
+  | "remove_source"
+  | "refresh_lm_wiki"
+  | "review_lm_wiki";
+
+export interface WikiKnowledgeNextAction {
+  kind: WikiKnowledgeNextActionKind;
+  pageId?: string;
+  revisionId?: string;
+  revisionNumber?: number;
+  lmWikiRevisionId?: string;
+}
+
+export interface WikiKnowledgeSourceReadiness {
+  pageId: string;
+  scope?: "workspace" | "project";
+  projectId?: string;
+  state: WikiKnowledgeSourceState;
+  reasonCode: string;
+  responsibleRole: "owner_admin";
+  selectedRevisionId?: string;
+  selectedRevisionNumber?: number;
+  currentRevisionId?: string;
+  currentRevisionNumber?: number;
+  policyVersion: number;
+  nextAction: WikiKnowledgeNextAction;
+}
+
+export type WikiKnowledgeMaintenanceKind =
+  | "source_newer_revision"
+  | "source_deleted"
+  | "source_excluded"
+  | "policy_stale"
+  | "lm_wiki_review_pending";
+
+export interface WikiKnowledgeMaintenanceItem {
+  id: string;
+  kind: WikiKnowledgeMaintenanceKind;
+  severity: "warning" | "high";
+  reasonCode: string;
+  responsibleRole: "owner_admin";
+  pageId?: string;
+  selectedRevisionNumber?: number;
+  policyVersion: number;
+  nextAction: WikiKnowledgeNextAction;
+}
+
+export interface WikiKnowledgeReadiness {
+  schemaVersion: 1;
+  policy: LMWikiSourcePolicy;
+  sources: readonly WikiKnowledgeSourceReadiness[];
+  maintenanceItems: readonly WikiKnowledgeMaintenanceItem[];
+  truncated: boolean;
+  canManage: boolean;
+}
+
+export interface LMWikiSourcePolicyStaleConflict {
+  code: "wiki_source_policy_stale";
+  currentPolicy: LMWikiSourcePolicy;
 }
 
 export interface WikiRevisionConflict {

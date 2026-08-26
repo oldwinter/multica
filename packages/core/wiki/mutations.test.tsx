@@ -12,6 +12,7 @@ import {
   useRestoreWikiRevision,
   useUpdateWikiPage,
   useUpdateLMWikiSourcePolicy,
+  usePinWikiRevisionAsLMWikiEvidence,
   useCreatePersonalWikiPage,
   useDeletePersonalWikiPage,
   useRestorePersonalWikiRevision,
@@ -76,6 +77,14 @@ describe("Wiki mutations", () => {
         policyDigest: "",
         exclusions: [],
       }),
+      pinWikiRevisionAsLMWikiEvidence: vi.fn().mockResolvedValue({
+        sourceClasses: ["wiki_page"],
+        wikiPages: [{ pageId: "page-1", revisionNumber: 4 }],
+        remoteGenerationEnabled: false,
+        policyVersion: 1,
+        policyDigest: "sha256:policy",
+        exclusions: [],
+      }),
     };
     setApiInstance(api as unknown as ApiClient);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -87,6 +96,10 @@ describe("Wiki mutations", () => {
     const restore = renderHook(() => useRestoreWikiRevision("ws-1", "page-1"), options);
     const accept = renderHook(() => useAcceptWikiProposal("ws-1", "page-1"), options);
     const updatePolicy = renderHook(() => useUpdateLMWikiSourcePolicy("ws-1"), options);
+    const pinRevision = renderHook(
+      () => usePinWikiRevisionAsLMWikiEvidence("ws-1"),
+      options,
+    );
 
     await act(async () => {
       await create.result.current.mutateAsync({ scope: "workspace", path: "guide.md" });
@@ -99,10 +112,16 @@ describe("Wiki mutations", () => {
         wikiPages: [{ pageId: "page-1", revisionNumber: 4 }],
         remoteGenerationEnabled: false,
       });
+      await pinRevision.result.current.mutateAsync({
+        pageId: "page-1",
+        revisionId: "revision-4",
+        expectedPolicyVersion: 0,
+        expectedPolicyDigest: "sha256:empty",
+      });
     });
 
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: wikiKeys.all("ws-1") }));
-    expect(invalidate).toHaveBeenCalledTimes(6);
+    expect(invalidate).toHaveBeenCalledTimes(7);
     expect(api.updateWikiPage).toHaveBeenCalledWith("page-1", {
       expectedRevisionNumber: 2,
       content: "new",
@@ -112,6 +131,12 @@ describe("Wiki mutations", () => {
       sourceClasses: ["issue", "wiki_page"],
       wikiPages: [{ pageId: "page-1", revisionNumber: 4 }],
       remoteGenerationEnabled: false,
+    });
+    expect(api.pinWikiRevisionAsLMWikiEvidence).toHaveBeenCalledWith({
+      pageId: "page-1",
+      revisionId: "revision-4",
+      expectedPolicyVersion: 0,
+      expectedPolicyDigest: "sha256:empty",
     });
     client.clear();
   });

@@ -41,7 +41,9 @@ export interface LMWikiSourcePolicyPanelProps {
   isSaving?: boolean;
   saved?: boolean;
   errorMessage?: string | null;
+  conflictPolicyVersion?: number | null;
   onRetry?: () => void;
+  onResolveConflict?: () => void;
   onPageSelectionChange?: (pageId: string, enabled: boolean) => void;
   onSave: (policy: UpdateLMWikiSourcePolicyInput) => void;
 }
@@ -57,7 +59,9 @@ export function LMWikiSourcePolicyPanel({
   isSaving = false,
   saved = false,
   errorMessage,
+  conflictPolicyVersion,
   onRetry,
+  onResolveConflict,
   onPageSelectionChange,
   onSave,
 }: LMWikiSourcePolicyPanelProps) {
@@ -260,7 +264,21 @@ export function LMWikiSourcePolicyPanel({
         )}
       </section>
 
-      {errorMessage ? <p className="text-body text-destructive" role="alert">{errorMessage}</p> : null}
+      {conflictPolicyVersion !== undefined && conflictPolicyVersion !== null ? (
+        <div className="flex flex-col items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3" role="alert">
+          <p className="break-words text-body font-medium text-foreground">
+            {t(($) => $.source_policy.conflict_title)}
+          </p>
+          <p className="break-words text-caption text-muted-foreground">
+            {t(($) => $.source_policy.conflict_description, { version: conflictPolicyVersion })}
+          </p>
+          {onResolveConflict ? (
+            <Button type="button" variant="outline" size="sm" onClick={onResolveConflict}>
+              {t(($) => $.source_policy.reload_policy)}
+            </Button>
+          ) : null}
+        </div>
+      ) : errorMessage ? <p className="text-body text-destructive" role="alert">{errorMessage}</p> : null}
       {saved ? <p className="text-body text-success" role="status">{t(($) => $.source_policy.saved)}</p> : null}
       <Button
         disabled={!canManage || isSaving}
@@ -272,6 +290,8 @@ export function LMWikiSourcePolicyPanel({
               .sort((a, b) => a.pageId.localeCompare(b.pageId))
             : [],
           remoteGenerationEnabled,
+          expectedPolicyVersion: policy.policyVersion,
+          expectedPolicyDigest: policy.policyDigest,
         })}
       >
         {isSaving ? t(($) => $.source_policy.saving) : t(($) => $.source_policy.save)}

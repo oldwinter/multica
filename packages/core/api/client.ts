@@ -224,6 +224,7 @@ import type {
   CreateWikiProposalInput,
   AcceptWikiProposalInput,
   LMWikiSourcePolicy,
+  PinWikiRevisionAsLMWikiEvidenceInput,
   ListWikiPagesParams,
   RejectWikiProposalInput,
   SearchWikiPagesParams,
@@ -234,6 +235,7 @@ import type {
   WikiPageSummary,
   WikiProposal,
   WikiRevision,
+  WikiKnowledgeReadiness,
 } from "../wiki";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type {
@@ -349,7 +351,9 @@ import {
   WikiRevisionListSchema,
   WikiRevisionSchema,
   EMPTY_LM_WIKI_SOURCE_POLICY,
+  EMPTY_WIKI_KNOWLEDGE_READINESS,
   LMWikiSourcePolicySchema,
+  WikiKnowledgeReadinessSchema,
 } from "../wiki/schemas";
 import {
   AgentTaskListSchema,
@@ -3733,6 +3737,16 @@ export class ApiClient {
     });
   }
 
+  async getWikiKnowledgeReadiness(): Promise<WikiKnowledgeReadiness> {
+    const raw = await this.fetch<unknown>("/api/wiki/knowledge-readiness");
+    return parseWithFallback(
+      raw,
+      WikiKnowledgeReadinessSchema,
+      EMPTY_WIKI_KNOWLEDGE_READINESS,
+      { endpoint: "GET /api/wiki/knowledge-readiness" },
+    );
+  }
+
   async updateLMWikiSourcePolicy(data: UpdateLMWikiSourcePolicyInput): Promise<LMWikiSourcePolicy> {
     const raw = await this.fetch<unknown>("/api/lm-wiki/source-policy", {
       method: "PUT",
@@ -3743,10 +3757,30 @@ export class ApiClient {
           revision_number: page.revisionNumber,
         })),
         remote_generation_enabled: data.remoteGenerationEnabled,
+        expected_policy_version: data.expectedPolicyVersion,
+        expected_policy_digest: data.expectedPolicyDigest,
       }),
     });
     return parseWithFallback(raw, LMWikiSourcePolicySchema, EMPTY_LM_WIKI_SOURCE_POLICY, {
       endpoint: "PUT /api/lm-wiki/source-policy",
+    });
+  }
+
+  async pinWikiRevisionAsLMWikiEvidence(
+    data: PinWikiRevisionAsLMWikiEvidenceInput,
+  ): Promise<LMWikiSourcePolicy> {
+    const raw = await this.fetch<unknown>(
+      `/api/lm-wiki/source-policy/wiki-pages/${encodeURIComponent(data.pageId)}/revisions/${encodeURIComponent(data.revisionId)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          expected_policy_version: data.expectedPolicyVersion,
+          expected_policy_digest: data.expectedPolicyDigest,
+        }),
+      },
+    );
+    return parseWithFallback(raw, LMWikiSourcePolicySchema, EMPTY_LM_WIKI_SOURCE_POLICY, {
+      endpoint: "PUT /api/lm-wiki/source-policy/wiki-pages/:pageId/revisions/:revisionId",
     });
   }
 

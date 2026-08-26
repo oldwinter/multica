@@ -36,6 +36,8 @@ func resetLMWikiHTTPFixture(t *testing.T) {
 		`DELETE FROM lm_wiki_review WHERE workspace_id = $1`,
 		`DELETE FROM lm_wiki_citation WHERE workspace_id = $1`,
 		`DELETE FROM lm_wiki_revision WHERE workspace_id = $1`,
+		`DELETE FROM lm_wiki_source_wiki_page WHERE workspace_id = $1`,
+		`DELETE FROM lm_wiki_source_policy WHERE workspace_id = $1`,
 		`DELETE FROM autopilot_run WHERE autopilot_id IN (SELECT id FROM autopilot WHERE workspace_id = $1 AND title LIKE 'LM Wiki HTTP %')`,
 		`DELETE FROM autopilot WHERE workspace_id = $1 AND title LIKE 'LM Wiki HTTP %'`,
 		`DELETE FROM project_resource WHERE workspace_id = $1 AND label LIKE 'LM Wiki HTTP %'`,

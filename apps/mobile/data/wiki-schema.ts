@@ -163,6 +163,141 @@ export const WikiProposalSchema = WikiProposalWireSchema.transform((wire) => ({
 
 export const WikiProposalListSchema = z.array(WikiProposalSchema);
 
+const LMWikiSourcePolicyWireSchema = z.object({
+  source_classes: z.array(z.enum([
+    "issue",
+    "project",
+    "project_resource",
+    "autopilot_run",
+    "wiki_page",
+  ])),
+  wiki_pages: z.array(z.object({
+    page_id: z.string().min(1),
+    revision_number: z.number().int().positive(),
+  }).loose()),
+  remote_generation_enabled: z.boolean(),
+  policy_version: z.number().int().nonnegative(),
+  policy_digest: z.string().min(1),
+  exclusions: z.array(z.object({
+    source_class: z.string().min(1),
+    state: z.string().min(1),
+    reason: z.string().min(1),
+  }).loose()),
+}).loose();
+
+export const LMWikiSourcePolicySchema = LMWikiSourcePolicyWireSchema.transform((wire) => ({
+  sourceClasses: wire.source_classes,
+  wikiPages: wire.wiki_pages.map((page) => ({
+    pageId: page.page_id,
+    revisionNumber: page.revision_number,
+  })),
+  remoteGenerationEnabled: wire.remote_generation_enabled,
+  policyVersion: wire.policy_version,
+  policyDigest: wire.policy_digest,
+  exclusions: wire.exclusions.map((exclusion) => ({
+    sourceClass: exclusion.source_class,
+    state: exclusion.state,
+    reason: exclusion.reason,
+  })),
+}));
+
+export const WikiKnowledgeSourceStateSchema = z.enum([
+  "eligible_unpinned",
+  "pinned_current",
+  "newer_revision_available",
+  "source_deleted",
+  "excluded",
+  "policy_stale",
+]);
+
+const WikiKnowledgeNextActionWireSchema = z.object({
+  kind: z.enum(["none", "pin_revision", "remove_source", "refresh_lm_wiki", "review_lm_wiki"]),
+  page_id: z.string().min(1).optional(),
+  revision_id: z.string().min(1).optional(),
+  revision_number: z.number().int().positive().optional(),
+  lm_wiki_revision_id: z.string().min(1).optional(),
+}).loose();
+
+const WikiKnowledgeNextActionSchema = WikiKnowledgeNextActionWireSchema.transform((wire) => ({
+  kind: wire.kind,
+  pageId: wire.page_id,
+  revisionId: wire.revision_id,
+  revisionNumber: wire.revision_number,
+  lmWikiRevisionId: wire.lm_wiki_revision_id,
+}));
+
+const WikiKnowledgeSourceReadinessSchema = z.object({
+  page_id: z.string().min(1),
+  scope: z.enum(["workspace", "project"]).optional(),
+  project_id: z.string().min(1).optional(),
+  state: WikiKnowledgeSourceStateSchema,
+  reason_code: z.string().min(1),
+  responsible_role: z.literal("owner_admin"),
+  selected_revision_id: z.string().min(1).optional(),
+  selected_revision_number: z.number().int().positive().optional(),
+  current_revision_id: z.string().min(1).optional(),
+  current_revision_number: z.number().int().positive().optional(),
+  policy_version: z.number().int().nonnegative(),
+  next_action: WikiKnowledgeNextActionSchema,
+}).loose().transform((wire) => ({
+  pageId: wire.page_id,
+  scope: wire.scope,
+  projectId: wire.project_id,
+  state: wire.state,
+  reasonCode: wire.reason_code,
+  responsibleRole: wire.responsible_role,
+  selectedRevisionId: wire.selected_revision_id,
+  selectedRevisionNumber: wire.selected_revision_number,
+  currentRevisionId: wire.current_revision_id,
+  currentRevisionNumber: wire.current_revision_number,
+  policyVersion: wire.policy_version,
+  nextAction: wire.next_action,
+}));
+
+const WikiKnowledgeMaintenanceItemSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum([
+    "source_newer_revision",
+    "source_deleted",
+    "source_excluded",
+    "policy_stale",
+    "lm_wiki_review_pending",
+  ]),
+  severity: z.enum(["warning", "high"]),
+  reason_code: z.string().min(1),
+  responsible_role: z.literal("owner_admin"),
+  page_id: z.string().min(1).optional(),
+  selected_revision_number: z.number().int().positive().optional(),
+  policy_version: z.number().int().nonnegative(),
+  next_action: WikiKnowledgeNextActionSchema,
+}).loose().transform((wire) => ({
+  id: wire.id,
+  kind: wire.kind,
+  severity: wire.severity,
+  reasonCode: wire.reason_code,
+  responsibleRole: wire.responsible_role,
+  pageId: wire.page_id,
+  selectedRevisionNumber: wire.selected_revision_number,
+  policyVersion: wire.policy_version,
+  nextAction: wire.next_action,
+}));
+
+export const WikiKnowledgeReadinessSchema = z.object({
+  schema_version: z.literal(1),
+  policy: LMWikiSourcePolicySchema,
+  sources: z.array(WikiKnowledgeSourceReadinessSchema),
+  maintenance_items: z.array(WikiKnowledgeMaintenanceItemSchema),
+  truncated: z.boolean(),
+  can_manage: z.boolean(),
+}).loose().transform((wire) => ({
+  schemaVersion: wire.schema_version,
+  policy: wire.policy,
+  sources: wire.sources,
+  maintenanceItems: wire.maintenance_items,
+  truncated: wire.truncated,
+  canManage: wire.can_manage,
+}));
+
 export type WikiScope = z.infer<typeof WikiScopeSchema>;
 export type WikiSourceKind = z.infer<typeof WikiSourceKindSchema>;
 export type WikiActorType = z.infer<typeof WikiActorTypeSchema>;
@@ -171,6 +306,9 @@ export type WikiPageSummary = z.infer<typeof WikiPageSummarySchema>;
 export type WikiPage = z.infer<typeof WikiPageSchema>;
 export type WikiRevision = z.infer<typeof WikiRevisionSchema>;
 export type WikiProposal = z.infer<typeof WikiProposalSchema>;
+export type LMWikiSourcePolicy = z.infer<typeof LMWikiSourcePolicySchema>;
+export type WikiKnowledgeReadiness = z.infer<typeof WikiKnowledgeReadinessSchema>;
+export type WikiKnowledgeSourceReadiness = WikiKnowledgeReadiness["sources"][number];
 
 export interface ListWikiPagesParams {
   scope: Exclude<WikiScope, "unknown">;
@@ -210,6 +348,13 @@ export interface AcceptWikiProposalInput {
 
 export interface RejectWikiProposalInput {
   reason?: string;
+}
+
+export interface PinWikiRevisionAsLMWikiEvidenceInput {
+  pageId: string;
+  revisionId: string;
+  expectedPolicyVersion: number;
+  expectedPolicyDigest: string;
 }
 
 export function buildCreateWikiPageBody(input: CreateWikiPageInput) {
@@ -259,6 +404,13 @@ export function buildRejectWikiProposalBody(input: RejectWikiProposalInput) {
   return input.reason === undefined ? {} : { reason: input.reason };
 }
 
+export function buildPinWikiRevisionBody(input: PinWikiRevisionAsLMWikiEvidenceInput) {
+  return {
+    expected_policy_version: input.expectedPolicyVersion,
+    expected_policy_digest: input.expectedPolicyDigest,
+  };
+}
+
 export const EMPTY_WIKI_PAGE_SUMMARIES: WikiPageSummary[] = [];
 export const EMPTY_WIKI_REVISIONS: WikiRevision[] = [];
 export const EMPTY_WIKI_PROPOSALS: WikiProposal[] = [];
@@ -280,6 +432,22 @@ export const EMPTY_WIKI_PROPOSAL: WikiProposal = {
   reviewedAt: null,
   acceptedRevisionId: null,
   createdAt: "",
+};
+export const EMPTY_LM_WIKI_SOURCE_POLICY: LMWikiSourcePolicy = {
+  sourceClasses: [],
+  wikiPages: [],
+  remoteGenerationEnabled: false,
+  policyVersion: 0,
+  policyDigest: "unavailable",
+  exclusions: [],
+};
+export const EMPTY_WIKI_KNOWLEDGE_READINESS: WikiKnowledgeReadiness = {
+  schemaVersion: 1,
+  policy: EMPTY_LM_WIKI_SOURCE_POLICY,
+  sources: [],
+  maintenanceItems: [],
+  truncated: false,
+  canManage: false,
 };
 export const EMPTY_WIKI_PAGE: WikiPage = {
   id: "",
@@ -315,4 +483,14 @@ export function getWikiRevisionConflict(
     return null;
   }
   return { currentRevisionNumber: record.current_revision_number };
+}
+
+export function getLMWikiSourcePolicyStaleConflict(
+  body: unknown,
+): { currentPolicy: LMWikiSourcePolicy } | null {
+  const parsed = z.object({
+    code: z.literal("wiki_source_policy_stale"),
+    current_policy: LMWikiSourcePolicySchema,
+  }).loose().safeParse(body);
+  return parsed.success ? { currentPolicy: parsed.data.current_policy } : null;
 }

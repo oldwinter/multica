@@ -1798,6 +1798,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 			r.Get("/api/twin/overview", h.GetTwinOverview)
 			r.Get("/api/wiki/search", h.SearchWikiPages)
+			r.Get("/api/wiki/knowledge-readiness", h.GetWikiKnowledgeReadiness)
 			r.Get("/api/wiki/revisions/{revisionId}", h.GetStableWikiPageRevision)
 			r.Route("/api/wiki/pages", func(r chi.Router) {
 				r.Get("/", h.ListWikiPages)
@@ -1823,6 +1824,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceRole(queries, "owner", "admin"))
 					r.With(handler.RequireHumanActor).Put("/source-policy", h.UpdateLMWikiSourcePolicy)
+					r.With(handler.RequireHumanActor).Put("/source-policy/wiki-pages/{pageId}/revisions/{revisionId}", h.PinLMWikiWikiRevision)
 					r.With(handler.RequireHumanActor).Post("/refresh", h.RefreshLMWiki)
 					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/accept", h.AcceptLMWikiRevision)
 					r.With(handler.RequireHumanActor).Post("/revisions/{revisionId}/reject", h.RejectLMWikiRevision)

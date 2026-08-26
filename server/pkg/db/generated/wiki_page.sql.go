@@ -427,9 +427,7 @@ func (q *Queries) CreateWikiPageWithProvenance(ctx context.Context, arg CreateWi
 }
 
 const deleteWikiPage = `-- name: DeleteWikiPage :exec
-WITH deleted_policy_selection AS (
-    DELETE FROM lm_wiki_source_wiki_page WHERE page_id = $1
-), deleted_proposals AS (
+WITH deleted_proposals AS (
     DELETE FROM wiki_page_edit_proposal WHERE page_id = $1
 )
 DELETE FROM wiki_page page WHERE page.id = $1::uuid

@@ -22,6 +22,7 @@ export const wikiKeys = {
   revisions: (wsId: string, id: string) => [...wikiKeys.detail(wsId, id), "revisions"] as const,
   proposals: (wsId: string, id: string) => [...wikiKeys.detail(wsId, id), "proposals"] as const,
   sourcePolicy: (wsId: string) => [...wikiKeys.all(wsId), "lm-wiki-source-policy"] as const,
+  readiness: (wsId: string) => [...wikiKeys.all(wsId), "knowledge-readiness"] as const,
   revision: (wsId: string, revisionId: string) => [
     ...wikiKeys.all(wsId), "revision", revisionId,
   ] as const,
@@ -126,6 +127,14 @@ export function lmWikiSourcePolicyOptions(wsId: string) {
   return queryOptions({
     queryKey: wikiKeys.sourcePolicy(wsId),
     queryFn: () => api.getLMWikiSourcePolicy(),
+    enabled: Boolean(wsId),
+  });
+}
+
+export function wikiKnowledgeReadinessOptions(wsId: string) {
+  return queryOptions({
+    queryKey: wikiKeys.readiness(wsId),
+    queryFn: () => api.getWikiKnowledgeReadiness(),
     enabled: Boolean(wsId),
   });
 }

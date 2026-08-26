@@ -44,5 +44,10 @@ describe("mobile Wiki query identity", () => {
       "page-1",
       "proposals",
     ]);
+    expect(wikiKeys.readiness("ws-1")).toEqual([
+      "wiki",
+      "ws-1",
+      "knowledge-readiness",
+    ]);
   });
 });

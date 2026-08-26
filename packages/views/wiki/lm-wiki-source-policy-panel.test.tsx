@@ -86,6 +86,8 @@ describe("LMWikiSourcePolicyPanel", () => {
       sourceClasses: ["issue"],
       wikiPages: [],
       remoteGenerationEnabled: false,
+      expectedPolicyVersion: 3,
+      expectedPolicyDigest: "sha256:policy",
     });
   }, 15_000);
 

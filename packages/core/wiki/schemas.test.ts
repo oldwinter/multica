@@ -5,6 +5,7 @@ import { parseWithFallback } from "../api/schema";
 import {
   EMPTY_WIKI_PAGE,
   EMPTY_LM_WIKI_SOURCE_POLICY,
+  EMPTY_WIKI_KNOWLEDGE_READINESS,
   EMPTY_WIKI_PAGE_LIST,
   EMPTY_WIKI_PROPOSAL_LIST,
   EMPTY_WIKI_REVISION_LIST,
@@ -13,6 +14,8 @@ import {
   WikiProposalListSchema,
   WikiRevisionListSchema,
   LMWikiSourcePolicySchema,
+  WikiKnowledgeReadinessSchema,
+  parseLMWikiSourcePolicyStale,
   parseWikiRevisionConflict,
 } from "./schemas";
 
@@ -142,5 +145,83 @@ describe("Wiki API schemas", () => {
       current_revision_number: 4,
     })).toEqual({ currentRevisionNumber: 4 });
     expect(parseWikiRevisionConflict({ code: "other", current_revision_number: 4 })).toBeNull();
+  });
+
+  it("parses bounded knowledge readiness and stale-policy conflicts", () => {
+    const policy = {
+      source_classes: ["issue", "wiki_page"],
+      wiki_pages: [{ page_id: "page-1", revision_number: 2 }],
+      remote_generation_enabled: false,
+      policy_version: 3,
+      policy_digest: "sha256:policy",
+      exclusions: [],
+    };
+    const readiness = WikiKnowledgeReadinessSchema.parse({
+      schema_version: 1,
+      policy,
+      sources: [{
+        page_id: "page-1",
+        scope: "workspace",
+        state: "newer_revision_available",
+        reason_code: "newer_revision_available",
+        responsible_role: "owner_admin",
+        selected_revision_id: "revision-2",
+        selected_revision_number: 2,
+        current_revision_id: "revision-3",
+        current_revision_number: 3,
+        policy_version: 3,
+        next_action: {
+          kind: "pin_revision",
+          page_id: "page-1",
+          revision_id: "revision-3",
+          revision_number: 3,
+        },
+      }],
+      maintenance_items: [{
+        id: "queue-1",
+        kind: "source_newer_revision",
+        severity: "warning",
+        reason_code: "newer_revision_available",
+        responsible_role: "owner_admin",
+        page_id: "page-1",
+        selected_revision_number: 2,
+        policy_version: 3,
+        next_action: {
+          kind: "pin_revision",
+          page_id: "page-1",
+          revision_id: "revision-3",
+          revision_number: 3,
+        },
+      }],
+      truncated: false,
+      can_manage: true,
+    });
+    expect(readiness).toMatchObject({
+      schemaVersion: 1,
+      canManage: true,
+      sources: [{ pageId: "page-1", state: "newer_revision_available" }],
+      maintenanceItems: [{ kind: "source_newer_revision" }],
+    });
+    expect(parseLMWikiSourcePolicyStale({
+      code: "wiki_source_policy_stale",
+      current_policy: policy,
+    })).toMatchObject({ currentPolicy: { policyVersion: 3, policyDigest: "sha256:policy" } });
+  });
+
+  it("fails malformed readiness responses closed", () => {
+    expect(parseWithFallback(
+      {
+        schema_version: 1,
+        policy: { source_classes: [], wiki_pages: [] },
+        sources: [{ page_id: "page-1", state: "current" }],
+        maintenance_items: [],
+        truncated: false,
+        can_manage: true,
+      },
+      WikiKnowledgeReadinessSchema,
+      EMPTY_WIKI_KNOWLEDGE_READINESS,
+      { endpoint: "GET /api/wiki/knowledge-readiness" },
+    )).toEqual(EMPTY_WIKI_KNOWLEDGE_READINESS);
+    expect(parseLMWikiSourcePolicyStale({ code: "wiki_source_policy_stale" })).toBeNull();
   });
 });

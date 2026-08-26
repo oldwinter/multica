@@ -744,6 +744,10 @@ function invalidateWikiCollections(qc: QueryClient, wsId: string): void {
   });
 }
 
+function invalidateWikiKnowledgeReadiness(qc: QueryClient, wsId: string): void {
+  qc.invalidateQueries({ queryKey: workspaceWikiKeys.readiness(wsId) });
+}
+
 function wikiPageID(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const pageId = (payload as { page_id?: unknown }).page_id;
@@ -770,22 +774,26 @@ export function applyWikiRealtimeEvent(
   switch (eventType) {
     case "wiki:page_created":
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:page_deleted":
       // detail is the parent key for revisions and proposals, so removing the
       // subtree prevents a deleted page from surviving in an inactive cache.
       qc.removeQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId) });
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:page_updated":
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:revision_created":
     case "wiki:revision_restored":
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.revisions(wsId, pageId) });
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:proposal_created":
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.proposals(wsId, pageId) });
@@ -798,6 +806,7 @@ export function applyWikiRealtimeEvent(
           qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
           qc.invalidateQueries({ queryKey: workspaceWikiKeys.revisions(wsId, pageId) });
           invalidateWikiCollections(qc, wsId);
+          invalidateWikiKnowledgeReadiness(qc, wsId);
           return;
         case "rejected":
           return;
@@ -824,6 +833,7 @@ export function applyLMWikiRealtimeEvent(
   eventType: LMWikiRealtimeEventType,
   payload: unknown,
 ): void {
+  invalidateWikiKnowledgeReadiness(qc, wsId);
   if (eventType === "lm_wiki:source_policy_changed") {
     qc.invalidateQueries({ queryKey: workspaceWikiKeys.sourcePolicy(wsId) });
     qc.invalidateQueries({ queryKey: lmWikiKeys.overview(wsId) });

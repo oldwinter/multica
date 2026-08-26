@@ -6,6 +6,7 @@ import type {
   CreateWikiPageInput,
   CreatePersonalWikiPageInput,
   CreateWikiProposalInput,
+  PinWikiRevisionAsLMWikiEvidenceInput,
   RejectWikiProposalInput,
   RestoreWikiRevisionInput,
   UpdateWikiPageInput,
@@ -74,7 +75,17 @@ export function useUpdateLMWikiSourcePolicy(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateLMWikiSourcePolicyInput) => api.updateLMWikiSourcePolicy(input),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: wikiKeys.sourcePolicy(wsId) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+  });
+}
+
+export function usePinWikiRevisionAsLMWikiEvidence(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PinWikiRevisionAsLMWikiEvidenceInput) => (
+      api.pinWikiRevisionAsLMWikiEvidence(input)
+    ),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
   });
 }
 
