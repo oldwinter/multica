@@ -2,6 +2,10 @@ import {
   SEMANTIC_CONTRAST_REQUIREMENTS,
   SEMANTIC_TOKEN_CONTRACT_VERSION,
 } from "../../core/constants/semantic-token-schema.ts";
+import {
+  SEMANTIC_APPEARANCE_FIXTURE_STATES,
+  SEMANTIC_APPEARANCE_FIXTURE_TOKENS,
+} from "../components/common/semantic-appearance-fixture-contract.ts";
 
 const CSS_TOKEN_BY_SEMANTIC_ROLE = Object.freeze({
   canvas: "--page-canvas",
@@ -132,6 +136,8 @@ export const APPEARANCE_TOKEN_CONTRACT = Object.freeze({
       "--status-cancelled",
     ]),
   ]),
+  fixtureStates: SEMANTIC_APPEARANCE_FIXTURE_STATES,
+  fixtureTokens: SEMANTIC_APPEARANCE_FIXTURE_TOKENS,
   contrastPairs: Object.freeze(
     [
       ...SEMANTIC_CONTRAST_REQUIREMENTS.map((requirement) => ({
@@ -190,7 +196,11 @@ function declarationBlocks(css) {
     while ((declarationMatch = declarationPattern.exec(blockMatch[2])) !== null) {
       declarations.set(declarationMatch[1], declarationMatch[2].trim());
     }
-    if (declarations.size > 0) blocks.set(selector, declarations);
+    if (declarations.size > 0) {
+      for (const individualSelector of selector.split(",")) {
+        blocks.set(individualSelector.trim(), declarations);
+      }
+    }
   }
 
   return blocks;

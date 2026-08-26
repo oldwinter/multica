@@ -57,6 +57,7 @@ describe("ApiClient appearance boundary", () => {
       appearance: "dark",
       appearanceUpdatedAt: "2026-08-23T12:00:00.000Z",
       appearanceTokenVersion: 1,
+      appearanceExpectedUpdatedAt: "2026-08-23T11:00:00.000Z",
     });
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
@@ -64,6 +65,7 @@ describe("ApiClient appearance boundary", () => {
       appearance: "dark",
       appearance_updated_at: "2026-08-23T12:00:00.000Z",
       appearance_token_version: 1,
+      appearance_expected_updated_at: "2026-08-23T11:00:00.000Z",
     });
   });
 });

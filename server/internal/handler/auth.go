@@ -503,6 +503,8 @@ type UpdateMeRequest struct {
 	Appearance             *string `json:"appearance"`
 	AppearanceUpdatedAt    *string `json:"appearance_updated_at"`
 	AppearanceTokenVersion *int32  `json:"appearance_token_version"`
+	// Optional compare-and-swap guard for Undo. Ordinary writes omit it.
+	AppearanceExpectedUpdatedAt *string `json:"appearance_expected_updated_at"`
 }
 
 type GoogleLoginRequest struct {
@@ -808,6 +810,10 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "skin, appearance, appearance_updated_at, and appearance_token_version must be provided together")
 		return
 	}
+	if req.AppearanceExpectedUpdatedAt != nil && appearanceFieldCount != 4 {
+		writeError(w, http.StatusBadRequest, "appearance_expected_updated_at requires a complete appearance tuple")
+		return
+	}
 	if appearanceFieldCount == 4 {
 		skin := strings.TrimSpace(*req.Skin)
 		if _, ok := supportedSkins[skin]; !ok {
@@ -839,6 +845,14 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		params.Appearance = pgtype.Text{String: appearance, Valid: true}
 		params.AppearanceChangeAt = pgtype.Timestamptz{Time: appearanceUpdatedAt, Valid: true}
 		params.AppearanceTokenVersion = pgtype.Int4{Int32: *req.AppearanceTokenVersion, Valid: true}
+		if req.AppearanceExpectedUpdatedAt != nil {
+			expectedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(*req.AppearanceExpectedUpdatedAt))
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid appearance_expected_updated_at")
+				return
+			}
+			params.AppearanceExpectedUpdatedAt = pgtype.Timestamptz{Time: expectedAt, Valid: true}
+		}
 	}
 
 	updatedUser, err := h.Queries.UpdateUser(r.Context(), params)

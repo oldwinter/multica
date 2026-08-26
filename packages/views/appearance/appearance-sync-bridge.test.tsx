@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import {
   type AppearanceEnvironment,
   type AppearancePreferenceAdapter,
   type AppearancePreferences,
+  type AppearanceUndoReceipt,
 } from "@multica/core/appearance";
 import { EMPTY_USER } from "@multica/core/api/schemas";
 import type { UpdateMeRequest, User } from "@multica/core/types";
@@ -105,12 +106,19 @@ function deferred<T>() {
 function Probe() {
   const {
     preferences,
+    diagnostics,
     isReady,
+    canRetry,
+    canCopyDiagnostics,
+    recoveryNoticePending,
     selectSkin,
     selectAppearance,
+    undo,
     retry,
     reset,
   } = useAppearancePreferences();
+  const receiptRef = useRef<AppearanceUndoReceipt | null>(null);
+  const [undoOutcome, setUndoOutcome] = useState("none");
   return (
     <div>
       <output data-testid="ready">{String(isReady)}</output>
@@ -118,19 +126,58 @@ function Probe() {
       <output data-testid="appearance">{preferences.requestedAppearance}</output>
       <output data-testid="resolved">{preferences.resolvedAppearance}</output>
       <output data-testid="sync">{preferences.syncState.status}</output>
-      <button type="button" onClick={() => selectSkin("field")}>
+      <output data-testid="can-retry">{String(canRetry)}</output>
+      <output data-testid="can-copy">{String(canCopyDiagnostics)}</output>
+      <output data-testid="recovery-notice">
+        {String(recoveryNoticePending)}
+      </output>
+      <output data-testid="recovered-fields">
+        {diagnostics.recoveredFields.join(",")}
+      </output>
+      <output data-testid="undo-outcome">{undoOutcome}</output>
+      <button
+        type="button"
+        onClick={() => {
+          receiptRef.current = selectSkin("field");
+        }}
+      >
         Field
       </button>
-      <button type="button" onClick={() => selectAppearance("system")}>
+      <button
+        type="button"
+        onClick={() => {
+          receiptRef.current = selectAppearance("system");
+        }}
+      >
         System
       </button>
-      <button type="button" onClick={() => selectAppearance("dark")}>
+      <button
+        type="button"
+        onClick={() => {
+          receiptRef.current = selectAppearance("dark");
+        }}
+      >
         Dark
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const receipt = receiptRef.current;
+          if (!receipt) return;
+          void undo(receipt).then(setUndoOutcome);
+        }}
+      >
+        Undo
       </button>
       <button type="button" onClick={retry}>
         Retry
       </button>
-      <button type="button" onClick={reset}>
+      <button
+        type="button"
+        onClick={() => {
+          receiptRef.current = reset();
+        }}
+      >
         Reset
       </button>
     </div>
@@ -232,6 +279,180 @@ describe("AppearanceSyncBridge", () => {
     });
   });
 
+  it("undoes with the optimistic timestamp as a server compare condition", async () => {
+    userRef.current = serverUser();
+    const harness = createAdapter(null);
+    mockUpdateMe.mockImplementation(async (request: UpdateMeRequest) =>
+      serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      }),
+    );
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
+    const selected = mockUpdateMe.mock.calls[0]![0] as UpdateMeRequest;
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("undo-outcome")).toHaveTextContent("applied"),
+    );
+    expect(screen.getByTestId("skin")).toHaveTextContent("tension");
+    const undone = mockUpdateMe.mock.calls[1]![0] as UpdateMeRequest;
+    expect(undone).toMatchObject({
+      skin: "tension",
+      appearance: "system",
+      appearanceExpectedUpdatedAt: selected.appearanceUpdatedAt,
+    });
+    expect(undone.appearanceUpdatedAt).not.toBe(selected.appearanceUpdatedAt);
+  });
+
+  it("expires Undo after a newer cross-tab preference without another write", async () => {
+    userRef.current = serverUser();
+    const harness = createAdapter(null);
+    mockUpdateMe.mockImplementation(async (request: UpdateMeRequest) =>
+      serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      }),
+    );
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
+    harness.emit({
+      type: "external-preferences-changed",
+      accountId: "user-1",
+      value: preference({
+        skin: "relay",
+        updatedAt: "2099-08-23T10:00:00.000Z",
+      }),
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("skin")).toHaveTextContent("relay"),
+    );
+    const writesBeforeUndo = mockUpdateMe.mock.calls.length;
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("undo-outcome")).toHaveTextContent("expired"),
+    );
+    expect(screen.getByTestId("skin")).toHaveTextContent("relay");
+    expect(mockUpdateMe).toHaveBeenCalledTimes(writesBeforeUndo);
+  });
+
+  it("accepts the server tuple when compare-before-write Undo is stale", async () => {
+    userRef.current = serverUser();
+    const harness = createAdapter(null);
+    mockUpdateMe
+      .mockImplementationOnce(async (request: UpdateMeRequest) =>
+        serverUser({
+          skin: request.skin,
+          appearance: request.appearance,
+          appearanceUpdatedAt: request.appearanceUpdatedAt,
+          appearanceTokenVersion: request.appearanceTokenVersion,
+        }),
+      )
+      .mockResolvedValueOnce(
+        serverUser({
+          skin: "relay",
+          appearance: "dark",
+          appearanceUpdatedAt: "2099-08-23T10:00:00.000Z",
+          appearanceTokenVersion: APPEARANCE_TOKEN_CONTRACT_VERSION,
+        }),
+      );
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("undo-outcome")).toHaveTextContent("expired"),
+    );
+    expect(screen.getByTestId("skin")).toHaveTextContent("relay");
+    expect(screen.getByTestId("appearance")).toHaveTextContent("dark");
+    expect(harness.stored()).toMatchObject({
+      skin: "relay",
+      requestedAppearance: "dark",
+      syncState: { status: "synced" },
+    });
+  });
+
+  it("keeps the Undo compare condition when a failed write is retried", async () => {
+    userRef.current = serverUser();
+    const harness = createAdapter(null);
+    mockUpdateMe.mockImplementationOnce(async (request: UpdateMeRequest) =>
+      serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      }),
+    );
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
+    const selected = mockUpdateMe.mock.calls[0]![0] as UpdateMeRequest;
+    mockUpdateMe.mockRejectedValueOnce(new TypeError("offline"));
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("failed"),
+    );
+    mockUpdateMe.mockImplementationOnce(async (request: UpdateMeRequest) =>
+      serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
+    expect(mockUpdateMe).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        appearanceExpectedUpdatedAt: selected.appearanceUpdatedAt,
+      }),
+    );
+  });
+
   it("keeps a failed local choice and retries it without changing timestamp", async () => {
     userRef.current = serverUser();
     const harness = createAdapter(null);
@@ -258,6 +479,45 @@ describe("AppearanceSyncBridge", () => {
     expect(mockUpdateMe).toHaveBeenLastCalledWith(
       expect.objectContaining({ appearanceUpdatedAt: failedTimestamp }),
     );
+  });
+
+  it("exposes bounded diagnostics only after two consecutive sync failures", async () => {
+    userRef.current = serverUser();
+    const harness = createAdapter(null);
+    mockUpdateMe.mockRejectedValue(new TypeError("offline"));
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("failed"),
+    );
+    expect(screen.getByTestId("can-retry")).toHaveTextContent("true");
+    expect(screen.getByTestId("can-copy")).toHaveTextContent("false");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("can-copy")).toHaveTextContent("true"),
+    );
+  });
+
+  it("reports recovered fields and exposes one recovery notice", async () => {
+    const harness = createAdapter({
+      ...preference(),
+      skin: "not-a-skin",
+    });
+    renderBridge(harness.adapter);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    expect(screen.getByTestId("skin")).toHaveTextContent("tension");
+    expect(screen.getByTestId("recovered-fields")).toHaveTextContent("skin");
+    expect(screen.getByTestId("recovery-notice")).toHaveTextContent("true");
   });
 
   it("resets both choices and syncs the product defaults as one tuple", async () => {
@@ -483,6 +743,7 @@ describe("AppearanceSyncBridge", () => {
     await waitFor(() => expect(screen.getByTestId("ready")).toHaveTextContent("true"));
     expect(screen.getByTestId("skin")).toHaveTextContent("tension");
     expect(screen.getByTestId("sync")).toHaveTextContent("failed");
+    expect(screen.getByTestId("can-retry")).toHaveTextContent("false");
     expect(harness.stored()).toEqual(future);
     expect(mockUpdateMe).not.toHaveBeenCalled();
   });

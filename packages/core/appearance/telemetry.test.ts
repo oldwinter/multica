@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createAppearanceDiagnostics,
+  serializeAppearanceDiagnostics,
   type AppearanceDiagnosticsSnapshot,
 } from "./diagnostics";
 import {
@@ -52,6 +53,12 @@ describe("appearance diagnostics", () => {
       forcedColors: false,
       recoveredFields: ["skin", "updatedAt"],
     });
+    expect(serializeAppearanceDiagnostics(snapshot)).toBe(
+      JSON.stringify(snapshot, null, 2),
+    );
+    expect(serializeAppearanceDiagnostics(snapshot)).not.toContain(
+      "2026-08-23",
+    );
   });
 });
 

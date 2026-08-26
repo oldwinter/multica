@@ -937,7 +937,12 @@ export class ApiClient {
   }
 
   async updateMe(data: UpdateMeRequest): Promise<User> {
-    const { appearanceUpdatedAt, appearanceTokenVersion, ...fields } = data;
+    const {
+      appearanceUpdatedAt,
+      appearanceTokenVersion,
+      appearanceExpectedUpdatedAt,
+      ...fields
+    } = data;
     const raw = await this.fetch<unknown>("/api/me", {
       method: "PATCH",
       body: JSON.stringify({
@@ -948,6 +953,9 @@ export class ApiClient {
         ...(appearanceTokenVersion === undefined
           ? {}
           : { appearance_token_version: appearanceTokenVersion }),
+        ...(appearanceExpectedUpdatedAt === undefined
+          ? {}
+          : { appearance_expected_updated_at: appearanceExpectedUpdatedAt }),
       }),
     });
     return parseWithFallback(raw, UserSchema, EMPTY_USER, {

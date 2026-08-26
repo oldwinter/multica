@@ -330,24 +330,28 @@ UPDATE "user" SET
     skin = CASE
         WHEN $7::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
-        THEN $8::text
+            AND ($8::timestamptz IS NULL OR appearance_updated_at = $8::timestamptz)
+        THEN $9::text
         ELSE skin
     END,
     appearance = CASE
         WHEN $7::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
-        THEN $9::text
+            AND ($8::timestamptz IS NULL OR appearance_updated_at = $8::timestamptz)
+        THEN $10::text
         ELSE appearance
     END,
     appearance_token_version = CASE
         WHEN $7::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
-        THEN $10::integer
+            AND ($8::timestamptz IS NULL OR appearance_updated_at = $8::timestamptz)
+        THEN $11::integer
         ELSE appearance_token_version
     END,
     appearance_updated_at = CASE
         WHEN $7::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR $7::timestamptz >= appearance_updated_at)
+            AND ($8::timestamptz IS NULL OR appearance_updated_at = $8::timestamptz)
         THEN $7::timestamptz
         ELSE appearance_updated_at
     END,
@@ -357,16 +361,17 @@ RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onb
 `
 
 type UpdateUserParams struct {
-	ID                     pgtype.UUID        `json:"id"`
-	Name                   string             `json:"name"`
-	AvatarUrl              pgtype.Text        `json:"avatar_url"`
-	Language               pgtype.Text        `json:"language"`
-	ProfileDescription     pgtype.Text        `json:"profile_description"`
-	Timezone               pgtype.Text        `json:"timezone"`
-	AppearanceChangeAt     pgtype.Timestamptz `json:"appearance_change_at"`
-	Skin                   pgtype.Text        `json:"skin"`
-	Appearance             pgtype.Text        `json:"appearance"`
-	AppearanceTokenVersion pgtype.Int4        `json:"appearance_token_version"`
+	ID                          pgtype.UUID        `json:"id"`
+	Name                        string             `json:"name"`
+	AvatarUrl                   pgtype.Text        `json:"avatar_url"`
+	Language                    pgtype.Text        `json:"language"`
+	ProfileDescription          pgtype.Text        `json:"profile_description"`
+	Timezone                    pgtype.Text        `json:"timezone"`
+	AppearanceChangeAt          pgtype.Timestamptz `json:"appearance_change_at"`
+	AppearanceExpectedUpdatedAt pgtype.Timestamptz `json:"appearance_expected_updated_at"`
+	Skin                        pgtype.Text        `json:"skin"`
+	Appearance                  pgtype.Text        `json:"appearance"`
+	AppearanceTokenVersion      pgtype.Int4        `json:"appearance_token_version"`
 }
 
 // Patches the user-controlled profile fields. Each parameter follows
@@ -385,7 +390,8 @@ type UpdateUserParams struct {
 // Appearance preferences use a client-authored explicit-change timestamp.
 // The four values are validated as a complete tuple by the handler and schema.
 // A delayed write from an older device therefore returns the current row
-// without replacing a newer explicit choice.
+// without replacing a newer explicit choice. Undo additionally supplies the
+// timestamp it expects to replace so the authoritative write is atomic.
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUser,
 		arg.ID,
@@ -395,6 +401,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		arg.ProfileDescription,
 		arg.Timezone,
 		arg.AppearanceChangeAt,
+		arg.AppearanceExpectedUpdatedAt,
 		arg.Skin,
 		arg.Appearance,
 		arg.AppearanceTokenVersion,

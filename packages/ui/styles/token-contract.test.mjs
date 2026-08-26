@@ -21,6 +21,10 @@ import { PRODUCT_RAW_COLOR_POLICY } from "./raw-color-policy.mjs";
 
 const tokensCss = await readFile(new URL("./tokens.css", import.meta.url), "utf8");
 const baseCss = await readFile(new URL("./base.css", import.meta.url), "utf8");
+const fixtureSource = await readFile(
+  new URL("../components/common/semantic-appearance-fixture.tsx", import.meta.url),
+  "utf8",
+);
 
 test("resolves the versioned semantic contract for every skin and mode", () => {
   const report = auditAppearanceTokens({ tokensCss });
@@ -57,6 +61,23 @@ test("resolves the versioned semantic contract for every skin and mode", () => {
   assert.deepEqual(report.cycles, []);
   assert.deepEqual(report.contrastFailures, []);
   assert.deepEqual(report.statusCollisions, []);
+});
+
+test("keeps the representative fixture complete and token-backed", () => {
+  for (const state of APPEARANCE_TOKEN_CONTRACT.fixtureStates) {
+    assert.match(fixtureSource, new RegExp(`data-fixture-role=["']${state}["']`));
+  }
+  for (const token of APPEARANCE_TOKEN_CONTRACT.fixtureTokens) {
+    assert.ok(
+      APPEARANCE_TOKEN_CONTRACT.tokens.includes(token),
+      `${token} must be part of the audited appearance contract`,
+    );
+  }
+
+  const report = auditAppearanceTokens({ tokensCss });
+  assert.equal(report.combinations.length, 6);
+  assert.deepEqual(report.missingTokens, []);
+  assert.deepEqual(report.contrastFailures, []);
 });
 
 test("reports broken token graphs instead of silently accepting them", () => {
