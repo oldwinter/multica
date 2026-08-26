@@ -64,6 +64,26 @@ type TwinExecutionMetrics struct {
 	BindingsOff         int64 `json:"bindings_off"`
 	BindingsPreview     int64 `json:"bindings_preview"`
 	BindingsEnabled     int64 `json:"bindings_enabled"`
+	Cohorts             []TwinExecutionCohortMetrics
+}
+
+type TwinExecutionCohortMetrics struct {
+	PolicyState           string
+	SampleSize            int64
+	CompletedRuns         int64
+	AttributedRuns        int64
+	FeedbackTotal         int64
+	FeedbackHelped        int64
+	FeedbackIrrelevant    int64
+	FeedbackMismatch      int64
+	RevisionCount         int64
+	AverageLatencyMS      int64
+	AverageBriefingTokens int64
+	CostUSDTicks          int64
+	CostedRuns            int64
+	UncostedRuns          int64
+	DepositionTotal       int64
+	DepositionAccepted    int64
 }
 
 // NewTwinExecutionStore accepts ordinary or transaction-scoped queries. Claim
@@ -81,6 +101,24 @@ func (s *TwinExecutionStore) GetMetrics(ctx context.Context, workspaceID pgtype.
 	if err != nil {
 		return TwinExecutionMetrics{}, fmt.Errorf("get Twin execution metrics: %w", err)
 	}
+	cohortRows, err := s.queries.ListTwinExecutionCohortMetrics(ctx, db.ListTwinExecutionCohortMetricsParams{
+		WorkspaceID: workspaceID, WindowDays: TwinEffectivenessWindowDays,
+	})
+	if err != nil {
+		return TwinExecutionMetrics{}, fmt.Errorf("list Twin execution cohort metrics: %w", err)
+	}
+	cohorts := make([]TwinExecutionCohortMetrics, len(cohortRows))
+	for index, cohort := range cohortRows {
+		cohorts[index] = TwinExecutionCohortMetrics{
+			PolicyState: cohort.PolicyState, SampleSize: cohort.SampleSize, CompletedRuns: cohort.CompletedRuns,
+			AttributedRuns: cohort.AttributedRuns, FeedbackTotal: cohort.FeedbackTotal,
+			FeedbackHelped: cohort.FeedbackHelped, FeedbackIrrelevant: cohort.FeedbackIrrelevant,
+			FeedbackMismatch: cohort.FeedbackMismatch, RevisionCount: cohort.RevisionCount,
+			AverageLatencyMS: cohort.AverageLatencyMs, AverageBriefingTokens: cohort.AverageBriefingTokens,
+			CostUSDTicks: cohort.CostUsdTicks, CostedRuns: cohort.CostedRuns, UncostedRuns: cohort.UncostedRuns,
+			DepositionTotal: cohort.DepositionTotal, DepositionAccepted: cohort.DepositionAccepted,
+		}
+	}
 	return TwinExecutionMetrics{
 		AttributedRuns:      row.AttributedRuns,
 		FeedbackTotal:       row.FeedbackTotal,
@@ -94,7 +132,56 @@ func (s *TwinExecutionStore) GetMetrics(ctx context.Context, workspaceID pgtype.
 		BindingsOff:         row.BindingsOff,
 		BindingsPreview:     row.BindingsPreview,
 		BindingsEnabled:     row.BindingsEnabled,
+		Cohorts:             cohorts,
 	}, nil
+}
+
+func (s *TwinExecutionStore) PauseBindings(ctx context.Context, workspaceID, versionID pgtype.UUID) (db.TwinBinding, error) {
+	if err := requireTwinExecutionUUID("workspace id", workspaceID); err != nil {
+		return db.TwinBinding{}, err
+	}
+	if err := requireTwinExecutionUUID("Twin version id", versionID); err != nil {
+		return db.TwinBinding{}, err
+	}
+	binding, err := s.queries.PauseTwinBindings(ctx, db.PauseTwinBindingsParams{
+		WorkspaceID: workspaceID, TwinVersionID: versionID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return db.TwinBinding{}, ErrTwinExecutionNotFound
+	}
+	if err != nil {
+		return db.TwinBinding{}, fmt.Errorf("pause Twin bindings: %w", err)
+	}
+	return binding, nil
+}
+
+func (s *TwinExecutionStore) RecordActivationPreview(ctx context.Context, workspaceID, versionID pgtype.UUID, policyState string) error {
+	if err := requireTwinExecutionUUID("workspace id", workspaceID); err != nil {
+		return err
+	}
+	if err := requireTwinExecutionUUID("Twin version id", versionID); err != nil {
+		return err
+	}
+	if !isOneOf(policyState, string(TwinUsePreview), string(TwinUseEnabled)) {
+		return invalidTwinExecutionInput("preview policy state")
+	}
+	if err := s.queries.RecordTwinActivationPreview(ctx, db.RecordTwinActivationPreviewParams{
+		WorkspaceID: workspaceID, TwinVersionID: versionID, PolicyState: policyState,
+	}); err != nil {
+		return fmt.Errorf("record Twin activation preview: %w", err)
+	}
+	return nil
+}
+
+func (s *TwinExecutionStore) GetActivationFacts(ctx context.Context, workspaceID pgtype.UUID) (db.GetTwinActivationFactsRow, error) {
+	if err := requireTwinExecutionUUID("workspace id", workspaceID); err != nil {
+		return db.GetTwinActivationFactsRow{}, err
+	}
+	row, err := s.queries.GetTwinActivationFacts(ctx, workspaceID)
+	if err != nil {
+		return db.GetTwinActivationFactsRow{}, fmt.Errorf("get Twin activation facts: %w", err)
+	}
+	return row, nil
 }
 
 type TwinBindingInput struct {

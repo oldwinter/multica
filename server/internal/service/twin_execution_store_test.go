@@ -132,6 +132,12 @@ func TestTwinExecutionStoreLifecycle(t *testing.T) {
 	if err != nil || updatedBinding.ID != binding.ID || updatedBinding.State != "preview" {
 		t.Fatalf("updated Twin binding = %#v, err = %v", updatedBinding, err)
 	}
+	if _, err := store.UpsertBinding(ctx, TwinBindingInput{
+		WorkspaceID: workspaceID, ScopeType: "agent", ScopeID: agentID,
+		State: "enabled", TwinVersionID: version.ID,
+	}); err != nil {
+		t.Fatalf("upsert scoped Twin binding: %v", err)
+	}
 
 	task, err := queries.GetAgentTask(ctx, taskID)
 	if err != nil {
@@ -214,6 +220,45 @@ func TestTwinExecutionStoreLifecycle(t *testing.T) {
 	if metrics.AttributedRuns != 1 || metrics.FeedbackTotal != 1 || metrics.FeedbackMismatch != 1 ||
 		metrics.DepositionsTotal != 1 || metrics.DepositionsAccepted != 1 || metrics.BindingsPreview != 1 {
 		t.Fatalf("Twin execution metrics = %#v", metrics)
+	}
+	if err := store.RecordActivationPreview(ctx, workspaceID, version.ID, string(TwinUsePreview)); err != nil {
+		t.Fatalf("record Twin activation preview: %v", err)
+	}
+	facts, err := store.GetActivationFacts(ctx, workspaceID)
+	if err != nil || facts.PreviewedVersionID != version.ID.String() || facts.AttributedRunCount != 0 {
+		t.Fatalf("Twin activation facts = %#v, err = %v", facts, err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_task_queue
+		SET status = 'completed', started_at = COALESCE(started_at, dispatched_at), completed_at = now()
+		WHERE id = $1
+	`, taskID); err != nil {
+		t.Fatalf("complete attributed Twin task: %v", err)
+	}
+	completedFacts, err := store.GetActivationFacts(ctx, workspaceID)
+	if err != nil || completedFacts.AttributedRunCount != 1 {
+		t.Fatalf("completed Twin activation facts = %#v, err = %v", completedFacts, err)
+	}
+	paused, err := NewTwinExecutionService(queries, true).PauseWorkspace(ctx, workspaceID)
+	if err != nil || paused.State != string(TwinUseOff) {
+		t.Fatalf("pause Twin execution = %#v, err = %v", paused, err)
+	}
+	afterPause, err := store.GetMetrics(ctx, workspaceID)
+	if err != nil {
+		t.Fatalf("get metrics after pause: %v", err)
+	}
+	if afterPause.AttributedRuns != metrics.AttributedRuns || afterPause.FeedbackTotal != metrics.FeedbackTotal ||
+		afterPause.DepositionsTotal != metrics.DepositionsTotal || afterPause.BindingsOff != 2 {
+		t.Fatalf("pause changed Twin history: before=%#v after=%#v", metrics, afterPause)
+	}
+	pausedBindings, err := store.ListBindings(ctx, workspaceID)
+	if err != nil {
+		t.Fatalf("list bindings after pause: %v", err)
+	}
+	for _, pausedBinding := range pausedBindings {
+		if pausedBinding.State != string(TwinUseOff) {
+			t.Fatalf("pause left active scoped binding: %#v", pausedBinding)
+		}
 	}
 
 	otherWorkspaceID := twinExecutionTestUUID(42)

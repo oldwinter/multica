@@ -256,6 +256,7 @@ import type {
 } from "../twins/types";
 import type {
   CreateTwinDepositionInput,
+  TwinActivationReadiness,
   TwinBinding,
   TwinBindingsResponse,
   TwinBriefingPreview,
@@ -268,10 +269,12 @@ import type {
   UpsertTwinBindingInput,
 } from "../twins/execution-types";
 import {
+  EMPTY_TWIN_ACTIVATION_READINESS,
   EMPTY_TWIN_BINDINGS_RESPONSE,
   EMPTY_TWIN_BRIEFING_PREVIEW,
   EMPTY_TWIN_DEPOSITION_RESPONSE,
   EMPTY_TWIN_EXECUTION_METRICS,
+  TwinActivationReadinessSchema,
   TwinBindingWireSchema,
   TwinBindingsResponseSchema,
   TwinBriefingPreviewSchema,
@@ -279,6 +282,7 @@ import {
   TwinExecutionMetricsSchema,
   TwinFeedbackResponseSchema,
   TwinTaskContextWireSchema,
+  TwinPauseResponseSchema,
 } from "../twins/execution-schemas";
 import type {
   CloudRuntimeNode,
@@ -4703,6 +4707,13 @@ export class ApiClient {
     });
   }
 
+  async getTwinActivationReadiness(): Promise<TwinActivationReadiness> {
+    const raw = await this.fetch<unknown>("/api/twins/activation");
+    return parseWithFallback(raw, TwinActivationReadinessSchema, EMPTY_TWIN_ACTIVATION_READINESS, {
+      endpoint: "GET /api/twins/activation",
+    });
+  }
+
   async upsertTwinBinding(input: UpsertTwinBindingInput): Promise<TwinBinding | null> {
     const raw = await this.fetch<unknown>("/api/twins/bindings", {
       method: "POST",
@@ -4720,6 +4731,13 @@ export class ApiClient {
 
   async deleteTwinBinding(bindingId: string): Promise<void> {
     await this.fetch(`/api/twins/bindings/${bindingId}`, { method: "DELETE" });
+  }
+
+  async pauseTwinExecution(): Promise<TwinBinding | null> {
+    const raw = await this.fetch<unknown>("/api/twins/pause", { method: "POST" });
+    return parseWithFallback(raw, TwinPauseResponseSchema, null, {
+      endpoint: "POST /api/twins/pause",
+    });
   }
 
   async previewTwinBriefing(input: TwinBriefingPreviewInput): Promise<TwinBriefingPreview> {

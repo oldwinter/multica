@@ -28,6 +28,13 @@ export type {
 } from "./profile";
 export type {
   CreateTwinDepositionInput,
+  TwinActivationAction,
+  TwinActivationActionKey,
+  TwinActivationBlocker,
+  TwinActivationInspectionLink,
+  TwinActivationReadiness,
+  TwinActivationStage,
+  TwinActivationTarget,
   TwinBinding,
   TwinBindingsResponse,
   TwinBindingScope,
@@ -40,9 +47,12 @@ export type {
   TwinDepositionResponse,
   TwinEffectivePolicy,
   TwinExecutionMetrics,
+  TwinEffectivenessCohort,
+  TwinEffectivenessMetrics,
   TwinFeedbackInput,
   TwinFeedbackRating,
   TwinKillSwitch,
+  TwinMaintenanceItem,
   TwinPolicyExclusion,
   TwinRunAssertion,
   TwinRunCitation,
@@ -64,9 +74,11 @@ export {
   wikiRevisionOptions,
 } from "./queries";
 export {
+  twinActivationReadinessOptions,
   twinBindingsOptions,
   twinExecutionKeys,
   twinExecutionMetricsOptions,
+  twinIssueSelectorOptions,
   twinTaskContextOptions,
 } from "./execution-queries";
 export {
@@ -81,6 +93,7 @@ export {
 export {
   useCreateTwinDeposition,
   useDeleteTwinBinding,
+  usePauseTwinExecution,
   usePreviewTwinBriefing,
   useSubmitTwinTaskFeedback,
   useUpsertTwinBinding,

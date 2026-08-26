@@ -329,6 +329,7 @@ var concurrentIndexCleanups = map[string]string{
 	"445_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
 	"447_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
 	"450_room_memory_review_key_index":                          "room_memory_review_key_uidx",
+	"481_twin_activation_preview_checkpoint_index":              "twin_activation_preview_checkpoint_lookup_idx",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction

@@ -17,6 +17,10 @@ vi.mock("../../navigation", () => ({
   ),
 }));
 
+vi.mock("./twin-activation-readiness", () => ({
+  TwinActivationReadiness: () => null,
+}));
+
 const resources = { en: { common: enCommon, twins: enTwins, ui: enUi } };
 
 function renderView(overrides = {}) {

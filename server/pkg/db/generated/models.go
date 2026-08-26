@@ -1523,6 +1523,13 @@ type TaskUsageHourlyRollupState struct {
 	LastError         pgtype.Text        `json:"last_error"`
 }
 
+type TwinActivationPreviewCheckpoint struct {
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	TwinVersionID pgtype.UUID        `json:"twin_version_id"`
+	PolicyState   string             `json:"policy_state"`
+	CompiledAt    pgtype.Timestamptz `json:"compiled_at"`
+}
+
 type TwinBinding struct {
 	ID            pgtype.UUID        `json:"id"`
 	WorkspaceID   pgtype.UUID        `json:"workspace_id"`

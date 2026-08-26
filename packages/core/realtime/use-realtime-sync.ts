@@ -213,6 +213,7 @@ export function invalidateTwinRealtimeQueries(
       if (!proposalId) return invalidateAllTwinQueries(qc, wsId);
       qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
       qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       const versionId = twinRealtimeID(payload, "version_id");
       if (versionId) {
         qc.invalidateQueries({ queryKey: twinKeys.version(wsId, versionId) });
@@ -227,6 +228,7 @@ export function invalidateTwinRealtimeQueries(
       qc.invalidateQueries({ queryKey: twinKeys.version(wsId, versionId) });
       qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
       qc.invalidateQueries({ queryKey: twinProfileKeys.overview(wsId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       return;
     }
     case "twin:binding_changed": {
@@ -235,6 +237,7 @@ export function invalidateTwinRealtimeQueries(
       }
       qc.invalidateQueries({ queryKey: twinExecutionKeys.bindings(wsId) });
       qc.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       return;
     }
     case "twin:deposition_changed": {
@@ -245,6 +248,7 @@ export function invalidateTwinRealtimeQueries(
       qc.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) });
       qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
       qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       return;
     }
     default:
