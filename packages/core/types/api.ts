@@ -526,6 +526,8 @@ export interface UpdateMeRequest {
   appearance?: "system" | "light" | "dark";
   appearanceUpdatedAt?: string;
   appearanceTokenVersion?: number;
+  /** Compare-and-swap guard used only by Undo writes. */
+  appearanceExpectedUpdatedAt?: string;
 }
 
 export interface CreateMemberRequest {

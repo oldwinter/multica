@@ -27,6 +27,17 @@ func appearanceFields(skin, appearance, updatedAt string, tokenVersion int) stri
 	return string(body)
 }
 
+func appearanceUndoFields(skin, appearance, updatedAt, expectedUpdatedAt string) string {
+	body, _ := json.Marshal(map[string]any{
+		"skin":                           skin,
+		"appearance":                     appearance,
+		"appearance_updated_at":          updatedAt,
+		"appearance_token_version":       1,
+		"appearance_expected_updated_at": expectedUpdatedAt,
+	})
+	return string(body)
+}
+
 func TestGetMeReturnsUnsetAppearancePreferences(t *testing.T) {
 	userID := newAppearanceTestUser(t, "appearance-get-unset@multica.ai")
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -114,6 +125,40 @@ func TestUpdateMeAcceptsEqualTimestampLocalPreference(t *testing.T) {
 	}
 }
 
+func TestUpdateMeAppliesAppearanceUndoWhenExpectedTimestampMatches(t *testing.T) {
+	userID := newAppearanceTestUser(t, "appearance-undo-match@multica.ai", testutil.Cols{
+		"skin":                     "field",
+		"appearance":               "dark",
+		"appearance_updated_at":    "2026-08-22T12:00:00Z",
+		"appearance_token_version": 1,
+	})
+
+	var response map[string]any
+	testutil.Call(t, testHandler.UpdateMe, newPatchMeRequest(userID,
+		appearanceUndoFields("relay", "system", "2026-08-22T12:01:00Z", "2026-08-22T12:00:00Z"))).Want(http.StatusOK).JSON(&response)
+
+	if response["skin"] != "relay" || response["appearance"] != "system" {
+		t.Fatalf("matching Undo was not applied: %#v", response)
+	}
+}
+
+func TestUpdateMeExpiresAppearanceUndoWhenExpectedTimestampIsStale(t *testing.T) {
+	userID := newAppearanceTestUser(t, "appearance-undo-stale@multica.ai", testutil.Cols{
+		"skin":                     "field",
+		"appearance":               "dark",
+		"appearance_updated_at":    "2026-08-22T12:00:00Z",
+		"appearance_token_version": 1,
+	})
+
+	var response map[string]any
+	testutil.Call(t, testHandler.UpdateMe, newPatchMeRequest(userID,
+		appearanceUndoFields("relay", "system", "2026-08-22T12:01:00Z", "2026-08-22T11:59:00Z"))).Want(http.StatusOK).JSON(&response)
+
+	if response["skin"] != "field" || response["appearance"] != "dark" {
+		t.Fatalf("stale Undo replaced current preference: %#v", response)
+	}
+}
+
 func TestUpdateMePreservesAppearanceWhenOmitted(t *testing.T) {
 	userID := newAppearanceTestUser(t, "appearance-preserve@multica.ai", testutil.Cols{
 		"skin":                     "relay",
@@ -136,9 +181,11 @@ func TestUpdateMeRejectsInvalidAppearancePreferences(t *testing.T) {
 	}{
 		{name: "malformed JSON", body: `{"skin":`},
 		{name: "partial tuple", body: `{"skin":"relay"}`},
+		{name: "orphaned expected timestamp", body: `{"appearance_expected_updated_at":"2026-08-22T12:00:00Z"}`},
 		{name: "unsupported skin", body: appearanceFields("midnight", "dark", "2026-08-22T12:00:00Z", 1)},
 		{name: "unsupported appearance", body: appearanceFields("relay", "sepia", "2026-08-22T12:00:00Z", 1)},
 		{name: "malformed timestamp", body: appearanceFields("relay", "dark", "yesterday", 1)},
+		{name: "malformed expected timestamp", body: appearanceUndoFields("relay", "dark", "2026-08-22T12:00:00Z", "yesterday")},
 		{name: "future timestamp", body: appearanceFields("relay", "dark", time.Now().Add(appearanceMaxClockSkew+time.Minute).UTC().Format(time.RFC3339Nano), 1)},
 		{name: "unsupported token version", body: appearanceFields("relay", "dark", "2026-08-22T12:00:00Z", 2)},
 		{name: "wrong field type", body: `{"skin":42,"appearance":"dark","appearance_updated_at":"2026-08-22T12:00:00Z","appearance_token_version":1}`},

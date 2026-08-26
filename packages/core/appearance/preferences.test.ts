@@ -9,6 +9,7 @@ import {
   DEFAULT_SKIN,
   SKIN_IDS,
   changeAppearancePreferences,
+  createAppearanceUndoReceipt,
   createDefaultAppearancePreferences,
   hasFutureAppearanceContractVersion,
   markAppearanceSyncFailed,
@@ -18,6 +19,7 @@ import {
   reconcileAppearancePreferences,
   resetAppearancePreferences,
   resolveAppearance,
+  undoAppearancePreferences,
   validateAppearancePreferences,
   withResolvedAppearance,
   type AppearancePreferences,
@@ -265,6 +267,79 @@ describe("preference changes and sync state", () => {
       updatedAt: "2026-08-23T12:00:00.000Z",
       syncState: { status: "pending" },
     });
+  });
+
+  it("captures the complete previous preference for a bounded Undo", () => {
+    const previous = preference({
+      skin: "relay",
+      source: "server",
+      syncState: { status: "synced" },
+    });
+    const applied = changeAppearancePreferences(
+      previous,
+      { skin: "field" },
+      { updatedAt: "2026-08-23T11:00:00.000Z", systemAppearance: "dark" },
+    );
+
+    expect(createAppearanceUndoReceipt(previous, applied)).toEqual({
+      previous,
+      expectedUpdatedAt: "2026-08-23T11:00:00.000Z",
+    });
+  });
+
+  it("restores both explicit choices as a new pending write", () => {
+    const previous = preference({
+      skin: "relay",
+      requestedAppearance: "light",
+      resolvedAppearance: "light",
+      source: "server",
+      syncState: { status: "synced" },
+    });
+    const applied = changeAppearancePreferences(
+      previous,
+      { skin: "field", requestedAppearance: "dark" },
+      { updatedAt: "2026-08-23T11:00:00.000Z", systemAppearance: "dark" },
+    );
+
+    expect(
+      undoAppearancePreferences(
+        applied,
+        createAppearanceUndoReceipt(previous, applied),
+        { updatedAt: "2026-08-23T12:00:00.000Z", systemAppearance: "dark" },
+      ),
+    ).toEqual({
+      status: "applied",
+      expectedUpdatedAt: "2026-08-23T11:00:00.000Z",
+      preferences: {
+        ...applied,
+        skin: "relay",
+        requestedAppearance: "light",
+        resolvedAppearance: "light",
+        updatedAt: "2026-08-23T12:00:00.000Z",
+      },
+    });
+  });
+
+  it("expires without changing a newer local or external preference", () => {
+    const previous = preference({ skin: "relay" });
+    const applied = changeAppearancePreferences(
+      previous,
+      { skin: "field" },
+      { updatedAt: "2026-08-23T11:00:00.000Z", systemAppearance: "dark" },
+    );
+    const newer = changeAppearancePreferences(
+      applied,
+      { skin: "tension" },
+      { updatedAt: "2026-08-23T11:30:00.000Z", systemAppearance: "dark" },
+    );
+
+    expect(
+      undoAppearancePreferences(
+        newer,
+        createAppearanceUndoReceipt(previous, applied),
+        { updatedAt: "2026-08-23T12:00:00.000Z", systemAppearance: "dark" },
+      ),
+    ).toEqual({ status: "expired", preferences: newer });
   });
 });
 
