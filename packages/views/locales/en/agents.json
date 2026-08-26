@@ -131,6 +131,11 @@
     "archive_dialog_cancel": "Cancel",
     "archive_dialog_confirm": "Archive"
   },
+  "mention": {
+    "copy": "Copy mention",
+    "copied_toast": "Mention copied",
+    "copy_failed_toast": "Failed to copy mention"
+  },
   "detail": {
     "back_to_agents": "Agents",
     "back_to_agents_full": "Back to agents",

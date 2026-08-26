@@ -37,6 +37,7 @@ import {
 } from "@multica/ui/components/ui/dropdown-menu";
 import { useT } from "../../i18n";
 import { AppLink, useIntentNavigate } from "../../navigation";
+import { AgentMentionMenuItem } from "./agent-mention-menu-item";
 
 interface AgentRowActionsProps {
   agent: Agent;
@@ -165,6 +166,7 @@ export function AgentRowActions({
             <ExternalLink className="h-3.5 w-3.5" />
             {tCommon(($) => $.navigation.open_in_new_tab)}
           </DropdownMenuItem>
+          <AgentMentionMenuItem agent={agent} />
           <DropdownMenuSeparator />
           {showStop && (
             <DropdownMenuItem

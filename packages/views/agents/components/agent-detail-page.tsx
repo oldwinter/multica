@@ -53,6 +53,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
@@ -64,6 +65,7 @@ import { VisibilityBadge } from "./visibility-badge";
 import { AgentOverviewPane, type DetailTab } from "./agent-overview-pane";
 import { ExpandableDescription } from "../../common/expandable-description";
 import { useT, useTimeAgo } from "../../i18n";
+import { AgentMentionMenuItem } from "./agent-mention-menu-item";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -346,7 +348,6 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
         presence={presence}
         backHref={paths.agents()}
         canAssign={canAssign.allowed}
-        canArchive={canEdit.allowed}
         dmPending={permissionsLoading}
         dmHref={`${paths.chat()}?agent=${agent.id}`}
         onDm={handleDm}
@@ -471,7 +472,6 @@ function DetailHeader({
   presence,
   backHref,
   canAssign,
-  canArchive,
   dmPending,
   dmHref,
   onDm,
@@ -483,7 +483,6 @@ function DetailHeader({
   presence: AgentPresenceDetail | null;
   backHref: string;
   canAssign: boolean;
-  canArchive: boolean;
   dmPending: boolean;
   dmHref: string;
   /** Runs before the link navigates; calls preventDefault when a gate denies
@@ -497,7 +496,6 @@ function DetailHeader({
   const { t } = useT("agents");
   const timeAgo = useTimeAgo();
   const isArchived = !!agent.archived_at;
-  const hasMoreActions = !!onArchive;
 
   return (
     <header className="shrink-0 border-b bg-background px-4 pb-5 pt-3 sm:px-6">
@@ -578,7 +576,7 @@ function DetailHeader({
                 {t(($) => $.detail.assign_work)}
               </Button>
             )}
-            {!isArchived && canArchive && hasMoreActions ? (
+            {!isArchived ? (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={<Button variant="ghost" size="icon-sm" />}
@@ -590,11 +588,15 @@ function DetailHeader({
                   />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-auto">
+                  <AgentMentionMenuItem agent={agent} />
                   {onArchive && (
-                    <DropdownMenuItem variant="destructive" onClick={onArchive}>
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      {t(($) => $.detail.more_archive)}
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onClick={onArchive}>
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        {t(($) => $.detail.more_archive)}
+                      </DropdownMenuItem>
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
