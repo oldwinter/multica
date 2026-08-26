@@ -329,6 +329,8 @@ var concurrentIndexCleanups = map[string]string{
 	"445_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
 	"447_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
 	"450_room_memory_review_key_index":                          "room_memory_review_key_uidx",
+	"461_room_inbox_active_identity_index":                      "idx_inbox_room_active_identity",
+	"462_room_inbox_cleanup_index":                              "idx_inbox_room_cleanup",
 	"481_twin_activation_preview_checkpoint_index":              "twin_activation_preview_checkpoint_lookup_idx",
 }
 
