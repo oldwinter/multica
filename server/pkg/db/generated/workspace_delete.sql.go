@@ -630,6 +630,9 @@ deleted_wiki_proposals AS (
 deleted_wiki_revisions AS (
     DELETE FROM wiki_page_revision WHERE workspace_id = $1::uuid
 ),
+deleted_twin_activation_preview_checkpoints AS (
+    DELETE FROM twin_activation_preview_checkpoint WHERE workspace_id = $1::uuid
+),
 deleted_twin_run_feedback AS (
     DELETE FROM twin_run_feedback WHERE workspace_id = $1::uuid
 ),

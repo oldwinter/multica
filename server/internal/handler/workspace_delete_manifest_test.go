@@ -15,6 +15,8 @@ const (
 	workspaceDeleteSettle workspaceDeleteAction = "settle"
 )
 
+const twinPreviewCheckpointTable = "twin_activation_preview_checkpoint"
+
 // workspaceDeletionManifest is the schema coverage contract for workspace
 // teardown. Adding a table requires an explicit ownership decision here; the
 // handler deletion graph must then implement that decision before CI passes.
@@ -129,6 +131,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"task_usage_hourly":               workspaceDelete,
 	"task_usage_hourly_dirty":         workspaceDelete,
 	"task_usage_hourly_rollup_state":  workspaceDeleteKeep,
+	twinPreviewCheckpointTable:        workspaceDelete,
 	"twin_proposal":                   workspaceDelete,
 	"twin_proposal_review":            workspaceDelete,
 	"twin_profile":                    workspaceDelete,
