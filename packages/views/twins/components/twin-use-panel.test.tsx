@@ -7,6 +7,7 @@ import { setApiInstance } from "@multica/core/api";
 import type { ApiClient } from "@multica/core/api/client";
 import {
   twinExecutionKeys,
+  type TwinActivationReadiness,
   type TwinBindingsResponse,
   type TwinExecutionMetrics,
   type TwinKillSwitch,
@@ -15,9 +16,38 @@ import { renderWithI18n } from "../../test/i18n";
 import { lifecycleFixture } from "./twin-workspace-view.test-fixture";
 import { TwinUsePanel } from "./twin-use-panel";
 
+vi.mock("./twin-entity-selectors", () => ({
+  TwinAgentSelector: ({ onChange, ariaLabel }: { onChange: (value: unknown) => void; ariaLabel: string }) => (
+    <button type="button" aria-label={ariaLabel} onClick={() => onChange({ id: "agent-1", name: "Ada", archived_at: null })}>Select Ada</button>
+  ),
+  TwinProjectSelector: ({ onChange, ariaLabel }: { onChange: (value: unknown) => void; ariaLabel: string }) => (
+    <button type="button" aria-label={ariaLabel} onClick={() => onChange({ id: "project-1", title: "Apollo", status: "active", icon: null })}>Select Apollo</button>
+  ),
+  TwinIssueSelector: ({ onChange, ariaLabel }: { onChange: (value: unknown) => void; ariaLabel: string }) => (
+    <button type="button" aria-label={ariaLabel} onClick={() => onChange({ id: "issue-1", identifier: "MUL-42", title: "Review auth", project_id: "project-1", status: "in_progress" })}>Select MUL-42</button>
+  ),
+}));
+
 const fixture = lifecycleFixture();
 const wsId = fixture.wsId;
 const enabledKillSwitch: TwinKillSwitch = { enabled: true, reason: null };
+
+const activation: TwinActivationReadiness = {
+  contractVersion: 1,
+  ready: true,
+  canManage: true,
+  stages: [],
+  nextAction: {
+    key: "monitor_effectiveness",
+    reason: "activation_complete",
+    target: "use",
+    responsibleRole: "owner_admin",
+    canAct: true,
+  },
+  blockers: [],
+  inspectionLinks: [],
+  maintenance: [],
+};
 
 function metrics(killSwitch: TwinKillSwitch = enabledKillSwitch): TwinExecutionMetrics {
   return {
@@ -27,14 +57,52 @@ function metrics(killSwitch: TwinKillSwitch = enabledKillSwitch): TwinExecutionM
     bindings: { off: 0, preview: 0, enabled: 0 },
     helpfulnessRate: 0.75,
     killSwitch,
+    effectiveness: {
+      windowDays: 28,
+      minimumSample: 5,
+      cohortDefinition: "Policy state at task dispatch in the fixed 28-day window",
+      revisionMeasure: "A later attributed run for the same issue",
+      costMeasure: "Provider-reported bounded execution cost",
+      cohorts: ["off", "preview", "enabled"].map((policyState) => ({
+        policyState: policyState as "off" | "preview" | "enabled",
+        sampleSize: 5,
+        completedRuns: 5,
+        attributedRuns: policyState === "off" ? 0 : 5,
+        feedbackTotal: 5,
+        feedbackCoverage: 1,
+        detailSuppressed: false,
+        feedbackHelped: 4,
+        feedbackIrrelevant: 0,
+        feedbackMismatch: 1,
+        helpedRate: 0.8,
+        revisionCount: 1,
+        revisionRate: 0.2,
+        averageLatencyMs: 12_000,
+        averageBriefingTokens: policyState === "off" ? 0 : 18,
+        costUsdTicks: 20_000_000,
+        costedRuns: 5,
+        uncostedRuns: 0,
+        costCoverage: 1,
+        depositionTotal: 2,
+        depositionAccepted: 1,
+        depositionAcceptanceRate: 0.5,
+      })),
+      comparison: {
+        eligible: true,
+        enabledState: "enabled",
+        controlState: "off",
+        reason: "minimum_sample_met",
+      },
+    },
   };
 }
 
 function bindings(
   killSwitch: TwinKillSwitch = enabledKillSwitch,
   canManage = true,
+  rows: TwinBindingsResponse["bindings"] = [],
 ): TwinBindingsResponse {
-  return { bindings: [], canManage, killSwitch };
+  return { bindings: rows, canManage, killSwitch };
 }
 
 function renderPanel(qc: QueryClient) {
@@ -45,6 +113,7 @@ function renderPanel(qc: QueryClient) {
         versions={fixture.twin.versions}
         currentVersionId={fixture.twin.current_version!.id}
         canManage
+        onNavigate={() => undefined}
       />
     </QueryClientProvider>,
   );
@@ -57,11 +126,15 @@ describe("TwinUsePanel", () => {
   const previewTwinBriefing = vi.fn();
   const getTwinBindings = vi.fn();
   const getTwinExecutionMetrics = vi.fn();
+  const getTwinActivationReadiness = vi.fn();
+  const getIssue = vi.fn();
+  const pauseTwinExecution = vi.fn();
 
   beforeEach(() => {
     qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     qc.setQueryData(twinExecutionKeys.bindings(wsId), bindings());
     qc.setQueryData(twinExecutionKeys.metrics(wsId), metrics());
+    qc.setQueryData(twinExecutionKeys.activation(wsId), activation);
     upsertTwinBinding.mockReset().mockResolvedValue({});
     deleteTwinBinding.mockReset().mockResolvedValue(undefined);
     previewTwinBriefing.mockReset().mockResolvedValue({
@@ -87,12 +160,24 @@ describe("TwinUsePanel", () => {
     });
     getTwinBindings.mockReset().mockResolvedValue(bindings());
     getTwinExecutionMetrics.mockReset().mockResolvedValue(metrics());
+    getTwinActivationReadiness.mockReset().mockResolvedValue(activation);
+    getIssue.mockReset().mockResolvedValue({
+      id: "issue-1",
+      identifier: "MUL-42",
+      title: "Review auth",
+      project_id: "project-1",
+      status: "in_progress",
+    });
+    pauseTwinExecution.mockReset().mockResolvedValue({});
     setApiInstance({
+      getTwinActivationReadiness,
       getTwinBindings,
       getTwinExecutionMetrics,
+      getIssue,
       upsertTwinBinding,
       deleteTwinBinding,
       previewTwinBriefing,
+      pauseTwinExecution,
     } as unknown as ApiClient);
   });
 
@@ -114,14 +199,15 @@ describe("TwinUsePanel", () => {
       state: "off",
       twinVersionId: "version-1",
     }));
-  });
+  }, 15_000);
 
   it("compiles and displays the exact briefing with all optional context", async () => {
     renderPanel(qc);
-    fireEvent.change(screen.getByLabelText("Agent ID"), { target: { value: "agent-1" } });
-    fireEvent.change(screen.getByLabelText("Project ID (optional)"), { target: { value: "project-1" } });
-    fireEvent.change(screen.getByLabelText("Issue ID (optional)"), { target: { value: "issue-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Project (optional)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue (optional)" }));
     fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth" } });
+    fireEvent.click(screen.getByText("Advanced run context"));
     fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: "security, auth" } });
     fireEvent.click(screen.getByRole("button", { name: "Compile preview" }));
 
@@ -135,6 +221,47 @@ describe("TwinUsePanel", () => {
     }));
     expect(await screen.findByText("Keep the review decision explicit.")).toBeInTheDocument();
     expect(screen.getByText("34 bytes · 8 tokens")).toBeInTheDocument();
+    expect(screen.queryByText("agent-1")).not.toBeInTheDocument();
+  });
+
+  it("pauses every future scope only after confirmation and keeps history copy visible", async () => {
+    const active = [{
+      id: "binding-1",
+      scopeType: "workspace" as const,
+      scopeId: wsId,
+      state: "enabled" as const,
+      twinVersionId: "version-1",
+      createdAt: "2026-08-26T10:00:00Z",
+      updatedAt: "2026-08-26T10:00:00Z",
+    }];
+    qc.setQueryData(twinExecutionKeys.bindings(wsId), bindings(enabledKillSwitch, true, active));
+    getTwinBindings.mockResolvedValue(bindings(enabledKillSwitch, true, active));
+    renderPanel(qc);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause future runs" }));
+    expect(screen.getByText(/Signed versions, run attribution, feedback, and depositions remain available/)).toBeInTheDocument();
+    expect(pauseTwinExecution).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm pause" }));
+
+    await waitFor(() => expect(pauseTwinExecution).toHaveBeenCalledTimes(1));
+  });
+
+  it("resolves a visible Issue binding to its human identifier and name", async () => {
+    const issueBinding = [{
+      id: "binding-issue",
+      scopeType: "issue" as const,
+      scopeId: "issue-1",
+      state: "preview" as const,
+      twinVersionId: "version-1",
+      createdAt: "2026-08-26T10:00:00Z",
+      updatedAt: "2026-08-26T10:00:00Z",
+    }];
+    qc.setQueryData(twinExecutionKeys.bindings(wsId), bindings(enabledKillSwitch, true, issueBinding));
+    getTwinBindings.mockResolvedValue(bindings(enabledKillSwitch, true, issueBinding));
+    renderPanel(qc);
+
+    expect(await screen.findByText("MUL-42 Review auth")).toBeInTheDocument();
+    expect(screen.queryByText("issue-1")).not.toBeInTheDocument();
   });
 
   it("disables every policy mutation when the kill switch is off", () => {
