@@ -414,6 +414,7 @@
     "cancel_edit": "취소",
     "copy_action": "복사",
     "copy_link_action": "댓글 링크 복사",
+    "quote_reply_action": "답글에 인용",
     "copied_toast": "복사했습니다",
     "edit_action": "수정",
     "update_failed": "댓글을 업데이트하지 못했습니다",

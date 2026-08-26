@@ -423,6 +423,7 @@
     "cancel_edit": "Cancel",
     "copy_action": "Copy",
     "copy_link_action": "Copy comment link",
+    "quote_reply_action": "Quote in reply",
     "copied_toast": "Copied",
     "edit_action": "Edit",
     "update_failed": "Failed to update comment",
