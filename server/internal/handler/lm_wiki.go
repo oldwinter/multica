@@ -63,6 +63,13 @@ type lmWikiSourcePolicyRequest struct {
 	SourceClasses           []string                       `json:"source_classes"`
 	WikiPages               []service.LMWikiSourceWikiPage `json:"wiki_pages"`
 	RemoteGenerationEnabled bool                           `json:"remote_generation_enabled"`
+	ExpectedPolicyVersion   *int64                         `json:"expected_policy_version,omitempty"`
+	ExpectedPolicyDigest    *string                        `json:"expected_policy_digest,omitempty"`
+}
+
+type lmWikiPinWikiRevisionRequest struct {
+	ExpectedPolicyVersion *int64  `json:"expected_policy_version"`
+	ExpectedPolicyDigest  *string `json:"expected_policy_digest"`
 }
 
 func (h *Handler) GetLMWikiSourcePolicy(w http.ResponseWriter, r *http.Request) {
@@ -97,15 +104,95 @@ func (h *Handler) UpdateLMWikiSourcePolicy(w http.ResponseWriter, r *http.Reques
 	if !decodeWikiJSON(w, r, &request) {
 		return
 	}
-	state, err := h.WikiService.UpdateSourcePolicy(r.Context(), workspaceUUID, member.UserID, service.LMWikiSourcePolicy{
+	policy := service.LMWikiSourcePolicy{
 		SourceClasses: request.SourceClasses, WikiPages: request.WikiPages,
 		RemoteGenerationEnabled: request.RemoteGenerationEnabled,
+	}
+	var state service.LMWikiSourcePolicyState
+	var err error
+	switch {
+	case request.ExpectedPolicyVersion == nil && request.ExpectedPolicyDigest == nil:
+		state, err = h.WikiService.UpdateSourcePolicy(r.Context(), workspaceUUID, member.UserID, policy)
+	case request.ExpectedPolicyVersion != nil && request.ExpectedPolicyDigest != nil:
+		state, err = h.WikiService.UpdateSourcePolicyIfCurrent(r.Context(), workspaceUUID, member.UserID, policy, service.LMWikiSourcePolicyExpectation{
+			PolicyVersion: *request.ExpectedPolicyVersion, PolicyDigest: *request.ExpectedPolicyDigest,
+		})
+	default:
+		h.writeLMWikiError(w, service.ErrLMWikiInvalidSourcePolicy)
+		return
+	}
+	if err != nil {
+		h.writeLMWikiError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (h *Handler) PinLMWikiWikiRevision(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	if _, ok := h.requireWikiHuman(w, r, workspaceID); !ok {
+		return
+	}
+	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	if !ok {
+		return
+	}
+	workspaceUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	pageUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "pageId"), "page id")
+	if !ok {
+		return
+	}
+	revisionUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "revisionId"), "revision id")
+	if !ok {
+		return
+	}
+	var request lmWikiPinWikiRevisionRequest
+	if !decodeWikiJSON(w, r, &request) {
+		return
+	}
+	if request.ExpectedPolicyVersion == nil || request.ExpectedPolicyDigest == nil {
+		h.writeLMWikiError(w, service.ErrLMWikiInvalidSourcePolicy)
+		return
+	}
+	state, err := h.WikiService.PinWikiRevision(r.Context(), workspaceUUID, member.UserID, service.LMWikiPinWikiRevisionInput{
+		PageID: pageUUID, RevisionID: revisionUUID,
+		Expectation: service.LMWikiSourcePolicyExpectation{
+			PolicyVersion: *request.ExpectedPolicyVersion, PolicyDigest: *request.ExpectedPolicyDigest,
+		},
 	})
 	if err != nil {
 		h.writeLMWikiError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, state)
+}
+
+func (h *Handler) GetWikiKnowledgeReadiness(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	member, ok := h.workspaceMember(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	workspaceUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	readiness, err := h.WikiService.KnowledgeReadiness(r.Context(), workspaceUUID)
+	if err != nil {
+		h.writeLMWikiError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"schema_version":    readiness.SchemaVersion,
+		"policy":            readiness.Policy,
+		"sources":           readiness.Sources,
+		"maintenance_items": readiness.MaintenanceItems,
+		"truncated":         readiness.Truncated,
+		"can_manage":        roleAllowed(member.Role, "owner", "admin"),
+	})
 }
 
 func (h *Handler) GetLMWiki(w http.ResponseWriter, r *http.Request) {
@@ -255,6 +342,7 @@ func (h *Handler) lmWikiReadIDs(w http.ResponseWriter, r *http.Request) (pgtype.
 }
 
 func (h *Handler) writeLMWikiError(w http.ResponseWriter, err error) {
+	var stale *service.LMWikiSourcePolicyStaleError
 	switch {
 	case errors.Is(err, service.ErrLMWikiNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "LM Wiki revision not found", "code": "wiki_revision_not_found"})
@@ -262,6 +350,16 @@ func (h *Handler) writeLMWikiError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid LM Wiki review", "code": "wiki_review_invalid"})
 	case errors.Is(err, service.ErrLMWikiInvalidSourcePolicy):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid LM Wiki source policy", "code": "wiki_source_policy_invalid"})
+	case errors.As(err, &stale):
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": "LM Wiki source policy changed; review the current policy and confirm again",
+			"code":  "wiki_source_policy_stale", "current_policy": stale.Current,
+		})
+	case errors.Is(err, service.ErrLMWikiSourceNotEligible):
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "Wiki revision is not eligible for shared LM Wiki evidence",
+			"code":  "wiki_source_not_eligible",
+		})
 	case errors.Is(err, service.ErrLMWikiAlreadyDecided):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "LM Wiki revision already decided", "code": "wiki_revision_already_decided"})
 	case errors.Is(err, service.ErrLMWikiStale):

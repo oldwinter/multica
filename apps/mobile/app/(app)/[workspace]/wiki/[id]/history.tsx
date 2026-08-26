@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { WikiErrorState, WikiOfflineNotice } from "@/components/wiki/wiki-states";
+import { useWikiKnowledgeActivation } from "@/components/wiki/use-wiki-knowledge-activation";
 import {
   wikiPageDetailOptions,
   wikiPageRevisionsOptions,
@@ -25,6 +26,7 @@ export default function WikiHistory() {
   const detail = useQuery(wikiPageDetailOptions(wsId, id));
   const revisions = useQuery(wikiPageRevisionsOptions(wsId, id));
   const restore = useRestoreWikiPageRevision(id);
+  const activation = useWikiKnowledgeActivation(id);
   const onRemoteDelete = useCallback(() => router.back(), []);
   useWikiPageRealtime(id, onRemoteDelete);
 
@@ -93,8 +95,28 @@ export default function WikiHistory() {
           data={revisions.data ?? []}
           keyExtractor={(item) => item.id}
           contentContainerClassName="gap-3 px-4 pb-10 pt-4"
+          ListHeaderComponent={(
+            <View className="gap-1 border-b border-border pb-3">
+              <Text className="text-sm font-medium text-foreground">LM Wiki source health</Text>
+              <Text className="text-sm text-muted-foreground">
+                {detail.data?.scope === "user" ? "Always excluded" : activation.statusLabel}
+              </Text>
+              {detail.data?.scope === "user" ? (
+                <Text className="text-xs text-muted-foreground">
+                  Personal Wiki is permanently excluded from shared LM Wiki evidence.
+                </Text>
+              ) : !activation.canManage ? (
+                <Text className="text-xs text-muted-foreground">
+                  Only workspace owners and admins can change LM Wiki evidence.
+                </Text>
+              ) : null}
+            </View>
+          )}
           renderItem={({ item }) => {
             const current = item.revisionNumber === detail.data?.currentRevisionNumber;
+            const exactPinned = activation.source?.selectedRevisionId === item.id
+              && activation.source.state !== "excluded";
+            const scope = detail.data?.scope ?? "unknown";
             return (
               <View className="gap-3 rounded-md border border-border bg-card p-3">
                 <View className="flex-row items-start justify-between gap-3">
@@ -113,6 +135,27 @@ export default function WikiHistory() {
                 <Text className="text-sm text-muted-foreground" numberOfLines={6} selectable>
                   {item.content || "Empty revision"}
                 </Text>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!activation.canPinRevision(item.id, scope)}
+                  onPress={() => activation.confirmRevision({
+                    pageId: item.pageId,
+                    revisionId: item.id,
+                    revisionNumber: item.revisionNumber,
+                    title: item.title,
+                    path: item.path,
+                    contentDigest: item.contentDigest,
+                    scope,
+                    sourceKind: item.sourceKind,
+                    actorType: item.actorType,
+                  })}
+                  accessibilityLabel={exactPinned
+                    ? `Revision ${item.revisionNumber} is pinned as LM Wiki evidence`
+                    : `Use revision ${item.revisionNumber} as LM Wiki evidence`}
+                >
+                  <Text>{exactPinned ? "Exact revision pinned" : "Use as LM Wiki evidence"}</Text>
+                </Button>
                 {!current ? (
                   <Button
                     variant="outline"

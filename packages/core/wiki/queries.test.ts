@@ -8,6 +8,7 @@ import {
   wikiRevisionListOptions,
   wikiSearchOptions,
   lmWikiSourcePolicyOptions,
+  wikiKnowledgeReadinessOptions,
   personalWikiKeys,
   personalWikiPageDetailOptions,
   personalWikiPageListOptions,
@@ -50,6 +51,7 @@ describe("wikiKeys", () => {
       wikiKeys.proposals("ws-1", "page-2"),
     );
     expect(wikiKeys.sourcePolicy("ws-1")).not.toEqual(wikiKeys.sourcePolicy("ws-2"));
+    expect(wikiKeys.readiness("ws-1")).not.toEqual(wikiKeys.readiness("ws-2"));
   });
 });
 
@@ -175,5 +177,21 @@ describe("wikiPageListOptions", () => {
       exclusions: [],
     });
     expect(getLMWikiSourcePolicy).toHaveBeenCalledOnce();
+  });
+
+  it("loads server-derived knowledge readiness in the workspace namespace", async () => {
+    const getWikiKnowledgeReadiness = vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      policy: { sourceClasses: [], wikiPages: [], remoteGenerationEnabled: false },
+      sources: [],
+      maintenanceItems: [],
+      truncated: false,
+      canManage: false,
+    });
+    setApiInstance({ getWikiKnowledgeReadiness } as unknown as ApiClient);
+    const options = wikiKnowledgeReadinessOptions("ws-1");
+    await options.queryFn!({} as never);
+    expect(options.enabled).toBe(true);
+    expect(getWikiKnowledgeReadiness).toHaveBeenCalledOnce();
   });
 });

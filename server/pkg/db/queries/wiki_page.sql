@@ -394,9 +394,7 @@ WHERE workspace_id = sqlc.arg(workspace_id)
 RETURNING *;
 
 -- name: DeleteWikiPage :exec
-WITH deleted_policy_selection AS (
-    DELETE FROM lm_wiki_source_wiki_page WHERE page_id = sqlc.arg(deleted_page_id)
-), deleted_proposals AS (
+WITH deleted_proposals AS (
     DELETE FROM wiki_page_edit_proposal WHERE page_id = sqlc.arg(deleted_page_id)
 )
 DELETE FROM wiki_page page WHERE page.id = sqlc.arg(deleted_page_id)::uuid;

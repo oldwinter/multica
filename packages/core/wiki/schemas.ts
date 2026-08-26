@@ -1,7 +1,12 @@
 import { z } from "zod";
 import type {
   LMWikiSourcePolicy,
+  LMWikiSourcePolicyStaleConflict,
   WikiActorType,
+  WikiKnowledgeMaintenanceItem,
+  WikiKnowledgeNextAction,
+  WikiKnowledgeReadiness,
+  WikiKnowledgeSourceReadiness,
   WikiPage,
   WikiPageSummary,
   WikiProposal,
@@ -188,6 +193,128 @@ export const LMWikiSourcePolicySchema = LMWikiSourcePolicyWireSchema.transform(
   }),
 );
 
+export const WikiKnowledgeSourceStateSchema = z.enum([
+  "eligible_unpinned",
+  "pinned_current",
+  "newer_revision_available",
+  "source_deleted",
+  "excluded",
+  "policy_stale",
+]);
+
+const WikiKnowledgeNextActionWireSchema = z.object({
+  kind: z.enum(["none", "pin_revision", "remove_source", "refresh_lm_wiki", "review_lm_wiki"]),
+  page_id: z.string().min(1).optional(),
+  revision_id: z.string().min(1).optional(),
+  revision_number: z.number().int().positive().optional(),
+  lm_wiki_revision_id: z.string().min(1).optional(),
+}).loose();
+
+const WikiKnowledgeNextActionSchema = WikiKnowledgeNextActionWireSchema.transform(
+  (wire): WikiKnowledgeNextAction => ({
+    kind: wire.kind,
+    pageId: wire.page_id,
+    revisionId: wire.revision_id,
+    revisionNumber: wire.revision_number,
+    lmWikiRevisionId: wire.lm_wiki_revision_id,
+  }),
+);
+
+const WikiKnowledgeSourceReadinessWireSchema = z.object({
+  page_id: z.string().min(1),
+  scope: z.enum(["workspace", "project"]).optional(),
+  project_id: z.string().min(1).optional(),
+  state: WikiKnowledgeSourceStateSchema,
+  reason_code: z.string().min(1),
+  responsible_role: z.literal("owner_admin"),
+  selected_revision_id: z.string().min(1).optional(),
+  selected_revision_number: z.number().int().positive().optional(),
+  current_revision_id: z.string().min(1).optional(),
+  current_revision_number: z.number().int().positive().optional(),
+  policy_version: z.number().int().nonnegative(),
+  next_action: WikiKnowledgeNextActionSchema,
+}).loose();
+
+const WikiKnowledgeSourceReadinessSchema = WikiKnowledgeSourceReadinessWireSchema.transform(
+  (wire): WikiKnowledgeSourceReadiness => ({
+    pageId: wire.page_id,
+    scope: wire.scope,
+    projectId: wire.project_id,
+    state: wire.state,
+    reasonCode: wire.reason_code,
+    responsibleRole: wire.responsible_role,
+    selectedRevisionId: wire.selected_revision_id,
+    selectedRevisionNumber: wire.selected_revision_number,
+    currentRevisionId: wire.current_revision_id,
+    currentRevisionNumber: wire.current_revision_number,
+    policyVersion: wire.policy_version,
+    nextAction: wire.next_action,
+  }),
+);
+
+const WikiKnowledgeMaintenanceItemWireSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum([
+    "source_newer_revision", "source_deleted", "source_excluded",
+    "policy_stale", "lm_wiki_review_pending",
+  ]),
+  severity: z.enum(["warning", "high"]),
+  reason_code: z.string().min(1),
+  responsible_role: z.literal("owner_admin"),
+  page_id: z.string().min(1).optional(),
+  selected_revision_number: z.number().int().positive().optional(),
+  policy_version: z.number().int().nonnegative(),
+  next_action: WikiKnowledgeNextActionSchema,
+}).loose();
+
+const WikiKnowledgeMaintenanceItemSchema = WikiKnowledgeMaintenanceItemWireSchema.transform(
+  (wire): WikiKnowledgeMaintenanceItem => ({
+    id: wire.id,
+    kind: wire.kind,
+    severity: wire.severity,
+    reasonCode: wire.reason_code,
+    responsibleRole: wire.responsible_role,
+    pageId: wire.page_id,
+    selectedRevisionNumber: wire.selected_revision_number,
+    policyVersion: wire.policy_version,
+    nextAction: wire.next_action,
+  }),
+);
+
+const WikiKnowledgeReadinessWireSchema = z.object({
+  schema_version: z.literal(1),
+  policy: LMWikiSourcePolicySchema,
+  sources: z.array(WikiKnowledgeSourceReadinessSchema),
+  maintenance_items: z.array(WikiKnowledgeMaintenanceItemSchema),
+  truncated: z.boolean(),
+  can_manage: z.boolean(),
+}).loose();
+
+export const WikiKnowledgeReadinessSchema = WikiKnowledgeReadinessWireSchema.transform(
+  (wire): WikiKnowledgeReadiness => ({
+    schemaVersion: wire.schema_version,
+    policy: wire.policy,
+    sources: wire.sources,
+    maintenanceItems: wire.maintenance_items,
+    truncated: wire.truncated,
+    canManage: wire.can_manage,
+  }),
+);
+
+const LMWikiSourcePolicyStaleWireSchema = z.object({
+  code: z.literal("wiki_source_policy_stale"),
+  current_policy: LMWikiSourcePolicySchema,
+}).loose();
+
+export function parseLMWikiSourcePolicyStale(
+  value: unknown,
+): LMWikiSourcePolicyStaleConflict | null {
+  const result = LMWikiSourcePolicyStaleWireSchema.safeParse(value);
+  return result.success
+    ? { code: result.data.code, currentPolicy: result.data.current_policy }
+    : null;
+}
+
 const WikiRevisionConflictWireSchema = z.object({
   code: z.literal("wiki_revision_conflict"),
   current_revision_number: z.number().int().positive(),
@@ -224,6 +351,14 @@ export const EMPTY_LM_WIKI_SOURCE_POLICY: LMWikiSourcePolicy = {
   policyVersion: 0,
   policyDigest: "",
   exclusions: [],
+};
+export const EMPTY_WIKI_KNOWLEDGE_READINESS: WikiKnowledgeReadiness = {
+  schemaVersion: 1,
+  policy: EMPTY_LM_WIKI_SOURCE_POLICY,
+  sources: [],
+  maintenanceItems: [],
+  truncated: false,
+  canManage: false,
 };
 
 export const EMPTY_WIKI_PAGE: WikiPage = {

@@ -169,6 +169,10 @@ import {
   EMPTY_WIKI_PROPOSAL,
   EMPTY_WIKI_PROPOSALS,
   EMPTY_WIKI_REVISIONS,
+  EMPTY_LM_WIKI_SOURCE_POLICY,
+  EMPTY_WIKI_KNOWLEDGE_READINESS,
+  LMWikiSourcePolicySchema,
+  WikiKnowledgeReadinessSchema,
   WikiPageSchema,
   WikiPageSummaryListSchema,
   WikiProposalListSchema,
@@ -177,6 +181,8 @@ import {
   type CreateWikiPageInput,
   type CreateWikiProposalInput,
   type ListWikiPagesParams,
+  type LMWikiSourcePolicy,
+  type PinWikiRevisionAsLMWikiEvidenceInput,
   type AcceptWikiProposalInput,
   type RejectWikiProposalInput,
   type UpdateWikiPageInput,
@@ -184,10 +190,12 @@ import {
   type WikiPageSummary,
   type WikiProposal,
   type WikiRevision,
+  type WikiKnowledgeReadiness,
   buildAcceptWikiProposalBody,
   buildCreateWikiPageBody,
   buildCreateWikiProposalBody,
   buildRejectWikiProposalBody,
+  buildPinWikiRevisionBody,
   buildUpdateWikiPageBody,
 } from "./wiki-schema";
 import type { AppearanceUpdateRequest } from "@/lib/appearance-sync";
@@ -1282,6 +1290,32 @@ class ApiClient {
       WikiPageSchema,
       EMPTY_WIKI_PAGE,
       { ...opts, endpoint: "GET /api/wiki/pages/:id" },
+    );
+  }
+
+  async getWikiKnowledgeReadiness(
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiKnowledgeReadiness> {
+    return this.fetchValidated(
+      "/api/wiki/knowledge-readiness",
+      WikiKnowledgeReadinessSchema,
+      EMPTY_WIKI_KNOWLEDGE_READINESS,
+      { ...opts, endpoint: "GET /api/wiki/knowledge-readiness" },
+    );
+  }
+
+  async pinWikiRevisionAsLMWikiEvidence(
+    input: PinWikiRevisionAsLMWikiEvidenceInput,
+  ): Promise<LMWikiSourcePolicy> {
+    return this.fetchValidatedWith(
+      `/api/lm-wiki/source-policy/wiki-pages/${encodeURIComponent(input.pageId)}/revisions/${encodeURIComponent(input.revisionId)}`,
+      LMWikiSourcePolicySchema,
+      EMPTY_LM_WIKI_SOURCE_POLICY,
+      {
+        method: "PUT",
+        body: JSON.stringify(buildPinWikiRevisionBody(input)),
+      },
+      { endpoint: "PUT /api/lm-wiki/source-policy/wiki-pages/:pageId/revisions/:revisionId" },
     );
   }
 
