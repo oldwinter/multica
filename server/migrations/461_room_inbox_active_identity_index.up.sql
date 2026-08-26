@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_inbox_room_active_identity ON inbox_item (workspace_id, recipient_type, recipient_id, room_attention_key) WHERE room_attention_key IS NOT NULL AND archived = false;

@@ -31,6 +31,8 @@ func TestIsNotifMutedGroupSplit(t *testing.T) {
 		{"assignments group intact", map[string]string{"assignments": "muted"}, "issue_assigned", true},
 		{"status group intact", map[string]string{"status_changes": "muted"}, "status_changed", true},
 		{"muting comments leaves assignments alone", map[string]string{"comments": "muted"}, "issue_assigned", false},
+		{"rooms group mutes outcome review delivery", map[string]string{"rooms": "muted"}, "room_outcome_review_required", true},
+		{"rooms group leaves comments alone", map[string]string{"rooms": "muted"}, "new_comment", false},
 
 		// Types outside the map are always delivered.
 		{"unconfigurable type always delivered", map[string]string{"comments": "muted"}, "reaction_added", false},
@@ -43,6 +45,19 @@ func TestIsNotifMutedGroupSplit(t *testing.T) {
 					tc.prefs, tc.notifType, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestNotifTypeToGroupRoomsLifecycleTypes(t *testing.T) {
+	for _, itemType := range []string{
+		"room_outcome_review_required",
+		"room_recommendation_review_required",
+		"room_cycle_failed",
+		"room_cycle_blocked",
+	} {
+		if got := notifTypeToGroup[itemType]; got != "rooms" {
+			t.Fatalf("notifTypeToGroup[%s] = %q, want rooms", itemType, got)
+		}
 	}
 }
 

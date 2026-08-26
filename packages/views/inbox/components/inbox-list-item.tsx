@@ -67,6 +67,11 @@ export function InboxListItem({
     slug && item.issue_id
       ? paths.workspace(slug).issueDetail(item.issue_id)
       : null;
+	const roomRoute = item.details?.route;
+	const roomHref =
+		slug && item.room_id && roomRoute?.startsWith("/rooms?")
+			? `${paths.workspace(slug).rooms()}${roomRoute.slice("/rooms".length)}`
+			: null;
   const intentNavigate = useIntentNavigate();
   const displayTitle = getInboxDisplayTitle(item);
   const isArchivedView = view === "archived";
@@ -95,7 +100,13 @@ export function InboxListItem({
     <div
       role="button"
       tabIndex={0}
-      onClick={(e) => {
+				onClick={(e) => {
+				if (roomHref) {
+					const intent = resolveClickIntent(e);
+					if (intent === "push") onClick();
+					else intentNavigate(roomHref, intent);
+					return;
+				}
         // Plain click keeps the master-detail selection; a modifier click on
         // a row that references an issue opens that issue as its own tab.
         if (issueHref) {
@@ -107,11 +118,14 @@ export function InboxListItem({
         }
         onClick();
       }}
-      onKeyDown={(e) => handleRowActivationKey(e, onClick)}
+			onKeyDown={(e) =>
+				handleRowActivationKey(e, onClick)
+			}
       onAuxClick={(e) => {
-        if (e.defaultPrevented || e.button !== 1 || !issueHref) return;
+				const href = roomHref ?? issueHref;
+				if (e.defaultPrevented || e.button !== 1 || !href) return;
         e.preventDefault();
-        intentNavigate(issueHref, "background-tab");
+				intentNavigate(href, "background-tab");
       }}
       // Right-click opens the list's shared menu (mark read/unread, archive).
       // `select-none` mirrors what Base UI's own trigger used to merge in, so

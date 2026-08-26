@@ -67,7 +67,11 @@
     "reaction_added": "반응 추가됨",
     "quick_create_done": "에이전트로 생성됨",
     "quick_create_failed": "에이전트 생성 실패",
-    "quick_create_unconfirmed": "에이전트 생성 결과 미확인"
+    "quick_create_unconfirmed": "에이전트 생성 결과 미확인",
+    "room_outcome_review_required": "룸 결과 리뷰",
+    "room_recommendation_review_required": "룸 추천 리뷰",
+    "room_cycle_failed": "룸 사이클 실패",
+    "room_cycle_blocked": "룸 실행 차단됨"
   },
   "labels": {
     "set_status_to": "상태 변경:",

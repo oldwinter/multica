@@ -105,7 +105,7 @@ export function deduplicateArchivedInboxItems(items: InboxItem[]): InboxItem[] {
 function groupInboxItemsByIssue(items: InboxItem[]): InboxItem[] {
   const groups = new Map<string, InboxItem[]>();
   for (const item of items) {
-    const key = item.issue_id ?? item.id;
+		const key = inboxItemGroupKey(item);
     const group = groups.get(key) ?? [];
     group.push(item);
     groups.set(key, group);
@@ -137,4 +137,22 @@ function groupInboxItemsByIssue(items: InboxItem[]): InboxItem[] {
     (a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
+}
+
+export function inboxItemGroupKey(item: InboxItem): string {
+	if (item.issue_id) return `issue:${item.issue_id}`;
+	if (item.room_id) {
+		return [
+			"room",
+			item.room_id,
+			item.room_cycle_id ?? "current",
+			item.type,
+			item.room_review_identity ?? "current",
+		].join(":");
+	}
+	return `item:${item.id}`;
+}
+
+export function isRoomInboxItem(item: InboxItem): boolean {
+	return item.type.startsWith("room_") && Boolean(item.room_id);
 }

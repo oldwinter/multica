@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -44,6 +44,7 @@ interface RoomOutcomeProps {
   readonly reviewPending: boolean;
   readonly retryPending: boolean;
   readonly recommendationPending: boolean;
+  readonly attentionTarget?: RoomAttentionTarget;
   readonly onReview: (action: "accept" | "reject" | "correct", correction?: RoomSynthesis) => void;
   readonly onRetry: () => void;
   readonly onCitation: (entryId: string) => void;
@@ -54,6 +55,13 @@ interface RoomOutcomeProps {
   readonly onRejectRecommendation: (revisionId: string, recommendationKey: string) => void;
 }
 
+export interface RoomAttentionTarget {
+  readonly focus: string | null;
+  readonly cycleId: string | null;
+  readonly memoryRevisionId: string | null;
+  readonly recommendationKey: string | null;
+}
+
 export function RoomOutcome({
   detail,
   state,
@@ -61,6 +69,7 @@ export function RoomOutcome({
   reviewPending,
   retryPending,
   recommendationPending,
+  attentionTarget,
   onReview,
   onRetry,
   onCitation,
@@ -69,7 +78,14 @@ export function RoomOutcome({
 }: RoomOutcomeProps) {
   const { t } = useT("rooms");
   const { getActorName } = useActorName();
-  const revision = state.latestOutcome;
+  const requestedRevision = attentionTarget?.memoryRevisionId
+    ? detail.memory_revisions.find(
+        (candidate) =>
+          candidate.id === attentionTarget.memoryRevisionId &&
+          (!attentionTarget.cycleId || candidate.cycle_id === attentionTarget.cycleId),
+      )
+    : null;
+  const revision = requestedRevision ?? state.latestOutcome;
   const synthesis = revision?.synthesis;
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const failedTurns = detail.turns.filter((turn) => turn.status === "failed").length;
@@ -78,11 +94,31 @@ export function RoomOutcome({
     : null;
   const promotionReady = revision?.review_status === "accepted" &&
     revisionCycle?.status === "completed" && revisionCycle.phase === "completed";
+  const reviewReady = revision?.review_status === "pending" &&
+    revisionCycle?.phase === "awaiting_review" &&
+    revisionCycle.id === state.activeCycle?.id;
   const synthesisAttempt = state.latestCycle
     ? Math.max(0, ...detail.turns
       .filter((turn) => turn.cycle_id === state.latestCycle?.id && turn.turn_kind === "synthesis")
       .map((turn) => turn.attempt))
     : 0;
+  const recommendationTargetId =
+    attentionTarget?.focus === "recommendation_review" &&
+    attentionTarget.recommendationKey &&
+    synthesis?.recommendations.some(
+      (recommendation) => recommendation.key === attentionTarget.recommendationKey,
+    )
+      ? roomRecommendationTargetId(attentionTarget.recommendationKey)
+      : null;
+  const attentionTargetId = recommendationTargetId ??
+    (requestedRevision ? roomRevisionTargetId(requestedRevision.id) : null);
+
+  useEffect(() => {
+    if (!attentionTargetId) return;
+    const target = document.getElementById(attentionTargetId);
+    target?.scrollIntoView?.({ block: "center" });
+    target?.focus({ preventScroll: true });
+  }, [attentionTargetId]);
 
   return (
     <section
@@ -146,7 +182,11 @@ export function RoomOutcome({
           </div>
         ) : (
           <>
-            <div>
+            <div
+              id={roomRevisionTargetId(revision.id)}
+              tabIndex={-1}
+              className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-caption font-medium text-muted-foreground">
                   {t(($) => $.detail.memory_version, { version: revision.version })}
@@ -164,7 +204,10 @@ export function RoomOutcome({
               </p>
             </div>
 
-            {(state.memoryDiff.added.length > 0 || state.memoryDiff.removed.length > 0 || state.memoryDiff.summaryChanged) ? (
+            {revision.id === state.latestOutcome?.id &&
+            (state.memoryDiff.added.length > 0 ||
+              state.memoryDiff.removed.length > 0 ||
+              state.memoryDiff.summaryChanged) ? (
               <div className="rounded-md border border-surface-border px-3 py-2">
                 <h3 className="flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
                   <GitCompareArrows className="size-3.5" aria-hidden="true" />
@@ -200,7 +243,12 @@ export function RoomOutcome({
                       (candidate) => candidate.memory_revision_id === revision.id && candidate.recommendation_key === recommendation.key,
                     );
                     return (
-                      <li key={recommendation.key} className="border-l-2 border-brand/40 pl-3">
+                      <li
+                        key={recommendation.key}
+                        id={roomRecommendationTargetId(recommendation.key)}
+                        tabIndex={-1}
+                        className="rounded-sm border-l-2 border-brand/40 pl-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
                         <div className="flex flex-wrap items-start gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-body font-medium text-foreground">{recommendation.title}</p>
@@ -245,7 +293,7 @@ export function RoomOutcome({
               </div>
             ) : null}
 
-            {revision.review_status === "pending" ? (
+            {reviewReady ? (
               <div className="sticky bottom-0 -mx-4 flex flex-wrap gap-2 border-t border-surface-border bg-surface px-4 py-3" role="group" aria-label={t(($) => $.review.actions_label)}>
                 <Button type="button" size="sm" disabled={reviewPending} data-testid="room-accept-outcome" onClick={() => onReview("accept")}>
                   <Check aria-hidden="true" />
@@ -278,6 +326,14 @@ export function RoomOutcome({
       ) : null}
     </section>
   );
+}
+
+function roomRevisionTargetId(revisionId: string): string {
+  return `room-outcome-revision-${revisionId}`;
+}
+
+function roomRecommendationTargetId(recommendationKey: string): string {
+  return `room-outcome-recommendation-${recommendationKey}`;
 }
 
 function OutcomeGoal({ detail }: { readonly detail: RoomDetail }) {

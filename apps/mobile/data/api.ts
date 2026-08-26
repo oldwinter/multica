@@ -1065,6 +1065,19 @@ class ApiClient {
     );
   }
 
+  async wakeRoom(roomId: string, idempotencyKey: string): Promise<RoomWakeResult> {
+    return this.fetchValidatedWith(
+      `/api/rooms/${roomId}/wake`,
+      RoomWakeResultSchema,
+      EMPTY_ROOM_WAKE_RESULT,
+      {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: idempotencyKey }),
+      },
+      { endpoint: "POST /api/rooms/:id/wake" },
+    );
+  }
+
   async setRoomStatus(
     roomId: string,
     status: "active" | "paused" | "archived",

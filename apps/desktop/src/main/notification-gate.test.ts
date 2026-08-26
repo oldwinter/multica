@@ -66,4 +66,35 @@ describe("parseNativeNotificationPayload", () => {
     };
     expect(parseNativeNotificationPayload(payload)).toEqual(payload);
   });
+
+  it("accepts only bounded application-relative target paths", () => {
+    const payload = {
+      slug: "acme",
+      itemId: "item-1",
+      issueKey: "item-1",
+      title: "Room outcome needs review",
+      body: "",
+      targetPath:
+        "/acme/rooms?room=room-1&tab=outcome&focus=outcome_review",
+    };
+    expect(parseNativeNotificationPayload(payload)).toEqual(payload);
+    expect(
+      parseNativeNotificationPayload({
+        ...payload,
+        targetPath: "https://example.com/rooms?room=room-1",
+      }),
+    ).toBeNull();
+    expect(
+      parseNativeNotificationPayload({
+        ...payload,
+        targetPath: "//example.com/rooms?room=room-1",
+      }),
+    ).toBeNull();
+    expect(
+      parseNativeNotificationPayload({
+        ...payload,
+        targetPath: `/${"x".repeat(2_048)}`,
+      }),
+    ).toBeNull();
+  });
 });

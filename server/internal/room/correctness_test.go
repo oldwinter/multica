@@ -83,7 +83,7 @@ func TestSynthesisValidationInfrastructureErrorRollsBack(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _, created, err := fixture.service.tryCreateRoomRevision(
+	_, _, _, created, err := fixture.service.tryCreateRoomRevision(
 		ctx, db.New(fixture.pool), fixture.detail.Room, fixture.detail.Cycles[0], turn, revision.Synthesis, false,
 	)
 	if created || !errors.Is(err, context.Canceled) || errors.Is(err, ErrInvalidSynthesis) {

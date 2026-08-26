@@ -700,21 +700,25 @@ type GithubPullRequestCheckSuite struct {
 }
 
 type InboxItem struct {
-	ID            pgtype.UUID        `json:"id"`
-	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
-	RecipientType string             `json:"recipient_type"`
-	RecipientID   pgtype.UUID        `json:"recipient_id"`
-	Type          string             `json:"type"`
-	Severity      string             `json:"severity"`
-	IssueID       pgtype.UUID        `json:"issue_id"`
-	Title         string             `json:"title"`
-	Body          pgtype.Text        `json:"body"`
-	Read          bool               `json:"read"`
-	Archived      bool               `json:"archived"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	ActorType     pgtype.Text        `json:"actor_type"`
-	ActorID       pgtype.UUID        `json:"actor_id"`
-	Details       []byte             `json:"details"`
+	ID                 pgtype.UUID        `json:"id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	RecipientType      string             `json:"recipient_type"`
+	RecipientID        pgtype.UUID        `json:"recipient_id"`
+	Type               string             `json:"type"`
+	Severity           string             `json:"severity"`
+	IssueID            pgtype.UUID        `json:"issue_id"`
+	Title              string             `json:"title"`
+	Body               pgtype.Text        `json:"body"`
+	Read               bool               `json:"read"`
+	Archived           bool               `json:"archived"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	ActorType          pgtype.Text        `json:"actor_type"`
+	ActorID            pgtype.UUID        `json:"actor_id"`
+	Details            []byte             `json:"details"`
+	RoomID             pgtype.UUID        `json:"room_id"`
+	RoomCycleID        pgtype.UUID        `json:"room_cycle_id"`
+	RoomReviewIdentity pgtype.Text        `json:"room_review_identity"`
+	RoomAttentionKey   pgtype.Text        `json:"room_attention_key"`
 }
 
 type Issue struct {

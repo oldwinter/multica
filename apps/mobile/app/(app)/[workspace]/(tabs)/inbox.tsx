@@ -57,6 +57,20 @@ export default function Inbox() {
       // snapshot for the native stack push transition.
       markRead.mutate(item.id);
     }
+		if (item.room_id && wsSlug) {
+			router.push({
+				pathname: "/[workspace]/room/[id]",
+				params: {
+					workspace: wsSlug,
+					id: item.room_id,
+					focus: item.details?.focus,
+					cycleId: item.room_cycle_id ?? item.details?.cycle_id,
+					memoryRevisionId: item.details?.memory_revision_id,
+					recommendationKey: item.room_review_identity ?? item.details?.recommendation_key,
+				},
+			});
+			return;
+		}
     if (item.issue_id && wsSlug) {
       router.push({
         pathname: "/[workspace]/issue/[id]",

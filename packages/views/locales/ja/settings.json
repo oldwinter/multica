@@ -621,6 +621,10 @@
       "agent_activity": {
         "label": "エージェントのアクティビティ",
         "description": "エージェントの作業が完了または失敗したとき"
+      },
+      "rooms": {
+        "label": "ルーム",
+        "description": "レビュー待ち、失敗したサイクル、ブロックされたルーム実行"
       }
     },
     "system": {

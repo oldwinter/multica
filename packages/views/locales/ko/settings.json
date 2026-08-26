@@ -621,6 +621,10 @@
       "agent_activity": {
         "label": "에이전트 활동",
         "description": "에이전트 작업이 완료되거나 실패할 때"
+      },
+      "rooms": {
+        "label": "룸",
+        "description": "리뷰 대기, 실패한 사이클, 차단된 룸 실행"
       }
     },
     "system": {

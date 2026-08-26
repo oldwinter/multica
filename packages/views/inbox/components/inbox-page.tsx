@@ -97,7 +97,7 @@ import { useT } from "../../i18n";
 
 export function InboxPage() {
   const { t } = useT("inbox");
-  const { searchParams, replace } = useNavigation();
+	const { searchParams, replace, push } = useNavigation();
   const urlIssue = searchParams.get("issue") ?? "";
   const urlView: InboxView =
     searchParams.get("view") === ARCHIVED_VIEW_PARAM ? "archived" : "inbox";
@@ -345,6 +345,21 @@ export function InboxPage() {
   // by issue) and a fresh mount with a cleared memento entry lands by itself.
   const [highlightRequestToken, setHighlightRequestToken] = useState(0);
   const handleSelect = (item: InboxItem) => {
+		const roomRoute = item.details?.route;
+		if (item.room_id && roomRoute?.startsWith("/rooms?")) {
+			if (!item.read) {
+				markReadMutation.mutate(item.id, {
+					onError: (err) =>
+						toast.error(
+							err instanceof Error && err.message
+								? err.message
+								: t(($) => $.errors.mark_read_failed),
+						),
+				});
+			}
+			push(`${wsPaths.rooms()}${roomRoute.slice("/rooms".length)}`);
+			return;
+		}
     const nextKey = item.issue_id ?? item.id;
     // Every click on a notification row is a fresh deep-link intent: clear
     // the "highlight already landed" memento entry so the comment jump runs
