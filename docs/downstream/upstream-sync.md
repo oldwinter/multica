@@ -7,6 +7,83 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-08-27 Sync
+
+- Downstream start: `f56235422`.
+- Merge base: `3c4288dde`.
+- Upstream ahead: 54 commits through `3d37828e9`
+  (`v0.4.35-10-g3d37828e9`).
+- Local unique commits: 47.
+- Conflict files: 18.
+- Merge commit: `b53ba948b`.
+
+The conflicts were concentrated in shared lifecycle hubs rather than local
+feature leaves:
+
+| Class | Conflict paths |
+| --- | --- |
+| Core and realtime | `packages/core/api/client.test.ts`, `packages/core/issues/queries.test.ts`, `packages/core/realtime/use-realtime-sync.ts` |
+| Shared views | `packages/views/inbox/components/inbox-page.tsx`, `packages/views/issues/components/comment-card.tsx`, `packages/views/issues/components/issue-detail-route.test.tsx`, `packages/views/issues/components/issue-detail-route.tsx` |
+| Daemon and handlers | `server/cmd/migrate/main.go`, `server/cmd/server/listeners.go`, `server/internal/daemon/types.go`, `server/internal/handler/daemon.go`, `server/internal/handler/handler.go`, `server/internal/handler/issue.go`, `server/internal/handler/workspace_delete_manifest_test.go` |
+| Task, metrics, and sqlc | `server/internal/metrics/labels.go`, `server/internal/service/task.go`, `server/pkg/db/queries/agent.sql`, `server/pkg/db/generated/agent.sql.go` |
+
+Additive frontend behavior stayed additive: Wiki and Room realtime events live
+beside upstream chat-session creation, the inbox keeps both the issue-limit
+upgrade path and Room navigation, comment menus keep copy-link and source-child
+creation, and issue deep links accept both the downstream `?comment=` form and
+upstream `#comment-` form. The query parameter wins when both are present, and
+canonical links preserve the current search before adding the hash.
+
+The task lifecycle resolution kept upstream runtime authorization,
+source-context transfer, and channel delivery in the same retry transaction.
+Room retries additionally take the workspace write lock inside that
+transaction. Daemon claiming retained the capability-aware Room refill loop
+while incorporating upstream authorization and finalization. Issue deletion
+kept upstream batch, child-detach, and source-context cleanup plus downstream
+Twin binding cleanup; the workspace deletion manifest now covers both local
+Rooms/Wiki/Twin tables and upstream channel, source-context, and seat-capacity
+tables.
+
+Upstream replaced the old issue-window entitlement with the Cloud issue-count
+limit. This was a lifecycle retirement rather than an additive conflict, so the
+old handler and its metric label stayed deleted. The canonical Cloud endpoint
+is now `MULTICA_CLOUD_URL`; three downstream human-actor tests were updated from
+the retired fleet variable.
+
+The agent claim query was resolved at the SQL source: upstream's runtime access
+fence plus downstream `include_room_tasks`. `sqlc` 1.31.1 then regenerated the
+Go output; a second generation produced no diff. The two published migration
+histories overlap again at 404, 407-432, and 437-439. Their complete filename
+identities remain unchanged and the exact duplicate stems are frozen in
+`migrations_lint_test.go`; new migrations must not extend those sets.
+
+Upgrade validation covered both database histories. The existing downstream
+database advanced from 565 to 595 ledger identities and a second `migrate up`
+was a no-op. A temporary empty database applied the complete merged history to
+584 identities, passed a second no-op run, and was removed. Migration, handler,
+service, and server tests passed.
+
+The full Go package run exposed two container-identity artifacts: root can read
+a chmod-denied fixture, and an artificial HOME that does not contain the root
+username cannot be masked by the home-path test. The permission case passed as
+UID 1000 and the redaction case passed with root's normal HOME. Frontend
+verification passed core (1,852 tests), web (251), desktop (528), docs (17),
+and UI token contracts (7). The views run passed 5,011 tests, then exposed
+seven stale Twin test fixtures and one load-sensitive five-second timeout; the
+fixtures passed after restoring their navigation/query boundaries (7 tests),
+and the timed-out source-context test passed in isolation. Typecheck passed 7/7
+workspace tasks and lint completed with zero errors. Conflict-marker search,
+unmerged-path search, `git diff --check`, generated-output checks, and the
+upstream ancestor check were clean.
+
+Two compatibility lessons are worth retaining. First, tests that parse shared
+CSS tokens must support grouped selectors such as `:root,` plus an appearance
+fixture selector; exact string lookup silently couples the test to formatting.
+Second, a full-module mock must preserve newly added exports used by nested
+children, or use a partial mock. Both failures appeared only after upstream
+changed a shared registration point while downstream tests still modeled the
+older boundary.
+
 ## 2026-08-25 Sync
 
 - Downstream start: `017a79956`.
