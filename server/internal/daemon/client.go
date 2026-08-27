@@ -197,6 +197,7 @@ func daemonClientCapabilities() string {
 		protocol.DaemonCapabilityRemoteMCPV1,
 		protocol.DaemonCapabilityTwinBriefingV1,
 		protocol.DaemonCapabilityLocalWorktreeV1,
+		protocol.DaemonCapabilitySourceContextQuickCreateV1,
 		protocol.DaemonCapabilityRPCV1,
 	}, ",")
 }

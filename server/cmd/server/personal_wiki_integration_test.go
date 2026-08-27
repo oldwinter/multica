@@ -110,7 +110,7 @@ func TestPersonalWikiRoutesRejectCloudMachineCredential(t *testing.T) {
 		_, _ = fmt.Fprintf(w, `{"valid":true,"owner_id":%q,"instance_id":"personal-wiki-test","instance_record_id":"00000000-0000-0000-0000-000000000001"}`, testUserID)
 	}))
 	defer fleet.Close()
-	t.Setenv("MULTICA_CLOUD_FLEET_URL", fleet.URL)
+	t.Setenv("MULTICA_CLOUD_URL", fleet.URL)
 
 	hub := realtime.NewHub()
 	go hub.Run()
