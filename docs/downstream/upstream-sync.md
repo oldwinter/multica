@@ -14,8 +14,9 @@ Use this page when merging `upstream/main`. The short pointer lives in
 - Upstream ahead: 54 commits through `3d37828e9`
   (`v0.4.35-10-g3d37828e9`).
 - Local unique commits: 47.
-- Conflict files: 18.
+- Upstream conflict files: 18.
 - Merge commit: `b53ba948b`.
+- Fork-remote reconciliation: `af311c57a` (one additional conflict).
 
 The conflicts were concentrated in shared lifecycle hubs rather than local
 feature leaves:
@@ -83,6 +84,20 @@ Second, a full-module mock must preserve newly added exports used by nested
 children, or use a partial mock. Both failures appeared only after upstream
 changed a shared registration point while downstream tests still modeled the
 older boundary.
+
+After the upstream merge, `origin/main` still contained PR #5's copyable Agent
+mention feature on two commits that were not ancestors of the local branch.
+Merging the fork remote preserved that already-published work. Its only
+conflict was `packages/views/agents/agents-i18n-parity.test.ts`: upstream had
+added task-failure, visual-label, and diagnostics parity contracts while the
+fork feature had added mention-action parity. These suites describe independent
+behavior, so the resolution retained all of them rather than choosing a whole
+side. The merged i18n, mention-menu, and agent-detail tests passed 33/33.
+
+Treat the fork remote as a second reconciliation boundary: after merging
+`upstream/main`, compare the result with `origin/main` before declaring the
+checkout synchronized. An upstream ancestor check alone can still leave
+published fork commits absent from local `main`.
 
 ## 2026-08-25 Sync
 
