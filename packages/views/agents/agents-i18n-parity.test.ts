@@ -36,6 +36,30 @@ describe("task failure reason i18n parity across all 4 locales", () => {
   });
 });
 
+describe("agent mention action i18n parity", () => {
+  const mentionKeys = [
+    "mention.copy",
+    "mention.copied_toast",
+    "mention.copy_failed_toast",
+  ];
+
+  it("keeps every mention action key non-empty across all 4 locales", () => {
+    for (const [name, loc] of Object.entries(LOCALES)) {
+      for (const key of mentionKeys) {
+        const value = key.split(".").reduce<unknown>(
+          (node, part) =>
+            node !== null && typeof node === "object"
+              ? (node as Record<string, unknown>)[part]
+              : undefined,
+          loc,
+        );
+        expect(typeof value, `${name}: ${key} missing`).toBe("string");
+        expect(String(value).length > 0, `${name}: ${key} is empty`).toBe(true);
+      }
+    }
+  });
+});
+
 /**
  * #7411: hardcoded English label tables living inside the translated package.
  * The visual configs must stay visual — the moment one of them carries a

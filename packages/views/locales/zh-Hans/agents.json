@@ -124,6 +124,11 @@
     "archive_dialog_cancel": "取消",
     "archive_dialog_confirm": "归档"
   },
+  "mention": {
+    "copy": "复制提及",
+    "copied_toast": "已复制提及",
+    "copy_failed_toast": "复制提及失败"
+  },
   "detail": {
     "back_to_agents": "智能体",
     "back_to_agents_full": "返回智能体列表",

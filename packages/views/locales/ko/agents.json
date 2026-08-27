@@ -124,6 +124,11 @@
     "archive_dialog_cancel": "취소",
     "archive_dialog_confirm": "보관"
   },
+  "mention": {
+    "copy": "멘션 복사",
+    "copied_toast": "멘션을 복사했습니다",
+    "copy_failed_toast": "멘션을 복사하지 못했습니다"
+  },
   "detail": {
     "back_to_agents": "에이전트",
     "back_to_agents_full": "에이전트로 돌아가기",

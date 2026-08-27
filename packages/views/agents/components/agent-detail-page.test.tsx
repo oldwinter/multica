@@ -56,9 +56,11 @@ const currentUserRef = vi.hoisted(() => ({
   current: { id: "user-1" } as { id: string } | null,
 }));
 const mockToastError = vi.hoisted(() => vi.fn());
+const mockToastSuccess = vi.hoisted(() => vi.fn());
 const mockModalOpen = vi.hoisted(() => vi.fn());
 const mockGetAgent = vi.hoisted(() => vi.fn());
 const mockUpdateAgent = vi.hoisted(() => vi.fn());
+const mockCopyText = vi.hoisted(() => vi.fn());
 
 vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "ws-1",
@@ -154,7 +156,10 @@ vi.mock("@multica/core/api", () => {
   };
 });
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: mockToastError },
+  toast: { success: mockToastSuccess, error: mockToastError },
+}));
+vi.mock("@multica/ui/lib/clipboard", () => ({
+  copyText: mockCopyText,
 }));
 
 import { AgentDetailPage } from "./agent-detail-page";
@@ -217,6 +222,7 @@ beforeEach(() => {
   agentsRef.current = [baseAgent];
   mockGetAgent.mockRejectedValue(new ApiError("not found", 404, "Not Found"));
   mockUpdateAgent.mockResolvedValue({ ...baseAgent, model: "new-model" });
+  mockCopyText.mockResolvedValue(true);
 });
 
 describe("AgentDetailPage direct-detail fallback", () => {
@@ -422,15 +428,10 @@ describe("AgentDetailPage DM button", () => {
     // The archived banner is the signal the page has settled past loading.
     await screen.findByText(/This agent is archived/);
     expect(screen.queryByRole("button", { name: "DM" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Agent actions")).not.toBeInTheDocument();
   });
 
-  it("hides the more-actions trigger when no menu actions are available", async () => {
-    // The gate must survive a caller who genuinely CAN archive: an admin
-    // passes `canEditAgent`, so `canArchive` is true. The only thing keeping
-    // the menu empty is the system agent's undefined `onArchive`. Assert the
-    // real aria label (locale `detail.more_actions_aria` = "Agent actions"),
-    // so removing the `hasMoreActions` gate would render the empty shell and
-    // fail this test.
+  it("offers a copyable mention for an active system agent", async () => {
     agentsRef.current = [
       { ...baseAgent, system_key: "mika" },
     ];
@@ -438,9 +439,15 @@ describe("AgentDetailPage DM button", () => {
     renderPage();
 
     await screen.findByRole("button", { name: "Assign work" });
-    expect(
-      screen.queryByLabelText("Agent actions"),
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Agent actions"));
+    fireEvent.click(await screen.findByText("Copy mention"));
+
+    expect(mockCopyText).toHaveBeenCalledWith(
+      "[@Lambda](mention://agent/agent-1)",
+    );
+    await waitFor(() => {
+      expect(mockToastSuccess).toHaveBeenCalledWith("Mention copied");
+    });
   });
 
   it("keeps the more-actions trigger for an editable non-system agent", async () => {
