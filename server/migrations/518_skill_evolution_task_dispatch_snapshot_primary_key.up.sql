@@ -1,0 +1,1 @@
+ALTER TABLE skill_evolution_task_dispatch_snapshot ADD CONSTRAINT skill_evolution_task_dispatch_snapshot_pkey PRIMARY KEY USING INDEX skill_evolution_task_dispatch_snapshot_id_uidx;
