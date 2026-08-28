@@ -5,6 +5,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/runtimeapps"
 	"github.com/multica-ai/multica/server/pkg/remotemcp"
+	"github.com/multica-ai/multica/server/pkg/skillbundle"
 )
 
 // AgentEntry describes a single available agent CLI.
@@ -316,12 +317,13 @@ type TaskUsageEntry struct {
 
 // TaskResult is the outcome of executing a task.
 type TaskResult struct {
-	Status     string `json:"status"`
-	Comment    string `json:"comment"`
-	BranchName string `json:"branch_name,omitempty"`
-	EnvType    string `json:"env_type,omitempty"`
-	SessionID  string `json:"session_id,omitempty"` // Claude session ID for future resumption
-	WorkDir    string `json:"work_dir,omitempty"`   // working directory used during execution
+	Status                 string                         `json:"status"`
+	Comment                string                         `json:"comment"`
+	BranchName             string                         `json:"branch_name,omitempty"`
+	EnvType                string                         `json:"env_type,omitempty"`
+	SessionID              string                         `json:"session_id,omitempty"` // Claude session ID for future resumption
+	WorkDir                string                         `json:"work_dir,omitempty"`   // working directory used during execution
+	SkillExecutionManifest *skillbundle.ExecutionManifest `json:"skill_execution_manifest,omitempty"`
 	// DurableWorkDir replaces WorkDir only after a disposable local worktree
 	// was finalized and its removal was confirmed. Empty keeps WorkDir authoritative.
 	DurableWorkDir string `json:"durable_work_dir,omitempty"`

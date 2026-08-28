@@ -230,6 +230,13 @@ func TestEnsureTaskSkillBundles_AcceptsServerSideSkillUpdate(t *testing.T) {
 	if len(task.Agent.Skills) != 1 || task.Agent.Skills[0].Hash != currentRef.Hash {
 		t.Fatalf("expected the resolved skill to be the updated bundle (hash %s), got %+v", currentRef.Hash, task.Agent.Skills)
 	}
+	manifest := buildResolvedSkillExecutionManifest(task.Agent.Skills)
+	if manifest == nil || len(manifest.Skills) != 1 {
+		t.Fatalf("resolved execution manifest = %+v, want one item", manifest)
+	}
+	if got := string(manifest.Skills[0].BundleHash); got != currentRef.Hash || got == staleRef.Hash {
+		t.Fatalf("execution manifest hash = %q, want post-resolution hash %q (stale %q)", got, currentRef.Hash, staleRef.Hash)
+	}
 	if _, ok := d.skillCache.Load("ws-1", currentRef); !ok {
 		t.Error("updated bundle should be cached under its own (new) hash")
 	}

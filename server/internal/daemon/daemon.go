@@ -221,6 +221,9 @@ type terminalTaskReport struct {
 	workDir        string
 	durableWorkDir string
 	failureReason  string
+	// skillExecutionManifest identifies only the Multica bundles resolved for
+	// this completed run. It is not provider filesystem materialization proof.
+	skillExecutionManifest *skillbundle.ExecutionManifest
 	// sessionRolloutMissing is true when the daemon withheld this task's Codex
 	// session because its rollout was not in the store (MUL-5305). The server
 	// clears the resume pointer and flags the continuity gap for the next claim.
@@ -5499,15 +5502,16 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 	case "completed":
 		taskLog.Info("task completed", "status", result.Status)
 		err := d.reportTerminalTask(ctx, terminalTaskReport{
-			kind:                  terminalTaskReportComplete,
-			taskID:                taskID,
-			output:                result.Comment,
-			branchName:            result.BranchName,
-			sessionID:             result.SessionID,
-			workDir:               result.WorkDir,
-			durableWorkDir:        result.DurableWorkDir,
-			sessionRolloutMissing: result.SessionRolloutMissing,
-			retiredSessionID:      result.RetiredSessionID,
+			kind:                   terminalTaskReportComplete,
+			taskID:                 taskID,
+			output:                 result.Comment,
+			branchName:             result.BranchName,
+			sessionID:              result.SessionID,
+			workDir:                result.WorkDir,
+			durableWorkDir:         result.DurableWorkDir,
+			skillExecutionManifest: result.SkillExecutionManifest,
+			sessionRolloutMissing:  result.SessionRolloutMissing,
+			retiredSessionID:       result.RetiredSessionID,
 		})
 		if err == nil {
 			return
@@ -5606,7 +5610,7 @@ func (d *Daemon) reportTerminalTask(parentCtx context.Context, report terminalTa
 
 	switch report.kind {
 	case terminalTaskReportComplete:
-		return d.client.CompleteTask(ctx, report.taskID, report.output, report.branchName, report.sessionID, report.workDir, report.sessionRolloutMissing, report.retiredSessionID, report.durableWorkDir)
+		return d.client.CompleteTask(ctx, report.taskID, report.output, report.branchName, report.sessionID, report.workDir, report.sessionRolloutMissing, report.retiredSessionID, report.durableWorkDir, report.skillExecutionManifest)
 	case terminalTaskReportFail:
 		return d.client.FailTask(ctx, report.taskID, report.errorMessage, report.sessionID, report.workDir, report.branchName, report.failureReason, report.sessionRolloutMissing, report.retiredSessionID, report.durableWorkDir)
 	default:
@@ -6404,6 +6408,32 @@ func skillRefKey(source, id string) string {
 	return source + "\x00" + id
 }
 
+func buildResolvedSkillExecutionManifest(skills []SkillData) *skillbundle.ExecutionManifest {
+	bundles := make([]skillbundle.ResolvedSkill, 0, len(skills))
+	for _, skill := range skills {
+		files := make([]skillbundle.File, 0, len(skill.Files))
+		for _, file := range skill.Files {
+			files = append(files, skillbundle.File{Path: file.Path, Content: file.Content})
+		}
+		bundles = append(bundles, skillbundle.ResolvedSkill{
+			Bundle: skillbundle.Skill{
+				ID:          skill.ID,
+				Source:      skill.Source,
+				Name:        skill.Name,
+				Description: skill.Description,
+				Content:     skill.Content,
+				Files:       files,
+			},
+			DeclaredHash: skill.Hash,
+		})
+	}
+	manifest, err := skillbundle.BuildExecutionManifest(bundles)
+	if err != nil {
+		return nil
+	}
+	return &manifest
+}
+
 func skillRefFromBundle(bundle SkillData) SkillRefData {
 	files := make([]skillbundle.File, 0, len(bundle.Files))
 	for _, file := range bundle.Files {
@@ -6691,6 +6721,12 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if err := d.ensureTaskSkillBundles(prepareCtx, &task); err != nil {
 		return TaskResult{}, err
 	}
+	resolvedSkillExecutionManifest := buildResolvedSkillExecutionManifest(task.Agent.Skills)
+	defer func() {
+		if taskResult.Status == "completed" {
+			taskResult.SkillExecutionManifest = resolvedSkillExecutionManifest
+		}
+	}()
 
 	agentName := "agent"
 	var skills []SkillData
