@@ -220,7 +220,10 @@ type terminalTaskReport struct {
 	sessionID      string
 	workDir        string
 	durableWorkDir string
-	failureReason  string
+	// taskDispatchedAt binds a completion manifest to the claim generation that
+	// actually ran. Older daemons omit it and the server skips attribution.
+	taskDispatchedAt string
+	failureReason    string
 	// skillExecutionManifest identifies only the Multica bundles resolved for
 	// this completed run. It is not provider filesystem materialization proof.
 	skillExecutionManifest *skillbundle.ExecutionManifest
@@ -5131,6 +5134,9 @@ func (d *Daemon) handleTask(ctx context.Context, task Task, slot int) {
 	}()
 
 	result, err := d.runner.run(runCtx, task, provider, slot, taskLog)
+	// The claim, not a runner implementation, owns the dispatch generation.
+	// Keep test/custom runners from accidentally dropping or replacing it.
+	result.TaskDispatchedAt = task.DispatchedAt
 
 	// Report usage before any early return — the agent accumulates tokens
 	// whether the task completes, errors, or is cancelled mid-run by the poll
@@ -5509,6 +5515,7 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 			sessionID:              result.SessionID,
 			workDir:                result.WorkDir,
 			durableWorkDir:         result.DurableWorkDir,
+			taskDispatchedAt:       result.TaskDispatchedAt,
 			skillExecutionManifest: result.SkillExecutionManifest,
 			sessionRolloutMissing:  result.SessionRolloutMissing,
 			retiredSessionID:       result.RetiredSessionID,
@@ -5610,7 +5617,7 @@ func (d *Daemon) reportTerminalTask(parentCtx context.Context, report terminalTa
 
 	switch report.kind {
 	case terminalTaskReportComplete:
-		return d.client.CompleteTask(ctx, report.taskID, report.output, report.branchName, report.sessionID, report.workDir, report.sessionRolloutMissing, report.retiredSessionID, report.durableWorkDir, report.skillExecutionManifest)
+		return d.client.CompleteTask(ctx, report.taskID, report.output, report.branchName, report.sessionID, report.workDir, report.sessionRolloutMissing, report.retiredSessionID, report.durableWorkDir, report.taskDispatchedAt, report.skillExecutionManifest)
 	case terminalTaskReportFail:
 		return d.client.FailTask(ctx, report.taskID, report.errorMessage, report.sessionID, report.workDir, report.branchName, report.failureReason, report.sessionRolloutMissing, report.retiredSessionID, report.durableWorkDir)
 	default:
@@ -6627,6 +6634,10 @@ func qualifyTaskModel(
 }
 
 func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot int, taskLog *slog.Logger) (taskResult TaskResult, returnErr error) {
+	defer func() {
+		taskResult.TaskDispatchedAt = task.DispatchedAt
+	}()
+
 	// A claim carries the task-row agent id both at the top level and inside
 	// the expanded agent configuration. The top-level id is authoritative
 	// because it is also bound into the task-scoped token. Never prepare or
