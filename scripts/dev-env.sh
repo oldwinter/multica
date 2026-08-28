@@ -481,6 +481,25 @@ process_group_id() {
   ps -p "$1" -o pgid= 2>/dev/null | tr -d ' ' || true
 }
 
+process_parent_id() {
+  ps -p "$1" -o ppid= 2>/dev/null | tr -d ' ' || true
+}
+
+# pnpm/turbo put Next.js in a fresh process group, so matching the listener's
+# PGID against the make launcher is not enough. Walk PPID until we hit the
+# launcher, init, or a hop cap.
+process_is_descendant_of() {
+  local child=$1 ancestor=$2 current hops=0
+  [ -n "$child" ] && [ -n "$ancestor" ] || return 1
+  current=$child
+  while [ -n "$current" ] && [ "$current" != 0 ] && [ "$current" != 1 ] && [ "$hops" -lt 32 ]; do
+    [ "$current" = "$ancestor" ] && return 0
+    current="$(process_parent_id "$current")"
+    hops=$((hops + 1))
+  done
+  return 1
+}
+
 listener_belongs_to_component() {
   local component=$1 port=$2 launcher listener recorded
   launcher="$(component_pid "$component" || true)"
@@ -488,7 +507,8 @@ listener_belongs_to_component() {
   [ -n "$launcher" ] && [ -n "$listener" ] || return 1
   recorded="$(cat "$(listener_pid_file "$component")" 2>/dev/null || true)"
   [ -n "$recorded" ] && [ "$listener" = "$recorded" ] && return 0
-  [ "$(process_group_id "$listener")" = "$launcher" ]
+  [ "$(process_group_id "$listener")" = "$launcher" ] && return 0
+  process_is_descendant_of "$listener" "$launcher"
 }
 
 health_belongs_to_api() {
@@ -570,8 +590,9 @@ start_web() {
       listener="$(port_listener_pid "$FRONTEND_PORT")"
       if ! listener_belongs_to_component web "$FRONTEND_PORT"; then
         stop_component web
-        die "Web on :$FRONTEND_PORT is not owned by the process group this environment launched."
+        die "Web on :$FRONTEND_PORT is not owned by the process this environment launched."
       fi
+      printf '%s\n' "$listener" > "$(listener_pid_file web)"
       ok "web serving http://localhost:$FRONTEND_PORT (pid ${listener:-?})"
       return 0
     fi
@@ -840,7 +861,8 @@ stop_component() {
     listener="$(port_listener_pid "$port")"
     if [ -n "$listener" ]; then
       if { [ -n "$recorded_listener" ] && [ "$listener" = "$recorded_listener" ]; } \
-        || { [ -n "$launcher" ] && [ "$(process_group_id "$listener")" = "$launcher" ]; }; then
+        || { [ -n "$launcher" ] && [ "$(process_group_id "$listener")" = "$launcher" ]; } \
+        || { [ -n "$launcher" ] && process_is_descendant_of "$listener" "$launcher"; }; then
         kill -TERM "$listener" 2>/dev/null || true
         sleep 1
         if kill -0 "$listener" 2>/dev/null; then

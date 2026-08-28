@@ -174,6 +174,37 @@ if bash -c 'source "$1"; api_started_after '\''{"status":"ok"}'\'' 1' _ "$root_d
   fail "legacy /health without started_at was accepted as current"
 fi
 
+# Next.js sits in a turbo/pnpm process group that is not the make launcher.
+# Ownership must follow PPID, not only PGID, or `make up` kills a healthy web.
+bash -c '
+  set -euo pipefail
+  source "$1"
+  child_pid=""
+  nested_pid=""
+  cleanup() {
+    [ -n "$child_pid" ] && kill "$child_pid" 2>/dev/null || true
+    [ -n "$nested_pid" ] && kill "$nested_pid" 2>/dev/null || true
+  }
+  trap cleanup EXIT
+  sleep 30 &
+  child_pid=$!
+  process_is_descendant_of "$child_pid" "$$" || { echo "direct child was not a descendant"; exit 1; }
+  if process_is_descendant_of "$$" "$child_pid"; then
+    echo "parent was treated as a descendant of its child"; exit 1
+  fi
+  python3 -c "import os, time; os.setsid(); time.sleep(30)" &
+  nested_pid=$!
+  # Give the child a moment to call setsid before we inspect PGID.
+  for _ in 1 2 3 4 5; do
+    [ "$(process_group_id "$nested_pid")" = "$nested_pid" ] && break
+    sleep 0.05
+  done
+  [ "$(process_group_id "$nested_pid")" = "$nested_pid" ] || { echo "nested child did not become a process-group leader"; exit 1; }
+  [ "$(process_group_id "$nested_pid")" != "$$" ] || { echo "nested child stayed in the test shell process group"; exit 1; }
+  process_is_descendant_of "$nested_pid" "$$" || { echo "new-process-group child was not a descendant"; exit 1; }
+' _ "$root_dir/scripts/dev-env.sh" \
+  || fail "listener ownership must follow PPID across a new process group"
+
 # ---------------------------------------------------------------------------
 # Unknown names and components fail loudly instead of doing something else.
 # ---------------------------------------------------------------------------
