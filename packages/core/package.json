@@ -165,6 +165,7 @@
     "./skills/frontmatter": "./skills/frontmatter.ts",
     "./skills/pack-archive": "./skills/pack-archive.ts",
     "./skills/stores": "./skills/stores/index.ts",
+    "./skill-evolution": "./skill-evolution/index.ts",
     "./autopilots/stores": "./autopilots/stores/index.ts"
   },
   "dependencies": {
