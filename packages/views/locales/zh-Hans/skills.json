@@ -116,6 +116,7 @@
     "read_only": "只读",
     "delete_aria": "删除 skill",
     "delete_tooltip": "删除 skill",
+    "evolution": "skill 演化",
     "supporting_data_warning": "部分工作区数据加载失败。创建者归属、运行时名称、编辑权限可能要等下次刷新才完整。",
     "delete_file": "删除文件",
     "name_placeholder": "skill-name",
