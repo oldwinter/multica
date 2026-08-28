@@ -204,6 +204,10 @@ type Handler struct {
 	Rooms                  roomdomain.Rooms
 	RoomRuntime            roomdomain.Runtime
 	RoomMaintenance        roomdomain.Maintenance
+	// RoomArtifactTargets is the neutral registration handle for optional
+	// reviewable recommendation targets. Room owns promotion and transaction
+	// ordering; contributors own only their target lifecycle.
+	RoomArtifactTargets    *service.RoomArtifactTargets
 	AutopilotService       *service.AutopilotService
 	WikiKnowledge          service.WikiKnowledge
 	WikiService            *service.WikiService
@@ -500,6 +504,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		Rooms:                        roomService,
 		RoomRuntime:                  roomService,
 		RoomMaintenance:              roomService,
+		RoomArtifactTargets:          roomTargets,
 		AutopilotService:             service.NewAutopilotService(queries, txStarter, bus, taskSvc),
 		WikiKnowledge:                wikiKnowledge,
 		WikiService:                  wikiSvc,
