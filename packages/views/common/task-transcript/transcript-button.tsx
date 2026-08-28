@@ -19,6 +19,10 @@ import type { AgentTask } from "@multica/core/types/agent";
 import type { TaskMessagePayload } from "@multica/core/types/events";
 import { useWorkspaceId } from "@multica/core/hooks";
 import {
+  taskRunReviewSkillOptions,
+  useCreateTaskRunReview,
+} from "@multica/core/task-run-reviews";
+import {
   twinTaskContextOptions,
   useCreateTwinDeposition,
   useSubmitTwinTaskFeedback,
@@ -92,6 +96,14 @@ export function TranscriptButton({
   });
   const feedbackMutation = useSubmitTwinTaskFeedback(wsId, task.id);
   const depositionMutation = useCreateTwinDeposition(wsId, task.id);
+  const terminal = ["completed", "failed", "cancelled"].includes(task.status);
+  const taskRunReviewAvailable =
+    !!wsId && terminal && isTaskMessageTaskId(task.id);
+  const taskRunReviewMutation = useCreateTaskRunReview(wsId, task.id);
+  const taskRunReviewSkillsQuery = useQuery({
+    ...taskRunReviewSkillOptions(wsId, task.agent_id),
+    enabled: open && taskRunReviewAvailable && !!task.agent_id,
+  });
   const effectiveTask = useMemo(
     () => contextQuery.data ? { ...task, twin_context: contextQuery.data } : task,
     [contextQuery.data, task],
@@ -101,6 +113,18 @@ export function TranscriptButton({
     onCreateTwinDeposition: () => depositionMutation.mutateAsync({}),
     twinFeedbackPending: feedbackMutation.isPending,
     twinDepositionPending: depositionMutation.isPending,
+  };
+  const taskRunReviewActions = {
+    onTaskRunReview: taskRunReviewAvailable
+      ? taskRunReviewMutation.mutateAsync
+      : undefined,
+    onTaskRunReviewReset: taskRunReviewMutation.reset,
+    taskRunReviewPending: taskRunReviewMutation.isPending,
+    taskRunReviewSubmitted: taskRunReviewMutation.isSuccess,
+    taskRunReviewError: taskRunReviewMutation.isError,
+    taskRunReviewSkills: taskRunReviewSkillsQuery.data ?? [],
+    taskRunReviewSkillsPending: taskRunReviewSkillsQuery.isFetching,
+    taskRunReviewSkillsError: taskRunReviewSkillsQuery.isError,
   };
 
   // Live cache mode: the running task feeds the shared task-messages cache, so
@@ -203,6 +227,7 @@ export function TranscriptButton({
             onOpenChange={setOpen}
             headerSlot={headerSlot}
             {...twinActions}
+            {...taskRunReviewActions}
           />
         ) : (
           <AgentTranscriptDialog
@@ -214,6 +239,7 @@ export function TranscriptButton({
             isLive={isLive}
             headerSlot={headerSlot}
             {...twinActions}
+            {...taskRunReviewActions}
           />
         ))}
     </>
@@ -230,6 +256,14 @@ interface LiveTranscriptDialogProps {
   onCreateTwinDeposition: AgentTranscriptDialogProps["onCreateTwinDeposition"];
   twinFeedbackPending: boolean;
   twinDepositionPending: boolean;
+  onTaskRunReview: AgentTranscriptDialogProps["onTaskRunReview"];
+  onTaskRunReviewReset: AgentTranscriptDialogProps["onTaskRunReviewReset"];
+  taskRunReviewPending: boolean;
+  taskRunReviewSubmitted: boolean;
+  taskRunReviewError: boolean;
+  taskRunReviewSkills: NonNullable<AgentTranscriptDialogProps["taskRunReviewSkills"]>;
+  taskRunReviewSkillsPending: boolean;
+  taskRunReviewSkillsError: boolean;
 }
 
 /**
@@ -253,6 +287,14 @@ function LiveTranscriptDialog({
   onCreateTwinDeposition,
   twinFeedbackPending,
   twinDepositionPending,
+  onTaskRunReview,
+  onTaskRunReviewReset,
+  taskRunReviewPending,
+  taskRunReviewSubmitted,
+  taskRunReviewError,
+  taskRunReviewSkills,
+  taskRunReviewSkillsPending,
+  taskRunReviewSkillsError,
 }: LiveTranscriptDialogProps) {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -301,6 +343,14 @@ function LiveTranscriptDialog({
       onCreateTwinDeposition={onCreateTwinDeposition}
       twinFeedbackPending={twinFeedbackPending}
       twinDepositionPending={twinDepositionPending}
+      onTaskRunReview={onTaskRunReview}
+      onTaskRunReviewReset={onTaskRunReviewReset}
+      taskRunReviewPending={taskRunReviewPending}
+      taskRunReviewSubmitted={taskRunReviewSubmitted}
+      taskRunReviewError={taskRunReviewError}
+      taskRunReviewSkills={taskRunReviewSkills}
+      taskRunReviewSkillsPending={taskRunReviewSkillsPending}
+      taskRunReviewSkillsError={taskRunReviewSkillsError}
     />
   );
 }

@@ -346,6 +346,11 @@ import {
   SkillEvolutionPublicationSchema,
   SkillEvolutionSkillIdentitySchema,
 } from "../skill-evolution/schemas";
+import type {
+  CreateTaskRunReviewInput,
+  TaskRunReview,
+} from "../task-run-reviews/types";
+import { TaskRunReviewSchema } from "../task-run-reviews/schemas";
 import { type Logger, noopLogger } from "../logger";
 import { createRequestId, createSafeId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
@@ -2573,6 +2578,34 @@ export class ApiClient {
 
   async listTaskMessages(taskId: string): Promise<TaskMessagePayload[]> {
     return this.fetch(`/api/tasks/${taskId}/messages`);
+  }
+
+  async createTaskRunReview(
+    taskId: string,
+    input: CreateTaskRunReviewInput,
+  ): Promise<TaskRunReview> {
+    const raw = await this.fetch<unknown>(
+      `/api/tasks/${encodeURIComponent(taskId)}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          outcome: input.outcome,
+          target: input.target,
+          ...(input.skillId ? { skill_id: input.skillId } : {}),
+          ...(input.correction ? { correction: input.correction } : {}),
+          reason: input.reason,
+          idempotency_key: input.idempotencyKey,
+        }),
+      },
+    );
+    const review = parseWithFallback<TaskRunReview | null>(
+      raw,
+      TaskRunReviewSchema,
+      null,
+      { endpoint: "POST /api/tasks/{taskId}/review" },
+    );
+    if (!review) throw new Error("Invalid task run review response");
+    return review;
   }
 
   async listTasksByIssue(issueId: string): Promise<AgentTask[]> {

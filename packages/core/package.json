@@ -166,6 +166,7 @@
     "./skills/pack-archive": "./skills/pack-archive.ts",
     "./skills/stores": "./skills/stores/index.ts",
     "./skill-evolution": "./skill-evolution/index.ts",
+    "./task-run-reviews": "./task-run-reviews/index.ts",
     "./autopilots/stores": "./autopilots/stores/index.ts"
   },
   "dependencies": {
