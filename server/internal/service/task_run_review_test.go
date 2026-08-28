@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -28,19 +29,28 @@ var taskReviewNow = time.Date(2026, 8, 28, 10, 11, 12, 13, time.UTC)
 
 type fakeTaskRunReviewRepository struct {
 	created       []TaskRunReviewRecord
+	createdByKey  map[string]TaskRunReviewRecord
 	refs          TaskRunReviewRefPage
 	records       map[string]TaskRunReviewRecord
 	manual        []ManualRerunRecord
 	manualRecords map[string]ManualRerunRecord
 }
 
-func (f *fakeTaskRunReviewRepository) CreateTaskRunReview(_ context.Context, record TaskRunReviewRecord) error {
+func (f *fakeTaskRunReviewRepository) CreateTaskRunReview(_ context.Context, record TaskRunReviewRecord) (TaskRunReviewRecord, error) {
+	if f.createdByKey == nil {
+		f.createdByKey = make(map[string]TaskRunReviewRecord)
+	}
+	key := record.WorkspaceID + "\n" + record.TaskID + "\n" + record.ReviewerID + "\n" + record.IdempotencyKey
+	if existing, ok := f.createdByKey[key]; ok {
+		return existing, nil
+	}
 	f.created = append(f.created, record)
+	f.createdByKey[key] = record
 	if f.records == nil {
 		f.records = make(map[string]TaskRunReviewRecord)
 	}
 	f.records[record.ID] = record
-	return nil
+	return record, nil
 }
 
 func (f *fakeTaskRunReviewRepository) ListTaskRunReviewRefs(context.Context, string, string, int) (TaskRunReviewRefPage, error) {
@@ -111,7 +121,7 @@ func terminalReviewTask(status string) TaskRunReviewTask {
 
 func validCreateTaskRunReviewInput() CreateTaskRunReviewInput {
 	return CreateTaskRunReviewInput{
-		TaskID: taskReviewTaskID, Outcome: TaskRunReviewOutcomeNeedsCorrection,
+		TaskID: taskReviewTaskID, IdempotencyKey: "task-review:test-request", Outcome: TaskRunReviewOutcomeNeedsCorrection,
 		Target: TaskRunReviewTargetSkillProcedure, SkillID: taskReviewSkillID,
 		Correction: "Use the bounded retry policy.", Reason: "The run retried without a cap.",
 	}
@@ -177,6 +187,11 @@ func TestTaskRunReviewValidatesClosedTargetAndBoundedReason(t *testing.T) {
 		{name: "reason required", mutate: func(in *CreateTaskRunReviewInput) { in.Reason = "" }},
 		{name: "reason bounded", mutate: func(in *CreateTaskRunReviewInput) { in.Reason = string(make([]byte, MaxTaskRunReviewTextBytes+1)) }},
 		{name: "controls rejected", mutate: func(in *CreateTaskRunReviewInput) { in.Reason = "bad\x01reason" }},
+		{name: "idempotency missing", mutate: func(in *CreateTaskRunReviewInput) { in.IdempotencyKey = "" }},
+		{name: "idempotency bounded", mutate: func(in *CreateTaskRunReviewInput) {
+			in.IdempotencyKey = strings.Repeat("x", MaxTaskRunReviewIdempotencyKeyBytes+1)
+		}},
+		{name: "idempotency controls rejected", mutate: func(in *CreateTaskRunReviewInput) { in.IdempotencyKey = "bad\nkey" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -189,6 +204,52 @@ func TestTaskRunReviewValidatesClosedTargetAndBoundedReason(t *testing.T) {
 				t.Fatalf("error = %v, want invalid", err)
 			}
 		})
+	}
+}
+
+func TestTaskRunReviewIdempotentReplayReturnsOriginalAndRejectsPayloadDrift(t *testing.T) {
+	repo := &fakeTaskRunReviewRepository{}
+	access := &fakeTaskRunReviewAccess{
+		tasks:  map[string]TaskRunReviewTask{taskReviewTaskID: terminalReviewTask("completed")},
+		skills: map[string]bool{taskReviewSkillID: true},
+	}
+	svc := NewTaskRunReviewService(repo, access)
+	ids := []string{taskReviewReviewID, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}
+	nextID := 0
+	svc.newID = func() string {
+		id := ids[nextID]
+		nextID++
+		return id
+	}
+	svc.now = func() time.Time { return taskReviewNow.Add(time.Duration(nextID) * time.Second) }
+
+	first, err := svc.CreateTaskRunReview(context.Background(), taskReviewWorkspaceID, taskReviewReviewerID, validCreateTaskRunReviewInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := svc.CreateTaskRunReview(context.Background(), taskReviewWorkspaceID, taskReviewReviewerID, validCreateTaskRunReviewInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.ID != first.ID || replayed.CreatedAt != first.CreatedAt || replayed.Digest != first.Digest || len(repo.created) != 1 {
+		t.Fatalf("replay = %#v, first = %#v, persisted = %d", replayed, first, len(repo.created))
+	}
+
+	conflict := validCreateTaskRunReviewInput()
+	conflict.Reason = "A different canonical reason."
+	if _, err := svc.CreateTaskRunReview(context.Background(), taskReviewWorkspaceID, taskReviewReviewerID, conflict); !errors.Is(err, ErrTaskRunReviewSourceChanged) {
+		t.Fatalf("conflicting replay error = %v, want source changed", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("conflicting replay persisted %d rows, want 1", len(repo.created))
+	}
+
+	encoded, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "idempotency") || strings.Contains(string(encoded), first.IdempotencyKey) {
+		t.Fatalf("normal response exposed idempotency key: %s", encoded)
 	}
 }
 

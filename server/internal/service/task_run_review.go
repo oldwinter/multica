@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	MaxTaskRunReviewTextBytes = 4096
-	MaxTaskRunReviewRefs      = 100
-	MaxTaskRunReviewCursorLen = 256
+	MaxTaskRunReviewTextBytes           = 4096
+	MaxTaskRunReviewIdempotencyKeyBytes = 200
+	MaxTaskRunReviewRefs                = 100
+	MaxTaskRunReviewCursorLen           = 256
 )
 
 var (
@@ -64,26 +65,28 @@ func (t TaskRunReviewTarget) Valid() bool {
 }
 
 type CreateTaskRunReviewInput struct {
-	TaskID     string               `json:"-"`
-	Outcome    TaskRunReviewOutcome `json:"outcome"`
-	Target     TaskRunReviewTarget  `json:"target"`
-	SkillID    string               `json:"skill_id,omitempty"`
-	Correction string               `json:"correction,omitempty"`
-	Reason     string               `json:"reason"`
+	TaskID         string               `json:"-"`
+	IdempotencyKey string               `json:"idempotency_key"`
+	Outcome        TaskRunReviewOutcome `json:"outcome"`
+	Target         TaskRunReviewTarget  `json:"target"`
+	SkillID        string               `json:"skill_id,omitempty"`
+	Correction     string               `json:"correction,omitempty"`
+	Reason         string               `json:"reason"`
 }
 
 type TaskRunReviewRecord struct {
-	ID          string               `json:"id"`
-	WorkspaceID string               `json:"workspace_id"`
-	TaskID      string               `json:"task_id"`
-	ReviewerID  string               `json:"reviewer_id"`
-	Outcome     TaskRunReviewOutcome `json:"outcome"`
-	Target      TaskRunReviewTarget  `json:"target"`
-	SkillID     string               `json:"skill_id,omitempty"`
-	Correction  string               `json:"correction,omitempty"`
-	Reason      string               `json:"reason"`
-	Digest      string               `json:"digest"`
-	CreatedAt   time.Time            `json:"created_at"`
+	ID             string               `json:"id"`
+	WorkspaceID    string               `json:"workspace_id"`
+	TaskID         string               `json:"task_id"`
+	ReviewerID     string               `json:"reviewer_id"`
+	Outcome        TaskRunReviewOutcome `json:"outcome"`
+	Target         TaskRunReviewTarget  `json:"target"`
+	SkillID        string               `json:"skill_id,omitempty"`
+	Correction     string               `json:"correction,omitempty"`
+	Reason         string               `json:"reason"`
+	IdempotencyKey string               `json:"-"`
+	Digest         string               `json:"digest"`
+	CreatedAt      time.Time            `json:"created_at"`
 }
 
 // TaskRunReviewRef is the only list projection. It cannot carry correction or
@@ -166,7 +169,7 @@ type ManualRerunPage struct {
 }
 
 type TaskRunReviewRepository interface {
-	CreateTaskRunReview(context.Context, TaskRunReviewRecord) error
+	CreateTaskRunReview(context.Context, TaskRunReviewRecord) (TaskRunReviewRecord, error)
 	ListTaskRunReviewRefs(context.Context, string, string, int) (TaskRunReviewRefPage, error)
 	LoadTaskRunReview(context.Context, string, string) (TaskRunReviewRecord, error)
 	ListManualReruns(context.Context, string, string, int) ([]ManualRerunRecord, string, error)
@@ -218,6 +221,7 @@ func (s *TaskRunReviewService) CreateTaskRunReview(ctx context.Context, workspac
 	}
 	input.Correction = strings.TrimSpace(input.Correction)
 	input.Reason = strings.TrimSpace(input.Reason)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	if err := validateTaskRunReviewInput(input); err != nil {
 		return TaskRunReviewEvidence{}, err
 	}
@@ -243,7 +247,7 @@ func (s *TaskRunReviewService) CreateTaskRunReview(ctx context.Context, workspac
 	record := TaskRunReviewRecord{
 		ID: s.newID(), WorkspaceID: workspaceID, TaskID: input.TaskID, ReviewerID: reviewerID,
 		Outcome: input.Outcome, Target: input.Target, SkillID: input.SkillID,
-		Correction: input.Correction, Reason: input.Reason,
+		Correction: input.Correction, Reason: input.Reason, IdempotencyKey: input.IdempotencyKey,
 		// PostgreSQL timestamptz preserves microseconds. Freeze the same precision
 		// before hashing so an immediate load does not look like source drift.
 		CreatedAt: s.now().UTC().Truncate(time.Microsecond),
@@ -252,10 +256,18 @@ func (s *TaskRunReviewService) CreateTaskRunReview(ctx context.Context, workspac
 	if err != nil {
 		return TaskRunReviewEvidence{}, err
 	}
-	if err := s.repository.CreateTaskRunReview(ctx, record); err != nil {
+	stored, err := s.repository.CreateTaskRunReview(ctx, record)
+	if err != nil {
 		return TaskRunReviewEvidence{}, err
 	}
-	return TaskRunReviewEvidence{TaskRunReviewRecord: record}, nil
+	expected := record
+	expected.ID = stored.ID
+	expected.CreatedAt = stored.CreatedAt
+	expected.Digest, err = canonicalTaskRunReviewDigest(expected)
+	if err != nil || !sameTaskRunReviewRecord(stored, expected) {
+		return TaskRunReviewEvidence{}, ErrTaskRunReviewSourceChanged
+	}
+	return TaskRunReviewEvidence{TaskRunReviewRecord: stored}, nil
 }
 
 func (s *TaskRunReviewService) ListTaskRunReviewRefs(ctx context.Context, workspaceID, reviewerID, cursor string, limit int) (TaskRunReviewRefPage, error) {
@@ -455,7 +467,8 @@ func (s *TaskRunReviewService) authorizedManualRerun(ctx context.Context, worksp
 }
 
 func validateTaskRunReviewInput(input CreateTaskRunReviewInput) error {
-	if !input.Outcome.Valid() || !input.Target.Valid() || !validReviewText(input.Reason, true) || !validReviewText(input.Correction, false) {
+	if !input.Outcome.Valid() || !input.Target.Valid() || !validTaskRunReviewIdempotencyKey(input.IdempotencyKey) ||
+		!validReviewText(input.Reason, true) || !validReviewText(input.Correction, false) {
 		return ErrTaskRunReviewInvalid
 	}
 	if input.Outcome == TaskRunReviewOutcomeNeedsCorrection && input.Correction == "" {
@@ -561,12 +574,24 @@ func validReviewText(value string, required bool) bool {
 	return true
 }
 
+func validTaskRunReviewIdempotencyKey(value string) bool {
+	if value == "" || len(value) > MaxTaskRunReviewIdempotencyKeyBytes || !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
 func canonicalTaskRunReviewDigest(record TaskRunReviewRecord) (string, error) {
 	if !validTaskRunReviewID(record.ID) || !validTaskRunReviewID(record.WorkspaceID) ||
 		!validTaskRunReviewID(record.TaskID) || !validTaskRunReviewID(record.ReviewerID) ||
 		record.CreatedAt.IsZero() || validateTaskRunReviewInput(CreateTaskRunReviewInput{
 		TaskID: record.TaskID, Outcome: record.Outcome, Target: record.Target, SkillID: record.SkillID,
-		Correction: record.Correction, Reason: record.Reason,
+		Correction: record.Correction, Reason: record.Reason, IdempotencyKey: record.IdempotencyKey,
 	}) != nil {
 		return "", ErrTaskRunReviewInvalid
 	}

@@ -14,13 +14,13 @@ import (
 const createTaskRunReview = `-- name: CreateTaskRunReview :one
 INSERT INTO task_run_review (
     id, workspace_id, task_id, reviewer_id, outcome, target, skill_id,
-    correction, reason, digest, created_at
+    correction, reason, idempotency_key, digest, created_at
 )
 SELECT
     $1, $2, task.id, $3,
     $4, $5, $6::uuid,
-    $7::text, $8, $9,
-    $10
+    $7::text, $8, $9, $10,
+    $11
 FROM agent_task_queue task
 JOIN agent
   ON agent.id = task.agent_id
@@ -28,7 +28,7 @@ JOIN agent
 JOIN member reviewer
   ON reviewer.workspace_id = $2
  AND reviewer.user_id = $3
-WHERE task.id = $11
+WHERE task.id = $12
   AND task.completed_at IS NOT NULL
   AND task.status IN ('completed', 'failed', 'cancelled')
   AND (
@@ -39,21 +39,24 @@ WHERE task.id = $11
       ))
       OR ($5::text <> 'skill_procedure' AND $6::uuid IS NULL)
   )
-RETURNING task_run_review.id, task_run_review.workspace_id, task_run_review.task_id, task_run_review.reviewer_id, task_run_review.outcome, task_run_review.target, task_run_review.skill_id, task_run_review.correction, task_run_review.reason, task_run_review.digest, task_run_review.created_at
+ON CONFLICT (workspace_id, task_id, reviewer_id, idempotency_key) DO UPDATE
+SET idempotency_key = task_run_review.idempotency_key
+RETURNING task_run_review.id, task_run_review.workspace_id, task_run_review.task_id, task_run_review.reviewer_id, task_run_review.outcome, task_run_review.target, task_run_review.skill_id, task_run_review.correction, task_run_review.reason, task_run_review.digest, task_run_review.created_at, task_run_review.idempotency_key
 `
 
 type CreateTaskRunReviewParams struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	ReviewerID  pgtype.UUID        `json:"reviewer_id"`
-	Outcome     string             `json:"outcome"`
-	Target      string             `json:"target"`
-	SkillID     pgtype.UUID        `json:"skill_id"`
-	Correction  pgtype.Text        `json:"correction"`
-	Reason      string             `json:"reason"`
-	Digest      string             `json:"digest"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	TaskID      pgtype.UUID        `json:"task_id"`
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	ReviewerID     pgtype.UUID        `json:"reviewer_id"`
+	Outcome        string             `json:"outcome"`
+	Target         string             `json:"target"`
+	SkillID        pgtype.UUID        `json:"skill_id"`
+	Correction     pgtype.Text        `json:"correction"`
+	Reason         string             `json:"reason"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Digest         string             `json:"digest"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	TaskID         pgtype.UUID        `json:"task_id"`
 }
 
 func (q *Queries) CreateTaskRunReview(ctx context.Context, arg CreateTaskRunReviewParams) (TaskRunReview, error) {
@@ -66,6 +69,7 @@ func (q *Queries) CreateTaskRunReview(ctx context.Context, arg CreateTaskRunRevi
 		arg.SkillID,
 		arg.Correction,
 		arg.Reason,
+		arg.IdempotencyKey,
 		arg.Digest,
 		arg.CreatedAt,
 		arg.TaskID,
@@ -83,6 +87,7 @@ func (q *Queries) CreateTaskRunReview(ctx context.Context, arg CreateTaskRunRevi
 		&i.Reason,
 		&i.Digest,
 		&i.CreatedAt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
@@ -359,7 +364,7 @@ func (q *Queries) LoadManualRerun(ctx context.Context, arg LoadManualRerunParams
 }
 
 const loadTaskRunReview = `-- name: LoadTaskRunReview :one
-SELECT id, workspace_id, task_id, reviewer_id, outcome, target, skill_id, correction, reason, digest, created_at FROM task_run_review
+SELECT id, workspace_id, task_id, reviewer_id, outcome, target, skill_id, correction, reason, digest, created_at, idempotency_key FROM task_run_review
 WHERE workspace_id = $1
   AND id = $2
 `
@@ -384,6 +389,7 @@ func (q *Queries) LoadTaskRunReview(ctx context.Context, arg LoadTaskRunReviewPa
 		&i.Reason,
 		&i.Digest,
 		&i.CreatedAt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
