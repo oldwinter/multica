@@ -1628,54 +1628,60 @@ func (q *Queries) RecordSkillEvolutionLoopObservation(ctx context.Context, arg R
 }
 
 const recordSkillEvolutionTaskAttribution = `-- name: RecordSkillEvolutionTaskAttribution :one
+WITH workspace_guard AS MATERIALIZED (
+    SELECT workspace.id
+    FROM workspace
+    WHERE workspace.id = $9
+    FOR KEY SHARE
+)
 INSERT INTO skill_evolution_task_attribution (
     workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version,
     source, bundle_hash, manifest_digest, eligibility, reason,
     dispatch_snapshot_id, task_dispatched_at
 )
 SELECT
-    $1, task.id, $2, skill.id, revision.id,
-    $3, $4, $5,
-    $6, $7, $8,
+    workspace_guard.id, task.id, $1, skill.id, revision.id,
+    $2, $3, $4,
+    $5, $6, $7,
     snapshot.id, snapshot.task_dispatched_at
-FROM agent_task_queue task
+FROM workspace_guard
+JOIN agent_task_queue task
+  ON task.id = $8
 JOIN agent
   ON agent.id = task.agent_id
- AND agent.workspace_id = $1
+ AND agent.workspace_id = workspace_guard.id
 JOIN agent_runtime runtime
-  ON runtime.id = $2
- AND runtime.workspace_id = $1
+  ON runtime.id = $1
+ AND runtime.workspace_id = $9
 JOIN skill
-  ON skill.id = $9
- AND skill.workspace_id = $1
+  ON skill.id = $10
+ AND skill.workspace_id = $9
 JOIN skill_evolution_revision revision
-  ON revision.id = $10
- AND revision.workspace_id = $1
+  ON revision.id = $11
+ AND revision.workspace_id = $9
  AND revision.skill_id = skill.id
- AND revision.source = $4
- AND revision.bundle_hash = $5
+ AND revision.source = $3
+ AND revision.bundle_hash = $4
 JOIN skill_evolution_task_dispatch_snapshot snapshot
-  ON snapshot.id = $11
- AND snapshot.workspace_id = $1
+  ON snapshot.id = $12
+ AND snapshot.workspace_id = $9
  AND snapshot.task_id = task.id
  AND snapshot.agent_id = task.agent_id
- AND snapshot.runtime_id = $2
- AND snapshot.task_dispatched_at = $12
+ AND snapshot.runtime_id = $1
+ AND snapshot.task_dispatched_at = $13
  AND snapshot.identities @> jsonb_build_array(jsonb_build_object(
-       'source', $4::text,
-       'skill_id', $9::uuid::text
+       'source', $3::text,
+       'skill_id', $10::uuid::text
      ))
-WHERE task.id = $13
-  AND task.runtime_id = $2
-  AND task.dispatched_at = $12
+WHERE task.runtime_id = $1
+  AND task.dispatched_at = $13
   AND task.completed_at IS NOT NULL
-  AND task.status IN ('completed', 'failed', 'cancelled')
+  AND task.status = 'completed'
 ON CONFLICT (workspace_id, task_id, skill_id) DO NOTHING
 RETURNING skill_evolution_task_attribution.id, skill_evolution_task_attribution.workspace_id, skill_evolution_task_attribution.task_id, skill_evolution_task_attribution.runtime_id, skill_evolution_task_attribution.skill_id, skill_evolution_task_attribution.revision_id, skill_evolution_task_attribution.manifest_version, skill_evolution_task_attribution.source, skill_evolution_task_attribution.bundle_hash, skill_evolution_task_attribution.manifest_digest, skill_evolution_task_attribution.eligibility, skill_evolution_task_attribution.reason, skill_evolution_task_attribution.created_at, skill_evolution_task_attribution.dispatch_snapshot_id, skill_evolution_task_attribution.task_dispatched_at
 `
 
 type RecordSkillEvolutionTaskAttributionParams struct {
-	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
 	RuntimeID          pgtype.UUID        `json:"runtime_id"`
 	ManifestVersion    int32              `json:"manifest_version"`
 	Source             string             `json:"source"`
@@ -1683,16 +1689,16 @@ type RecordSkillEvolutionTaskAttributionParams struct {
 	ManifestDigest     string             `json:"manifest_digest"`
 	Eligibility        string             `json:"eligibility"`
 	Reason             string             `json:"reason"`
+	TaskID             pgtype.UUID        `json:"task_id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
 	SkillID            pgtype.UUID        `json:"skill_id"`
 	RevisionID         pgtype.UUID        `json:"revision_id"`
 	DispatchSnapshotID pgtype.UUID        `json:"dispatch_snapshot_id"`
 	TaskDispatchedAt   pgtype.Timestamptz `json:"task_dispatched_at"`
-	TaskID             pgtype.UUID        `json:"task_id"`
 }
 
 func (q *Queries) RecordSkillEvolutionTaskAttribution(ctx context.Context, arg RecordSkillEvolutionTaskAttributionParams) (SkillEvolutionTaskAttribution, error) {
 	row := q.db.QueryRow(ctx, recordSkillEvolutionTaskAttribution,
-		arg.WorkspaceID,
 		arg.RuntimeID,
 		arg.ManifestVersion,
 		arg.Source,
@@ -1700,11 +1706,12 @@ func (q *Queries) RecordSkillEvolutionTaskAttribution(ctx context.Context, arg R
 		arg.ManifestDigest,
 		arg.Eligibility,
 		arg.Reason,
+		arg.TaskID,
+		arg.WorkspaceID,
 		arg.SkillID,
 		arg.RevisionID,
 		arg.DispatchSnapshotID,
 		arg.TaskDispatchedAt,
-		arg.TaskID,
 	)
 	var i SkillEvolutionTaskAttribution
 	err := row.Scan(
@@ -1751,7 +1758,7 @@ JOIN agent
  AND agent.id = task.agent_id
  AND agent.workspace_id = workspace_guard.id
 WHERE task.dispatched_at = $8
-  AND task.status IN ('dispatched', 'waiting_local_directory', 'running')
+  AND task.status IN ('dispatched', 'waiting_local_directory', 'running', 'completed')
 ON CONFLICT (workspace_id, task_id, runtime_id, task_dispatched_at) DO NOTHING
 RETURNING skill_evolution_task_dispatch_snapshot.id, skill_evolution_task_dispatch_snapshot.workspace_id, skill_evolution_task_dispatch_snapshot.task_id, skill_evolution_task_dispatch_snapshot.agent_id, skill_evolution_task_dispatch_snapshot.runtime_id, skill_evolution_task_dispatch_snapshot.task_dispatched_at, skill_evolution_task_dispatch_snapshot.contract_version, skill_evolution_task_dispatch_snapshot.identities, skill_evolution_task_dispatch_snapshot.identity_count, skill_evolution_task_dispatch_snapshot.identities_digest, skill_evolution_task_dispatch_snapshot.created_at
 `

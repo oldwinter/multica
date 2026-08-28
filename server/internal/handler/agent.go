@@ -796,6 +796,9 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 	if t.BranchName.Valid {
 		branchName = t.BranchName.String
 	}
+	// Dispatch generation is a compare-and-swap identity. Preserve PostgreSQL
+	// sub-second precision so a rapid reclaim cannot alias the previous claim.
+	dispatchedAt := util.TimestampToNanoPtr(t.DispatchedAt)
 	return AgentTaskResponse{
 		ID:                     uuidToString(t.ID),
 		AgentID:                uuidToString(t.AgentID),
@@ -804,7 +807,7 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 		WorkspaceID:            workspaceID,
 		Status:                 t.Status,
 		Priority:               t.Priority,
-		DispatchedAt:           timestampToPtr(t.DispatchedAt),
+		DispatchedAt:           dispatchedAt,
 		StartedAt:              timestampToPtr(t.StartedAt),
 		CompletedAt:            timestampToPtr(t.CompletedAt),
 		Result:                 result,

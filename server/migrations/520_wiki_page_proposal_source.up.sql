@@ -6,4 +6,4 @@ ALTER TABLE wiki_page_edit_proposal
         (source_kind = 'agent' AND agent_id IS NOT NULL AND source_ref_id IS NULL)
         OR
         (source_kind = 'room' AND agent_id IS NULL AND source_ref_id IS NOT NULL)
-    );
+    ) NOT VALID;
