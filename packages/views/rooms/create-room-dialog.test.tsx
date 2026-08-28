@@ -41,6 +41,29 @@ function renderDialog(input?: {
 }
 
 describe("CreateRoomDialog", () => {
+  it("offers an Improvement Room with focused, reviewable defaults", () => {
+    const view = renderDialog();
+    const card = view.getByTestId("room-template-improvement");
+
+    expect(card).toHaveTextContent("Skill improvement");
+    expect(card.querySelector("svg")).not.toBeNull();
+
+    fireEvent.click(card);
+
+    expect(card).toHaveAttribute("aria-pressed", "true");
+    expect(view.getByRole("textbox", { name: "Objective" })).toHaveValue(
+      "Turn eligible feedback into the smallest evidence-backed Skill improvement recommendation.",
+    );
+    fireEvent.click(view.getByRole("button", { name: "Advanced configuration" }));
+    expect(
+      (view.getByRole("textbox", { name: "Success criteria" }) as HTMLTextAreaElement)
+        .value,
+    ).toContain("The proposed change is small, reviewable, and explains why");
+    expect(
+      (view.getByRole("textbox", { name: "Instructions" }) as HTMLTextAreaElement).value,
+    ).toContain("Propose principles, not exhaustive rules");
+  });
+
   it("changes untouched defaults but preserves user edits across templates", () => {
     const view = renderDialog();
     const objective = view.getByRole("textbox", { name: "Objective" });

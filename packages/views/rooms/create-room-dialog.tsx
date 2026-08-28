@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Bot,
+  BrainCircuit,
   Check,
   ChevronRight,
   ClipboardList,
@@ -71,13 +72,21 @@ interface CreateRoomDialogProps {
 
 const SCHEDULE_VALUES = [0, 15, 30, 60, 180, 720, 1440] as const;
 const TURN_LIMIT_VALUES = [8, 12, 20] as const;
-const TEMPLATE_VALUES = ["research", "planning", "risk", "incident", "decision"] as const;
+const TEMPLATE_VALUES = [
+  "research",
+  "planning",
+  "risk",
+  "incident",
+  "decision",
+  "improvement",
+] as const;
 const TEMPLATE_ICONS = {
   research: FlaskConical,
   planning: ClipboardList,
   risk: ShieldAlert,
   incident: Siren,
   decision: Scale,
+  improvement: BrainCircuit,
 } as const;
 
 export function CreateRoomDialog({
@@ -649,12 +658,16 @@ function templateDefaults(t: RoomsT, template: CreateRoomTemplate): RoomTemplate
     risk: "12",
     incident: "20",
     decision: "8",
+    improvement: "12",
   }[template];
   return {
     objective: t(($) => $.create.templates[template].objective),
     successCriteria: t(($) => $.create.templates[template].success_criteria),
     stopConditions: t(($) => $.create.templates[template].stop_conditions),
-    instructions: "",
+    instructions:
+      template === "improvement"
+        ? t(($) => $.create.templates.improvement.instructions)
+        : "",
     dailyTurnLimit,
     maxCostTicks: "",
     scheduleMinutes: "0",

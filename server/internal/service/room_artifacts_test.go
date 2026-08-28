@@ -2,75 +2,111 @@ package service
 
 import (
 	"context"
-	"path"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/multica-ai/multica/server/internal/util"
+	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-func TestRoomWikiPromotionUsesInjectedKnowledgeCreatorWithProvenance(t *testing.T) {
+func TestRoomKnowledgePromotionUsesRegisteredProposalContributor(t *testing.T) {
 	artifact := db.RoomArtifact{
 		ID:              roomArtifactTestUUID(),
 		WorkspaceID:     roomArtifactTestUUID(),
 		RoomID:          roomArtifactTestUUID(),
-		Kind:            "wiki",
+		Kind:            string(roomdomain.RecommendationTargetKnowledge),
 		Title:           "Reviewed outcome",
 		Body:            "Human-edited outcome body.",
 		CreatedByUserID: roomArtifactTestUUID(),
 	}
-	wantPageID := roomArtifactTestUUID()
+	wantProposalID := roomArtifactTestUUID()
 	queries := &db.Queries{}
-	var captured RoomWikiPageCreateInput
-	var publishedPageID pgtype.UUID
-	var publishedActorType string
-	var publishedActorID pgtype.UUID
+	var captured db.RoomArtifact
+	var published db.RoomArtifact
+	directPageMutationCalled := false
 	targets := NewRoomArtifactTargets(nil)
-	targets.SetWikiPageCreator(func(_ context.Context, gotQueries *db.Queries, input RoomWikiPageCreateInput) (db.WikiPage, error) {
-		if gotQueries != queries {
-			t.Fatal("Wiki creator did not receive the transaction-scoped queries")
-		}
-		captured = input
-		return db.WikiPage{ID: wantPageID}, nil
+	targets.SetWikiPageCreator(func(context.Context, *db.Queries, RoomWikiPageCreateInput) (db.WikiPage, error) {
+		directPageMutationCalled = true
+		return db.WikiPage{}, nil
 	})
-	targets.SetWikiPagePublisher(func(_ context.Context, pageID pgtype.UUID, actorType string, actorID pgtype.UUID) error {
-		publishedPageID = pageID
-		publishedActorType = actorType
-		publishedActorID = actorID
-		return nil
-	})
+	if err := targets.RegisterProposalTarget(
+		roomdomain.RecommendationTargetKnowledge,
+		func(_ context.Context, _ pgx.Tx, gotQueries *db.Queries, got db.RoomArtifact) (pgtype.UUID, error) {
+			if gotQueries != queries {
+				t.Fatal("proposal contributor did not receive transaction-scoped queries")
+			}
+			captured = got
+			return wantProposalID, nil
+		},
+		func(_ context.Context, got db.RoomArtifact) { published = got },
+	); err != nil {
+		t.Fatal(err)
+	}
 
-	pageID, err := targets.CreateRoomArtifactTarget(context.Background(), nil, queries, artifact)
+	proposalID, err := targets.CreateRoomArtifactTarget(context.Background(), nil, queries, artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pageID != wantPageID {
-		t.Fatalf("page ID = %v, want %v", pageID, wantPageID)
+	if proposalID != wantProposalID || captured.ID != artifact.ID {
+		t.Fatalf("proposal route = id %v, artifact %+v", proposalID, captured)
 	}
-	if captured.WorkspaceID != artifact.WorkspaceID || captured.ProjectID.Valid || captured.OwnerUserID.Valid ||
-		captured.Scope != "workspace" || captured.Path != path.Join("rooms", util.UUIDToString(artifact.RoomID), util.UUIDToString(artifact.ID)+".md") ||
-		captured.Title != artifact.Title || captured.Content != artifact.Body || captured.ActorType != "member" ||
-		captured.ActorID != artifact.CreatedByUserID || captured.SourceKind != "room_promotion" || captured.SourceRefID != artifact.ID {
-		t.Fatalf("Wiki promotion input = %+v", captured)
+	if directPageMutationCalled || published.ID.Valid {
+		t.Fatal("knowledge route mutated or published before commit")
 	}
-	artifact.TargetID = wantPageID
+	artifact.TargetID = proposalID
 	targets.RoomArtifactTargetCreated(context.Background(), artifact)
-	if publishedPageID != wantPageID || publishedActorType != "member" || publishedActorID != artifact.CreatedByUserID {
-		t.Fatalf("Wiki promotion publish = page %v, actor %q/%v", publishedPageID, publishedActorType, publishedActorID)
+	if published.TargetID != proposalID {
+		t.Fatalf("published artifact = %+v", published)
 	}
 }
 
-func TestRoomWikiPromotionFailsClosedWithoutKnowledgeCreator(t *testing.T) {
+func TestLegacyWikiPageMutationHooksRemainFailClosed(t *testing.T) {
 	artifact := db.RoomArtifact{
 		ID: roomArtifactTestUUID(), WorkspaceID: roomArtifactTestUUID(), RoomID: roomArtifactTestUUID(),
 		Kind: "wiki", Title: "Outcome", Body: "Body", CreatedByUserID: roomArtifactTestUUID(),
 	}
-	_, err := NewRoomArtifactTargets(nil).CreateRoomArtifactTarget(context.Background(), nil, &db.Queries{}, artifact)
-	if err == nil || err.Error() != "wiki knowledge service is unavailable" {
-		t.Fatalf("missing Wiki creator error = %v", err)
+	called := false
+	targets := NewRoomArtifactTargets(nil)
+	targets.SetWikiPageCreator(func(context.Context, *db.Queries, RoomWikiPageCreateInput) (db.WikiPage, error) {
+		called = true
+		return db.WikiPage{}, nil
+	})
+	_, err := targets.CreateRoomArtifactTarget(context.Background(), nil, &db.Queries{}, artifact)
+	if !errors.Is(err, roomdomain.ErrRecommendationTargetRefused) {
+		t.Fatalf("error = %v, want reviewable refusal", err)
+	}
+	if called {
+		t.Fatal("legacy Wiki creator mutated a page")
+	}
+}
+
+func TestRoomProposalTargetRegistrationFollowsClosedMatrix(t *testing.T) {
+	targets := NewRoomArtifactTargets(nil)
+	creator := func(context.Context, pgx.Tx, *db.Queries, db.RoomArtifact) (pgtype.UUID, error) {
+		return roomArtifactTestUUID(), nil
+	}
+	for _, target := range []roomdomain.RecommendationTarget{
+		roomdomain.RecommendationTargetKnowledge,
+		roomdomain.RecommendationTargetPreference,
+		roomdomain.RecommendationTargetConstraint,
+		roomdomain.RecommendationTargetExecutableProcedure,
+	} {
+		if err := targets.RegisterProposalTarget(target, creator, nil); err != nil {
+			t.Fatalf("register %q: %v", target, err)
+		}
+	}
+	for _, target := range []roomdomain.RecommendationTarget{
+		roomdomain.RecommendationTargetDecision,
+		roomdomain.RecommendationTargetUnsupported,
+		"future_target",
+	} {
+		if err := targets.RegisterProposalTarget(target, creator, nil); !errors.Is(err, roomdomain.ErrInvalidTargetRegistration) {
+			t.Fatalf("register %q error = %v", target, err)
+		}
 	}
 }
 

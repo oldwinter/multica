@@ -170,6 +170,44 @@ func TestRoomCapabilityRolloutDoesNotRewriteExistingRooms(t *testing.T) {
 	}
 }
 
+func TestRoomRecommendationTargetTaxonomyMigration(t *testing.T) {
+	dir := realMigrationsDir(t)
+	up, err := os.ReadFile(filepath.Join(dir, "513_room_recommendation_target_taxonomy.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	validate, err := os.ReadFile(filepath.Join(dir, "514_room_recommendation_target_taxonomy_validate.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	taxonomy := string(up)
+	for _, kind := range []string{
+		"knowledge",
+		"preference",
+		"constraint",
+		"executable_procedure",
+		"implementation_defect",
+		"decision",
+		"unsupported",
+	} {
+		if !strings.Contains(taxonomy, "'"+kind+"'") {
+			t.Errorf("Room recommendation target migration omits %q", kind)
+		}
+	}
+	if !strings.Contains(strings.ToUpper(taxonomy), "NOT VALID") {
+		t.Fatal("Room recommendation target constraint must avoid an inline table scan")
+	}
+	for _, forbidden := range []string{"FOREIGN KEY", "REFERENCES", "ON DELETE", "ON UPDATE"} {
+		if strings.Contains(strings.ToUpper(taxonomy), forbidden) {
+			t.Errorf("Room recommendation target migration contains forbidden relationship clause %q", forbidden)
+		}
+	}
+	if !strings.Contains(strings.ToUpper(string(validate)), "VALIDATE CONSTRAINT ROOM_ARTIFACT_KIND_CHECK") {
+		t.Fatal("Room recommendation target validation migration is missing")
+	}
+}
+
 func bytesWithoutSQLComments(input []byte) []byte {
 	lines := strings.Split(string(input), "\n")
 	kept := make([]string, 0, len(lines))

@@ -156,7 +156,8 @@
       "planning": { "label": "Planning", "outcome": "An ordered plan with owners, dependencies, and risks.", "example": "Example: turn a goal into the next executable steps", "objective": "Produce an ordered, owner-ready execution plan.", "success_criteria": "Dependencies and risks are explicit\nEvery action has a clear result", "stop_conditions": "The next executable action is clear\nRemaining questions have owners" },
       "risk": { "label": "Risk review", "outcome": "Ranked risks with actionable mitigations.", "example": "Example: challenge a launch or architecture", "objective": "Identify, rank, and mitigate the material risks.", "success_criteria": "Risks are ranked by impact and likelihood\nMitigations are actionable", "stop_conditions": "No unowned critical risk remains" },
       "incident": { "label": "Incident review", "outcome": "A supported timeline, causes, and prevention actions.", "example": "Example: review an outage or failed rollout", "objective": "Establish the incident timeline, causes, and prevention actions.", "success_criteria": "Facts are separated from hypotheses\nFollow-up actions address root causes", "stop_conditions": "The timeline and contributing factors are supported" },
-      "decision": { "label": "Decision", "outcome": "A recommendation with tradeoffs and dissent preserved.", "example": "Example: choose between competing approaches", "objective": "Recommend a decision with tradeoffs, evidence, and dissent preserved.", "success_criteria": "Options and tradeoffs are comparable\nThe recommendation is evidence-backed", "stop_conditions": "A decision can be accepted or explicitly deferred" }
+      "decision": { "label": "Decision", "outcome": "A recommendation with tradeoffs and dissent preserved.", "example": "Example: choose between competing approaches", "objective": "Recommend a decision with tradeoffs, evidence, and dissent preserved.", "success_criteria": "Options and tradeoffs are comparable\nThe recommendation is evidence-backed", "stop_conditions": "A decision can be accepted or explicitly deferred" },
+      "improvement": { "label": "Skill improvement", "outcome": "A cited recommendation for the smallest useful Skill change.", "example": "Example: improve a Skill from repeated review feedback", "objective": "Turn eligible feedback into the smallest evidence-backed Skill improvement recommendation.", "success_criteria": "Every recommendation cites the signals that support it\nThe proposed change is small, reviewable, and explains why\nThe target and possible regression are explicit", "stop_conditions": "Evidence is sufficient for one focused recommendation\nWeak or conflicting signals are called out instead of guessed", "instructions": "Compare detailed feedback with the Skill's current procedure. Look for a repeated or domain-specific pattern. Propose principles, not exhaustive rules, and explain why the change should generalize. Prefer the smallest focused edit; keep the Skill concise by moving detail into a supporting file when appropriate. Classify each recommendation as Wiki knowledge, a Twin preference or constraint, a Skill procedure, a product defect, or a decision. Cite every supporting signal. Do not mutate any target. For executable_procedure, body must be strict JSON schema_version 1 with exactly base_skill_id, base_hash, bundle (id, source, name, description, content, files with path and content), observed_pattern, expected_benefit, regression_risk, and evidence_digests. Use unsupported if any exact value is unavailable." }
     }
   },
   "budget": {
@@ -188,7 +189,14 @@
     "kinds": {
       "issue": "Issue",
       "wiki": "Wiki",
-      "decision": "Decision"
+      "knowledge": "Wiki knowledge",
+      "preference": "Twin preference",
+      "constraint": "Twin constraint",
+      "executable_procedure": "Skill procedure",
+      "implementation_defect": "Product defect",
+      "decision": "Decision",
+      "unsupported": "Unsupported",
+      "unknown": "Unknown recommendation"
     },
     "source_entry": "Transcript entry",
     "source_cycle": "Completed cycle"
@@ -279,7 +287,13 @@
     "kinds": {
       "issue": "Issue",
       "wiki": "Wiki",
+      "knowledge": "Wiki knowledge",
+      "preference": "Twin preference",
+      "constraint": "Twin constraint",
+      "executable_procedure": "Skill procedure",
+      "implementation_defect": "Product defect",
       "decision": "Decision",
+      "unsupported": "Unsupported",
       "unknown": "Artifact"
     }
   },
