@@ -80,7 +80,9 @@ type WikiPageEditProposalResponse struct {
 	ContentDigest      string          `json:"content_digest"`
 	Rationale          string          `json:"rationale"`
 	EvidenceRefs       json.RawMessage `json:"evidence_refs"`
-	AgentID            string          `json:"agent_id"`
+	AgentID            *string         `json:"agent_id"`
+	SourceKind         string          `json:"source_kind"`
+	SourceRefID        *string         `json:"source_ref_id"`
 	IdempotencyKey     string          `json:"idempotency_key"`
 	Status             string          `json:"status"`
 	ReviewedByID       *string         `json:"reviewed_by_id"`
@@ -198,12 +200,20 @@ func wikiProposalToResponse(proposal db.WikiPageEditProposal) WikiPageEditPropos
 		ProposedPath:       proposal.ProposedPath, ProposedTitle: proposal.ProposedTitle,
 		ProposedContent: proposal.ProposedContent, ContentDigest: proposal.ContentDigest,
 		Rationale: proposal.Rationale, EvidenceRefs: evidence,
-		AgentID: uuidToString(proposal.AgentID), IdempotencyKey: proposal.IdempotencyKey,
+		AgentID: uuidPtrString(proposal.AgentID), SourceKind: wikiProposalSourceKind(proposal.SourceKind),
+		SourceRefID: uuidPtrString(proposal.SourceRefID), IdempotencyKey: proposal.IdempotencyKey,
 		Status: proposal.Status, ReviewedByID: uuidPtrString(proposal.ReviewedByID),
 		ReviewReason: optionalText(proposal.ReviewReason), ReviewedAt: optionalTime(proposal.ReviewedAt),
 		AcceptedRevisionID: uuidPtrString(proposal.AcceptedRevisionID),
 		CreatedAt:          timestampToString(proposal.CreatedAt),
 	}
+}
+
+func wikiProposalSourceKind(sourceKind string) string {
+	if sourceKind == "room" {
+		return "room"
+	}
+	return "agent"
 }
 
 func wikiPageFromCreate(row db.CreateWikiPageRow) db.WikiPage {

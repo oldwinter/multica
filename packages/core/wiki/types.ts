@@ -2,6 +2,7 @@ export type WikiScope = "workspace" | "project" | "user";
 export type WikiActorType = "member" | "agent" | "system" | "unknown";
 export type WikiSourceKind = "human" | "room_promotion" | "agent_proposal" | "restore" | "system" | "unknown";
 export type WikiProposalStatus = "pending" | "accepted" | "rejected" | "unknown";
+export type WikiProposalSourceKind = "agent" | "room" | "unknown";
 
 export interface WikiPageSummary {
   id: string;
@@ -91,7 +92,9 @@ export interface WikiProposal {
   contentDigest: string;
   rationale: string;
   evidenceRefs: readonly string[];
-  agentId: string;
+  agentId: string | null;
+  sourceKind: WikiProposalSourceKind;
+  sourceRefId: string | null;
   idempotencyKey: string;
   status: WikiProposalStatus;
   reviewedById: string | null;

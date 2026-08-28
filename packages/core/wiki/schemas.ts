@@ -10,6 +10,7 @@ import type {
   WikiPage,
   WikiPageSummary,
   WikiProposal,
+  WikiProposalSourceKind,
   WikiProposalStatus,
   WikiRevision,
   WikiRevisionConflict,
@@ -19,6 +20,7 @@ import type {
 const WIKI_ACTOR_TYPES = new Set(["member", "agent", "system"]);
 const WIKI_SOURCE_KINDS = new Set(["human", "room_promotion", "agent_proposal", "restore", "system"]);
 const WIKI_PROPOSAL_STATUSES = new Set(["pending", "accepted", "rejected"]);
+const WIKI_PROPOSAL_SOURCE_KINDS = new Set(["agent", "room"]);
 
 export const WikiActorTypeSchema = z.string().transform((value): WikiActorType =>
   WIKI_ACTOR_TYPES.has(value) ? value as WikiActorType : "unknown");
@@ -26,6 +28,8 @@ export const WikiSourceKindSchema = z.string().transform((value): WikiSourceKind
   WIKI_SOURCE_KINDS.has(value) ? value as WikiSourceKind : "unknown");
 export const WikiProposalStatusSchema = z.string().transform((value): WikiProposalStatus =>
   WIKI_PROPOSAL_STATUSES.has(value) ? value as WikiProposalStatus : "unknown");
+export const WikiProposalSourceKindSchema = z.string().transform((value): WikiProposalSourceKind =>
+  WIKI_PROPOSAL_SOURCE_KINDS.has(value) ? value as WikiProposalSourceKind : "unknown");
 export const LMWikiSourceClassSchema = z.enum([
   "issue", "project", "project_resource", "autopilot_run", "wiki_page",
 ]);
@@ -127,7 +131,9 @@ const WikiProposalWireSchema = z.object({
   content_digest: z.string().min(1),
   rationale: z.string().default(""),
   evidence_refs: z.array(z.string()).default([]),
-  agent_id: z.string().min(1),
+  agent_id: z.string().min(1).nullable().default(null),
+  source_kind: WikiProposalSourceKindSchema.optional().default("agent"),
+  source_ref_id: z.string().nullable().default(null),
   idempotency_key: z.string().min(1),
   status: WikiProposalStatusSchema,
   reviewed_by_id: z.string().nullable().default(null),
@@ -148,6 +154,8 @@ export const WikiProposalSchema = WikiProposalWireSchema.transform((wire): WikiP
   rationale: wire.rationale,
   evidenceRefs: wire.evidence_refs,
   agentId: wire.agent_id,
+  sourceKind: wire.source_kind,
+  sourceRefId: wire.source_ref_id,
   idempotencyKey: wire.idempotency_key,
   status: wire.status,
   reviewedById: wire.reviewed_by_id,

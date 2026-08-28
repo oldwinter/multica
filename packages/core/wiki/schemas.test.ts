@@ -84,6 +84,90 @@ describe("Wiki API schemas", () => {
     )).toEqual([]);
   });
 
+  it("parses mixed agent and Room proposals without hiding the list", () => {
+    const shared = {
+      page_id: "page-1",
+      base_revision_number: 3,
+      proposed_path: "guide.md",
+      proposed_title: "Guide",
+      proposed_content: "# Guide",
+      content_digest: "sha256:proposal",
+      rationale: "Keep the guide current",
+      evidence_refs: ["issue:1"],
+      idempotency_key: "proposal-key",
+      status: "pending",
+      reviewed_by_id: null,
+      review_reason: null,
+      reviewed_at: null,
+      accepted_revision_id: null,
+      created_at: "2026-08-29T10:00:00Z",
+    };
+
+    const parsed = WikiProposalListSchema.parse([
+      {
+        ...shared,
+        id: "proposal-agent",
+        agent_id: "agent-1",
+        source_kind: "agent",
+        source_ref_id: null,
+      },
+      {
+        ...shared,
+        id: "proposal-room",
+        agent_id: null,
+        source_kind: "room",
+        source_ref_id: "room-1",
+      },
+    ]);
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toMatchObject({
+      id: "proposal-agent",
+      agentId: "agent-1",
+      sourceKind: "agent",
+      sourceRefId: null,
+    });
+    expect(parsed[1]).toMatchObject({
+      id: "proposal-room",
+      agentId: null,
+      sourceKind: "room",
+      sourceRefId: "room-1",
+    });
+  });
+
+  it("defaults legacy proposal provenance and degrades future sources", () => {
+    const legacy = WikiProposalListSchema.parse([{
+      id: "proposal-legacy",
+      page_id: "page-1",
+      base_revision_number: 1,
+      proposed_path: "guide.md",
+      content_digest: "sha256:legacy",
+      agent_id: "agent-1",
+      idempotency_key: "legacy-key",
+      status: "pending",
+    }]);
+    expect(legacy[0]).toMatchObject({
+      agentId: "agent-1",
+      sourceKind: "agent",
+      sourceRefId: null,
+    });
+
+    const future = WikiProposalListSchema.parse([{
+      id: "proposal-future",
+      page_id: "page-1",
+      base_revision_number: 1,
+      proposed_path: "guide.md",
+      content_digest: "sha256:future",
+      agent_id: null,
+      idempotency_key: "future-key",
+      status: "pending",
+      source_kind: "automated_review",
+      source_ref_id: null,
+    }]);
+    expect(future[0]?.sourceKind).toBe("unknown");
+    expect(future[0]?.agentId).toBeNull();
+  });
+
   it("rejects missing or invalid identity and digest fields", () => {
     const { content_digest: _digest, ...withoutDigest } = summary;
     expect(parseWithFallback(
