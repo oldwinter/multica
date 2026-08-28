@@ -22,6 +22,103 @@ type ArtifactTargetCreator interface {
 	RoomArtifactTargetCreated(context.Context, db.RoomArtifact)
 }
 
+type RecommendationTarget string
+
+const (
+	RecommendationTargetKnowledge            RecommendationTarget = "knowledge"
+	RecommendationTargetPreference           RecommendationTarget = "preference"
+	RecommendationTargetConstraint           RecommendationTarget = "constraint"
+	RecommendationTargetExecutableProcedure  RecommendationTarget = "executable_procedure"
+	RecommendationTargetImplementationDefect RecommendationTarget = "implementation_defect"
+	RecommendationTargetDecision             RecommendationTarget = "decision"
+	RecommendationTargetUnsupported          RecommendationTarget = "unsupported"
+)
+
+func (target RecommendationTarget) Valid() bool {
+	switch target {
+	case RecommendationTargetKnowledge, RecommendationTargetPreference,
+		RecommendationTargetConstraint, RecommendationTargetExecutableProcedure,
+		RecommendationTargetImplementationDefect, RecommendationTargetDecision,
+		RecommendationTargetUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+type ArtifactTargetContributor interface {
+	CreateRoomArtifactTarget(context.Context, pgx.Tx, *db.Queries, db.RoomArtifact) (pgtype.UUID, error)
+	RoomArtifactTargetCreated(context.Context, db.RoomArtifact)
+}
+
+type ArtifactTargetRouter struct {
+	contributors map[RecommendationTarget]ArtifactTargetContributor
+}
+
+func NewArtifactTargetRouter() *ArtifactTargetRouter {
+	router := &ArtifactTargetRouter{contributors: make(map[RecommendationTarget]ArtifactTargetContributor)}
+	router.contributors[RecommendationTargetDecision] = roomDecisionTarget{}
+	return router
+}
+
+func (router *ArtifactTargetRouter) Register(target RecommendationTarget, contributor ArtifactTargetContributor) error {
+	if router == nil || !target.Valid() || target == RecommendationTargetUnsupported || target == RecommendationTargetDecision || contributor == nil {
+		return ErrInvalidTargetRegistration
+	}
+	if _, exists := router.contributors[target]; exists {
+		return ErrDuplicateTargetRegistration
+	}
+	router.contributors[target] = contributor
+	return nil
+}
+
+func (router *ArtifactTargetRouter) CreateRoomArtifactTarget(ctx context.Context, tx pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
+	target := canonicalRecommendationTarget(artifact.Kind)
+	if target == RecommendationTargetUnsupported || !target.Valid() {
+		return pgtype.UUID{}, &RecommendationTargetRefusal{Target: artifact.Kind, Reason: "unsupported_target"}
+	}
+	if router == nil {
+		return pgtype.UUID{}, &RecommendationTargetRefusal{Target: artifact.Kind, Reason: "target_unavailable"}
+	}
+	contributor := router.contributors[target]
+	if contributor == nil {
+		return pgtype.UUID{}, &RecommendationTargetRefusal{Target: artifact.Kind, Reason: "target_unavailable"}
+	}
+	return contributor.CreateRoomArtifactTarget(ctx, tx, queries, artifact)
+}
+
+func (router *ArtifactTargetRouter) RoomArtifactTargetCreated(ctx context.Context, artifact db.RoomArtifact) {
+	if router == nil {
+		return
+	}
+	if contributor := router.contributors[canonicalRecommendationTarget(artifact.Kind)]; contributor != nil {
+		contributor.RoomArtifactTargetCreated(ctx, artifact)
+	}
+}
+
+func canonicalRecommendationTarget(kind string) RecommendationTarget {
+	switch kind {
+	case "issue":
+		return RecommendationTargetImplementationDefect
+	case "wiki":
+		return RecommendationTargetKnowledge
+	default:
+		return RecommendationTarget(kind)
+	}
+}
+
+func validPromotionKind(kind string) bool {
+	return kind == "issue" || kind == "wiki" || canonicalRecommendationTarget(kind).Valid()
+}
+
+type roomDecisionTarget struct{}
+
+func (roomDecisionTarget) CreateRoomArtifactTarget(_ context.Context, _ pgx.Tx, _ *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
+	return artifact.ID, nil
+}
+
+func (roomDecisionTarget) RoomArtifactTargetCreated(context.Context, db.RoomArtifact) {}
+
 type RoomTaskEnqueueInput struct {
 	Agent               db.Agent
 	RoomTurnID          pgtype.UUID
@@ -37,21 +134,37 @@ type RoomTaskEnqueueInput struct {
 }
 
 var (
-	ErrNotFound                = errors.New("room not found")
-	ErrInvalidInput            = errors.New("invalid room input")
-	ErrInvalidParticipant      = errors.New("invalid room participant")
-	ErrInvocationNotAllowed    = errors.New("room agent invocation not allowed")
-	ErrIdempotencyConflict     = errors.New("room idempotency key conflicts with an earlier request")
-	ErrStaleReview             = errors.New("room memory review is stale")
-	ErrSynthesisNotRetryable   = errors.New("room synthesis is not retryable")
-	ErrBudgetExhausted         = errors.New("room budget is exhausted")
-	ErrBudgetPermissionDenied  = errors.New("room budget update is not allowed")
-	ErrBudgetBelowCommitted    = errors.New("room budget is below committed work")
-	ErrBudgetHasUncostedUsage  = errors.New("room budget cannot be capped while usage is uncosted")
-	ErrSpendLimitUnsupported   = errors.New("room spend limit execution is unsupported")
-	ErrRecommendationReviewed  = errors.New("room recommendation was already reviewed")
-	ErrPromotionSourceMismatch = errors.New("room promotion source does not match the accepted outcome")
+	ErrNotFound                    = errors.New("room not found")
+	ErrInvalidInput                = errors.New("invalid room input")
+	ErrInvalidParticipant          = errors.New("invalid room participant")
+	ErrInvocationNotAllowed        = errors.New("room agent invocation not allowed")
+	ErrIdempotencyConflict         = errors.New("room idempotency key conflicts with an earlier request")
+	ErrStaleReview                 = errors.New("room memory review is stale")
+	ErrSynthesisNotRetryable       = errors.New("room synthesis is not retryable")
+	ErrBudgetExhausted             = errors.New("room budget is exhausted")
+	ErrBudgetPermissionDenied      = errors.New("room budget update is not allowed")
+	ErrBudgetBelowCommitted        = errors.New("room budget is below committed work")
+	ErrBudgetHasUncostedUsage      = errors.New("room budget cannot be capped while usage is uncosted")
+	ErrSpendLimitUnsupported       = errors.New("room spend limit execution is unsupported")
+	ErrRecommendationReviewed      = errors.New("room recommendation was already reviewed")
+	ErrPromotionSourceMismatch     = errors.New("room promotion source does not match the accepted outcome")
+	ErrInvalidTargetRegistration   = errors.New("invalid Room target registration")
+	ErrDuplicateTargetRegistration = errors.New("Room target already registered")
+	ErrRecommendationTargetRefused = errors.New("Room recommendation target refused")
 )
+
+type RecommendationTargetRefusal struct {
+	Target string
+	Reason string
+}
+
+func (e *RecommendationTargetRefusal) Error() string {
+	return ErrRecommendationTargetRefused.Error() + ": " + e.Reason
+}
+
+func (e *RecommendationTargetRefusal) Unwrap() []error {
+	return []error{ErrRecommendationTargetRefused, ErrInvalidInput}
+}
 
 type ParticipantInput struct {
 	Type string

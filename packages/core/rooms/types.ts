@@ -4,7 +4,20 @@ export type RoomParticipantType = RoomParticipantInputType | "unknown";
 
 export type RoomParticipantRole = "facilitator" | "participant" | "observer";
 
-export type RoomPromotionKind = "issue" | "wiki" | "decision";
+export type RoomRecommendationKind =
+  | "knowledge"
+  | "preference"
+  | "constraint"
+  | "executable_procedure"
+  | "implementation_defect"
+  | "decision"
+  | "unsupported"
+  | "unknown";
+
+export type RoomPromotionKind =
+  | "issue"
+  | "wiki"
+  | RoomRecommendationKind;
 
 export type RoomArtifactKind = RoomPromotionKind | "unknown";
 
@@ -43,6 +56,7 @@ export type RoomTemplateId =
   | "risk"
   | "incident"
   | "decision"
+  | "improvement"
   | "unknown";
 
 export type RoomTurnStatus = RoomCycleStatus | "dispatched";
@@ -65,7 +79,7 @@ export interface RoomSynthesisItem {
 
 export interface RoomRecommendation {
   readonly key: string;
-  readonly kind: RoomPromotionKind;
+  readonly kind: RoomRecommendationKind;
   readonly title: string;
   readonly body: string;
   readonly rationale: string;

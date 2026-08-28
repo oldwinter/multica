@@ -31,7 +31,7 @@ type testArtifactTargets struct{}
 
 func (*testArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, _ pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
 	switch artifact.Kind {
-	case "issue":
+	case "issue", "implementation_defect":
 		number, err := queries.IncrementIssueCounter(ctx, artifact.WorkspaceID)
 		if err != nil {
 			return pgtype.UUID{}, err
@@ -52,13 +52,15 @@ func (*testArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, _ pgx.
 			Key: "room_artifact_id", Value: metadata, ID: issue.ID, WorkspaceID: artifact.WorkspaceID,
 		})
 		return issue.ID, err
-	case "wiki":
+	case "wiki", "knowledge":
 		page, err := queries.CreateWikiPage(ctx, db.CreateWikiPageParams{
 			WorkspaceID: artifact.WorkspaceID, Scope: "workspace",
 			Path:  path.Join("rooms", util.UUIDToString(artifact.RoomID), util.UUIDToString(artifact.ID)+".md"),
 			Title: artifact.Title, Content: artifact.Body, CreatedBy: artifact.CreatedByUserID,
 		})
 		return page.ID, err
+	case "decision":
+		return artifact.ID, nil
 	default:
 		return pgtype.UUID{}, fmt.Errorf("unexpected artifact kind %q", artifact.Kind)
 	}
@@ -1191,7 +1193,7 @@ func TestPromoteCompletedEntryIsIdempotentForEveryTarget(t *testing.T) {
 	}
 	entryID := detail.Entries[0].ID
 
-	for _, kind := range []string{"issue", "wiki", "decision"} {
+	for _, kind := range []string{"implementation_defect", "knowledge", "decision"} {
 		t.Run(kind, func(t *testing.T) {
 			input := PromotionInput{
 				WorkspaceID: fixture.workspaceID, RoomID: created.Room.ID,
@@ -1213,9 +1215,9 @@ func TestPromoteCompletedEntryIsIdempotentForEveryTarget(t *testing.T) {
 
 			var targetCount int
 			switch kind {
-			case "issue":
+			case "implementation_defect":
 				err = fixture.pool.QueryRow(context.Background(), `SELECT count(*) FROM issue WHERE id = $1 AND workspace_id = $2`, first.Artifact.TargetID, fixture.workspaceID).Scan(&targetCount)
-			case "wiki":
+			case "knowledge":
 				err = fixture.pool.QueryRow(context.Background(), `SELECT count(*) FROM wiki_page WHERE id = $1 AND workspace_id = $2`, first.Artifact.TargetID, fixture.workspaceID).Scan(&targetCount)
 			case "decision":
 				if first.Artifact.TargetID != first.Artifact.ID {

@@ -39,6 +39,22 @@ describe("applyRoomTemplateDefaults", () => {
 });
 
 describe("duplicateRoomConfiguration", () => {
+  it("keeps an Improvement Room template in the duplicated draft", () => {
+    const detail: RoomDetail = {
+      ...EMPTY_ROOM_DETAIL,
+      room: {
+        ...EMPTY_ROOM_DETAIL.room,
+        template_id: "improvement",
+        facilitator_agent_id: "agent-improver",
+      },
+    };
+
+    expect(duplicateRoomConfiguration(detail)).toMatchObject({
+      template_id: "improvement",
+      facilitator_agent_id: "agent-improver",
+    });
+  });
+
   it("copies configuration only and pauses a duplicated schedule", () => {
     const detail: RoomDetail = {
       ...EMPTY_ROOM_DETAIL,

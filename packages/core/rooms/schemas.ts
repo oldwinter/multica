@@ -62,7 +62,31 @@ const RoomRefusalReasonSchema = z
   ])
   .or(z.string().transform(() => "unknown" as const));
 const RoomTemplateIdSchema = z
-  .enum(["research", "planning", "risk", "incident", "decision"])
+  .enum(["research", "planning", "risk", "incident", "decision", "improvement"])
+  .or(z.string().transform(() => "unknown" as const));
+const RoomRecommendationKindSchema = z
+  .enum([
+    "knowledge",
+    "preference",
+    "constraint",
+    "executable_procedure",
+    "implementation_defect",
+    "decision",
+    "unsupported",
+  ])
+  .or(z.string().transform(() => "unknown" as const));
+const RoomArtifactKindSchema = z
+  .enum([
+    "issue",
+    "wiki",
+    "knowledge",
+    "preference",
+    "constraint",
+    "executable_procedure",
+    "implementation_defect",
+    "decision",
+    "unsupported",
+  ])
   .or(z.string().transform(() => "unknown" as const));
 const RoomMemoryReviewStatusSchema = z
   .enum(["pending", "accepted", "rejected", "corrected"])
@@ -76,7 +100,7 @@ export const RoomSynthesisItemSchema = z.object({
 
 export const RoomRecommendationSchema = z.object({
   key: z.string(),
-  kind: z.enum(["issue", "wiki", "decision"]),
+  kind: RoomRecommendationKindSchema,
   title: z.string(),
   body: z.string().optional().default(""),
   rationale: z.string().optional().default(""),
@@ -226,9 +250,7 @@ export const RoomArtifactSchema = z.object({
   cycle_id: z.string().nullable().optional().default(null),
   turn_id: z.string().nullable().optional().default(null),
   entry_id: z.string().nullable().optional().default(null),
-  kind: z.enum(["issue", "wiki", "decision"]).or(
-    z.string().transform(() => "unknown" as const),
-  ),
+  kind: RoomArtifactKindSchema,
   target_id: z.string().nullable().optional().default(null),
   title: z.string(),
   body: z.string(),

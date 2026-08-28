@@ -714,7 +714,7 @@ func marshalRoomStringList(values []string) ([]byte, error) {
 
 func validRoomTemplate(value string) bool {
 	switch value {
-	case "research", "planning", "risk", "incident", "decision":
+	case "research", "planning", "risk", "incident", "decision", "improvement":
 		return true
 	default:
 		return false
@@ -868,10 +868,18 @@ func participantInstructions(roomRow db.Room) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func synthesisInstructions(roomRow db.Room) string {
-	return participantInstructions(roomRow) + `
+const skillImprovementRecommendationBodyExample = `{"schema_version":1,"base_skill_id":"550e8400-e29b-41d4-a716-446655440000","base_hash":"sha256:0000000000000000000000000000000000000000000000000000000000000000","bundle":{"id":"550e8400-e29b-41d4-a716-446655440000","source":"workspace","name":"focused-review","description":"Review one bounded change.","content":"---\nname: focused-review\ndescription: Review one bounded change.\n---\n\nReview the smallest useful change.","files":[{"path":"references/checklist.md","content":"# Checklist\n\nVerify the focused behavior."}]},"observed_pattern":"Repeated reviews miss the same focused check.","expected_benefit":"The procedure makes that check explicit without expanding unrelated scope.","regression_risk":"An overly broad rule could make unrelated reviews slower.","evidence_digests":["sha256:1111111111111111111111111111111111111111111111111111111111111111"]}`
 
-You are the Room facilitator. Synthesize the participant outputs into exactly one JSON object with no Markdown fence or commentary. Use schema_version 1 and these fields: summary, facts, decisions, open_questions, disagreements, action_items, recommendations, confidence. Each item has text, citation_entry_ids, confidence. Each recommendation has kind (issue, wiki, or decision), title, body, rationale, citation_entry_ids, confidence. Cite only entry IDs present in the Room transcript. Preserve disagreement and uncertainty; do not invent consensus or evidence.`
+const skillImprovementRecommendationBodyContract = `For an executable_procedure recommendation in an improvement Room, body MUST be a JSON object with exactly these fields and no others: schema_version (integer 1); base_skill_id (UUID); base_hash (sha256 digest); bundle (object with exactly id, source, name, description, content, files); bundle.id must equal base_skill_id; bundle.source must be workspace; bundle.files is an array of objects with exactly path and content; observed_pattern, expected_benefit, and regression_risk (non-empty strings); evidence_digests (non-empty unique array of sha256 digests copied from the eligible evidence envelopes). Return the body as a JSON-encoded string inside the recommendation, with no Markdown fence. Never invent an ID, hash, evidence digest, bundle field, or file. If any required value is unavailable or the proposed bundle is not a complete workspace Skill bundle, use kind unsupported instead of executable_procedure. Example executable_procedure body: ` + skillImprovementRecommendationBodyExample
+
+func synthesisInstructions(roomRow db.Room) string {
+	prompt := participantInstructions(roomRow) + `
+
+You are the Room facilitator. Synthesize the participant outputs into exactly one JSON object with no Markdown fence or commentary. Use schema_version 1 and these fields: summary, facts, decisions, open_questions, disagreements, action_items, recommendations, confidence. Each item has text, citation_entry_ids, confidence. Each recommendation has kind (knowledge, preference, constraint, executable_procedure, implementation_defect, decision, or unsupported), title, body, rationale, citation_entry_ids, confidence. Classify durable facts as knowledge, human or team working style as preference or constraint, executable Agent instructions as executable_procedure, and product or code work as implementation_defect. Use unsupported when no safe target applies. Cite only entry IDs present in the Room transcript. Preserve disagreement and uncertainty; do not invent consensus or evidence.`
+	if roomRow.TemplateID.Valid && roomRow.TemplateID.String == "improvement" {
+		prompt += "\n\n" + skillImprovementRecommendationBodyContract
+	}
+	return prompt
 }
 
 func roomStringList(raw []byte) []string {

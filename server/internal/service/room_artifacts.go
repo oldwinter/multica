@@ -4,21 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/issueposition"
+	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
 )
 
 type RoomArtifactTargets struct {
-	issues      *IssueService
-	wiki        RoomWikiPageCreator
-	wikiPublish RoomWikiPagePublisher
+	router *roomdomain.ArtifactTargetRouter
+}
+
+type RoomArtifactTargetCreator func(context.Context, pgx.Tx, *db.Queries, db.RoomArtifact) (pgtype.UUID, error)
+type RoomArtifactTargetPublisher func(context.Context, db.RoomArtifact)
+
+type roomArtifactTargetContributor struct {
+	create  RoomArtifactTargetCreator
+	publish RoomArtifactTargetPublisher
+}
+
+func (target roomArtifactTargetContributor) CreateRoomArtifactTarget(ctx context.Context, tx pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
+	return target.create(ctx, tx, queries, artifact)
+}
+
+func (target roomArtifactTargetContributor) RoomArtifactTargetCreated(ctx context.Context, artifact db.RoomArtifact) {
+	if target.publish != nil {
+		target.publish(ctx, artifact)
+	}
 }
 
 // RoomWikiPageCreateInput deliberately mirrors WikiPageCreateInput without
@@ -42,55 +58,59 @@ type RoomWikiPageCreator func(context.Context, *db.Queries, RoomWikiPageCreateIn
 type RoomWikiPagePublisher func(context.Context, pgtype.UUID, string, pgtype.UUID) error
 
 func NewRoomArtifactTargets(issues *IssueService) *RoomArtifactTargets {
-	return &RoomArtifactTargets{issues: issues}
+	targets := &RoomArtifactTargets{router: roomdomain.NewArtifactTargetRouter()}
+	if issues != nil {
+		contributor := roomArtifactTargetContributor{
+			create: func(ctx context.Context, tx pgx.Tx, _ *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
+				issue, err := issues.createRoomIssueTarget(ctx, tx, artifact)
+				if err != nil {
+					return pgtype.UUID{}, err
+				}
+				return issue.ID, nil
+			},
+			publish: func(ctx context.Context, artifact db.RoomArtifact) {
+				if !artifact.TargetID.Valid {
+					return
+				}
+				issue, err := issues.Queries.GetIssue(ctx, artifact.TargetID)
+				if err != nil {
+					return
+				}
+				actorID := util.UUIDToString(artifact.CreatedByUserID)
+				issues.publishIssueCreated(issue, nil, nil, "member", actorID, IssueCreateOpts{Platform: "room"})
+				issues.captureCreatedAnalytics(issue, "member", actorID, IssueCreateOpts{Platform: "room"})
+			},
+		}
+		_ = targets.router.Register(roomdomain.RecommendationTargetImplementationDefect, contributor)
+	}
+	return targets
 }
 
+// SetWikiPageCreator is kept as a no-op compatibility hook while composition
+// moves to RegisterProposalTarget. A Room recommendation must never create a
+// Wiki page directly.
 func (targets *RoomArtifactTargets) SetWikiPageCreator(creator RoomWikiPageCreator) {
-	if targets != nil {
-		targets.wiki = creator
-	}
+	_ = creator
 }
 
+// SetWikiPagePublisher is intentionally inert; proposal publication belongs to
+// Wiki's human review lifecycle.
 func (targets *RoomArtifactTargets) SetWikiPagePublisher(publisher RoomWikiPagePublisher) {
-	if targets != nil {
-		targets.wikiPublish = publisher
+	_ = publisher
+}
+
+func (targets *RoomArtifactTargets) RegisterProposalTarget(target roomdomain.RecommendationTarget, create RoomArtifactTargetCreator, publish RoomArtifactTargetPublisher) error {
+	if targets == nil || targets.router == nil || create == nil {
+		return roomdomain.ErrInvalidTargetRegistration
 	}
+	return targets.router.Register(target, roomArtifactTargetContributor{create: create, publish: publish})
 }
 
 func (targets *RoomArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, tx pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
-	switch artifact.Kind {
-	case "issue":
-		if targets == nil || targets.issues == nil {
-			return pgtype.UUID{}, fmt.Errorf("issue service is unavailable")
-		}
-		issue, err := targets.issues.createRoomIssueTarget(ctx, tx, artifact)
-		if err != nil {
-			return pgtype.UUID{}, err
-		}
-		return issue.ID, nil
-	case "wiki":
-		if targets == nil || targets.wiki == nil {
-			return pgtype.UUID{}, fmt.Errorf("wiki knowledge service is unavailable")
-		}
-		wikiPath := path.Join("rooms", util.UUIDToString(artifact.RoomID), util.UUIDToString(artifact.ID)+".md")
-		page, err := targets.wiki(ctx, queries, RoomWikiPageCreateInput{
-			WorkspaceID: artifact.WorkspaceID,
-			Scope:       "workspace",
-			Path:        wikiPath,
-			Title:       artifact.Title,
-			Content:     artifact.Body,
-			ActorType:   "member",
-			ActorID:     artifact.CreatedByUserID,
-			SourceKind:  "room_promotion",
-			SourceRefID: artifact.ID,
-		})
-		if err != nil {
-			return pgtype.UUID{}, err
-		}
-		return page.ID, nil
-	default:
-		return pgtype.UUID{}, fmt.Errorf("unsupported Room artifact target kind %q", artifact.Kind)
+	if targets == nil || targets.router == nil {
+		return pgtype.UUID{}, fmt.Errorf("Room artifact target router is unavailable")
 	}
+	return targets.router.CreateRoomArtifactTarget(ctx, tx, queries, artifact)
 }
 
 func (s *IssueService) createRoomIssueTarget(ctx context.Context, tx pgx.Tx, artifact db.RoomArtifact) (db.Issue, error) {
@@ -132,24 +152,8 @@ func (s *IssueService) createRoomIssueTarget(ctx context.Context, tx pgx.Tx, art
 }
 
 func (targets *RoomArtifactTargets) RoomArtifactTargetCreated(ctx context.Context, artifact db.RoomArtifact) {
-	if targets == nil || !artifact.TargetID.Valid {
+	if targets == nil || targets.router == nil || !artifact.TargetID.Valid {
 		return
 	}
-	switch artifact.Kind {
-	case "issue":
-		if targets.issues == nil {
-			return
-		}
-		issue, err := targets.issues.Queries.GetIssue(ctx, artifact.TargetID)
-		if err != nil {
-			return
-		}
-		actorID := util.UUIDToString(artifact.CreatedByUserID)
-		targets.issues.publishIssueCreated(issue, nil, nil, "member", actorID, IssueCreateOpts{Platform: "room"})
-		targets.issues.captureCreatedAnalytics(issue, "member", actorID, IssueCreateOpts{Platform: "room"})
-	case "wiki":
-		if targets.wikiPublish != nil {
-			_ = targets.wikiPublish(ctx, artifact.TargetID, "member", artifact.CreatedByUserID)
-		}
-	}
+	targets.router.RoomArtifactTargetCreated(ctx, artifact)
 }

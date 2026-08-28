@@ -26,7 +26,7 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 	isRecommendation := input.MemoryRevisionID.Valid && input.RecommendationKey != "" && !input.EntryID.Valid && !input.CycleID.Valid
 	isLegacySource := input.EntryID.Valid != input.CycleID.Valid && !input.MemoryRevisionID.Valid && input.RecommendationKey == ""
 	if !input.WorkspaceID.Valid || !input.RoomID.Valid || !input.ActorUserID.Valid ||
-		(input.Kind != "issue" && input.Kind != "wiki" && input.Kind != "decision") ||
+		!validPromotionKind(input.Kind) ||
 		input.IdempotencyKey == "" || input.Title == "" || len([]rune(input.Title)) > 300 ||
 		len([]rune(input.Rationale)) > 20000 || len([]rune(input.Body)) > 200000 || (!isRecommendation && !isLegacySource) {
 		return PromotionResult{}, ErrInvalidInput
@@ -114,16 +114,12 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 	if err != nil {
 		return PromotionResult{}, fmt.Errorf("create Room artifact: %w", err)
 	}
-	targetID := artifact.ID
-	switch input.Kind {
-	case "issue", "wiki":
-		if s.targets == nil {
-			return PromotionResult{}, fmt.Errorf("Room artifact target creator is unavailable")
-		}
-		targetID, err = s.targets.CreateRoomArtifactTarget(ctx, tx, queries, artifact)
-		if err != nil {
-			return PromotionResult{}, fmt.Errorf("create Room %s target: %w", input.Kind, err)
-		}
+	if s.targets == nil {
+		return PromotionResult{}, fmt.Errorf("Room artifact target router is unavailable")
+	}
+	targetID, err := s.targets.CreateRoomArtifactTarget(ctx, tx, queries, artifact)
+	if err != nil {
+		return PromotionResult{}, fmt.Errorf("route Room %s target: %w", input.Kind, err)
 	}
 	artifact, err = queries.SetRoomArtifactTarget(ctx, db.SetRoomArtifactTargetParams{
 		TargetID: targetID, ID: artifact.ID, WorkspaceID: artifact.WorkspaceID,
