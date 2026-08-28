@@ -1872,6 +1872,11 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 			resp.AuthToken = tokenStr
 			resp.RemoteMCPDaemonToken = remoteMCPToken
 			resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
+			if event, ok := taskDispatchEventFromResponse(
+				uuidToString(task.ID), uuidToString(task.RuntimeID), task.DispatchedAt, resp,
+			); ok {
+				h.offerTaskDispatch(event)
+			}
 			out = append(out, resp)
 		}
 		if !deferredUnsupported {
@@ -3826,6 +3831,11 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	resp.RemoteMCPDaemonToken = remoteMCPToken
 	task.DeliveredCommentIds = receipt
 	resp.DeliveredCommentIDs = uuidStringsOrEmpty(receipt)
+	if event, ok := taskDispatchEventFromResponse(
+		uuidToString(task.ID), runtimeID, task.DispatchedAt, resp,
+	); ok {
+		h.offerTaskDispatch(event)
+	}
 
 	slog.Info("task claimed by runtime", "task_id", uuidToString(task.ID), "runtime_id", runtimeID, "agent_id", uuidToString(task.AgentID), "prior_session", resp.PriorSessionID)
 	if resp.Agent != nil && len(resp.Agent.Skills) > 0 {
@@ -4241,6 +4251,15 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.offerTaskCompletion(TaskCompletionEvent{
+		WorkspaceID:            workspaceID,
+		TaskID:                 uuidToString(task.ID),
+		RuntimeID:              uuidToString(task.RuntimeID),
+		AgentID:                uuidToString(task.AgentID),
+		DispatchedAt:           task.DispatchedAt.Time,
+		CapabilityProven:       requestHasClientCapability(r, protocol.DaemonCapabilitySkillExecutionManifestV1),
+		SkillExecutionManifest: req.SkillExecutionManifest,
+	})
 
 	h.emitIssueExecutedOnFirstCompletion(r, task)
 

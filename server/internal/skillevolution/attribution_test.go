@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -52,9 +53,69 @@ func TestAttributionRecorderRecordsExactRevision(t *testing.T) {
 		t.Fatalf("repository record calls/rows = %d/%d, want 1/1", repository.recordCalls, len(repository.rows))
 	}
 	for _, row := range repository.rows {
-		if row.Eligibility != EvidenceEligibilityEligible || row.Reason != string(AttributionReasonExactRevisionMatch) || !row.ManifestDigest.Valid() {
+		if row.Eligibility != EvidenceEligibilityEligible || row.Reason != string(AttributionReasonExactRevisionMatch) ||
+			!row.ManifestDigest.Valid() || row.DispatchSnapshotID != input.DispatchSnapshotID || !row.TaskDispatchedAt.Equal(input.TaskDispatchedAt) {
 			t.Fatalf("stored row = %+v", row)
 		}
+	}
+}
+
+func TestAttributionRecorderAcceptsBuiltinAndPluginWithoutWorkspaceRows(t *testing.T) {
+	repository := newFakeAttributionRepository()
+	input := validRecorderInput(t, repository)
+	repository.revisions = nil
+	input.DispatchedSkills = []DispatchSkillIdentity{
+		{Source: skillbundle.SourceBuiltin, SkillID: "plan"},
+		{Source: skillbundle.SourcePlugin, SkillID: "github/review"},
+	}
+	input.Manifest.Skills = []skillbundle.ExecutionRecord{
+		{Source: skillbundle.SourceBuiltin, SkillID: "plan", BundleHash: string(attributionTestDigest('b'))},
+		{Source: skillbundle.SourcePlugin, SkillID: "github/review", BundleHash: string(attributionTestDigest('c'))},
+	}
+
+	report := newAttributionRecorder(repository).Record(context.Background(), input)
+
+	if report.Eligibility != EvidenceEligibilityEligible || report.Reason != AttributionReasonNoWorkspaceSkill || report.Recorded != 0 || len(report.Outcomes) != 2 {
+		t.Fatalf("report = %+v, want eligible report with no workspace rows", report)
+	}
+	if repository.resolveCalls != 0 || repository.recordCalls != 0 {
+		t.Fatalf("repository calls = resolve %d record %d, want none", repository.resolveCalls, repository.recordCalls)
+	}
+}
+
+func TestAttributionRecorderResolvesOnlyWorkspaceRecordsInMixedManifest(t *testing.T) {
+	repository := newFakeAttributionRepository()
+	input := validRecorderInput(t, repository)
+	input.DispatchedSkills = append(input.DispatchedSkills,
+		DispatchSkillIdentity{Source: skillbundle.SourceBuiltin, SkillID: "plan"},
+		DispatchSkillIdentity{Source: skillbundle.SourcePlugin, SkillID: "github/review"},
+	)
+	input.Manifest.Skills = append(input.Manifest.Skills,
+		skillbundle.ExecutionRecord{Source: skillbundle.SourceBuiltin, SkillID: "plan", BundleHash: string(attributionTestDigest('b'))},
+		skillbundle.ExecutionRecord{Source: skillbundle.SourcePlugin, SkillID: "github/review", BundleHash: string(attributionTestDigest('c'))},
+	)
+
+	report := newAttributionRecorder(repository).Record(context.Background(), input)
+
+	if report.Eligibility != EvidenceEligibilityEligible || report.Recorded != 1 || len(report.Outcomes) != 3 {
+		t.Fatalf("report = %+v, want one workspace row and three validated outcomes", report)
+	}
+	if repository.resolveCalls != 1 || repository.recordCalls != 1 || len(repository.rows) != 1 {
+		t.Fatalf("repository calls/rows = %d/%d/%d, want 1/1/1", repository.resolveCalls, repository.recordCalls, len(repository.rows))
+	}
+}
+
+func TestAttributionRecorderRejectsUnknownSources(t *testing.T) {
+	repository := newFakeAttributionRepository()
+	input := validRecorderInput(t, repository)
+	input.DispatchedSkills[0].Source = "remote"
+	input.Manifest.Skills[0].Source = "remote"
+
+	report := newAttributionRecorder(repository).Record(context.Background(), input)
+
+	assertIneligibleAttribution(t, report, AttributionReasonInvalidDispatch)
+	if repository.resolveCalls != 0 || repository.recordCalls != 0 {
+		t.Fatal("unknown source must be rejected before persistence")
 	}
 }
 
@@ -69,7 +130,8 @@ func TestAttributionRecorderUsesStoreRevisionAndIdempotencyQueries(t *testing.T)
 	if _, err := pool.Exec(ctx, `INSERT INTO agent_runtime (id, workspace_id) VALUES ($1, $2)`, runtimeID, workspaceID); err != nil {
 		t.Fatalf("seed runtime: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, runtime_id, status, completed_at) VALUES ($1, $2, $3, 'completed', now())`, taskID, agentID, runtimeID); err != nil {
+	dispatchedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, runtime_id, status, dispatched_at) VALUES ($1, $2, $3, 'dispatched', $4)`, taskID, agentID, runtimeID, dispatchedAt); err != nil {
 		t.Fatalf("seed task: %v", err)
 	}
 	revisionInput := testRevisionInput(t, workspaceID, skillID, "base", "base content")
@@ -79,8 +141,23 @@ func TestAttributionRecorderUsesStoreRevisionAndIdempotencyQueries(t *testing.T)
 		t.Fatalf("save revision: %v", err)
 	}
 	skillIDString := attributionUUIDString(skillID)
+	snapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID:      workspaceID,
+		TaskID:           taskID,
+		AgentID:          agentID,
+		RuntimeID:        runtimeID,
+		TaskDispatchedAt: dispatchedAt,
+		Skills:           []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: skillIDString}},
+	})
+	if err != nil {
+		t.Fatalf("record dispatch snapshot: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, taskID); err != nil {
+		t.Fatalf("complete task: %v", err)
+	}
 	input := AttributionInput{
-		WorkspaceID: workspaceID, TaskID: taskID, RuntimeID: runtimeID, CapabilityProven: true,
+		WorkspaceID: workspaceID, TaskID: taskID, RuntimeID: runtimeID,
+		DispatchSnapshotID: snapshot.Snapshot.ID, TaskDispatchedAt: dispatchedAt, CapabilityProven: true,
 		DispatchedSkills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: skillIDString}},
 		Manifest: skillbundle.ExecutionManifest{
 			Version: skillbundle.ExecutionManifestVersion,
@@ -334,7 +411,9 @@ func validRecorderInput(t *testing.T, repository *fakeAttributionRepository) Att
 	}}
 	skillIDString := attributionUUIDString(skillID)
 	return AttributionInput{
-		WorkspaceID: workspaceID, TaskID: taskID, RuntimeID: runtimeID, CapabilityProven: true,
+		WorkspaceID: workspaceID, TaskID: taskID, RuntimeID: runtimeID,
+		DispatchSnapshotID: attributionTestUUID(), TaskDispatchedAt: time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC),
+		CapabilityProven: true,
 		DispatchedSkills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: skillIDString}},
 		Manifest: skillbundle.ExecutionManifest{
 			Version: skillbundle.ExecutionManifestVersion,

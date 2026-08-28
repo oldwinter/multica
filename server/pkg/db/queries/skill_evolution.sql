@@ -40,6 +40,15 @@ WHERE enabled
 ORDER BY id
 LIMIT sqlc.arg(page_size);
 
+-- name: ListScheduledSkillEvolutionLoops :many
+SELECT * FROM skill_evolution_loop
+WHERE enabled
+  AND mode IN ('observe', 'propose')
+  AND (next_eligible_at IS NULL OR next_eligible_at <= sqlc.arg(eligible_at)::timestamptz)
+  AND (sqlc.narg(after_id)::uuid IS NULL OR id > sqlc.narg(after_id)::uuid)
+ORDER BY id
+LIMIT sqlc.arg(page_size);
+
 -- name: RecordSkillEvolutionLoopObservation :one
 UPDATE skill_evolution_loop
 SET last_observed_at = sqlc.arg(observed_at),
@@ -148,7 +157,11 @@ WHERE workspace_id = sqlc.arg(workspace_id)
   AND generation_idempotency_key = sqlc.arg(generation_idempotency_key);
 
 -- name: ListSkillEvolutionProposals :many
-SELECT * FROM skill_evolution_proposal
+SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id,
+       candidate_revision_id, base_hash, candidate_hash, rationale_digest,
+       failure_reason, stale_reason, generation_idempotency_key,
+       requested_by_id, started_at, completed_at, created_at, updated_at
+FROM skill_evolution_proposal
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND skill_id = sqlc.arg(skill_id)
   AND (
@@ -164,6 +177,9 @@ SET state = sqlc.arg(next_state),
     candidate_revision_id = COALESCE(sqlc.narg(candidate_revision_id)::uuid, proposal.candidate_revision_id),
     candidate_hash = COALESCE(sqlc.narg(candidate_hash)::text, proposal.candidate_hash),
     rationale_digest = COALESCE(sqlc.narg(rationale_digest)::text, proposal.rationale_digest),
+    observed_pattern = COALESCE(sqlc.narg(observed_pattern)::text, proposal.observed_pattern),
+    expected_benefit = COALESCE(sqlc.narg(expected_benefit)::text, proposal.expected_benefit),
+    regression_risk = COALESCE(sqlc.narg(regression_risk)::text, proposal.regression_risk),
     failure_reason = sqlc.narg(failure_reason)::text,
     stale_reason = sqlc.narg(stale_reason)::text,
     started_at = CASE WHEN sqlc.arg(next_state)::text = 'running' THEN COALESCE(proposal.started_at, now()) ELSE proposal.started_at END,
@@ -385,12 +401,14 @@ LIMIT sqlc.arg(page_size);
 -- name: RecordSkillEvolutionTaskAttribution :one
 INSERT INTO skill_evolution_task_attribution (
     workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version,
-    source, bundle_hash, manifest_digest, eligibility, reason
+    source, bundle_hash, manifest_digest, eligibility, reason,
+    dispatch_snapshot_id, task_dispatched_at
 )
 SELECT
     sqlc.arg(workspace_id), task.id, sqlc.arg(runtime_id), skill.id, revision.id,
     sqlc.arg(manifest_version), sqlc.arg(source), sqlc.arg(bundle_hash),
-    sqlc.arg(manifest_digest), sqlc.arg(eligibility), sqlc.arg(reason)
+    sqlc.arg(manifest_digest), sqlc.arg(eligibility), sqlc.arg(reason),
+    snapshot.id, snapshot.task_dispatched_at
 FROM agent_task_queue task
 JOIN agent
   ON agent.id = task.agent_id
@@ -407,8 +425,20 @@ JOIN skill_evolution_revision revision
  AND revision.skill_id = skill.id
  AND revision.source = sqlc.arg(source)
  AND revision.bundle_hash = sqlc.arg(bundle_hash)
+JOIN skill_evolution_task_dispatch_snapshot snapshot
+  ON snapshot.id = sqlc.arg(dispatch_snapshot_id)
+ AND snapshot.workspace_id = sqlc.arg(workspace_id)
+ AND snapshot.task_id = task.id
+ AND snapshot.agent_id = task.agent_id
+ AND snapshot.runtime_id = sqlc.arg(runtime_id)
+ AND snapshot.task_dispatched_at = sqlc.arg(task_dispatched_at)
+ AND snapshot.identities @> jsonb_build_array(jsonb_build_object(
+       'source', sqlc.arg(source)::text,
+       'skill_id', sqlc.arg(skill_id)::uuid::text
+     ))
 WHERE task.id = sqlc.arg(task_id)
   AND task.runtime_id = sqlc.arg(runtime_id)
+  AND task.dispatched_at = sqlc.arg(task_dispatched_at)
   AND task.completed_at IS NOT NULL
   AND task.status IN ('completed', 'failed', 'cancelled')
 ON CONFLICT (workspace_id, task_id, skill_id) DO NOTHING
@@ -425,3 +455,89 @@ SELECT * FROM skill_evolution_task_attribution
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND task_id = sqlc.arg(task_id)
 ORDER BY created_at, id;
+
+-- name: ListExactSkillEvolutionTaskIDs :many
+SELECT task_id
+FROM skill_evolution_task_attribution
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND skill_id = sqlc.arg(skill_id)
+  AND eligibility = 'eligible'
+GROUP BY task_id
+ORDER BY max(created_at) DESC, task_id DESC
+LIMIT sqlc.arg(page_size);
+
+-- name: HasExactSkillEvolutionTask :one
+SELECT EXISTS (
+    SELECT 1
+    FROM skill_evolution_task_attribution
+    WHERE workspace_id = sqlc.arg(workspace_id)
+      AND task_id = sqlc.arg(task_id)
+      AND skill_id = sqlc.arg(skill_id)
+      AND eligibility = 'eligible'
+);
+
+-- name: RecordSkillEvolutionTaskDispatchSnapshot :one
+WITH workspace_guard AS MATERIALIZED (
+    SELECT workspace.id
+    FROM workspace
+    WHERE workspace.id = sqlc.arg(workspace_id)
+    FOR KEY SHARE
+)
+INSERT INTO skill_evolution_task_dispatch_snapshot (
+    workspace_id, task_id, agent_id, runtime_id, task_dispatched_at,
+    contract_version, identities, identity_count, identities_digest
+)
+SELECT
+    workspace_guard.id, task.id, agent.id, task.runtime_id, task.dispatched_at,
+    sqlc.arg(contract_version), sqlc.arg(identities)::jsonb,
+    sqlc.arg(identity_count), sqlc.arg(identities_digest)
+FROM workspace_guard
+JOIN agent_task_queue task
+  ON task.id = sqlc.arg(task_id)
+ AND task.runtime_id = sqlc.arg(runtime_id)
+JOIN agent
+  ON agent.id = sqlc.arg(agent_id)
+ AND agent.id = task.agent_id
+ AND agent.workspace_id = workspace_guard.id
+WHERE task.dispatched_at = sqlc.arg(task_dispatched_at)
+  AND task.status IN ('dispatched', 'waiting_local_directory', 'running')
+ON CONFLICT (workspace_id, task_id, runtime_id, task_dispatched_at) DO NOTHING
+RETURNING skill_evolution_task_dispatch_snapshot.*;
+
+-- name: GetSkillEvolutionTaskDispatchSnapshot :one
+SELECT *
+FROM skill_evolution_task_dispatch_snapshot
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND task_id = sqlc.arg(task_id)
+  AND agent_id = sqlc.arg(agent_id)
+  AND runtime_id = sqlc.arg(runtime_id)
+  AND task_dispatched_at = sqlc.arg(task_dispatched_at);
+
+-- name: DeleteWorkspaceSkillEvolutionData :exec
+WITH deleted_scheduler_history AS (
+    DELETE FROM sys_cron_executions
+    WHERE job_name = 'skill_evolution'
+      AND scope_kind = 'workspace'
+      AND scope_id = sqlc.arg(workspace_id)::uuid::text
+), deleted_task_attributions AS (
+    DELETE FROM skill_evolution_task_attribution WHERE skill_evolution_task_attribution.workspace_id = sqlc.arg(workspace_id)
+), deleted_task_dispatch_snapshots AS (
+    DELETE FROM skill_evolution_task_dispatch_snapshot WHERE skill_evolution_task_dispatch_snapshot.workspace_id = sqlc.arg(workspace_id)
+), deleted_task_run_reviews AS (
+    DELETE FROM task_run_review WHERE task_run_review.workspace_id = sqlc.arg(workspace_id)
+), deleted_releases AS (
+    DELETE FROM skill_evolution_release WHERE skill_evolution_release.workspace_id = sqlc.arg(workspace_id)
+), deleted_reviews AS (
+    DELETE FROM skill_evolution_review WHERE skill_evolution_review.workspace_id = sqlc.arg(workspace_id)
+), deleted_evaluations AS (
+    DELETE FROM skill_evolution_evaluation WHERE skill_evolution_evaluation.workspace_id = sqlc.arg(workspace_id)
+), deleted_evidence AS (
+    DELETE FROM skill_evolution_evidence WHERE skill_evolution_evidence.workspace_id = sqlc.arg(workspace_id)
+), deleted_proposals AS (
+    DELETE FROM skill_evolution_proposal WHERE skill_evolution_proposal.workspace_id = sqlc.arg(workspace_id)
+), deleted_revision_files AS (
+    DELETE FROM skill_evolution_revision_file WHERE skill_evolution_revision_file.workspace_id = sqlc.arg(workspace_id)
+), deleted_revisions AS (
+    DELETE FROM skill_evolution_revision WHERE skill_evolution_revision.workspace_id = sqlc.arg(workspace_id)
+)
+DELETE FROM skill_evolution_loop WHERE skill_evolution_loop.workspace_id = sqlc.arg(workspace_id);

@@ -1530,6 +1530,9 @@ type SkillEvolutionProposal struct {
 	CompletedAt              pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt                pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
+	ObservedPattern          pgtype.Text        `json:"observed_pattern"`
+	ExpectedBenefit          pgtype.Text        `json:"expected_benefit"`
+	RegressionRisk           pgtype.Text        `json:"regression_risk"`
 }
 
 type SkillEvolutionRelease struct {
@@ -1593,19 +1596,35 @@ type SkillEvolutionRevisionFile struct {
 }
 
 type SkillEvolutionTaskAttribution struct {
-	ID              pgtype.UUID        `json:"id"`
-	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
-	TaskID          pgtype.UUID        `json:"task_id"`
-	RuntimeID       pgtype.UUID        `json:"runtime_id"`
-	SkillID         pgtype.UUID        `json:"skill_id"`
-	RevisionID      pgtype.UUID        `json:"revision_id"`
-	ManifestVersion int32              `json:"manifest_version"`
-	Source          string             `json:"source"`
-	BundleHash      string             `json:"bundle_hash"`
-	ManifestDigest  string             `json:"manifest_digest"`
-	Eligibility     string             `json:"eligibility"`
-	Reason          string             `json:"reason"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	ID                 pgtype.UUID        `json:"id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	TaskID             pgtype.UUID        `json:"task_id"`
+	RuntimeID          pgtype.UUID        `json:"runtime_id"`
+	SkillID            pgtype.UUID        `json:"skill_id"`
+	RevisionID         pgtype.UUID        `json:"revision_id"`
+	ManifestVersion    int32              `json:"manifest_version"`
+	Source             string             `json:"source"`
+	BundleHash         string             `json:"bundle_hash"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	Eligibility        string             `json:"eligibility"`
+	Reason             string             `json:"reason"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	DispatchSnapshotID pgtype.UUID        `json:"dispatch_snapshot_id"`
+	TaskDispatchedAt   pgtype.Timestamptz `json:"task_dispatched_at"`
+}
+
+type SkillEvolutionTaskDispatchSnapshot struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	TaskID           pgtype.UUID        `json:"task_id"`
+	AgentID          pgtype.UUID        `json:"agent_id"`
+	RuntimeID        pgtype.UUID        `json:"runtime_id"`
+	TaskDispatchedAt pgtype.Timestamptz `json:"task_dispatched_at"`
+	ContractVersion  int32              `json:"contract_version"`
+	Identities       []byte             `json:"identities"`
+	IdentityCount    int32              `json:"identity_count"`
+	IdentitiesDigest string             `json:"identities_digest"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
 type SkillFile struct {
@@ -2050,6 +2069,8 @@ type WikiPageEditProposal struct {
 	ReviewedAt         pgtype.Timestamptz `json:"reviewed_at"`
 	AcceptedRevisionID pgtype.UUID        `json:"accepted_revision_id"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	SourceKind         string             `json:"source_kind"`
+	SourceRefID        pgtype.UUID        `json:"source_ref_id"`
 }
 
 type WikiPageRevision struct {

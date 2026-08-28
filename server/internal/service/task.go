@@ -6524,6 +6524,7 @@ func (s *TaskService) LoadAgentSkills(ctx context.Context, agentID pgtype.UUID) 
 	for _, sk := range skills {
 		data := AgentSkillData{
 			ID:          util.UUIDToString(sk.ID),
+			Source:      agentSkillSource(sk),
 			Name:        sk.Name,
 			Description: sk.Description,
 			Content:     sk.Content,
@@ -6535,6 +6536,13 @@ func (s *TaskService) LoadAgentSkills(ctx context.Context, agentID pgtype.UUID) 
 		result = append(result, data)
 	}
 	return result
+}
+
+func agentSkillSource(skill db.Skill) string {
+	if skill.PluginInstallationID.Valid {
+		return skillbundle.SourcePlugin
+	}
+	return skillbundle.SourceWorkspace
 }
 
 // LoadAgentSkillBundles returns every skill visible to an agent, including

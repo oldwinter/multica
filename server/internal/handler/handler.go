@@ -189,6 +189,7 @@ type DaemonPendingWorkNotifier interface {
 }
 
 type Handler struct {
+	contributors           *contributorRegistry
 	Queries                *db.Queries
 	DB                     dbExecutor
 	TxStarter              txStarter
@@ -484,6 +485,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	wikiSvc := service.NewWikiService(queries, lmWikiTxStarter{txStarter: txStarter})
 	wikiSvc.Events = bus
 	h := &Handler{
+		contributors:                 &contributorRegistry{},
 		Queries:                      queries,
 		DB:                           executor,
 		TxStarter:                    txStarter,

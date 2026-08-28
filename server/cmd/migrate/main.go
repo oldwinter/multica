@@ -381,6 +381,9 @@ var concurrentIndexCleanups = map[string]string{
 	"509_task_run_review_workspace_index":                       "task_run_review_workspace_created_idx",
 	"510_task_run_review_task_index":                            "task_run_review_task_created_idx",
 	"512_agent_task_queue_manual_rerun_agent_index":             "idx_agent_task_queue_manual_rerun_agent_created",
+	"516_skill_evolution_task_dispatch_snapshot_id_index":       "skill_evolution_task_dispatch_snapshot_id_uidx",
+	"517_skill_evolution_task_dispatch_snapshot_identity_index": "skill_evolution_task_dispatch_snapshot_identity_uidx",
+	"521_wiki_page_room_proposal_idempotency_index":             "wiki_page_edit_proposal_room_idempotency_uidx",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction

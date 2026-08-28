@@ -174,7 +174,7 @@ WHERE loop.workspace_id = $5
       )
   )
 ON CONFLICT DO NOTHING
-RETURNING skill_evolution_proposal.id, skill_evolution_proposal.workspace_id, skill_evolution_proposal.skill_id, skill_evolution_proposal.loop_id, skill_evolution_proposal.state, skill_evolution_proposal.base_revision_id, skill_evolution_proposal.candidate_revision_id, skill_evolution_proposal.base_hash, skill_evolution_proposal.candidate_hash, skill_evolution_proposal.rationale_digest, skill_evolution_proposal.failure_reason, skill_evolution_proposal.stale_reason, skill_evolution_proposal.generation_idempotency_key, skill_evolution_proposal.requested_by_id, skill_evolution_proposal.started_at, skill_evolution_proposal.completed_at, skill_evolution_proposal.created_at, skill_evolution_proposal.updated_at
+RETURNING skill_evolution_proposal.id, skill_evolution_proposal.workspace_id, skill_evolution_proposal.skill_id, skill_evolution_proposal.loop_id, skill_evolution_proposal.state, skill_evolution_proposal.base_revision_id, skill_evolution_proposal.candidate_revision_id, skill_evolution_proposal.base_hash, skill_evolution_proposal.candidate_hash, skill_evolution_proposal.rationale_digest, skill_evolution_proposal.failure_reason, skill_evolution_proposal.stale_reason, skill_evolution_proposal.generation_idempotency_key, skill_evolution_proposal.requested_by_id, skill_evolution_proposal.started_at, skill_evolution_proposal.completed_at, skill_evolution_proposal.created_at, skill_evolution_proposal.updated_at, skill_evolution_proposal.observed_pattern, skill_evolution_proposal.expected_benefit, skill_evolution_proposal.regression_risk
 `
 
 type CreateSkillEvolutionProposalParams struct {
@@ -217,6 +217,9 @@ func (q *Queries) CreateSkillEvolutionProposal(ctx context.Context, arg CreateSk
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ObservedPattern,
+		&i.ExpectedBenefit,
+		&i.RegressionRisk,
 	)
 	return i, err
 }
@@ -494,6 +497,41 @@ func (q *Queries) CreateSkillEvolutionRevisionFile(ctx context.Context, arg Crea
 	return i, err
 }
 
+const deleteWorkspaceSkillEvolutionData = `-- name: DeleteWorkspaceSkillEvolutionData :exec
+WITH deleted_scheduler_history AS (
+    DELETE FROM sys_cron_executions
+    WHERE job_name = 'skill_evolution'
+      AND scope_kind = 'workspace'
+      AND scope_id = $1::uuid::text
+), deleted_task_attributions AS (
+    DELETE FROM skill_evolution_task_attribution WHERE skill_evolution_task_attribution.workspace_id = $1
+), deleted_task_dispatch_snapshots AS (
+    DELETE FROM skill_evolution_task_dispatch_snapshot WHERE skill_evolution_task_dispatch_snapshot.workspace_id = $1
+), deleted_task_run_reviews AS (
+    DELETE FROM task_run_review WHERE task_run_review.workspace_id = $1
+), deleted_releases AS (
+    DELETE FROM skill_evolution_release WHERE skill_evolution_release.workspace_id = $1
+), deleted_reviews AS (
+    DELETE FROM skill_evolution_review WHERE skill_evolution_review.workspace_id = $1
+), deleted_evaluations AS (
+    DELETE FROM skill_evolution_evaluation WHERE skill_evolution_evaluation.workspace_id = $1
+), deleted_evidence AS (
+    DELETE FROM skill_evolution_evidence WHERE skill_evolution_evidence.workspace_id = $1
+), deleted_proposals AS (
+    DELETE FROM skill_evolution_proposal WHERE skill_evolution_proposal.workspace_id = $1
+), deleted_revision_files AS (
+    DELETE FROM skill_evolution_revision_file WHERE skill_evolution_revision_file.workspace_id = $1
+), deleted_revisions AS (
+    DELETE FROM skill_evolution_revision WHERE skill_evolution_revision.workspace_id = $1
+)
+DELETE FROM skill_evolution_loop WHERE skill_evolution_loop.workspace_id = $1
+`
+
+func (q *Queries) DeleteWorkspaceSkillEvolutionData(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWorkspaceSkillEvolutionData, workspaceID)
+	return err
+}
+
 const getSkillEvolutionEvaluationByIdempotencyKey = `-- name: GetSkillEvolutionEvaluationByIdempotencyKey :one
 SELECT id, workspace_id, proposal_id, kind, result, adapter, adapter_version, policy_version, result_digest, safe_metrics, cost_usd_ticks, duration_ms, idempotency_key, created_at FROM skill_evolution_evaluation
 WHERE workspace_id = $1
@@ -608,7 +646,7 @@ func (q *Queries) GetSkillEvolutionLoop(ctx context.Context, arg GetSkillEvoluti
 }
 
 const getSkillEvolutionProposal = `-- name: GetSkillEvolutionProposal :one
-SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id, candidate_revision_id, base_hash, candidate_hash, rationale_digest, failure_reason, stale_reason, generation_idempotency_key, requested_by_id, started_at, completed_at, created_at, updated_at FROM skill_evolution_proposal
+SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id, candidate_revision_id, base_hash, candidate_hash, rationale_digest, failure_reason, stale_reason, generation_idempotency_key, requested_by_id, started_at, completed_at, created_at, updated_at, observed_pattern, expected_benefit, regression_risk FROM skill_evolution_proposal
 WHERE workspace_id = $1
   AND id = $2
 `
@@ -640,12 +678,15 @@ func (q *Queries) GetSkillEvolutionProposal(ctx context.Context, arg GetSkillEvo
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ObservedPattern,
+		&i.ExpectedBenefit,
+		&i.RegressionRisk,
 	)
 	return i, err
 }
 
 const getSkillEvolutionProposalByGenerationKey = `-- name: GetSkillEvolutionProposalByGenerationKey :one
-SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id, candidate_revision_id, base_hash, candidate_hash, rationale_digest, failure_reason, stale_reason, generation_idempotency_key, requested_by_id, started_at, completed_at, created_at, updated_at FROM skill_evolution_proposal
+SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id, candidate_revision_id, base_hash, candidate_hash, rationale_digest, failure_reason, stale_reason, generation_idempotency_key, requested_by_id, started_at, completed_at, created_at, updated_at, observed_pattern, expected_benefit, regression_risk FROM skill_evolution_proposal
 WHERE workspace_id = $1
   AND skill_id = $2
   AND generation_idempotency_key = $3
@@ -679,6 +720,9 @@ func (q *Queries) GetSkillEvolutionProposalByGenerationKey(ctx context.Context, 
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ObservedPattern,
+		&i.ExpectedBenefit,
+		&i.RegressionRisk,
 	)
 	return i, err
 }
@@ -854,7 +898,7 @@ func (q *Queries) GetSkillEvolutionRevisionByHash(ctx context.Context, arg GetSk
 }
 
 const getSkillEvolutionTaskAttribution = `-- name: GetSkillEvolutionTaskAttribution :one
-SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at FROM skill_evolution_task_attribution
+SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at, dispatch_snapshot_id, task_dispatched_at FROM skill_evolution_task_attribution
 WHERE workspace_id = $1
   AND task_id = $2
   AND skill_id = $3
@@ -883,8 +927,77 @@ func (q *Queries) GetSkillEvolutionTaskAttribution(ctx context.Context, arg GetS
 		&i.Eligibility,
 		&i.Reason,
 		&i.CreatedAt,
+		&i.DispatchSnapshotID,
+		&i.TaskDispatchedAt,
 	)
 	return i, err
+}
+
+const getSkillEvolutionTaskDispatchSnapshot = `-- name: GetSkillEvolutionTaskDispatchSnapshot :one
+SELECT id, workspace_id, task_id, agent_id, runtime_id, task_dispatched_at, contract_version, identities, identity_count, identities_digest, created_at
+FROM skill_evolution_task_dispatch_snapshot
+WHERE workspace_id = $1
+  AND task_id = $2
+  AND agent_id = $3
+  AND runtime_id = $4
+  AND task_dispatched_at = $5
+`
+
+type GetSkillEvolutionTaskDispatchSnapshotParams struct {
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	TaskID           pgtype.UUID        `json:"task_id"`
+	AgentID          pgtype.UUID        `json:"agent_id"`
+	RuntimeID        pgtype.UUID        `json:"runtime_id"`
+	TaskDispatchedAt pgtype.Timestamptz `json:"task_dispatched_at"`
+}
+
+func (q *Queries) GetSkillEvolutionTaskDispatchSnapshot(ctx context.Context, arg GetSkillEvolutionTaskDispatchSnapshotParams) (SkillEvolutionTaskDispatchSnapshot, error) {
+	row := q.db.QueryRow(ctx, getSkillEvolutionTaskDispatchSnapshot,
+		arg.WorkspaceID,
+		arg.TaskID,
+		arg.AgentID,
+		arg.RuntimeID,
+		arg.TaskDispatchedAt,
+	)
+	var i SkillEvolutionTaskDispatchSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.TaskID,
+		&i.AgentID,
+		&i.RuntimeID,
+		&i.TaskDispatchedAt,
+		&i.ContractVersion,
+		&i.Identities,
+		&i.IdentityCount,
+		&i.IdentitiesDigest,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const hasExactSkillEvolutionTask = `-- name: HasExactSkillEvolutionTask :one
+SELECT EXISTS (
+    SELECT 1
+    FROM skill_evolution_task_attribution
+    WHERE workspace_id = $1
+      AND task_id = $2
+      AND skill_id = $3
+      AND eligibility = 'eligible'
+)
+`
+
+type HasExactSkillEvolutionTaskParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	TaskID      pgtype.UUID `json:"task_id"`
+	SkillID     pgtype.UUID `json:"skill_id"`
+}
+
+func (q *Queries) HasExactSkillEvolutionTask(ctx context.Context, arg HasExactSkillEvolutionTaskParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasExactSkillEvolutionTask, arg.WorkspaceID, arg.TaskID, arg.SkillID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const listEligibleSkillEvolutionLoops = `-- name: ListEligibleSkillEvolutionLoops :many
@@ -905,6 +1018,96 @@ type ListEligibleSkillEvolutionLoopsParams struct {
 
 func (q *Queries) ListEligibleSkillEvolutionLoops(ctx context.Context, arg ListEligibleSkillEvolutionLoopsParams) ([]SkillEvolutionLoop, error) {
 	rows, err := q.db.Query(ctx, listEligibleSkillEvolutionLoops, arg.EligibleAt, arg.AfterID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SkillEvolutionLoop{}
+	for rows.Next() {
+		var i SkillEvolutionLoop
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.SkillID,
+			&i.Enabled,
+			&i.Mode,
+			&i.CooldownSeconds,
+			&i.MinimumSignals,
+			&i.MaxEvidenceRefs,
+			&i.MaxReplaySamples,
+			&i.MaxCostUsdTicks,
+			&i.PolicyVersion,
+			&i.LastObservedAt,
+			&i.LastProposalAt,
+			&i.NextEligibleAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExactSkillEvolutionTaskIDs = `-- name: ListExactSkillEvolutionTaskIDs :many
+SELECT task_id
+FROM skill_evolution_task_attribution
+WHERE workspace_id = $1
+  AND skill_id = $2
+  AND eligibility = 'eligible'
+GROUP BY task_id
+ORDER BY max(created_at) DESC, task_id DESC
+LIMIT $3
+`
+
+type ListExactSkillEvolutionTaskIDsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	SkillID     pgtype.UUID `json:"skill_id"`
+	PageSize    int32       `json:"page_size"`
+}
+
+func (q *Queries) ListExactSkillEvolutionTaskIDs(ctx context.Context, arg ListExactSkillEvolutionTaskIDsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listExactSkillEvolutionTaskIDs, arg.WorkspaceID, arg.SkillID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var task_id pgtype.UUID
+		if err := rows.Scan(&task_id); err != nil {
+			return nil, err
+		}
+		items = append(items, task_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScheduledSkillEvolutionLoops = `-- name: ListScheduledSkillEvolutionLoops :many
+SELECT id, workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at FROM skill_evolution_loop
+WHERE enabled
+  AND mode IN ('observe', 'propose')
+  AND (next_eligible_at IS NULL OR next_eligible_at <= $1::timestamptz)
+  AND ($2::uuid IS NULL OR id > $2::uuid)
+ORDER BY id
+LIMIT $3
+`
+
+type ListScheduledSkillEvolutionLoopsParams struct {
+	EligibleAt pgtype.Timestamptz `json:"eligible_at"`
+	AfterID    pgtype.UUID        `json:"after_id"`
+	PageSize   int32              `json:"page_size"`
+}
+
+func (q *Queries) ListScheduledSkillEvolutionLoops(ctx context.Context, arg ListScheduledSkillEvolutionLoopsParams) ([]SkillEvolutionLoop, error) {
+	rows, err := q.db.Query(ctx, listScheduledSkillEvolutionLoops, arg.EligibleAt, arg.AfterID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -1033,7 +1236,11 @@ func (q *Queries) ListSkillEvolutionEvidence(ctx context.Context, arg ListSkillE
 }
 
 const listSkillEvolutionProposals = `-- name: ListSkillEvolutionProposals :many
-SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id, candidate_revision_id, base_hash, candidate_hash, rationale_digest, failure_reason, stale_reason, generation_idempotency_key, requested_by_id, started_at, completed_at, created_at, updated_at FROM skill_evolution_proposal
+SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id,
+       candidate_revision_id, base_hash, candidate_hash, rationale_digest,
+       failure_reason, stale_reason, generation_idempotency_key,
+       requested_by_id, started_at, completed_at, created_at, updated_at
+FROM skill_evolution_proposal
 WHERE workspace_id = $1
   AND skill_id = $2
   AND (
@@ -1052,7 +1259,28 @@ type ListSkillEvolutionProposalsParams struct {
 	PageSize       int32              `json:"page_size"`
 }
 
-func (q *Queries) ListSkillEvolutionProposals(ctx context.Context, arg ListSkillEvolutionProposalsParams) ([]SkillEvolutionProposal, error) {
+type ListSkillEvolutionProposalsRow struct {
+	ID                       pgtype.UUID        `json:"id"`
+	WorkspaceID              pgtype.UUID        `json:"workspace_id"`
+	SkillID                  pgtype.UUID        `json:"skill_id"`
+	LoopID                   pgtype.UUID        `json:"loop_id"`
+	State                    string             `json:"state"`
+	BaseRevisionID           pgtype.UUID        `json:"base_revision_id"`
+	CandidateRevisionID      pgtype.UUID        `json:"candidate_revision_id"`
+	BaseHash                 string             `json:"base_hash"`
+	CandidateHash            pgtype.Text        `json:"candidate_hash"`
+	RationaleDigest          pgtype.Text        `json:"rationale_digest"`
+	FailureReason            pgtype.Text        `json:"failure_reason"`
+	StaleReason              pgtype.Text        `json:"stale_reason"`
+	GenerationIdempotencyKey string             `json:"generation_idempotency_key"`
+	RequestedByID            pgtype.UUID        `json:"requested_by_id"`
+	StartedAt                pgtype.Timestamptz `json:"started_at"`
+	CompletedAt              pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ListSkillEvolutionProposals(ctx context.Context, arg ListSkillEvolutionProposalsParams) ([]ListSkillEvolutionProposalsRow, error) {
 	rows, err := q.db.Query(ctx, listSkillEvolutionProposals,
 		arg.WorkspaceID,
 		arg.SkillID,
@@ -1064,9 +1292,9 @@ func (q *Queries) ListSkillEvolutionProposals(ctx context.Context, arg ListSkill
 		return nil, err
 	}
 	defer rows.Close()
-	items := []SkillEvolutionProposal{}
+	items := []ListSkillEvolutionProposalsRow{}
 	for rows.Next() {
-		var i SkillEvolutionProposal
+		var i ListSkillEvolutionProposalsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
@@ -1306,7 +1534,7 @@ func (q *Queries) ListSkillEvolutionRevisions(ctx context.Context, arg ListSkill
 }
 
 const listSkillEvolutionTaskAttributions = `-- name: ListSkillEvolutionTaskAttributions :many
-SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at FROM skill_evolution_task_attribution
+SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at, dispatch_snapshot_id, task_dispatched_at FROM skill_evolution_task_attribution
 WHERE workspace_id = $1
   AND task_id = $2
 ORDER BY created_at, id
@@ -1340,6 +1568,8 @@ func (q *Queries) ListSkillEvolutionTaskAttributions(ctx context.Context, arg Li
 			&i.Eligibility,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.DispatchSnapshotID,
+			&i.TaskDispatchedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1400,12 +1630,14 @@ func (q *Queries) RecordSkillEvolutionLoopObservation(ctx context.Context, arg R
 const recordSkillEvolutionTaskAttribution = `-- name: RecordSkillEvolutionTaskAttribution :one
 INSERT INTO skill_evolution_task_attribution (
     workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version,
-    source, bundle_hash, manifest_digest, eligibility, reason
+    source, bundle_hash, manifest_digest, eligibility, reason,
+    dispatch_snapshot_id, task_dispatched_at
 )
 SELECT
     $1, task.id, $2, skill.id, revision.id,
     $3, $4, $5,
-    $6, $7, $8
+    $6, $7, $8,
+    snapshot.id, snapshot.task_dispatched_at
 FROM agent_task_queue task
 JOIN agent
   ON agent.id = task.agent_id
@@ -1422,26 +1654,40 @@ JOIN skill_evolution_revision revision
  AND revision.skill_id = skill.id
  AND revision.source = $4
  AND revision.bundle_hash = $5
-WHERE task.id = $11
+JOIN skill_evolution_task_dispatch_snapshot snapshot
+  ON snapshot.id = $11
+ AND snapshot.workspace_id = $1
+ AND snapshot.task_id = task.id
+ AND snapshot.agent_id = task.agent_id
+ AND snapshot.runtime_id = $2
+ AND snapshot.task_dispatched_at = $12
+ AND snapshot.identities @> jsonb_build_array(jsonb_build_object(
+       'source', $4::text,
+       'skill_id', $9::uuid::text
+     ))
+WHERE task.id = $13
   AND task.runtime_id = $2
+  AND task.dispatched_at = $12
   AND task.completed_at IS NOT NULL
   AND task.status IN ('completed', 'failed', 'cancelled')
 ON CONFLICT (workspace_id, task_id, skill_id) DO NOTHING
-RETURNING skill_evolution_task_attribution.id, skill_evolution_task_attribution.workspace_id, skill_evolution_task_attribution.task_id, skill_evolution_task_attribution.runtime_id, skill_evolution_task_attribution.skill_id, skill_evolution_task_attribution.revision_id, skill_evolution_task_attribution.manifest_version, skill_evolution_task_attribution.source, skill_evolution_task_attribution.bundle_hash, skill_evolution_task_attribution.manifest_digest, skill_evolution_task_attribution.eligibility, skill_evolution_task_attribution.reason, skill_evolution_task_attribution.created_at
+RETURNING skill_evolution_task_attribution.id, skill_evolution_task_attribution.workspace_id, skill_evolution_task_attribution.task_id, skill_evolution_task_attribution.runtime_id, skill_evolution_task_attribution.skill_id, skill_evolution_task_attribution.revision_id, skill_evolution_task_attribution.manifest_version, skill_evolution_task_attribution.source, skill_evolution_task_attribution.bundle_hash, skill_evolution_task_attribution.manifest_digest, skill_evolution_task_attribution.eligibility, skill_evolution_task_attribution.reason, skill_evolution_task_attribution.created_at, skill_evolution_task_attribution.dispatch_snapshot_id, skill_evolution_task_attribution.task_dispatched_at
 `
 
 type RecordSkillEvolutionTaskAttributionParams struct {
-	WorkspaceID     pgtype.UUID `json:"workspace_id"`
-	RuntimeID       pgtype.UUID `json:"runtime_id"`
-	ManifestVersion int32       `json:"manifest_version"`
-	Source          string      `json:"source"`
-	BundleHash      string      `json:"bundle_hash"`
-	ManifestDigest  string      `json:"manifest_digest"`
-	Eligibility     string      `json:"eligibility"`
-	Reason          string      `json:"reason"`
-	SkillID         pgtype.UUID `json:"skill_id"`
-	RevisionID      pgtype.UUID `json:"revision_id"`
-	TaskID          pgtype.UUID `json:"task_id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	RuntimeID          pgtype.UUID        `json:"runtime_id"`
+	ManifestVersion    int32              `json:"manifest_version"`
+	Source             string             `json:"source"`
+	BundleHash         string             `json:"bundle_hash"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	Eligibility        string             `json:"eligibility"`
+	Reason             string             `json:"reason"`
+	SkillID            pgtype.UUID        `json:"skill_id"`
+	RevisionID         pgtype.UUID        `json:"revision_id"`
+	DispatchSnapshotID pgtype.UUID        `json:"dispatch_snapshot_id"`
+	TaskDispatchedAt   pgtype.Timestamptz `json:"task_dispatched_at"`
+	TaskID             pgtype.UUID        `json:"task_id"`
 }
 
 func (q *Queries) RecordSkillEvolutionTaskAttribution(ctx context.Context, arg RecordSkillEvolutionTaskAttributionParams) (SkillEvolutionTaskAttribution, error) {
@@ -1456,6 +1702,8 @@ func (q *Queries) RecordSkillEvolutionTaskAttribution(ctx context.Context, arg R
 		arg.Reason,
 		arg.SkillID,
 		arg.RevisionID,
+		arg.DispatchSnapshotID,
+		arg.TaskDispatchedAt,
 		arg.TaskID,
 	)
 	var i SkillEvolutionTaskAttribution
@@ -1473,6 +1721,78 @@ func (q *Queries) RecordSkillEvolutionTaskAttribution(ctx context.Context, arg R
 		&i.Eligibility,
 		&i.Reason,
 		&i.CreatedAt,
+		&i.DispatchSnapshotID,
+		&i.TaskDispatchedAt,
+	)
+	return i, err
+}
+
+const recordSkillEvolutionTaskDispatchSnapshot = `-- name: RecordSkillEvolutionTaskDispatchSnapshot :one
+WITH workspace_guard AS MATERIALIZED (
+    SELECT workspace.id
+    FROM workspace
+    WHERE workspace.id = $9
+    FOR KEY SHARE
+)
+INSERT INTO skill_evolution_task_dispatch_snapshot (
+    workspace_id, task_id, agent_id, runtime_id, task_dispatched_at,
+    contract_version, identities, identity_count, identities_digest
+)
+SELECT
+    workspace_guard.id, task.id, agent.id, task.runtime_id, task.dispatched_at,
+    $1, $2::jsonb,
+    $3, $4
+FROM workspace_guard
+JOIN agent_task_queue task
+  ON task.id = $5
+ AND task.runtime_id = $6
+JOIN agent
+  ON agent.id = $7
+ AND agent.id = task.agent_id
+ AND agent.workspace_id = workspace_guard.id
+WHERE task.dispatched_at = $8
+  AND task.status IN ('dispatched', 'waiting_local_directory', 'running')
+ON CONFLICT (workspace_id, task_id, runtime_id, task_dispatched_at) DO NOTHING
+RETURNING skill_evolution_task_dispatch_snapshot.id, skill_evolution_task_dispatch_snapshot.workspace_id, skill_evolution_task_dispatch_snapshot.task_id, skill_evolution_task_dispatch_snapshot.agent_id, skill_evolution_task_dispatch_snapshot.runtime_id, skill_evolution_task_dispatch_snapshot.task_dispatched_at, skill_evolution_task_dispatch_snapshot.contract_version, skill_evolution_task_dispatch_snapshot.identities, skill_evolution_task_dispatch_snapshot.identity_count, skill_evolution_task_dispatch_snapshot.identities_digest, skill_evolution_task_dispatch_snapshot.created_at
+`
+
+type RecordSkillEvolutionTaskDispatchSnapshotParams struct {
+	ContractVersion  int32              `json:"contract_version"`
+	Identities       []byte             `json:"identities"`
+	IdentityCount    int32              `json:"identity_count"`
+	IdentitiesDigest string             `json:"identities_digest"`
+	TaskID           pgtype.UUID        `json:"task_id"`
+	RuntimeID        pgtype.UUID        `json:"runtime_id"`
+	AgentID          pgtype.UUID        `json:"agent_id"`
+	TaskDispatchedAt pgtype.Timestamptz `json:"task_dispatched_at"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+}
+
+func (q *Queries) RecordSkillEvolutionTaskDispatchSnapshot(ctx context.Context, arg RecordSkillEvolutionTaskDispatchSnapshotParams) (SkillEvolutionTaskDispatchSnapshot, error) {
+	row := q.db.QueryRow(ctx, recordSkillEvolutionTaskDispatchSnapshot,
+		arg.ContractVersion,
+		arg.Identities,
+		arg.IdentityCount,
+		arg.IdentitiesDigest,
+		arg.TaskID,
+		arg.RuntimeID,
+		arg.AgentID,
+		arg.TaskDispatchedAt,
+		arg.WorkspaceID,
+	)
+	var i SkillEvolutionTaskDispatchSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.TaskID,
+		&i.AgentID,
+		&i.RuntimeID,
+		&i.TaskDispatchedAt,
+		&i.ContractVersion,
+		&i.Identities,
+		&i.IdentityCount,
+		&i.IdentitiesDigest,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -1483,14 +1803,17 @@ SET state = $1,
     candidate_revision_id = COALESCE($2::uuid, proposal.candidate_revision_id),
     candidate_hash = COALESCE($3::text, proposal.candidate_hash),
     rationale_digest = COALESCE($4::text, proposal.rationale_digest),
-    failure_reason = $5::text,
-    stale_reason = $6::text,
+    observed_pattern = COALESCE($5::text, proposal.observed_pattern),
+    expected_benefit = COALESCE($6::text, proposal.expected_benefit),
+    regression_risk = COALESCE($7::text, proposal.regression_risk),
+    failure_reason = $8::text,
+    stale_reason = $9::text,
     started_at = CASE WHEN $1::text = 'running' THEN COALESCE(proposal.started_at, now()) ELSE proposal.started_at END,
     completed_at = CASE WHEN $1::text IN ('failed', 'stale', 'rejected', 'published', 'publication_unknown') THEN now() ELSE proposal.completed_at END,
     updated_at = now()
-WHERE proposal.workspace_id = $7
-  AND proposal.id = $8
-  AND proposal.state = $9
+WHERE proposal.workspace_id = $10
+  AND proposal.id = $11
+  AND proposal.state = $12
   AND (
       $2::uuid IS NULL
       OR EXISTS (
@@ -1501,7 +1824,7 @@ WHERE proposal.workspace_id = $7
             AND revision.bundle_hash = $3::text
       )
   )
-RETURNING proposal.id, proposal.workspace_id, proposal.skill_id, proposal.loop_id, proposal.state, proposal.base_revision_id, proposal.candidate_revision_id, proposal.base_hash, proposal.candidate_hash, proposal.rationale_digest, proposal.failure_reason, proposal.stale_reason, proposal.generation_idempotency_key, proposal.requested_by_id, proposal.started_at, proposal.completed_at, proposal.created_at, proposal.updated_at
+RETURNING proposal.id, proposal.workspace_id, proposal.skill_id, proposal.loop_id, proposal.state, proposal.base_revision_id, proposal.candidate_revision_id, proposal.base_hash, proposal.candidate_hash, proposal.rationale_digest, proposal.failure_reason, proposal.stale_reason, proposal.generation_idempotency_key, proposal.requested_by_id, proposal.started_at, proposal.completed_at, proposal.created_at, proposal.updated_at, proposal.observed_pattern, proposal.expected_benefit, proposal.regression_risk
 `
 
 type TransitionSkillEvolutionProposalParams struct {
@@ -1509,6 +1832,9 @@ type TransitionSkillEvolutionProposalParams struct {
 	CandidateRevisionID pgtype.UUID `json:"candidate_revision_id"`
 	CandidateHash       pgtype.Text `json:"candidate_hash"`
 	RationaleDigest     pgtype.Text `json:"rationale_digest"`
+	ObservedPattern     pgtype.Text `json:"observed_pattern"`
+	ExpectedBenefit     pgtype.Text `json:"expected_benefit"`
+	RegressionRisk      pgtype.Text `json:"regression_risk"`
 	FailureReason       pgtype.Text `json:"failure_reason"`
 	StaleReason         pgtype.Text `json:"stale_reason"`
 	WorkspaceID         pgtype.UUID `json:"workspace_id"`
@@ -1522,6 +1848,9 @@ func (q *Queries) TransitionSkillEvolutionProposal(ctx context.Context, arg Tran
 		arg.CandidateRevisionID,
 		arg.CandidateHash,
 		arg.RationaleDigest,
+		arg.ObservedPattern,
+		arg.ExpectedBenefit,
+		arg.RegressionRisk,
 		arg.FailureReason,
 		arg.StaleReason,
 		arg.WorkspaceID,
@@ -1548,6 +1877,9 @@ func (q *Queries) TransitionSkillEvolutionProposal(ctx context.Context, arg Tran
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ObservedPattern,
+		&i.ExpectedBenefit,
+		&i.RegressionRisk,
 	)
 	return i, err
 }
