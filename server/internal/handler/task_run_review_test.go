@@ -1,0 +1,192 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/multica-ai/multica/server/internal/service"
+)
+
+const (
+	handlerTaskReviewWorkspaceID = "11111111-1111-4111-8111-111111111111"
+	handlerTaskReviewUserID      = "22222222-2222-4222-8222-222222222222"
+	handlerTaskReviewTaskID      = "33333333-3333-4333-8333-333333333333"
+	handlerTaskReviewReviewID    = "44444444-4444-4444-8444-444444444444"
+)
+
+type fakeTaskRunReviewHTTPService struct {
+	createInput service.CreateTaskRunReviewInput
+	workspaceID string
+	reviewerID  string
+	calls       int
+	err         error
+}
+
+func (f *fakeTaskRunReviewHTTPService) CreateTaskRunReview(_ context.Context, workspaceID, reviewerID string, input service.CreateTaskRunReviewInput) (service.TaskRunReviewEvidence, error) {
+	f.calls++
+	f.workspaceID, f.reviewerID, f.createInput = workspaceID, reviewerID, input
+	if f.err != nil {
+		return service.TaskRunReviewEvidence{}, f.err
+	}
+	return service.TaskRunReviewEvidence{TaskRunReviewRecord: service.TaskRunReviewRecord{
+		ID: handlerTaskReviewReviewID, WorkspaceID: workspaceID, TaskID: input.TaskID,
+		ReviewerID: reviewerID, Outcome: input.Outcome, Target: input.Target,
+		Correction: input.Correction, Reason: input.Reason,
+		Digest:    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		CreatedAt: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
+	}}, nil
+}
+
+func (f *fakeTaskRunReviewHTTPService) ListTaskRunReviewRefs(context.Context, string, string, string, int) (service.TaskRunReviewRefPage, error) {
+	f.calls++
+	if f.err != nil {
+		return service.TaskRunReviewRefPage{}, f.err
+	}
+	return service.TaskRunReviewRefPage{Refs: []service.TaskRunReviewRef{{
+		ID: handlerTaskReviewReviewID, WorkspaceID: handlerTaskReviewWorkspaceID,
+		TaskID: handlerTaskReviewTaskID, ReviewerID: handlerTaskReviewUserID,
+		Outcome: service.TaskRunReviewOutcomeHelpful, Target: service.TaskRunReviewTargetKnowledge,
+		Digest:    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		CreatedAt: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
+	}}}, nil
+}
+
+func (f *fakeTaskRunReviewHTTPService) LoadTaskRunReviewEvidence(context.Context, string, string, string) (service.TaskRunReviewEvidence, error) {
+	f.calls++
+	return service.TaskRunReviewEvidence{}, f.err
+}
+
+func (f *fakeTaskRunReviewHTTPService) ListManualRerunRefs(context.Context, string, string, string, int) (service.ManualRerunPage, error) {
+	f.calls++
+	return service.ManualRerunPage{}, f.err
+}
+
+func (f *fakeTaskRunReviewHTTPService) LoadManualRerunEvidence(context.Context, string, string, string) (service.ManualRerunEvidence, error) {
+	f.calls++
+	return service.ManualRerunEvidence{}, f.err
+}
+
+func taskRunReviewRequest(method, target, body string, params map[string]string) *http.Request {
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-ID", handlerTaskReviewUserID)
+	routeContext := chi.NewRouteContext()
+	for key, value := range params {
+		routeContext.URLParams.Add(key, value)
+	}
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeContext))
+}
+
+func TestTaskRunReviewHTTPCreateContract(t *testing.T) {
+	fake := &fakeTaskRunReviewHTTPService{}
+	h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+	req := taskRunReviewRequest(http.MethodPost,
+		"/api/task-run-reviews?workspace_id="+strings.ToUpper(handlerTaskReviewWorkspaceID),
+		`{"outcome":"needs_correction","target":"product_defect","correction":"Bound the retry.","reason":"The task retried forever."}`,
+		map[string]string{"taskId": handlerTaskReviewTaskID},
+	)
+	w := httptest.NewRecorder()
+	h.Create(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", w.Code, w.Body.String())
+	}
+	if fake.calls != 1 || fake.workspaceID != handlerTaskReviewWorkspaceID || fake.reviewerID != handlerTaskReviewUserID || fake.createInput.TaskID != handlerTaskReviewTaskID {
+		t.Fatalf("service call = %#v", fake)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || response["id"] != handlerTaskReviewReviewID {
+		t.Fatalf("response = %s, error = %v", w.Body.String(), err)
+	}
+}
+
+func TestTaskRunReviewHTTPRejectsMachineActorsBeforeService(t *testing.T) {
+	for _, source := range []string{"task_token", "cloud_pat"} {
+		t.Run(source, func(t *testing.T) {
+			fake := &fakeTaskRunReviewHTTPService{}
+			h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+			req := taskRunReviewRequest(http.MethodGet,
+				"/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID, "", nil,
+			)
+			req.Header.Set("X-Actor-Source", source)
+			w := httptest.NewRecorder()
+			h.List(w, req)
+			if w.Code != http.StatusForbidden || fake.calls != 0 {
+				t.Fatalf("status = %d, calls = %d: %s", w.Code, fake.calls, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestTaskRunReviewHTTPRejectsUnknownAndOversizeBodies(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{name: "unknown field", body: `{"outcome":"helpful","target":"knowledge","reason":"ok","feedback":"leak"}`, wantStatus: http.StatusBadRequest},
+		{name: "oversize", body: `{"outcome":"helpful","target":"knowledge","reason":"` + strings.Repeat("x", taskRunReviewRequestBodyLimit) + `"}`, wantStatus: http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeTaskRunReviewHTTPService{}
+			h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+			req := taskRunReviewRequest(http.MethodPost,
+				"/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID,
+				test.body, map[string]string{"taskId": handlerTaskReviewTaskID},
+			)
+			w := httptest.NewRecorder()
+			h.Create(w, req)
+			if w.Code != test.wantStatus || fake.calls != 0 {
+				t.Fatalf("status = %d, want %d; calls = %d: %s", w.Code, test.wantStatus, fake.calls, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestTaskRunReviewHTTPListIsContentFree(t *testing.T) {
+	fake := &fakeTaskRunReviewHTTPService{}
+	h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+	req := taskRunReviewRequest(http.MethodGet,
+		"/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID+"&limit=10", "", nil,
+	)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "correction") || strings.Contains(w.Body.String(), "reason") {
+		t.Fatalf("list response exposed review content: %s", w.Body.String())
+	}
+}
+
+func TestTaskRunReviewHTTPMapsLifecycleErrors(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		want int
+	}{
+		{service.ErrTaskRunReviewInvalid, http.StatusBadRequest},
+		{service.ErrTaskRunReviewTaskActive, http.StatusConflict},
+		{service.ErrTaskRunReviewSourceChanged, http.StatusConflict},
+		{service.ErrTaskRunReviewForbidden, http.StatusForbidden},
+		{service.ErrTaskRunReviewNotFound, http.StatusNotFound},
+		{service.ErrTaskRunReviewUnavailable, http.StatusServiceUnavailable},
+		{errors.New("database offline"), http.StatusInternalServerError},
+	} {
+		fake := &fakeTaskRunReviewHTTPService{err: test.err}
+		h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+		req := taskRunReviewRequest(http.MethodGet,
+			"/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID, "", nil,
+		)
+		w := httptest.NewRecorder()
+		h.List(w, req)
+		if w.Code != test.want {
+			t.Fatalf("error %v: status = %d, want %d: %s", test.err, w.Code, test.want, w.Body.String())
+		}
+	}
+}
