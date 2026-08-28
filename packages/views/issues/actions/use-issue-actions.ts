@@ -28,6 +28,7 @@ export interface UseIssueActionsResult {
   openInNewTab: () => void;
   togglePin: () => void;
   copyLink: () => Promise<void>;
+  copyIdentifier: () => Promise<void>;
   copyMarkdownLink: () => Promise<void>;
   openCreateSubIssue: () => void;
   openSetParent: () => void;
@@ -170,6 +171,16 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     }
   }, [paths, issueId, issueIdentifier, navigation, t]);
 
+  const copyIdentifier = useCallback(async () => {
+    const identifier = issueIdentifier || issueId;
+    if (!identifier) return;
+    if (await copyText(identifier)) {
+      toast.success(t(($) => $.detail.identifier_copied, { identifier }));
+    } else {
+      toast.error(t(($) => $.detail.identifier_copy_failed));
+    }
+  }, [issueId, issueIdentifier, t]);
+
   const copyMarkdownLink = useCallback(async () => {
     if (!issueId || !issueTitle) return;
     const identifier = issueIdentifier || issueId;
@@ -280,6 +291,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     openInNewTab,
     togglePin,
     copyLink,
+    copyIdentifier,
     copyMarkdownLink,
     openCreateSubIssue,
     openSetParent,

@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  Hash,
   Link2,
   Network,
   Pin,
@@ -116,6 +117,7 @@ export function IssueActionsMenuItems({
     openInNewTab,
     togglePin,
     copyLink,
+    copyIdentifier,
     copyMarkdownLink,
     openCreateSubIssue,
     openSetParent,
@@ -316,6 +318,10 @@ export function IssueActionsMenuItems({
       <P.Item onClick={copyLink}>
         <Link2 className="h-3.5 w-3.5" />
         {t(($) => $.actions.copy_link)}
+      </P.Item>
+      <P.Item onClick={copyIdentifier}>
+        <Hash className="h-3.5 w-3.5" />
+        {t(($) => $.actions.copy_identifier)}
       </P.Item>
       <P.Item onClick={copyMarkdownLink}>
         <FileText className="h-3.5 w-3.5" />
