@@ -414,6 +414,7 @@
     "cancel_edit": "キャンセル",
     "copy_action": "コピー",
     "copy_link_action": "コメントリンクをコピー",
+    "quote_reply_action": "返信に引用",
     "copied_toast": "コピーしました",
     "edit_action": "編集",
     "update_failed": "コメントを更新できませんでした",

@@ -36,6 +36,13 @@ interface ReplyInputProps {
    *  Required for replies inside virtualized timeline threads, where the
    *  enclosing CommentCard may unmount on scroll-out. */
   draftKey?: CommentDraftKey;
+  /** One-shot Markdown insertion requested by the enclosing thread action. */
+  insertRequest?: ReplyInsertRequest;
+}
+
+interface ReplyInsertRequest {
+  id: number;
+  markdown: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +59,7 @@ function ReplyInput({
   onAccepted,
   size = "default",
   draftKey,
+  insertRequest,
 }: ReplyInputProps) {
   const { t } = useT("issues");
   const { t: tEditor } = useT("editor");
@@ -95,6 +103,20 @@ function ReplyInput({
       (draftKey ? useCommentDraftStore.getState().getUploads(draftKey).length > 0 : false),
     editorRef,
   });
+  const { activate: activateForInsert, ready: readyForInsert } = lazy;
+  const handledInsertRequestRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!insertRequest || handledInsertRequestRef.current === insertRequest.id) return;
+    if (!readyForInsert) {
+      activateForInsert();
+      return;
+    }
+    if (!editorRef.current?.insertMarkdownAtEnd(`${insertRequest.markdown}\n\n`)) return;
+
+    handledInsertRequestRef.current = insertRequest.id;
+    editorRef.current.focus();
+  }, [activateForInsert, insertRequest, readyForInsert]);
   const { isDragOver, dropZoneProps } = useFileDropZone({
     onDrop: lazy.uploadOrQueue,
   });
@@ -321,4 +343,4 @@ function ReplyInput({
   );
 }
 
-export { ReplyInput, type ReplyInputProps };
+export { ReplyInput, type ReplyInputProps, type ReplyInsertRequest };
