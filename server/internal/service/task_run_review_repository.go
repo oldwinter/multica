@@ -30,29 +30,26 @@ func NewDBTaskRunReviewRepository(queries *db.Queries) *DBTaskRunReviewRepositor
 
 var _ TaskRunReviewRepository = (*DBTaskRunReviewRepository)(nil)
 
-func (r *DBTaskRunReviewRepository) CreateTaskRunReview(ctx context.Context, record TaskRunReviewRecord) error {
+func (r *DBTaskRunReviewRepository) CreateTaskRunReview(ctx context.Context, record TaskRunReviewRecord) (TaskRunReviewRecord, error) {
 	if r == nil || r.queries == nil {
-		return ErrTaskRunReviewUnavailable
+		return TaskRunReviewRecord{}, ErrTaskRunReviewUnavailable
 	}
 	wantDigest, err := canonicalTaskRunReviewDigest(record)
 	if err != nil || record.Digest != wantDigest {
-		return ErrTaskRunReviewInvalid
+		return TaskRunReviewRecord{}, ErrTaskRunReviewInvalid
 	}
 	params, err := taskRunReviewCreateParams(record)
 	if err != nil {
-		return err
+		return TaskRunReviewRecord{}, err
 	}
 	created, err := r.queries.CreateTaskRunReview(ctx, params)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrTaskRunReviewSourceChanged
+		return TaskRunReviewRecord{}, ErrTaskRunReviewSourceChanged
 	}
 	if err != nil {
-		return taskRunReviewRepositoryError(err)
+		return TaskRunReviewRecord{}, taskRunReviewRepositoryError(err)
 	}
-	if !sameTaskRunReviewRecord(taskRunReviewRecord(created), record) {
-		return ErrTaskRunReviewSourceChanged
-	}
-	return nil
+	return taskRunReviewRecord(created), nil
 }
 
 func (r *DBTaskRunReviewRepository) ListTaskRunReviewRefs(ctx context.Context, workspaceID, cursor string, limit int) (TaskRunReviewRefPage, error) {
@@ -207,7 +204,7 @@ func taskRunReviewCreateParams(record TaskRunReviewRecord) (db.CreateTaskRunRevi
 		ID: id, WorkspaceID: workspaceID, TaskID: taskID, ReviewerID: reviewerID,
 		Outcome: string(record.Outcome), Target: string(record.Target), SkillID: skillID,
 		Correction: pgtype.Text{String: record.Correction, Valid: record.Correction != ""},
-		Reason:     record.Reason, Digest: record.Digest,
+		Reason:     record.Reason, IdempotencyKey: record.IdempotencyKey, Digest: record.Digest,
 		CreatedAt: pgtype.Timestamptz{Time: record.CreatedAt, Valid: true},
 	}, nil
 }
@@ -218,7 +215,7 @@ func taskRunReviewRecord(row db.TaskRunReview) TaskRunReviewRecord {
 		TaskID: util.UUIDToString(row.TaskID), ReviewerID: util.UUIDToString(row.ReviewerID),
 		Outcome: TaskRunReviewOutcome(row.Outcome), Target: TaskRunReviewTarget(row.Target),
 		SkillID: util.UUIDToString(row.SkillID), Correction: nullableTaskRunReviewText(row.Correction),
-		Reason: row.Reason, Digest: row.Digest, CreatedAt: nullableTaskRunReviewTime(row.CreatedAt),
+		Reason: row.Reason, IdempotencyKey: row.IdempotencyKey, Digest: row.Digest, CreatedAt: nullableTaskRunReviewTime(row.CreatedAt),
 	}
 }
 
@@ -277,7 +274,7 @@ func sameTaskRunReviewRecord(left, right TaskRunReviewRecord) bool {
 	return left.ID == right.ID && left.WorkspaceID == right.WorkspaceID && left.TaskID == right.TaskID &&
 		left.ReviewerID == right.ReviewerID && left.Outcome == right.Outcome && left.Target == right.Target &&
 		left.SkillID == right.SkillID && left.Correction == right.Correction && left.Reason == right.Reason &&
-		left.Digest == right.Digest && left.CreatedAt.Equal(right.CreatedAt)
+		left.IdempotencyKey == right.IdempotencyKey && left.Digest == right.Digest && left.CreatedAt.Equal(right.CreatedAt)
 }
 
 func nullableTaskRunReviewText(value pgtype.Text) string {

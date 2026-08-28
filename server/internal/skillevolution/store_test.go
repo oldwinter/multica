@@ -553,7 +553,8 @@ func TestTaskReviewAndManualRerunQueriesHideCrossWorkspaceRows(t *testing.T) {
 	review, err := queries.CreateTaskRunReview(ctx, db.CreateTaskRunReviewParams{
 		ID: reviewID, WorkspaceID: workspaceA, TaskID: sourceA, ReviewerID: userA,
 		Outcome: "needs_correction", Target: "skill_procedure", SkillID: skillA,
-		Correction: pgtype.Text{String: "check output", Valid: true}, Reason: "incorrect output", Digest: string(testDigest("task-review")),
+		Correction: pgtype.Text{String: "check output", Valid: true}, Reason: "incorrect output", IdempotencyKey: "store-test:review",
+		Digest:    string(testDigest("task-review")),
 		CreatedAt: pgtype.Timestamptz{Time: firstReviewAt, Valid: true},
 	})
 	if err != nil || review.ID != reviewID {
@@ -565,7 +566,8 @@ func TestTaskReviewAndManualRerunQueriesHideCrossWorkspaceRows(t *testing.T) {
 	if _, err := queries.CreateTaskRunReview(ctx, db.CreateTaskRunReviewParams{
 		ID: testUUID(), WorkspaceID: workspaceA, TaskID: sourceA, ReviewerID: userA,
 		Outcome: "helpful", Target: "skill_procedure", SkillID: skillB,
-		Reason: "reviewed", Digest: string(testDigest("cross-skill")), CreatedAt: pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true},
+		Reason: "reviewed", IdempotencyKey: "store-test:cross-skill", Digest: string(testDigest("cross-skill")),
+		CreatedAt: pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true},
 	}); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("cross-workspace target Skill error = %v, want no rows", err)
 	}
@@ -575,7 +577,7 @@ func TestTaskReviewAndManualRerunQueriesHideCrossWorkspaceRows(t *testing.T) {
 	serviceReview, err := service.NewTaskRunReviewService(repository, persistenceTaskReviewAccess{
 		workspaceID: workspaceAString, reviewerID: util.UUIDToString(userA), taskID: util.UUIDToString(sourceA), agentID: util.UUIDToString(agentA),
 	}).CreateTaskRunReview(ctx, workspaceAString, util.UUIDToString(userA), service.CreateTaskRunReviewInput{
-		TaskID: util.UUIDToString(sourceA), Outcome: service.TaskRunReviewOutcomeHelpful,
+		TaskID: util.UUIDToString(sourceA), IdempotencyKey: "store-test:service-review", Outcome: service.TaskRunReviewOutcomeHelpful,
 		Target: service.TaskRunReviewTargetKnowledge, Reason: "useful run",
 	})
 	if err != nil {
@@ -912,7 +914,7 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	for _, file := range files {
 		name := filepath.Base(file)
 		prefix := strings.SplitN(name, "_", 2)[0]
-		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "522") {
+		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "524") {
 			continue
 		}
 		sql, err := os.ReadFile(file)

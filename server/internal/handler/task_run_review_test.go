@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
 const (
@@ -89,7 +90,7 @@ func TestTaskRunReviewHTTPCreateContract(t *testing.T) {
 	h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
 	req := taskRunReviewRequest(http.MethodPost,
 		"/api/task-run-reviews?workspace_id="+strings.ToUpper(handlerTaskReviewWorkspaceID),
-		`{"outcome":"needs_correction","target":"product_defect","correction":"Bound the retry.","reason":"The task retried forever."}`,
+		`{"idempotency_key":"task-review:handler-contract","outcome":"needs_correction","target":"product_defect","correction":"Bound the retry.","reason":"The task retried forever."}`,
 		map[string]string{"taskId": handlerTaskReviewTaskID},
 	)
 	w := httptest.NewRecorder()
@@ -97,12 +98,16 @@ func TestTaskRunReviewHTTPCreateContract(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201: %s", w.Code, w.Body.String())
 	}
-	if fake.calls != 1 || fake.workspaceID != handlerTaskReviewWorkspaceID || fake.reviewerID != handlerTaskReviewUserID || fake.createInput.TaskID != handlerTaskReviewTaskID {
+	if fake.calls != 1 || fake.workspaceID != handlerTaskReviewWorkspaceID || fake.reviewerID != handlerTaskReviewUserID ||
+		fake.createInput.TaskID != handlerTaskReviewTaskID || fake.createInput.IdempotencyKey != "task-review:handler-contract" {
 		t.Fatalf("service call = %#v", fake)
 	}
 	var response map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || response["id"] != handlerTaskReviewReviewID {
 		t.Fatalf("response = %s, error = %v", w.Body.String(), err)
+	}
+	if _, exposed := response["idempotency_key"]; exposed {
+		t.Fatalf("response exposed idempotency key: %s", w.Body.String())
 	}
 }
 
@@ -188,5 +193,76 @@ func TestTaskRunReviewHTTPMapsLifecycleErrors(t *testing.T) {
 		if w.Code != test.want {
 			t.Fatalf("error %v: status = %d, want %d: %s", test.err, w.Code, test.want, w.Body.String())
 		}
+	}
+}
+
+func TestTaskRunReviewHTTPCreateIdempotencyLivePostgres(t *testing.T) {
+	if testHandler == nil || testPool == nil || dbfx == nil {
+		t.Skip("handler database fixture is unavailable")
+	}
+	var schemaReady bool
+	dbfx.QueryRow(t, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = current_schema()
+			  AND table_name = 'task_run_review'
+			  AND column_name = 'idempotency_key'
+		)
+	`).Scan(&schemaReady)
+	if !schemaReady {
+		t.Skip("task run review idempotency migrations are not applied")
+	}
+
+	runtimeID := dbfx.Runtime(t, "task review idempotency runtime")
+	agentID := dbfx.Agent(t, "task review idempotency agent", runtimeID)
+	taskID := dbfx.Task(t, agentID, testutil.Cols{
+		"status": "completed", "completed_at": testutil.Raw("now()"),
+	})
+	dbfx.Cleanup(t, `DELETE FROM task_run_review WHERE task_id = $1`, taskID)
+	svc := service.NewTaskRunReviewService(
+		service.NewDBTaskRunReviewRepository(testHandler.Queries),
+		NewTaskRunReviewTaskAccess(testHandler),
+	)
+	h := NewTaskRunReviewHTTPHandler(testHandler, svc)
+	requestBody := map[string]any{
+		"idempotency_key": "task-review:http-live",
+		"outcome":         "needs_correction",
+		"target":          "product_defect",
+		"correction":      "Bound the retry.",
+		"reason":          "The task retried forever.",
+	}
+	post := func(body any) *http.Request {
+		req := testutil.JSONRequest(http.MethodPost, "/api/tasks/"+taskID+"/review?workspace_id="+testWorkspaceID, body)
+		req = testutil.WithHeaders(req, "X-User-ID", testUserID)
+		return testutil.WithURLParams(req, "taskId", taskID)
+	}
+
+	firstResponse := testutil.Call(t, h.Create, post(requestBody)).Want(http.StatusCreated)
+	var first service.TaskRunReviewEvidence
+	firstResponse.JSON(&first)
+	if strings.Contains(firstResponse.Text(), "idempotency_key") || strings.Contains(firstResponse.Text(), "task-review:http-live") {
+		t.Fatalf("create response exposed idempotency key: %s", firstResponse.Text())
+	}
+	var replayed service.TaskRunReviewEvidence
+	testutil.Call(t, h.Create, post(requestBody)).Want(http.StatusCreated).JSON(&replayed)
+	if replayed.ID != first.ID || replayed.Digest != first.Digest || !replayed.CreatedAt.Equal(first.CreatedAt) {
+		t.Fatalf("HTTP replay diverged: first=%#v replayed=%#v", first, replayed)
+	}
+
+	conflict := map[string]any{}
+	for key, value := range requestBody {
+		conflict[key] = value
+	}
+	conflict["reason"] = "Different canonical payload."
+	testutil.Call(t, h.Create, post(conflict)).Want(http.StatusConflict)
+	for _, body := range []map[string]any{
+		{"outcome": "helpful", "target": "knowledge", "reason": "missing key"},
+		{"idempotency_key": " \t ", "outcome": "helpful", "target": "knowledge", "reason": "blank key"},
+		{"idempotency_key": strings.Repeat("x", service.MaxTaskRunReviewIdempotencyKeyBytes+1), "outcome": "helpful", "target": "knowledge", "reason": "long key"},
+	} {
+		testutil.Call(t, h.Create, post(body)).Want(http.StatusBadRequest)
+	}
+	if count := dbfx.Count(t, `SELECT count(*) FROM task_run_review WHERE task_id = $1`, taskID); count != 1 {
+		t.Fatalf("HTTP retries persisted %d rows, want 1", count)
 	}
 }
