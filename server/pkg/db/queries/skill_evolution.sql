@@ -399,20 +399,28 @@ ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_size);
 
 -- name: RecordSkillEvolutionTaskAttribution :one
+WITH workspace_guard AS MATERIALIZED (
+    SELECT workspace.id
+    FROM workspace
+    WHERE workspace.id = sqlc.arg(workspace_id)
+    FOR KEY SHARE
+)
 INSERT INTO skill_evolution_task_attribution (
     workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version,
     source, bundle_hash, manifest_digest, eligibility, reason,
     dispatch_snapshot_id, task_dispatched_at
 )
 SELECT
-    sqlc.arg(workspace_id), task.id, sqlc.arg(runtime_id), skill.id, revision.id,
+    workspace_guard.id, task.id, sqlc.arg(runtime_id), skill.id, revision.id,
     sqlc.arg(manifest_version), sqlc.arg(source), sqlc.arg(bundle_hash),
     sqlc.arg(manifest_digest), sqlc.arg(eligibility), sqlc.arg(reason),
     snapshot.id, snapshot.task_dispatched_at
-FROM agent_task_queue task
+FROM workspace_guard
+JOIN agent_task_queue task
+  ON task.id = sqlc.arg(task_id)
 JOIN agent
   ON agent.id = task.agent_id
- AND agent.workspace_id = sqlc.arg(workspace_id)
+ AND agent.workspace_id = workspace_guard.id
 JOIN agent_runtime runtime
   ON runtime.id = sqlc.arg(runtime_id)
  AND runtime.workspace_id = sqlc.arg(workspace_id)
@@ -436,11 +444,10 @@ JOIN skill_evolution_task_dispatch_snapshot snapshot
        'source', sqlc.arg(source)::text,
        'skill_id', sqlc.arg(skill_id)::uuid::text
      ))
-WHERE task.id = sqlc.arg(task_id)
-  AND task.runtime_id = sqlc.arg(runtime_id)
+WHERE task.runtime_id = sqlc.arg(runtime_id)
   AND task.dispatched_at = sqlc.arg(task_dispatched_at)
   AND task.completed_at IS NOT NULL
-  AND task.status IN ('completed', 'failed', 'cancelled')
+  AND task.status = 'completed'
 ON CONFLICT (workspace_id, task_id, skill_id) DO NOTHING
 RETURNING skill_evolution_task_attribution.*;
 
@@ -500,7 +507,7 @@ JOIN agent
  AND agent.id = task.agent_id
  AND agent.workspace_id = workspace_guard.id
 WHERE task.dispatched_at = sqlc.arg(task_dispatched_at)
-  AND task.status IN ('dispatched', 'waiting_local_directory', 'running')
+  AND task.status IN ('dispatched', 'waiting_local_directory', 'running', 'completed')
 ON CONFLICT (workspace_id, task_id, runtime_id, task_dispatched_at) DO NOTHING
 RETURNING skill_evolution_task_dispatch_snapshot.*;
 

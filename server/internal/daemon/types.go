@@ -85,6 +85,7 @@ type Task struct {
 	ID                   string                 `json:"id"`
 	AgentID              string                 `json:"agent_id"`
 	RuntimeID            string                 `json:"runtime_id"`
+	DispatchedAt         string                 `json:"dispatched_at,omitempty"`
 	IssueID              string                 `json:"issue_id"`
 	WorkspaceID          string                 `json:"workspace_id"`
 	WorkspaceSlug        string                 `json:"workspace_slug,omitempty"`
@@ -324,6 +325,9 @@ type TaskResult struct {
 	SessionID              string                         `json:"session_id,omitempty"` // Claude session ID for future resumption
 	WorkDir                string                         `json:"work_dir,omitempty"`   // working directory used during execution
 	SkillExecutionManifest *skillbundle.ExecutionManifest `json:"skill_execution_manifest,omitempty"`
+	// TaskDispatchedAt binds a completion manifest to the exact claim generation.
+	// It is transported separately from the provider-facing result payload.
+	TaskDispatchedAt string `json:"-"`
 	// DurableWorkDir replaces WorkDir only after a disposable local worktree
 	// was finalized and its removal was confirmed. Empty keeps WorkDir authoritative.
 	DurableWorkDir string `json:"durable_work_dir,omitempty"`

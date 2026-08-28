@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -341,6 +342,94 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 		t.Fatalf("changed attribution source error = %v, want conflict", err)
 	}
 
+	fastTaskID := testUUID()
+	fastDispatchedAt := dispatchedAt.Add(time.Second)
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
+id, agent_id, runtime_id, status, dispatched_at, completed_at
+) VALUES ($1, $2, $3, 'completed', $4, $4)`, fastTaskID, agentA, runtimeA, fastDispatchedAt); err != nil {
+		t.Fatalf("seed fast completed task: %v", err)
+	}
+	worker, err := NewAttributionWorker(store, 2, time.Second)
+	if err != nil {
+		t.Fatalf("NewAttributionWorker: %v", err)
+	}
+	fastDispatch := handler.TaskDispatchEvent{
+		WorkspaceID: util.UUIDToString(workspaceA), TaskID: util.UUIDToString(fastTaskID),
+		AgentID: util.UUIDToString(agentA), RuntimeID: util.UUIDToString(runtimeA), DispatchedAt: fastDispatchedAt,
+		Skills: []handler.TaskDispatchSkill{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+	}
+	fastCompletion := handler.TaskCompletionEvent{
+		WorkspaceID: fastDispatch.WorkspaceID, TaskID: fastDispatch.TaskID, AgentID: fastDispatch.AgentID,
+		RuntimeID: fastDispatch.RuntimeID, DispatchedAt: fastDispatchedAt, CapabilityProven: true,
+		SkillExecutionManifest: executionManifestJSON(t, skillbundle.ExecutionRecord{
+			Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA),
+			BundleHash: string(candidateInput.BundleHash), RevisionID: util.UUIDToString(candidate.Revision.ID),
+		}),
+	}
+	if !worker.OfferTaskDispatch(fastDispatch) || !worker.OfferTaskCompletion(fastCompletion) {
+		t.Fatal("attribution worker rejected fast completion events")
+	}
+	worker.Close()
+	fastSnapshot, err := store.GetTaskDispatchSnapshot(ctx, workspaceA, fastTaskID, agentA, runtimeA, fastDispatchedAt)
+	if err != nil {
+		t.Fatalf("delayed completed-task snapshot: %v", err)
+	}
+	fastAttribution, err := queries.GetSkillEvolutionTaskAttribution(ctx, db.GetSkillEvolutionTaskAttributionParams{
+		WorkspaceID: workspaceA, TaskID: fastTaskID, SkillID: skillA,
+	})
+	if err != nil || fastAttribution.DispatchSnapshotID != fastSnapshot.Snapshot.ID ||
+		!sameDatabaseTime(fastAttribution.TaskDispatchedAt, fastDispatchedAt) {
+		t.Fatalf("delayed completed-task attribution = (%+v, %v)", fastAttribution, err)
+	}
+	if _, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceA, TaskID: fastTaskID, AgentID: agentA, RuntimeID: runtimeA,
+		TaskDispatchedAt: fastDispatchedAt.Add(time.Second),
+		Skills:           []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+	}); !errors.Is(err, ErrPersistenceNotFound) {
+		t.Fatalf("wrong dispatched_at snapshot error = %v, want not found", err)
+	}
+	for _, terminalStatus := range []string{"failed", "cancelled"} {
+		lateTaskID := testUUID()
+		if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
+id, agent_id, runtime_id, status, dispatched_at, completed_at
+) VALUES ($1, $2, $3, $4, $5, $5)`, lateTaskID, agentA, runtimeA, terminalStatus, fastDispatchedAt); err != nil {
+			t.Fatalf("seed late %s task: %v", terminalStatus, err)
+		}
+		if _, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+			WorkspaceID: workspaceA, TaskID: lateTaskID, AgentID: agentA, RuntimeID: runtimeA,
+			TaskDispatchedAt: fastDispatchedAt,
+			Skills:           []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+		}); !errors.Is(err, ErrPersistenceNotFound) {
+			t.Fatalf("late %s snapshot error = %v, want not found", terminalStatus, err)
+		}
+
+		terminalTaskID := testUUID()
+		if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
+id, agent_id, runtime_id, status, dispatched_at
+) VALUES ($1, $2, $3, 'dispatched', $4)`, terminalTaskID, agentA, runtimeA, fastDispatchedAt); err != nil {
+			t.Fatalf("seed pre-terminal %s task: %v", terminalStatus, err)
+		}
+		terminalSnapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+			WorkspaceID: workspaceA, TaskID: terminalTaskID, AgentID: agentA, RuntimeID: runtimeA,
+			TaskDispatchedAt: fastDispatchedAt,
+			Skills:           []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+		})
+		if err != nil {
+			t.Fatalf("record pre-terminal %s snapshot: %v", terminalStatus, err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = $2, completed_at = $3 WHERE id = $1`, terminalTaskID, terminalStatus, fastDispatchedAt); err != nil {
+			t.Fatalf("mark task %s: %v", terminalStatus, err)
+		}
+		terminalAttribution := attributionInput
+		terminalAttribution.TaskID = terminalTaskID
+		terminalAttribution.DispatchSnapshotID = terminalSnapshot.Snapshot.ID
+		terminalAttribution.TaskDispatchedAt = fastDispatchedAt
+		terminalAttribution.ManifestDigest = testDigest("terminal-" + terminalStatus)
+		if _, err := store.RecordTaskAttribution(ctx, terminalAttribution); !errors.Is(err, ErrPersistenceNotFound) {
+			t.Fatalf("%s attribution error = %v, want not found", terminalStatus, err)
+		}
+	}
+
 	reclaimedAt := dispatchedAt.Add(time.Minute)
 	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'dispatched', dispatched_at = $2, completed_at = NULL WHERE id = $1`, taskID, reclaimedAt); err != nil {
 		t.Fatalf("reclaim task: %v", err)
@@ -609,6 +698,112 @@ func TestListScheduledLoopsIncludesOnlyEnabledDueObserveAndProposeModes(t *testi
 	}
 }
 
+func TestTaskAttributionWorkspaceGuardSerializesWorkspaceCleanup(t *testing.T) {
+	pool := skillEvolutionTestPool(t)
+	ctx := context.Background()
+	workspaceID, userID, skillID, agentID, runtimeID, taskID :=
+		testUUID(), testUUID(), testUUID(), testUUID(), testUUID(), testUUID()
+	seedPersistenceFixture(t, pool, workspaceID, userID, skillID, agentID)
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_runtime (id, workspace_id) VALUES ($1, $2)`, runtimeID, workspaceID); err != nil {
+		t.Fatalf("seed attribution runtime: %v", err)
+	}
+	store := NewStore(db.New(pool), pool)
+	revisionInput := testRevisionInput(t, workspaceID, skillID, "candidate", "guarded candidate")
+	revisionInput.CreatedByID = userID
+	revision, err := store.SaveRevision(ctx, revisionInput)
+	if err != nil {
+		t.Fatalf("save guarded revision: %v", err)
+	}
+	dispatchedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
+id, agent_id, runtime_id, status, dispatched_at, completed_at
+) VALUES ($1, $2, $3, 'completed', $4, $4)`, taskID, agentID, runtimeID, dispatchedAt); err != nil {
+		t.Fatalf("seed guarded task: %v", err)
+	}
+	snapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceID, TaskID: taskID, AgentID: agentID, RuntimeID: runtimeID, TaskDispatchedAt: dispatchedAt,
+		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillID)}},
+	})
+	if err != nil {
+		t.Fatalf("record guarded snapshot: %v", err)
+	}
+
+	writerTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin attribution writer: %v", err)
+	}
+	writerDone := false
+	t.Cleanup(func() {
+		if !writerDone {
+			_ = writerTx.Rollback(context.Background())
+		}
+	})
+	writerStore := NewStore(db.New(writerTx), nil)
+	if _, err := writerStore.RecordTaskAttribution(ctx, TaskAttributionInput{
+		WorkspaceID: workspaceID, TaskID: taskID, RuntimeID: runtimeID, SkillID: skillID,
+		RevisionID: revision.Revision.ID, ManifestVersion: SkillExecutionManifestVersion,
+		Source: skillbundle.SourceWorkspace, BundleHash: revisionInput.BundleHash, ManifestDigest: testDigest("guarded-manifest"),
+		Eligibility: EvidenceEligibilityEligible, Reason: string(AttributionReasonExactRevisionMatch),
+		DispatchSnapshotID: snapshot.Snapshot.ID, TaskDispatchedAt: dispatchedAt,
+	}); err != nil {
+		t.Fatalf("record guarded attribution: %v", err)
+	}
+
+	cleanupAttempt, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin blocked cleanup: %v", err)
+	}
+	lockCtx, cancelLock := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancelLock()
+	var lockedWorkspace pgtype.UUID
+	err = cleanupAttempt.QueryRow(lockCtx, `SELECT id FROM workspace WHERE id = $1 FOR UPDATE`, workspaceID).Scan(&lockedWorkspace)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		_ = cleanupAttempt.Rollback(context.Background())
+		t.Fatalf("workspace delete lock error = %v, want attribution writer to hold KEY SHARE", err)
+	}
+	_ = cleanupAttempt.Rollback(context.Background())
+
+	if err := writerTx.Commit(ctx); err != nil {
+		t.Fatalf("commit attribution writer: %v", err)
+	}
+	writerDone = true
+
+	cleanupTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin workspace cleanup: %v", err)
+	}
+	cleanupDone := false
+	t.Cleanup(func() {
+		if !cleanupDone {
+			_ = cleanupTx.Rollback(context.Background())
+		}
+	})
+	if err := cleanupTx.QueryRow(ctx, `SELECT id FROM workspace WHERE id = $1 FOR UPDATE`, workspaceID).Scan(&lockedWorkspace); err != nil {
+		t.Fatalf("lock workspace for cleanup: %v", err)
+	}
+	cleanupQueries := db.New(cleanupTx)
+	if err := cleanupQueries.DeleteWorkspaceSkillEvolutionData(ctx, workspaceID); err != nil {
+		t.Fatalf("delete guarded evolution data: %v", err)
+	}
+	if _, err := cleanupTx.Exec(ctx, `DELETE FROM workspace WHERE id = $1`, workspaceID); err != nil {
+		t.Fatalf("delete guarded workspace: %v", err)
+	}
+	if err := cleanupTx.Commit(ctx); err != nil {
+		t.Fatalf("commit workspace cleanup: %v", err)
+	}
+	cleanupDone = true
+
+	for table, column := range map[string]string{
+		"workspace":                        "id",
+		"skill_evolution_task_attribution": "workspace_id",
+	} {
+		var count int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE "+column+" = $1", workspaceID).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("post-cleanup %s count/error = %d/%v", table, count, err)
+		}
+	}
+}
+
 type persistenceTaskReviewAccess struct {
 	workspaceID string
 	reviewerID  string
@@ -717,7 +912,7 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	for _, file := range files {
 		name := filepath.Base(file)
 		prefix := strings.SplitN(name, "_", 2)[0]
-		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "521") {
+		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "522") {
 			continue
 		}
 		sql, err := os.ReadFile(file)
