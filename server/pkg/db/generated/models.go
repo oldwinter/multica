@@ -1460,6 +1460,154 @@ type Skill struct {
 	PluginInstallationID pgtype.UUID        `json:"plugin_installation_id"`
 }
 
+type SkillEvolutionEvaluation struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	ProposalID     pgtype.UUID        `json:"proposal_id"`
+	Kind           string             `json:"kind"`
+	Result         string             `json:"result"`
+	Adapter        string             `json:"adapter"`
+	AdapterVersion string             `json:"adapter_version"`
+	PolicyVersion  string             `json:"policy_version"`
+	ResultDigest   string             `json:"result_digest"`
+	SafeMetrics    []byte             `json:"safe_metrics"`
+	CostUsdTicks   pgtype.Int8        `json:"cost_usd_ticks"`
+	DurationMs     int64              `json:"duration_ms"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+type SkillEvolutionEvidence struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	ProposalID       pgtype.UUID        `json:"proposal_id"`
+	Kind             string             `json:"kind"`
+	SourceID         string             `json:"source_id"`
+	SourceRevisionID string             `json:"source_revision_id"`
+	TargetSkillID    pgtype.UUID        `json:"target_skill_id"`
+	SourceState      string             `json:"source_state"`
+	Digest           string             `json:"digest"`
+	Eligibility      string             `json:"eligibility"`
+	ObservedAt       pgtype.Timestamptz `json:"observed_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type SkillEvolutionLoop struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	SkillID          pgtype.UUID        `json:"skill_id"`
+	Enabled          bool               `json:"enabled"`
+	Mode             string             `json:"mode"`
+	CooldownSeconds  int32              `json:"cooldown_seconds"`
+	MinimumSignals   int32              `json:"minimum_signals"`
+	MaxEvidenceRefs  int32              `json:"max_evidence_refs"`
+	MaxReplaySamples int32              `json:"max_replay_samples"`
+	MaxCostUsdTicks  int64              `json:"max_cost_usd_ticks"`
+	PolicyVersion    string             `json:"policy_version"`
+	LastObservedAt   pgtype.Timestamptz `json:"last_observed_at"`
+	LastProposalAt   pgtype.Timestamptz `json:"last_proposal_at"`
+	NextEligibleAt   pgtype.Timestamptz `json:"next_eligible_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SkillEvolutionProposal struct {
+	ID                       pgtype.UUID        `json:"id"`
+	WorkspaceID              pgtype.UUID        `json:"workspace_id"`
+	SkillID                  pgtype.UUID        `json:"skill_id"`
+	LoopID                   pgtype.UUID        `json:"loop_id"`
+	State                    string             `json:"state"`
+	BaseRevisionID           pgtype.UUID        `json:"base_revision_id"`
+	CandidateRevisionID      pgtype.UUID        `json:"candidate_revision_id"`
+	BaseHash                 string             `json:"base_hash"`
+	CandidateHash            pgtype.Text        `json:"candidate_hash"`
+	RationaleDigest          pgtype.Text        `json:"rationale_digest"`
+	FailureReason            pgtype.Text        `json:"failure_reason"`
+	StaleReason              pgtype.Text        `json:"stale_reason"`
+	GenerationIdempotencyKey string             `json:"generation_idempotency_key"`
+	RequestedByID            pgtype.UUID        `json:"requested_by_id"`
+	StartedAt                pgtype.Timestamptz `json:"started_at"`
+	CompletedAt              pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SkillEvolutionRelease struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	SkillID          pgtype.UUID        `json:"skill_id"`
+	ProposalID       pgtype.UUID        `json:"proposal_id"`
+	SourceReleaseID  pgtype.UUID        `json:"source_release_id"`
+	RevisionID       pgtype.UUID        `json:"revision_id"`
+	Kind             string             `json:"kind"`
+	ExpectedBaseHash string             `json:"expected_base_hash"`
+	PreHash          pgtype.Text        `json:"pre_hash"`
+	PostHash         pgtype.Text        `json:"post_hash"`
+	Outcome          string             `json:"outcome"`
+	ActorID          pgtype.UUID        `json:"actor_id"`
+	IdempotencyKey   string             `json:"idempotency_key"`
+	ErrorCode        pgtype.Text        `json:"error_code"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+}
+
+type SkillEvolutionReview struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	ProposalID          pgtype.UUID        `json:"proposal_id"`
+	CandidateRevisionID pgtype.UUID        `json:"candidate_revision_id"`
+	Decision            string             `json:"decision"`
+	ActorID             pgtype.UUID        `json:"actor_id"`
+	Reason              pgtype.Text        `json:"reason"`
+	IdempotencyKey      string             `json:"idempotency_key"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+}
+
+type SkillEvolutionRevision struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	SkillID          pgtype.UUID        `json:"skill_id"`
+	Kind             string             `json:"kind"`
+	OwnershipClass   string             `json:"ownership_class"`
+	Source           string             `json:"source"`
+	BundleHash       string             `json:"bundle_hash"`
+	MetadataDigest   string             `json:"metadata_digest"`
+	Name             string             `json:"name"`
+	Description      string             `json:"description"`
+	PrimaryContent   string             `json:"primary_content"`
+	ByteCount        int64              `json:"byte_count"`
+	SupportFileCount int32              `json:"support_file_count"`
+	CreatedByID      pgtype.UUID        `json:"created_by_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type SkillEvolutionRevisionFile struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	RevisionID  pgtype.UUID        `json:"revision_id"`
+	Path        string             `json:"path"`
+	Content     string             `json:"content"`
+	Digest      string             `json:"digest"`
+	ByteCount   int32              `json:"byte_count"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type SkillEvolutionTaskAttribution struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	TaskID          pgtype.UUID        `json:"task_id"`
+	RuntimeID       pgtype.UUID        `json:"runtime_id"`
+	SkillID         pgtype.UUID        `json:"skill_id"`
+	RevisionID      pgtype.UUID        `json:"revision_id"`
+	ManifestVersion int32              `json:"manifest_version"`
+	Source          string             `json:"source"`
+	BundleHash      string             `json:"bundle_hash"`
+	ManifestDigest  string             `json:"manifest_digest"`
+	Eligibility     string             `json:"eligibility"`
+	Reason          string             `json:"reason"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type SkillFile struct {
 	ID        pgtype.UUID        `json:"id"`
 	SkillID   pgtype.UUID        `json:"skill_id"`
@@ -1534,6 +1682,20 @@ type TaskMessage struct {
 	Input     []byte             `json:"input"`
 	Output    pgtype.Text        `json:"output"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type TaskRunReview struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	TaskID      pgtype.UUID        `json:"task_id"`
+	ReviewerID  pgtype.UUID        `json:"reviewer_id"`
+	Outcome     string             `json:"outcome"`
+	Target      string             `json:"target"`
+	SkillID     pgtype.UUID        `json:"skill_id"`
+	Correction  pgtype.Text        `json:"correction"`
+	Reason      string             `json:"reason"`
+	Digest      string             `json:"digest"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type TaskToken struct {

@@ -172,6 +172,7 @@ func TestTaskRunReviewValidatesClosedTargetAndBoundedReason(t *testing.T) {
 	}{
 		{name: "unknown target", mutate: func(in *CreateTaskRunReviewInput) { in.Target = "runtime" }},
 		{name: "skill on knowledge target", mutate: func(in *CreateTaskRunReviewInput) { in.Target = TaskRunReviewTargetKnowledge }},
+		{name: "skill target requires skill", mutate: func(in *CreateTaskRunReviewInput) { in.SkillID = "" }},
 		{name: "correction required", mutate: func(in *CreateTaskRunReviewInput) { in.Correction = "" }},
 		{name: "reason required", mutate: func(in *CreateTaskRunReviewInput) { in.Reason = "" }},
 		{name: "reason bounded", mutate: func(in *CreateTaskRunReviewInput) { in.Reason = string(make([]byte, MaxTaskRunReviewTextBytes+1)) }},

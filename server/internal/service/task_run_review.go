@@ -461,7 +461,8 @@ func validateTaskRunReviewInput(input CreateTaskRunReviewInput) error {
 	if input.Outcome == TaskRunReviewOutcomeNeedsCorrection && input.Correction == "" {
 		return ErrTaskRunReviewInvalid
 	}
-	if input.SkillID != "" && (!validTaskRunReviewID(input.SkillID) || input.Target != TaskRunReviewTargetSkillProcedure) {
+	if (input.Target == TaskRunReviewTargetSkillProcedure) != (input.SkillID != "") ||
+		(input.SkillID != "" && !validTaskRunReviewID(input.SkillID)) {
 		return ErrTaskRunReviewInvalid
 	}
 	return nil
