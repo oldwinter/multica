@@ -141,10 +141,21 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	if err != nil {
 		t.Fatalf("save candidate: %v", err)
 	}
+	rationale := ImprovementRationale{
+		ObservedPattern: "deployment corrections repeat", ExpectedBenefit: "deployments become consistent", RegressionRisk: "stricter checks may slow a run",
+	}
+	rationaleDigest, err := improvementRationaleDigest(ImprovementCandidate{
+		ObservedPattern: rationale.ObservedPattern, ExpectedBenefit: rationale.ExpectedBenefit,
+		RegressionRisk: rationale.RegressionRisk, EvidenceDigests: []Digest{testDigest("evidence")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	proposal, err = store.TransitionProposal(ctx, ProposalTransition{
 		WorkspaceID: workspaceA, ProposalID: proposal.ID, ExpectedState: ProposalStateRunning,
 		NextState: ProposalStateReady, CandidateRevisionID: candidate.Revision.ID,
-		CandidateHash: candidateInput.BundleHash, RationaleDigest: testDigest("rationale"),
+		CandidateHash: candidateInput.BundleHash, RationaleDigest: rationaleDigest,
+		ObservedPattern: rationale.ObservedPattern, ExpectedBenefit: rationale.ExpectedBenefit, RegressionRisk: rationale.RegressionRisk,
 	})
 	if err != nil {
 		t.Fatalf("ready proposal: %v", err)
@@ -270,7 +281,7 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 		t.Fatalf("complete rollback: %v", err)
 	}
 	detail, err := store.GetProposalDetail(ctx, workspaceA, proposal.ID)
-	if err != nil || len(detail.Evidence) != 1 || len(detail.Reviews) != 2 {
+	if err != nil || len(detail.Evidence) != 1 || len(detail.Reviews) != 2 || detail.Rationale == nil || detail.Rationale.ObservedPattern != rationale.ObservedPattern {
 		t.Fatalf("proposal detail = (%+v, %v), want one evidence and append-only review decisions", detail, err)
 	}
 
@@ -278,14 +289,43 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	if _, err := pool.Exec(ctx, `INSERT INTO agent_runtime (id, workspace_id) VALUES ($1, $2)`, runtimeA, workspaceA); err != nil {
 		t.Fatalf("seed runtime: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, runtime_id, status, completed_at) VALUES ($1, $2, $3, 'completed', now())`, taskID, agentA, runtimeA); err != nil {
+	dispatchedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, runtime_id, status, dispatched_at) VALUES ($1, $2, $3, 'dispatched', $4)`, taskID, agentA, runtimeA, dispatchedAt); err != nil {
 		t.Fatalf("seed task: %v", err)
+	}
+	snapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceA, TaskID: taskID, AgentID: agentA, RuntimeID: runtimeA, TaskDispatchedAt: dispatchedAt,
+		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+	})
+	if err != nil {
+		t.Fatalf("RecordTaskDispatchSnapshot: %v", err)
+	}
+	if replayed, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceA, TaskID: taskID, AgentID: agentA, RuntimeID: runtimeA, TaskDispatchedAt: dispatchedAt,
+		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+	}); err != nil || replayed.Snapshot.ID != snapshot.Snapshot.ID {
+		t.Fatalf("idempotent task dispatch snapshot = (%+v, %v)", replayed, err)
+	}
+	if got := string(snapshot.Snapshot.Identities); !jsonEqual(snapshot.Snapshot.Identities, []byte(`[{"source":"workspace","skill_id":"`+util.UUIDToString(skillA)+`"}]`)) ||
+		strings.Contains(got, "hash") || snapshot.Snapshot.IdentityCount != 1 || snapshot.Snapshot.ContractVersion != TaskDispatchContractVersion {
+		t.Fatalf("content-free dispatch snapshot = %q count=%d version=%d", got, snapshot.Snapshot.IdentityCount, snapshot.Snapshot.ContractVersion)
+	}
+	changedSnapshot := TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceA, TaskID: taskID, AgentID: agentA, RuntimeID: runtimeA, TaskDispatchedAt: dispatchedAt,
+		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceBuiltin, SkillID: "plan"}},
+	}
+	if _, err := store.RecordTaskDispatchSnapshot(ctx, changedSnapshot); !errors.Is(err, ErrPersistenceConflict) {
+		t.Fatalf("changed dispatch snapshot error = %v, want conflict", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, taskID); err != nil {
+		t.Fatalf("complete task: %v", err)
 	}
 	attributionInput := TaskAttributionInput{
 		WorkspaceID: workspaceA, TaskID: taskID, RuntimeID: runtimeA, SkillID: skillA,
 		RevisionID: candidate.Revision.ID, ManifestVersion: 1, Source: skillbundle.SourceWorkspace,
 		BundleHash: candidateInput.BundleHash, ManifestDigest: testDigest("manifest"),
 		Eligibility: EvidenceEligibilityEligible, Reason: "matched_revision",
+		DispatchSnapshotID: snapshot.Snapshot.ID, TaskDispatchedAt: dispatchedAt,
 	}
 	attribution, err := store.RecordTaskAttribution(ctx, attributionInput)
 	if err != nil {
@@ -299,6 +339,55 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	changedAttribution.Source = skillbundle.SourceBuiltin
 	if _, err := store.RecordTaskAttribution(ctx, changedAttribution); !errors.Is(err, ErrPersistenceConflict) {
 		t.Fatalf("changed attribution source error = %v, want conflict", err)
+	}
+
+	reclaimedAt := dispatchedAt.Add(time.Minute)
+	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'dispatched', dispatched_at = $2, completed_at = NULL WHERE id = $1`, taskID, reclaimedAt); err != nil {
+		t.Fatalf("reclaim task: %v", err)
+	}
+	reclaimed, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceA, TaskID: taskID, AgentID: agentA, RuntimeID: runtimeA, TaskDispatchedAt: reclaimedAt,
+		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceBuiltin, SkillID: "plan"}},
+	})
+	if err != nil || reclaimed.Snapshot.ID == snapshot.Snapshot.ID {
+		t.Fatalf("reclaimed snapshot = (%+v, %v), want new identity", reclaimed, err)
+	}
+	frozen, err := store.GetTaskDispatchSnapshot(ctx, workspaceA, taskID, agentA, runtimeA, dispatchedAt)
+	if err != nil || frozen.Snapshot.ID != snapshot.Snapshot.ID || frozen.Skills[0].SkillID != util.UUIDToString(skillA) {
+		t.Fatalf("frozen prior dispatch = (%+v, %v)", frozen, err)
+	}
+
+	if _, err := store.ConfigureLoop(ctx, LoopConfig{
+		WorkspaceID: workspaceB, SkillID: skillB, Enabled: true, Mode: LoopModeObserve,
+		Cooldown: time.Hour, MinimumSignals: 1, MaxEvidenceRefs: 10, MaxReplaySamples: 2,
+		MaxCostUSDTicks: 100, PolicyVersion: "v1",
+	}); err != nil {
+		t.Fatalf("configure other workspace loop: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO sys_cron_executions (job_name, scope_kind, scope_id) VALUES
+('skill_evolution', 'workspace', $1), ('other_job', 'workspace', $1), ('skill_evolution', 'workspace', $2)`,
+		uuid.UUID(workspaceA.Bytes).String(), uuid.UUID(workspaceB.Bytes).String()); err != nil {
+		t.Fatalf("seed scheduler cleanup rows: %v", err)
+	}
+	if err := queries.DeleteWorkspaceSkillEvolutionData(ctx, workspaceA); err != nil {
+		t.Fatalf("DeleteWorkspaceSkillEvolutionData: %v", err)
+	}
+	for _, table := range []string{
+		"skill_evolution_task_attribution", "skill_evolution_task_dispatch_snapshot", "task_run_review",
+		"skill_evolution_release", "skill_evolution_review", "skill_evolution_evaluation", "skill_evolution_evidence",
+		"skill_evolution_proposal", "skill_evolution_revision_file", "skill_evolution_revision", "skill_evolution_loop",
+	} {
+		var count int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE workspace_id = $1", workspaceA).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("cleanup %s count/error = %d/%v", table, count, err)
+		}
+	}
+	if _, err := store.GetLoop(ctx, workspaceB, skillB); err != nil {
+		t.Fatalf("cleanup removed other workspace loop: %v", err)
+	}
+	var cronCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sys_cron_executions`).Scan(&cronCount); err != nil || cronCount != 2 {
+		t.Fatalf("selective scheduler cleanup count/error = %d/%v, want 2", cronCount, err)
 	}
 }
 
@@ -425,6 +514,101 @@ func TestTaskReviewAndManualRerunQueriesHideCrossWorkspaceRows(t *testing.T) {
 	}
 }
 
+func TestWikiRoomProposalSourceIdentityPreservesAgentIdempotency(t *testing.T) {
+	pool := skillEvolutionTestPool(t)
+	ctx := context.Background()
+	queries := db.New(pool)
+	workspaceID, pageID, agentID, roomID := testUUID(), testUUID(), testUUID(), testUUID()
+	if _, err := pool.Exec(ctx, `INSERT INTO workspace (id) VALUES ($1)`, workspaceID); err != nil {
+		t.Fatalf("seed Wiki proposal workspace: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO wiki_page (id, workspace_id, scope, current_revision_number) VALUES ($1, $2, 'workspace', 1)`, pageID, workspaceID); err != nil {
+		t.Fatalf("seed Wiki proposal page: %v", err)
+	}
+
+	agentParams := db.CreateWikiPageEditProposalParams{
+		WorkspaceID: workspaceID, AgentID: agentID, IdempotencyKey: "agent-proposal", BaseRevisionNumber: 1,
+		ProposedPath: "guide.md", ProposedTitle: "Guide", ProposedContent: "agent draft", Rationale: "agent rationale",
+		EvidenceRefs: []byte(`[]`), PageID: pageID,
+	}
+	agentFirst, err := queries.CreateWikiPageEditProposal(ctx, agentParams)
+	if err != nil {
+		t.Fatalf("CreateWikiPageEditProposal: %v", err)
+	}
+	agentReplay, err := queries.CreateWikiPageEditProposal(ctx, agentParams)
+	if err != nil || agentReplay.ID != agentFirst.ID || agentFirst.SourceKind != "agent" || !agentFirst.AgentID.Valid || agentFirst.SourceRefID.Valid {
+		t.Fatalf("agent idempotency/source = (%+v, %+v, %v)", agentFirst, agentReplay, err)
+	}
+
+	roomParams := db.CreateRoomWikiPageEditProposalParams{
+		WorkspaceID: workspaceID, SourceRefID: roomID, IdempotencyKey: "room-proposal", BaseRevisionNumber: 1,
+		ProposedPath: "guide.md", ProposedTitle: "Guide", ProposedContent: "room draft", Rationale: "room rationale",
+		EvidenceRefs: []byte(`[]`), PageID: pageID,
+	}
+	roomFirst, err := queries.CreateRoomWikiPageEditProposal(ctx, roomParams)
+	if err != nil {
+		t.Fatalf("CreateRoomWikiPageEditProposal: %v", err)
+	}
+	roomReplay, err := queries.CreateRoomWikiPageEditProposal(ctx, roomParams)
+	if err != nil || roomReplay.ID != roomFirst.ID || roomFirst.SourceKind != "room" || roomFirst.AgentID.Valid || roomFirst.SourceRefID != roomID {
+		t.Fatalf("room idempotency/source = (%+v, %+v, %v)", roomFirst, roomReplay, err)
+	}
+	loaded, err := queries.GetRoomWikiPageEditProposalByIdempotencyKey(ctx, db.GetRoomWikiPageEditProposalByIdempotencyKeyParams{
+		WorkspaceID: workspaceID, SourceRefID: roomID, IdempotencyKey: roomParams.IdempotencyKey,
+	})
+	if err != nil || loaded.ID != roomFirst.ID {
+		t.Fatalf("GetRoomWikiPageEditProposalByIdempotencyKey = (%v, %v), want %v", loaded.ID, err, roomFirst.ID)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO wiki_page_edit_proposal (
+workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content,
+content_digest, rationale, evidence_refs, agent_id, idempotency_key, source_kind, source_ref_id
+) VALUES ($1, $2, 1, 'bad', 'Bad', 'bad', $3, 'bad', '[]', $4, 'bad-source', 'room', $5)`,
+		workspaceID, pageID, testDigest("bad"), agentID, roomID); err == nil {
+		t.Fatal("invalid room proposal with agent identity unexpectedly inserted")
+	}
+}
+
+func TestListScheduledLoopsIncludesOnlyEnabledDueObserveAndProposeModes(t *testing.T) {
+	pool := skillEvolutionTestPool(t)
+	ctx := context.Background()
+	store := NewStore(db.New(pool), pool)
+	workspaceID, userID, agentID := testUUID(), testUUID(), testUUID()
+	skillIDs := []pgtype.UUID{testUUID(), testUUID(), testUUID(), testUUID()}
+	seedPersistenceFixture(t, pool, workspaceID, userID, skillIDs[0], agentID)
+	for _, skillID := range skillIDs[1:] {
+		if _, err := pool.Exec(ctx, `INSERT INTO skill (id, workspace_id, created_by) VALUES ($1, $2, $3)`, skillID, workspaceID, userID); err != nil {
+			t.Fatalf("seed scheduled Skill: %v", err)
+		}
+	}
+	configs := []LoopConfig{
+		{WorkspaceID: workspaceID, SkillID: skillIDs[0], Enabled: true, Mode: LoopModeObserve},
+		{WorkspaceID: workspaceID, SkillID: skillIDs[1], Enabled: true, Mode: LoopModePropose},
+		{WorkspaceID: workspaceID, SkillID: skillIDs[2], Enabled: true, Mode: LoopModePaused},
+		{WorkspaceID: workspaceID, SkillID: skillIDs[3], Enabled: false, Mode: LoopModePropose},
+	}
+	for i := range configs {
+		configs[i].Cooldown = time.Hour
+		configs[i].MinimumSignals = 1
+		configs[i].MaxEvidenceRefs = 10
+		configs[i].MaxReplaySamples = 2
+		configs[i].MaxCostUSDTicks = 100
+		configs[i].PolicyVersion = "v1"
+		if _, err := store.ConfigureLoop(ctx, configs[i]); err != nil {
+			t.Fatalf("configure scheduled loop %d: %v", i, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE skill_evolution_loop SET next_eligible_at = now() + interval '1 hour' WHERE skill_id = $1`, skillIDs[1]); err != nil {
+		t.Fatalf("defer propose loop: %v", err)
+	}
+	rows, err := store.ListScheduledLoops(ctx, time.Now().UTC(), pgtype.UUID{}, 10)
+	if err != nil || len(rows) != 1 || rows[0].SkillID != skillIDs[0] || rows[0].Mode != string(LoopModeObserve) {
+		t.Fatalf("scheduled loops = (%+v, %v), want due observe only", rows, err)
+	}
+	if rows, err := store.ListScheduledLoops(ctx, time.Now().UTC(), rows[0].ID, 10); err != nil || len(rows) != 0 {
+		t.Fatalf("scheduled keyset tail = (%+v, %v), want empty", rows, err)
+	}
+}
+
 type persistenceTaskReviewAccess struct {
 	workspaceID string
 	reviewerID  string
@@ -485,6 +669,7 @@ func skillEvolutionTestPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	if _, err := pool.Exec(ctx, `
+CREATE TABLE workspace (id UUID PRIMARY KEY);
 CREATE TABLE skill (id UUID NOT NULL, workspace_id UUID NOT NULL, created_by UUID NULL);
 CREATE TABLE member (workspace_id UUID NOT NULL, user_id UUID NOT NULL);
 CREATE TABLE agent (id UUID NOT NULL, workspace_id UUID NOT NULL);
@@ -492,10 +677,29 @@ CREATE TABLE agent_runtime (id UUID NOT NULL, workspace_id UUID NOT NULL);
 CREATE TABLE agent_task_queue (
     id UUID NOT NULL, agent_id UUID NOT NULL, runtime_id UUID NULL,
     issue_id UUID NULL, chat_session_id UUID NULL,
-    status TEXT NOT NULL, completed_at TIMESTAMPTZ NULL,
+    status TEXT NOT NULL, dispatched_at TIMESTAMPTZ NULL, completed_at TIMESTAMPTZ NULL,
     rerun_of_task_id UUID NULL, retry_of_task_id UUID NULL,
     originator_user_id UUID NULL, originator_source TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE wiki_page (
+    id UUID NOT NULL, workspace_id UUID NULL, scope TEXT NOT NULL,
+    current_revision_number BIGINT NOT NULL
+);
+CREATE TABLE wiki_page_edit_proposal (
+    id UUID NOT NULL DEFAULT gen_random_uuid(), workspace_id UUID NOT NULL, page_id UUID NOT NULL,
+    base_revision_number BIGINT NOT NULL CHECK (base_revision_number > 0), proposed_path TEXT NOT NULL,
+    proposed_title TEXT NOT NULL, proposed_content TEXT NOT NULL,
+    content_digest TEXT NOT NULL CHECK (content_digest ~ '^sha256:[0-9a-f]{64}$'),
+    rationale TEXT NOT NULL, evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    agent_id UUID NOT NULL, idempotency_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+    reviewed_by_id UUID, review_reason TEXT, reviewed_at TIMESTAMPTZ, accepted_revision_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX wiki_page_edit_proposal_idempotency_uidx
+    ON wiki_page_edit_proposal (workspace_id, agent_id, idempotency_key);
+CREATE TABLE sys_cron_executions (
+    job_name TEXT NOT NULL, scope_kind TEXT NOT NULL, scope_id TEXT NOT NULL
 )`); err != nil {
 		t.Fatalf("create prerequisite tables: %v", err)
 	}
@@ -513,7 +717,7 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	for _, file := range files {
 		name := filepath.Base(file)
 		prefix := strings.SplitN(name, "_", 2)[0]
-		if prefix < "482" || prefix > "512" {
+		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "521") {
 			continue
 		}
 		sql, err := os.ReadFile(file)
@@ -528,6 +732,9 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 
 func seedPersistenceFixture(t *testing.T, pool *pgxpool.Pool, workspaceID, userID, skillID, agentID pgtype.UUID) {
 	t.Helper()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO workspace (id) VALUES ($1) ON CONFLICT DO NOTHING`, workspaceID); err != nil {
+		t.Fatalf("seed persistence workspace: %v", err)
+	}
 	if _, err := pool.Exec(context.Background(), `INSERT INTO skill (id, workspace_id, created_by) VALUES ($1, $2, $3)`, skillID, workspaceID, userID); err != nil {
 		t.Fatalf("seed persistence Skill: %v", err)
 	}

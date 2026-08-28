@@ -2,6 +2,8 @@ package skillevolution
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,10 +21,12 @@ import (
 )
 
 const (
-	MaxStorePageSize       = 100
-	MaxReviewReasonRunes   = 2000
-	MaxIdempotencyKeyBytes = 160
-	MaxSafeMetricsBytes    = 16 * 1024
+	MaxStorePageSize            = 100
+	MaxReviewReasonRunes        = 2000
+	MaxIdempotencyKeyBytes      = 160
+	MaxSafeMetricsBytes         = 16 * 1024
+	MaxDispatchSnapshotSkills   = 512
+	TaskDispatchContractVersion = 1
 )
 
 var (
@@ -98,6 +102,16 @@ func (s *Store) ListEligibleLoops(ctx context.Context, eligibleAt time.Time, aft
 		return nil, ErrPersistenceInvalidInput
 	}
 	rows, err := s.queries.ListEligibleSkillEvolutionLoops(ctx, db.ListEligibleSkillEvolutionLoopsParams{
+		EligibleAt: requiredTime(eligibleAt), AfterID: afterID, PageSize: int32(limit),
+	})
+	return rows, persistenceError(err)
+}
+
+func (s *Store) ListScheduledLoops(ctx context.Context, eligibleAt time.Time, afterID pgtype.UUID, limit int) ([]db.SkillEvolutionLoop, error) {
+	if eligibleAt.IsZero() || !validOptionalUUID(afterID) || !validPageSize(limit) {
+		return nil, ErrPersistenceInvalidInput
+	}
+	rows, err := s.queries.ListScheduledSkillEvolutionLoops(ctx, db.ListScheduledSkillEvolutionLoopsParams{
 		EligibleAt: requiredTime(eligibleAt), AfterID: afterID, PageSize: int32(limit),
 	})
 	return rows, persistenceError(err)
@@ -259,23 +273,31 @@ type ProposalTransition struct {
 	CandidateRevisionID pgtype.UUID
 	CandidateHash       Digest
 	RationaleDigest     Digest
+	ObservedPattern     string
+	ExpectedBenefit     string
+	RegressionRisk      string
 	FailureReason       string
 	StaleReason         string
 }
 
 func (s *Store) TransitionProposal(ctx context.Context, input ProposalTransition) (db.SkillEvolutionProposal, error) {
+	rationaleProvided := input.ObservedPattern != "" || input.ExpectedBenefit != "" || input.RegressionRisk != ""
 	if !validUUID(input.WorkspaceID) || !validUUID(input.ProposalID) ||
 		ValidateProposalTransition(input.ExpectedState, input.NextState) != nil ||
 		!validOptionalUUID(input.CandidateRevisionID) ||
 		(input.CandidateRevisionID.Valid != input.CandidateHash.Valid()) ||
 		(input.RationaleDigest != "" && !input.RationaleDigest.Valid()) ||
+		(rationaleProvided && (!input.RationaleDigest.Valid() || !validRationale(input.ObservedPattern) ||
+			!validRationale(input.ExpectedBenefit) || !validRationale(input.RegressionRisk))) ||
 		!boundedOptionalToken(input.FailureReason, 160) || !boundedOptionalToken(input.StaleReason, 160) {
 		return db.SkillEvolutionProposal{}, ErrPersistenceInvalidInput
 	}
 	row, err := s.queries.TransitionSkillEvolutionProposal(ctx, db.TransitionSkillEvolutionProposalParams{
 		WorkspaceID: input.WorkspaceID, ID: input.ProposalID, ExpectedState: string(input.ExpectedState), NextState: string(input.NextState),
 		CandidateRevisionID: input.CandidateRevisionID, CandidateHash: optionalText(string(input.CandidateHash)),
-		RationaleDigest: optionalText(string(input.RationaleDigest)), FailureReason: optionalText(input.FailureReason), StaleReason: optionalText(input.StaleReason),
+		RationaleDigest: optionalText(string(input.RationaleDigest)), ObservedPattern: optionalText(input.ObservedPattern),
+		ExpectedBenefit: optionalText(input.ExpectedBenefit), RegressionRisk: optionalText(input.RegressionRisk),
+		FailureReason: optionalText(input.FailureReason), StaleReason: optionalText(input.StaleReason),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		if _, lookupErr := s.queries.GetSkillEvolutionProposal(ctx, db.GetSkillEvolutionProposalParams{WorkspaceID: input.WorkspaceID, ID: input.ProposalID}); errors.Is(lookupErr, pgx.ErrNoRows) {
@@ -480,17 +502,19 @@ func (s *Store) TransitionRelease(ctx context.Context, input ReleaseTransition) 
 }
 
 type TaskAttributionInput struct {
-	WorkspaceID     pgtype.UUID
-	TaskID          pgtype.UUID
-	RuntimeID       pgtype.UUID
-	SkillID         pgtype.UUID
-	RevisionID      pgtype.UUID
-	ManifestVersion int
-	Source          string
-	BundleHash      Digest
-	ManifestDigest  Digest
-	Eligibility     EvidenceEligibility
-	Reason          string
+	WorkspaceID        pgtype.UUID
+	TaskID             pgtype.UUID
+	RuntimeID          pgtype.UUID
+	SkillID            pgtype.UUID
+	RevisionID         pgtype.UUID
+	ManifestVersion    int
+	Source             string
+	BundleHash         Digest
+	ManifestDigest     Digest
+	Eligibility        EvidenceEligibility
+	Reason             string
+	DispatchSnapshotID pgtype.UUID
+	TaskDispatchedAt   time.Time
 }
 
 func (s *Store) RecordTaskAttribution(ctx context.Context, input TaskAttributionInput) (db.SkillEvolutionTaskAttribution, error) {
@@ -501,7 +525,8 @@ func (s *Store) RecordTaskAttribution(ctx context.Context, input TaskAttribution
 		WorkspaceID: input.WorkspaceID, TaskID: input.TaskID, RuntimeID: input.RuntimeID,
 		SkillID: input.SkillID, RevisionID: input.RevisionID, ManifestVersion: int32(input.ManifestVersion),
 		Source: input.Source, BundleHash: string(input.BundleHash), ManifestDigest: string(input.ManifestDigest),
-		Eligibility: string(input.Eligibility), Reason: input.Reason,
+		Eligibility: string(input.Eligibility), Reason: input.Reason, DispatchSnapshotID: input.DispatchSnapshotID,
+		TaskDispatchedAt: requiredTime(input.TaskDispatchedAt),
 	}
 	row, err := s.queries.RecordSkillEvolutionTaskAttribution(ctx, params)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -514,10 +539,119 @@ func (s *Store) RecordTaskAttribution(ctx context.Context, input TaskAttribution
 	}
 	if row.RuntimeID != input.RuntimeID || row.RevisionID != input.RevisionID || row.ManifestVersion != int32(input.ManifestVersion) ||
 		row.Source != input.Source || row.BundleHash != string(input.BundleHash) || row.ManifestDigest != string(input.ManifestDigest) ||
-		row.Eligibility != string(input.Eligibility) || row.Reason != input.Reason {
+		row.Eligibility != string(input.Eligibility) || row.Reason != input.Reason || row.DispatchSnapshotID != input.DispatchSnapshotID ||
+		!sameDatabaseTime(row.TaskDispatchedAt, input.TaskDispatchedAt) {
 		return db.SkillEvolutionTaskAttribution{}, ErrPersistenceConflict
 	}
 	return row, nil
+}
+
+type TaskDispatchSnapshotInput struct {
+	WorkspaceID      pgtype.UUID
+	TaskID           pgtype.UUID
+	AgentID          pgtype.UUID
+	RuntimeID        pgtype.UUID
+	TaskDispatchedAt time.Time
+	Skills           []DispatchSkillIdentity
+}
+
+type TaskDispatchSnapshot struct {
+	Snapshot db.SkillEvolutionTaskDispatchSnapshot
+	Skills   []DispatchSkillIdentity
+}
+
+type taskDispatchSnapshotSkill struct {
+	Source  string `json:"source"`
+	SkillID string `json:"skill_id"`
+}
+
+func (s *Store) RecordTaskDispatchSnapshot(ctx context.Context, input TaskDispatchSnapshotInput) (TaskDispatchSnapshot, error) {
+	if s == nil || s.queries == nil || !validUUID(input.WorkspaceID) || !validUUID(input.TaskID) ||
+		!validUUID(input.AgentID) || !validUUID(input.RuntimeID) || input.TaskDispatchedAt.IsZero() {
+		return TaskDispatchSnapshot{}, ErrPersistenceInvalidInput
+	}
+	encoded, digest, canonical, err := canonicalTaskDispatchSnapshot(input.Skills)
+	if err != nil {
+		return TaskDispatchSnapshot{}, err
+	}
+	params := db.RecordSkillEvolutionTaskDispatchSnapshotParams{
+		WorkspaceID: input.WorkspaceID, TaskID: input.TaskID, AgentID: input.AgentID, RuntimeID: input.RuntimeID,
+		TaskDispatchedAt: requiredTime(input.TaskDispatchedAt), ContractVersion: TaskDispatchContractVersion,
+		Identities: encoded, IdentityCount: int32(len(canonical)), IdentitiesDigest: string(digest),
+	}
+	row, err := s.queries.RecordSkillEvolutionTaskDispatchSnapshot(ctx, params)
+	if errors.Is(err, pgx.ErrNoRows) {
+		row, err = s.queries.GetSkillEvolutionTaskDispatchSnapshot(ctx, db.GetSkillEvolutionTaskDispatchSnapshotParams{
+			WorkspaceID: input.WorkspaceID, TaskID: input.TaskID, AgentID: input.AgentID, RuntimeID: input.RuntimeID,
+			TaskDispatchedAt: requiredTime(input.TaskDispatchedAt),
+		})
+	}
+	if err != nil {
+		return TaskDispatchSnapshot{}, persistenceError(err)
+	}
+	if row.WorkspaceID != input.WorkspaceID || row.TaskID != input.TaskID || row.AgentID != input.AgentID || row.RuntimeID != input.RuntimeID ||
+		!sameDatabaseTime(row.TaskDispatchedAt, input.TaskDispatchedAt) || row.ContractVersion != TaskDispatchContractVersion ||
+		row.IdentityCount != int32(len(canonical)) || row.IdentitiesDigest != string(digest) || !jsonEqual(row.Identities, encoded) {
+		return TaskDispatchSnapshot{}, ErrPersistenceConflict
+	}
+	return TaskDispatchSnapshot{Snapshot: row, Skills: canonical}, nil
+}
+
+func (s *Store) GetTaskDispatchSnapshot(ctx context.Context, workspaceID, taskID, agentID, runtimeID pgtype.UUID, taskDispatchedAt time.Time) (TaskDispatchSnapshot, error) {
+	if s == nil || s.queries == nil || !validUUID(workspaceID) || !validUUID(taskID) || !validUUID(agentID) || !validUUID(runtimeID) || taskDispatchedAt.IsZero() {
+		return TaskDispatchSnapshot{}, ErrPersistenceInvalidInput
+	}
+	row, err := s.queries.GetSkillEvolutionTaskDispatchSnapshot(ctx, db.GetSkillEvolutionTaskDispatchSnapshotParams{
+		WorkspaceID: workspaceID, TaskID: taskID, AgentID: agentID, RuntimeID: runtimeID, TaskDispatchedAt: requiredTime(taskDispatchedAt),
+	})
+	if err != nil {
+		return TaskDispatchSnapshot{}, persistenceError(err)
+	}
+	var wire []taskDispatchSnapshotSkill
+	if row.ContractVersion != TaskDispatchContractVersion || row.IdentityCount < 1 || row.IdentityCount > MaxDispatchSnapshotSkills ||
+		json.Unmarshal(row.Identities, &wire) != nil || len(wire) != int(row.IdentityCount) {
+		return TaskDispatchSnapshot{}, ErrPersistenceConflict
+	}
+	skills := make([]DispatchSkillIdentity, len(wire))
+	for index, item := range wire {
+		skills[index] = DispatchSkillIdentity{Source: item.Source, SkillID: item.SkillID}
+	}
+	encoded, digest, canonical, err := canonicalTaskDispatchSnapshot(skills)
+	if err != nil || !jsonEqual(encoded, row.Identities) || row.IdentitiesDigest != string(digest) {
+		return TaskDispatchSnapshot{}, ErrPersistenceConflict
+	}
+	return TaskDispatchSnapshot{Snapshot: row, Skills: canonical}, nil
+}
+
+func canonicalTaskDispatchSnapshot(skills []DispatchSkillIdentity) ([]byte, Digest, []DispatchSkillIdentity, error) {
+	if len(skills) == 0 || len(skills) > MaxDispatchSnapshotSkills {
+		return nil, "", nil, ErrPersistenceInvalidInput
+	}
+	canonical := append([]DispatchSkillIdentity(nil), skills...)
+	sort.Slice(canonical, func(i, j int) bool {
+		if canonical[i].Source == canonical[j].Source {
+			return canonical[i].SkillID < canonical[j].SkillID
+		}
+		return canonical[i].Source < canonical[j].Source
+	})
+	wire := make([]taskDispatchSnapshotSkill, len(canonical))
+	for index, skill := range canonical {
+		if !validTaskDispatchSource(skill.Source) || !validAttributionIdentity(skill.SkillID) ||
+			(index > 0 && canonical[index-1].Source == skill.Source && canonical[index-1].SkillID == skill.SkillID) {
+			return nil, "", nil, ErrPersistenceInvalidInput
+		}
+		wire[index] = taskDispatchSnapshotSkill{Source: skill.Source, SkillID: skill.SkillID}
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return nil, "", nil, ErrPersistenceInvalidInput
+	}
+	sum := sha256.Sum256(append([]byte("skill-execution-dispatch-snapshot-v1\x00"), encoded...))
+	return encoded, Digest("sha256:" + hex.EncodeToString(sum[:])), canonical, nil
+}
+
+func validTaskDispatchSource(source string) bool {
+	return source == skillbundle.SourceWorkspace || source == skillbundle.SourceBuiltin || source == skillbundle.SourcePlugin
 }
 
 type ProposalDetail struct {
@@ -525,6 +659,7 @@ type ProposalDetail struct {
 	Evidence    []db.SkillEvolutionEvidence
 	Evaluations []db.SkillEvolutionEvaluation
 	Reviews     []db.SkillEvolutionReview
+	Rationale   *ImprovementRationale
 }
 
 func (s *Store) GetProposalDetail(ctx context.Context, workspaceID, proposalID pgtype.UUID) (ProposalDetail, error) {
@@ -544,13 +679,36 @@ func (s *Store) GetProposalDetail(ctx context.Context, workspaceID, proposalID p
 	if err != nil {
 		return ProposalDetail{}, persistenceError(err)
 	}
-	return ProposalDetail{Proposal: proposal, Evidence: evidence, Evaluations: evaluations, Reviews: reviews}, nil
+	detail := ProposalDetail{Proposal: proposal, Evidence: evidence, Evaluations: evaluations, Reviews: reviews}
+	if proposal.ObservedPattern.Valid || proposal.ExpectedBenefit.Valid || proposal.RegressionRisk.Valid {
+		if !proposal.ObservedPattern.Valid || !proposal.ExpectedBenefit.Valid || !proposal.RegressionRisk.Valid || !proposal.RationaleDigest.Valid {
+			return ProposalDetail{}, ErrPersistenceConflict
+		}
+		evidenceDigests := make([]Digest, len(evidence))
+		for index, item := range evidence {
+			evidenceDigests[index] = Digest(item.Digest)
+		}
+		candidate := ImprovementCandidate{
+			ObservedPattern: proposal.ObservedPattern.String, ExpectedBenefit: proposal.ExpectedBenefit.String,
+			RegressionRisk: proposal.RegressionRisk.String, EvidenceDigests: evidenceDigests,
+		}
+		digest, err := improvementRationaleDigest(candidate)
+		if err != nil || string(digest) != proposal.RationaleDigest.String {
+			return ProposalDetail{}, ErrPersistenceConflict
+		}
+		detail.Rationale = &ImprovementRationale{
+			ObservedPattern: candidate.ObservedPattern, ExpectedBenefit: candidate.ExpectedBenefit, RegressionRisk: candidate.RegressionRisk,
+		}
+	}
+	return detail, nil
 }
+
+type ProposalSummary = db.ListSkillEvolutionProposalsRow
 
 type Overview struct {
 	Loop      db.SkillEvolutionLoop
 	Revisions []db.SkillEvolutionRevision
-	Proposals []db.SkillEvolutionProposal
+	Proposals []ProposalSummary
 	Releases  []db.SkillEvolutionRelease
 }
 
@@ -650,7 +808,7 @@ func validAttributionInput(input TaskAttributionInput) bool {
 	return validUUID(input.WorkspaceID) && validUUID(input.TaskID) && validUUID(input.RuntimeID) &&
 		validUUID(input.SkillID) && validUUID(input.RevisionID) && input.ManifestVersion == SkillExecutionManifestVersion &&
 		boundedToken(input.Source, 80) && input.BundleHash.Valid() && input.ManifestDigest.Valid() && input.Eligibility.Valid() &&
-		boundedToken(input.Reason, 160)
+		boundedToken(input.Reason, 160) && validUUID(input.DispatchSnapshotID) && !input.TaskDispatchedAt.IsZero()
 }
 
 func validUUID(value pgtype.UUID) bool { return value.Valid && value.Bytes != [16]byte{} }

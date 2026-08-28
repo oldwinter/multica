@@ -173,7 +173,7 @@ type EvolutionOverview struct {
 	Skill     WorkspaceSkillSnapshot
 	Loop      *db.SkillEvolutionLoop
 	Revisions []db.SkillEvolutionRevision
-	Proposals []db.SkillEvolutionProposal
+	Proposals []ProposalSummary
 	Releases  []db.SkillEvolutionRelease
 }
 
@@ -234,7 +234,7 @@ func (l *Lifecycle) ReadProposal(ctx context.Context, workspaceID, proposalID pg
 		}
 		view.Candidate = &candidate
 	}
-	view.Rationale = readImprovementRationale(detail)
+	view.Rationale = detail.Rationale
 	return view, nil
 }
 
@@ -523,14 +523,14 @@ func (l *Lifecycle) completeCandidate(
 		IdempotencyKey: lifecycleKey("replay", generationKey),
 	})
 	if recordErr != nil {
-		failed, transitionErr := l.failProposalWithCandidate(ctx, proposal, candidateRevision, "evaluation_persistence_failed", rationaleDigest)
+		failed, transitionErr := l.failProposalWithCandidate(ctx, proposal, candidateRevision, "evaluation_persistence_failed", rationaleDigest, candidate)
 		if transitionErr != nil {
 			return Generation{}, transitionErr
 		}
 		return Generation{Proposal: failed, Candidate: candidateRevision, Validation: validationRow}, errors.Join(ErrGenerationFailed, recordErr)
 	}
 	if replay.Result != EvaluationResultPassed {
-		failed, transitionErr := l.failProposalWithCandidate(ctx, proposal, candidateRevision, "behavioral_evaluation_failed", rationaleDigest)
+		failed, transitionErr := l.failProposalWithCandidate(ctx, proposal, candidateRevision, "behavioral_evaluation_failed", rationaleDigest, candidate)
 		if transitionErr != nil {
 			return Generation{}, transitionErr
 		}
@@ -540,10 +540,11 @@ func (l *Lifecycle) completeCandidate(
 		WorkspaceID: workspaceID, ProposalID: proposal.ID,
 		ExpectedState: ProposalStateRunning, NextState: ProposalStateReady,
 		CandidateRevisionID: candidateRevision.Revision.ID, CandidateHash: Digest(candidateRevision.Revision.BundleHash),
-		RationaleDigest: rationaleDigest,
+		RationaleDigest: rationaleDigest, ObservedPattern: candidate.ObservedPattern,
+		ExpectedBenefit: candidate.ExpectedBenefit, RegressionRisk: candidate.RegressionRisk,
 	})
 	if err != nil {
-		failed, cleanupErr := l.failProposalWithCandidate(ctx, proposal, candidateRevision, "ready_persistence_failed", rationaleDigest)
+		failed, cleanupErr := l.failProposalWithCandidate(ctx, proposal, candidateRevision, "ready_persistence_failed", rationaleDigest, candidate)
 		return Generation{Proposal: failed, Candidate: candidateRevision, Validation: validationRow, Replay: replayRow}, errors.Join(err, cleanupErr)
 	}
 	return Generation{Proposal: ready, Candidate: candidateRevision, Validation: validationRow, Replay: replayRow}, nil
@@ -1150,13 +1151,14 @@ func (l *Lifecycle) failProposal(ctx context.Context, proposal db.SkillEvolution
 	})
 }
 
-func (l *Lifecycle) failProposalWithCandidate(ctx context.Context, proposal db.SkillEvolutionProposal, candidate RevisionSnapshot, reason string, rationale Digest) (db.SkillEvolutionProposal, error) {
+func (l *Lifecycle) failProposalWithCandidate(ctx context.Context, proposal db.SkillEvolutionProposal, candidate RevisionSnapshot, reason string, rationale Digest, improvement ImprovementCandidate) (db.SkillEvolutionProposal, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lifecycleCleanupTimeout)
 	defer cancel()
 	return l.store.TransitionProposal(cleanupCtx, ProposalTransition{
 		WorkspaceID: proposal.WorkspaceID, ProposalID: proposal.ID,
 		ExpectedState: ProposalStateRunning, NextState: ProposalStateFailed, FailureReason: reason,
 		CandidateRevisionID: candidate.Revision.ID, CandidateHash: Digest(candidate.Revision.BundleHash), RationaleDigest: rationale,
+		ObservedPattern: improvement.ObservedPattern, ExpectedBenefit: improvement.ExpectedBenefit, RegressionRisk: improvement.RegressionRisk,
 	})
 }
 
@@ -1207,13 +1209,11 @@ func improvementRationaleDigest(candidate ImprovementCandidate) (Digest, error) 
 }
 
 type candidateReviewMetrics struct {
-	RuleCodes          []string             `json:"rule_codes"`
-	ChangedFiles       int                  `json:"changed_files"`
-	AddedFiles         int                  `json:"added_files"`
-	DeletedFiles       int                  `json:"deleted_files"`
-	PrimaryGrowthBytes int                  `json:"primary_growth_bytes"`
-	Rationale          ImprovementRationale `json:"rationale,omitempty"`
-	EvidenceDigests    []Digest             `json:"evidence_digests,omitempty"`
+	RuleCodes          []string `json:"rule_codes"`
+	ChangedFiles       int      `json:"changed_files"`
+	AddedFiles         int      `json:"added_files"`
+	DeletedFiles       int      `json:"deleted_files"`
+	PrimaryGrowthBytes int      `json:"primary_growth_bytes"`
 }
 
 func candidateValidationMetrics(validation ValidationOutcome, candidate ImprovementCandidate) json.RawMessage {
@@ -1222,45 +1222,8 @@ func candidateValidationMetrics(validation ValidationOutcome, candidate Improvem
 		AddedFiles: validation.AddedFiles, DeletedFiles: validation.DeletedFiles,
 		PrimaryGrowthBytes: validation.PrimaryGrowthBytes,
 	}
-	if validRationale(candidate.ObservedPattern) && validRationale(candidate.ExpectedBenefit) && validRationale(candidate.RegressionRisk) {
-		metrics.Rationale = ImprovementRationale{
-			ObservedPattern: candidate.ObservedPattern, ExpectedBenefit: candidate.ExpectedBenefit,
-			RegressionRisk: candidate.RegressionRisk,
-		}
-		metrics.EvidenceDigests = append([]Digest(nil), candidate.EvidenceDigests...)
-	}
 	raw, _ := json.Marshal(metrics)
 	return raw
-}
-
-func readImprovementRationale(detail ProposalDetail) *ImprovementRationale {
-	if !detail.Proposal.RationaleDigest.Valid {
-		return nil
-	}
-	for _, evaluation := range detail.Evaluations {
-		if evaluation.Kind != "deterministic_validation" {
-			continue
-		}
-		var metrics candidateReviewMetrics
-		if json.Unmarshal(evaluation.SafeMetrics, &metrics) != nil ||
-			!validRationale(metrics.Rationale.ObservedPattern) ||
-			!validRationale(metrics.Rationale.ExpectedBenefit) ||
-			!validRationale(metrics.Rationale.RegressionRisk) {
-			continue
-		}
-		candidate := ImprovementCandidate{
-			ObservedPattern: metrics.Rationale.ObservedPattern,
-			ExpectedBenefit: metrics.Rationale.ExpectedBenefit,
-			RegressionRisk:  metrics.Rationale.RegressionRisk,
-			EvidenceDigests: metrics.EvidenceDigests,
-		}
-		digest, err := improvementRationaleDigest(candidate)
-		if err == nil && string(digest) == detail.Proposal.RationaleDigest.String {
-			rationale := metrics.Rationale
-			return &rationale
-		}
-	}
-	return nil
 }
 
 func loopConfigFromRow(loop db.SkillEvolutionLoop) (LoopConfig, error) {
