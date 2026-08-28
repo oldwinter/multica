@@ -32,6 +32,7 @@ func TestProposalTransitionTable(t *testing.T) {
 		{ProposalStateReady, ProposalStateRejected}:                true,
 		{ProposalStateReady, ProposalStateStale}:                   true,
 		{ProposalStatePublishing, ProposalStateReady}:              true,
+		{ProposalStatePublishing, ProposalStateStale}:              true,
 		{ProposalStatePublishing, ProposalStatePublished}:          true,
 		{ProposalStatePublishing, ProposalStatePublicationUnknown}: true,
 	}

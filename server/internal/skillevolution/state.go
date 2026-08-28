@@ -48,6 +48,7 @@ var proposalTransitions = map[ProposalState]map[ProposalState]struct{}{
 	ProposalStatePublishing: {
 		// A known failed attempt may safely return to reviewable readiness.
 		ProposalStateReady:              {},
+		ProposalStateStale:              {},
 		ProposalStatePublished:          {},
 		ProposalStatePublicationUnknown: {},
 	},
