@@ -4102,11 +4102,12 @@ func TestReportTaskResult_CompletedHitsCompleteEndpoint(t *testing.T) {
 
 	d := &Daemon{client: NewClient(srv.URL), logger: slog.Default()}
 	d.reportTaskResult(context.Background(), "task-1", TaskResult{
-		Status:     "completed",
-		Comment:    "all good",
-		BranchName: "agent/foo",
-		SessionID:  "ses-1",
-		WorkDir:    "/tmp/foo",
+		Status:           "completed",
+		Comment:          "all good",
+		BranchName:       "agent/foo",
+		SessionID:        "ses-1",
+		WorkDir:          "/tmp/foo",
+		TaskDispatchedAt: "2026-08-29T12:34:56.123456Z",
 		SkillExecutionManifest: &skillbundle.ExecutionManifest{
 			Version: skillbundle.ExecutionManifestVersion,
 			Skills: []skillbundle.ExecutionRecord{{
@@ -4130,6 +4131,9 @@ func TestReportTaskResult_CompletedHitsCompleteEndpoint(t *testing.T) {
 	}
 	if rec.payload["session_id"] != "ses-1" {
 		t.Errorf("session_id: got %v", rec.payload["session_id"])
+	}
+	if rec.payload["task_dispatched_at"] != "2026-08-29T12:34:56.123456Z" {
+		t.Errorf("task_dispatched_at: got %v", rec.payload["task_dispatched_at"])
 	}
 	manifest, ok := rec.payload["skill_execution_manifest"].(map[string]any)
 	if !ok || manifest["version"] != float64(skillbundle.ExecutionManifestVersion) {

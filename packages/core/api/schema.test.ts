@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ApiClient, ApiError } from "./client";
-import { parseWithFallback } from "./schema";
+import { type Logger, noopLogger } from "../logger";
+import { parseWithFallback, setSchemaLogger } from "./schema";
 
 // Helper: stub fetch with a single JSON response. Status defaults to 200.
 function stubFetchJson(body: unknown, status = 200) {
@@ -18,6 +19,7 @@ function stubFetchJson(body: unknown, status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setSchemaLogger(noopLogger);
 });
 
 // These tests cover the five failure modes that white-screened the desktop
@@ -1057,6 +1059,32 @@ describe("parseWithFallback", () => {
     const fallback = { id: "fallback" };
     const out = parseWithFallback(null, schema, fallback, opts);
     expect(out).toBe(fallback);
+  });
+
+  it("logs content-free issue summaries without the received payload", () => {
+    const sensitiveMarker = "UNIQUE_PROPOSED_CONTENT_DO_NOT_LOG_7d3f";
+    const warn = vi.fn<Logger["warn"]>();
+    setSchemaLogger({ ...noopLogger, warn });
+
+    const fallback = { id: "fallback" };
+    const out = parseWithFallback(
+      { id: 123, proposed_content: sensitiveMarker, rationale: sensitiveMarker },
+      z.object({ id: z.string() }),
+      fallback,
+      opts,
+    );
+
+    expect(out).toBe(fallback);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveMarker);
+    expect(warn).toHaveBeenCalledWith(
+      "API response failed schema validation: TEST /unit",
+      expect.objectContaining({
+        endpoint: "TEST /unit",
+        issueCount: 1,
+        issues: [{ code: "invalid_type", path: ["id"] }],
+      }),
+    );
   });
 });
 

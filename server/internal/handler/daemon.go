@@ -4130,6 +4130,9 @@ type TaskCompleteRequest struct {
 	// to report" — this says "never hand this id to a later run". Older
 	// daemons omit it, which is exactly the pre-fix behaviour.
 	RetiredSessionID string `json:"retired_session_id,omitempty"`
+	// TaskDispatchedAt binds an execution manifest to the exact claim generation.
+	// It is optional for compatibility; absence only disables attribution.
+	TaskDispatchedAt string `json:"task_dispatched_at,omitempty"`
 	// SkillExecutionManifest is accepted only from a daemon advertising the
 	// completion-specific capability. It identifies daemon-resolved Multica
 	// bundles, not provider filesystem materialization.
@@ -4151,6 +4154,7 @@ func sanitizeTaskCompleteRequest(req *TaskCompleteRequest) {
 	req.DurableWorkDir = util.SanitizeTextForPostgres(req.DurableWorkDir)
 	req.BranchName = util.SanitizeTextForPostgres(req.BranchName)
 	req.RetiredSessionID = util.SanitizeTextForPostgres(req.RetiredSessionID)
+	req.TaskDispatchedAt = util.SanitizeTextForPostgres(req.TaskDispatchedAt)
 }
 
 func normalizeTaskSkillExecutionManifest(r *http.Request, raw json.RawMessage) json.RawMessage {
@@ -4166,6 +4170,45 @@ func normalizeTaskSkillExecutionManifest(r *http.Request, raw json.RawMessage) j
 		return nil
 	}
 	return normalized
+}
+
+type committedTaskAttribution struct {
+	TaskDispatchedAt       string          `json:"task_dispatched_at"`
+	SkillExecutionManifest json.RawMessage `json:"skill_execution_manifest"`
+}
+
+func taskCompletionEventFromCommittedTask(workspaceID string, task *db.AgentTaskQueue, capabilityProven bool) (TaskCompletionEvent, bool) {
+	if !capabilityProven || task == nil || task.Status != "completed" ||
+		!task.ID.Valid || !task.RuntimeID.Valid || !task.AgentID.Valid || !task.DispatchedAt.Valid {
+		return TaskCompletionEvent{}, false
+	}
+
+	var committed committedTaskAttribution
+	if err := json.Unmarshal(task.Result, &committed); err != nil || committed.TaskDispatchedAt == "" || len(committed.SkillExecutionManifest) == 0 {
+		return TaskCompletionEvent{}, false
+	}
+	reportedGeneration, err := time.Parse(time.RFC3339Nano, committed.TaskDispatchedAt)
+	if err != nil || !reportedGeneration.Equal(task.DispatchedAt.Time) {
+		return TaskCompletionEvent{}, false
+	}
+	manifest, err := skillbundle.NormalizeExecutionManifest(committed.SkillExecutionManifest)
+	if err != nil {
+		return TaskCompletionEvent{}, false
+	}
+	normalized, err := json.Marshal(manifest)
+	if err != nil {
+		return TaskCompletionEvent{}, false
+	}
+
+	return TaskCompletionEvent{
+		WorkspaceID:            workspaceID,
+		TaskID:                 uuidToString(task.ID),
+		RuntimeID:              uuidToString(task.RuntimeID),
+		AgentID:                uuidToString(task.AgentID),
+		DispatchedAt:           task.DispatchedAt.Time,
+		CapabilityProven:       true,
+		SkillExecutionManifest: normalized,
+	}, true
 }
 
 func sanitizeTaskFailRequest(req *TaskFailRequest) {
@@ -4251,15 +4294,13 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.offerTaskCompletion(TaskCompletionEvent{
-		WorkspaceID:            workspaceID,
-		TaskID:                 uuidToString(task.ID),
-		RuntimeID:              uuidToString(task.RuntimeID),
-		AgentID:                uuidToString(task.AgentID),
-		DispatchedAt:           task.DispatchedAt.Time,
-		CapabilityProven:       requestHasClientCapability(r, protocol.DaemonCapabilitySkillExecutionManifestV1),
-		SkillExecutionManifest: req.SkillExecutionManifest,
-	})
+	if event, ok := taskCompletionEventFromCommittedTask(
+		workspaceID,
+		task,
+		requestHasClientCapability(r, protocol.DaemonCapabilitySkillExecutionManifestV1),
+	); ok {
+		h.offerTaskCompletion(event)
+	}
 
 	h.emitIssueExecutedOnFirstCompletion(r, task)
 

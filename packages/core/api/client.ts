@@ -317,6 +317,35 @@ import type {
   UpdateRoomBudgetInput,
   WakeRoomInput,
 } from "../rooms/types";
+import type {
+  ConfigureSkillEvolutionInput,
+  DecideSkillEvolutionProposalInput,
+  ForkSkillForEvolutionInput,
+  SkillEvolutionIdempotencyInput,
+  SkillEvolutionLoop,
+  SkillEvolutionOverview,
+  SkillEvolutionProposalDetail,
+  SkillEvolutionProposalRequest,
+  SkillEvolutionProposalSummary,
+  SkillEvolutionPublication,
+  SkillEvolutionSkillIdentity,
+} from "../skill-evolution/types";
+import {
+  EMPTY_SKILL_EVOLUTION_IDENTITY,
+  EMPTY_SKILL_EVOLUTION_LOOP,
+  EMPTY_SKILL_EVOLUTION_OVERVIEW,
+  EMPTY_SKILL_EVOLUTION_PROPOSAL_DETAIL,
+  EMPTY_SKILL_EVOLUTION_PROPOSAL_REQUEST,
+  EMPTY_SKILL_EVOLUTION_PROPOSAL_SUMMARY,
+  EMPTY_SKILL_EVOLUTION_PUBLICATION,
+  SkillEvolutionLoopSchema,
+  SkillEvolutionOverviewSchema,
+  SkillEvolutionProposalDetailSchema,
+  SkillEvolutionProposalRequestSchema,
+  SkillEvolutionProposalSummarySchema,
+  SkillEvolutionPublicationSchema,
+  SkillEvolutionSkillIdentitySchema,
+} from "../skill-evolution/schemas";
 import { type Logger, noopLogger } from "../logger";
 import { createRequestId, createSafeId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
@@ -3187,6 +3216,169 @@ export class ApiClient {
     await this.fetch(`/api/skills/${id}`, { method: "DELETE" });
   }
 
+  async getSkillEvolutionOverview(
+    skillId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SkillEvolutionOverview> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}`,
+      { signal: options?.signal },
+    );
+    return parseWithFallback(raw, SkillEvolutionOverviewSchema, EMPTY_SKILL_EVOLUTION_OVERVIEW, {
+      endpoint: "GET /api/skill-evolution/skills/:skillId",
+    });
+  }
+
+  async configureSkillEvolution(
+    skillId: string,
+    input: ConfigureSkillEvolutionInput,
+  ): Promise<SkillEvolutionLoop> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/loop`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: input.enabled,
+          mode: input.mode,
+          cooldown_seconds: input.cooldownSeconds,
+          minimum_signals: input.minimumSignals,
+          max_evidence_refs: input.maxEvidenceRefs,
+          max_replay_samples: input.maxReplaySamples,
+          max_cost_usd_ticks: input.maxCostUsdTicks,
+          policy_version: input.policyVersion,
+        }),
+      },
+    );
+    return parseWithFallback(raw, SkillEvolutionLoopSchema, EMPTY_SKILL_EVOLUTION_LOOP, {
+      endpoint: "PUT /api/skill-evolution/skills/:skillId/loop",
+    });
+  }
+
+  async pauseSkillEvolution(
+    skillId: string,
+    input: SkillEvolutionIdempotencyInput,
+  ): Promise<SkillEvolutionLoop> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/pause`,
+      { method: "POST", body: JSON.stringify({ idempotency_key: input.idempotencyKey }) },
+    );
+    return parseWithFallback(raw, SkillEvolutionLoopSchema, EMPTY_SKILL_EVOLUTION_LOOP, {
+      endpoint: "POST /api/skill-evolution/skills/:skillId/pause",
+    });
+  }
+
+  async requestSkillEvolutionProposal(
+    skillId: string,
+    input: SkillEvolutionIdempotencyInput,
+  ): Promise<SkillEvolutionProposalRequest> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/proposals`,
+      { method: "POST", body: JSON.stringify({ idempotency_key: input.idempotencyKey }) },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionProposalRequestSchema,
+      EMPTY_SKILL_EVOLUTION_PROPOSAL_REQUEST,
+      { endpoint: "POST /api/skill-evolution/skills/:skillId/proposals" },
+    );
+  }
+
+  async getSkillEvolutionProposal(
+    proposalId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SkillEvolutionProposalDetail> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/proposals/${encodeURIComponent(proposalId)}`,
+      { signal: options?.signal },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionProposalDetailSchema,
+      EMPTY_SKILL_EVOLUTION_PROPOSAL_DETAIL,
+      { endpoint: "GET /api/skill-evolution/proposals/:proposalId" },
+    );
+  }
+
+  async rejectSkillEvolutionProposal(
+    proposalId: string,
+    input: DecideSkillEvolutionProposalInput,
+  ): Promise<SkillEvolutionProposalSummary> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/proposals/${encodeURIComponent(proposalId)}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+          idempotency_key: input.idempotencyKey,
+        }),
+      },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionProposalSummarySchema,
+      EMPTY_SKILL_EVOLUTION_PROPOSAL_SUMMARY,
+      { endpoint: "POST /api/skill-evolution/proposals/:proposalId/reject" },
+    );
+  }
+
+  async publishSkillEvolutionProposal(
+    proposalId: string,
+    input: DecideSkillEvolutionProposalInput,
+  ): Promise<SkillEvolutionPublication> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/proposals/${encodeURIComponent(proposalId)}/publish`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+          idempotency_key: input.idempotencyKey,
+        }),
+      },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionPublicationSchema,
+      EMPTY_SKILL_EVOLUTION_PUBLICATION,
+      { endpoint: "POST /api/skill-evolution/proposals/:proposalId/publish" },
+    );
+  }
+
+  async rollbackSkillEvolutionRelease(
+    skillId: string,
+    releaseId: string,
+    input: SkillEvolutionIdempotencyInput,
+  ): Promise<SkillEvolutionPublication> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/releases/${encodeURIComponent(releaseId)}/rollback`,
+      { method: "POST", body: JSON.stringify({ idempotency_key: input.idempotencyKey }) },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionPublicationSchema,
+      EMPTY_SKILL_EVOLUTION_PUBLICATION,
+      { endpoint: "POST /api/skill-evolution/skills/:skillId/releases/:releaseId/rollback" },
+    );
+  }
+
+  async forkSkillForEvolution(
+    sourceSkillId: string,
+    input: ForkSkillForEvolutionInput,
+  ): Promise<SkillEvolutionSkillIdentity> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(sourceSkillId)}/fork`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: input.name, idempotency_key: input.idempotencyKey }),
+      },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionSkillIdentitySchema,
+      EMPTY_SKILL_EVOLUTION_IDENTITY,
+      { endpoint: "POST /api/skill-evolution/skills/:skillId/fork" },
+    );
+  }
+
   async importSkill(data: { url: string }): Promise<Skill> {
     return this.fetch("/api/skills/import", {
       method: "POST",
@@ -3833,6 +4025,8 @@ export class ApiClient {
       rationale: data.rationale ?? "",
       evidenceRefs: data.evidenceRefs ?? [],
       agentId: data.agentId,
+      sourceKind: "agent",
+      sourceRefId: null,
       idempotencyKey: data.idempotencyKey,
       status: "unknown",
       reviewedById: null,
@@ -3879,7 +4073,9 @@ export class ApiClient {
       contentDigest: "",
       rationale: "",
       evidenceRefs: [],
-      agentId: "",
+      agentId: null,
+      sourceKind: "unknown",
+      sourceRefId: null,
       idempotencyKey: "",
       status: "unknown",
       reviewedById: null,

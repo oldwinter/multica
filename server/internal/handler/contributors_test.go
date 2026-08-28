@@ -139,6 +139,97 @@ func TestTaskDispatchEventFromResponseOnlyUsesDeliveredSkillRefs(t *testing.T) {
 	}
 }
 
+func TestTaskResponsePreservesDispatchGenerationPrecision(t *testing.T) {
+	dispatchedAt := time.Date(2026, time.August, 29, 12, 34, 56, 123456000, time.UTC)
+	response := taskToResponse(db.AgentTaskQueue{
+		ID:           parseUUID("00000000-0000-0000-0000-000000000111"),
+		AgentID:      parseUUID("00000000-0000-0000-0000-000000000112"),
+		RuntimeID:    parseUUID("00000000-0000-0000-0000-000000000113"),
+		IssueID:      parseUUID("00000000-0000-0000-0000-000000000114"),
+		DispatchedAt: pgtype.Timestamptz{Time: dispatchedAt, Valid: true},
+	}, "workspace-1")
+	if response.DispatchedAt == nil || *response.DispatchedAt != "2026-08-29T12:34:56.123456Z" {
+		t.Fatalf("dispatch generation = %v, want full PostgreSQL precision", response.DispatchedAt)
+	}
+}
+
+func TestTaskCompletionEventUsesAuthoritativeCommittedResult(t *testing.T) {
+	dispatchedAt := time.Date(2026, time.August, 29, 12, 34, 56, 123456000, time.UTC)
+	task := committedCompletionTask(t, dispatchedAt, `{
+  "task_dispatched_at":"2026-08-29T12:34:56.123456Z",
+  "skill_execution_manifest":{"version":1,"skills":[{"source":"workspace","skill_id":"winner","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"future_field":true}
+}`)
+
+	event, ok := taskCompletionEventFromCommittedTask("workspace-1", task, true)
+	if !ok {
+		t.Fatal("committed completion did not produce an attribution event")
+	}
+	if event.TaskID != uuidToString(task.ID) || event.DispatchedAt != dispatchedAt {
+		t.Fatalf("event identity = %+v", event)
+	}
+	if strings.Contains(string(event.SkillExecutionManifest), "future_field") || !strings.Contains(string(event.SkillExecutionManifest), `"skill_id":"winner"`) {
+		t.Fatalf("event did not use normalized authoritative manifest: %s", event.SkillExecutionManifest)
+	}
+	// A concurrent/replayed request can carry a different manifest, but the
+	// extractor has no request payload input: only the CAS winner in task.Result
+	// can reach contributors.
+	if strings.Contains(string(event.SkillExecutionManifest), "loser") {
+		t.Fatalf("event contains replay manifest: %s", event.SkillExecutionManifest)
+	}
+}
+
+func TestTaskCompletionEventRejectsForgedTerminalReplay(t *testing.T) {
+	dispatchedAt := time.Date(2026, time.August, 29, 13, 0, 0, 0, time.UTC)
+	task := committedCompletionTask(t, dispatchedAt, `{"task_dispatched_at":"2026-08-29T13:00:00Z","output":"completed without manifest"}`)
+	if _, ok := taskCompletionEventFromCommittedTask("workspace-1", task, true); ok {
+		t.Fatal("a replay cannot add a manifest absent from the committed result")
+	}
+
+	task.Result = []byte(`{"task_dispatched_at":"2026-08-29T13:00:00Z","skill_execution_manifest":{"version":1,"skills":[{"source":"workspace","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}}`)
+	for _, status := range []string{"failed", "cancelled"} {
+		task.Status = status
+		if _, ok := taskCompletionEventFromCommittedTask("workspace-1", task, true); ok {
+			t.Fatalf("terminal status %q produced attribution", status)
+		}
+	}
+}
+
+func TestTaskCompletionEventRejectsMissingOrStaleDispatchGeneration(t *testing.T) {
+	dispatchedAt := time.Date(2026, time.August, 29, 13, 0, 0, 500000000, time.UTC)
+	manifest := `"skill_execution_manifest":{"version":1,"skills":[{"source":"workspace","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`
+	for _, tc := range []struct {
+		name   string
+		result string
+	}{
+		{name: "old daemon omitted generation", result: `{` + manifest + `}`},
+		{name: "old claim after reclaim", result: `{"task_dispatched_at":"2026-08-29T13:00:00Z",` + manifest + `}`},
+		{name: "invalid generation", result: `{"task_dispatched_at":"not-a-time",` + manifest + `}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			task := committedCompletionTask(t, dispatchedAt, tc.result)
+			if _, ok := taskCompletionEventFromCommittedTask("workspace-1", task, true); ok {
+				t.Fatal("missing or stale claim generation produced attribution")
+			}
+		})
+	}
+	task := committedCompletionTask(t, dispatchedAt, `{"task_dispatched_at":"2026-08-29T13:00:00.5Z",`+manifest+`}`)
+	if _, ok := taskCompletionEventFromCommittedTask("workspace-1", task, false); ok {
+		t.Fatal("request without skill-execution-manifest-v1 capability produced attribution")
+	}
+}
+
+func committedCompletionTask(t *testing.T, dispatchedAt time.Time, result string) *db.AgentTaskQueue {
+	t.Helper()
+	return &db.AgentTaskQueue{
+		ID:           parseUUID("00000000-0000-0000-0000-000000000101"),
+		RuntimeID:    parseUUID("00000000-0000-0000-0000-000000000102"),
+		AgentID:      parseUUID("00000000-0000-0000-0000-000000000103"),
+		Status:       "completed",
+		DispatchedAt: pgtype.Timestamptz{Time: dispatchedAt, Valid: true},
+		Result:       []byte(result),
+	}
+}
+
 func TestWorkspaceCleanupContributorsFailClosed(t *testing.T) {
 	h := &Handler{}
 	wantErr := errors.New("cleanup failed")
