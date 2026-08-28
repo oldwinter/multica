@@ -20,6 +20,7 @@ export type {
   WikiPageSummary,
   WikiActorType,
   WikiProposal,
+  WikiProposalSourceKind,
   WikiProposalStatus,
   WikiRevision,
   WikiRevisionConflict,
