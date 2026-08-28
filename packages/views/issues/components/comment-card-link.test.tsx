@@ -8,6 +8,9 @@ import { renderWithI18n } from "../../test/i18n";
 const copyText = vi.hoisted(() => vi.fn());
 const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
+const replyInputProps = vi.hoisted(() => ({
+  insertRequest: undefined as { id: number; markdown: string } | undefined,
+}));
 
 vi.mock("@multica/ui/lib/clipboard", () => ({ copyText }));
 vi.mock("sonner", () => ({
@@ -28,7 +31,12 @@ vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => null }));
 vi.mock("@multica/ui/components/common/reaction-bar", () => ({
   ReactionBar: () => null,
 }));
-vi.mock("./reply-input", () => ({ ReplyInput: () => null }));
+vi.mock("./reply-input", () => ({
+  ReplyInput: ({ insertRequest }: { insertRequest?: { id: number; markdown: string } }) => {
+    replyInputProps.insertRequest = insertRequest;
+    return null;
+  },
+}));
 vi.mock("./comment-trigger-chips", () => ({ CommentTriggerChips: () => null }));
 vi.mock("../hooks/use-comment-trigger-preview", () => ({
   useCommentTriggerPreview: () => ({ agents: [], blocked: [] }),
@@ -59,7 +67,7 @@ vi.mock("./use-comment-uploads", () => ({
   }),
 }));
 
-import { CommentCard } from "./comment-card";
+import { CommentCard, formatCommentQuote } from "./comment-card";
 
 function comment(
   id: string,
@@ -111,6 +119,39 @@ beforeEach(() => {
   vi.clearAllMocks();
   copyText.mockResolvedValue(true);
   useCommentCollapseStore.setState({ collapsedByIssue: {} });
+  replyInputProps.insertRequest = undefined;
+});
+
+describe("comment quote reply actions", () => {
+  it("formats multiline Markdown as one block quote", () => {
+    expect(formatCommentQuote(" First line\r\n\r\nSecond line ")).toBe(
+      ">  First line\n>\n> Second line ",
+    );
+    expect(formatCommentQuote("  \n ")).toBe("");
+    expect(formatCommentQuote("\n    const answer = 42;\n")).toBe(
+      ">     const answer = 42;",
+    );
+  });
+
+  it("quotes a root comment into its reply composer", async () => {
+    renderCard();
+
+    const trigger = document.querySelectorAll('button[aria-haspopup="menu"]').item(0);
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByText("Quote in reply"));
+
+    expect(replyInputProps.insertRequest).toEqual({ id: 1, markdown: "> Root comment" });
+  });
+
+  it("quotes a nested reply into the same reply composer", async () => {
+    renderCard();
+
+    const trigger = document.querySelectorAll('button[aria-haspopup="menu"]').item(1);
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByText("Quote in reply"));
+
+    expect(replyInputProps.insertRequest).toEqual({ id: 1, markdown: "> Nested reply" });
+  });
 });
 
 describe("comment permalink actions", () => {

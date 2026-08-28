@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, ChevronRight, ListChevronsDownUp, Copy, Link, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, ListChevronsDownUp, Copy, Link, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, Quote, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@multica/ui/components/ui/card";
 import { Button } from "@multica/ui/components/ui/button";
@@ -33,7 +33,7 @@ import { ContentEditor, type ContentEditorRef, ReadonlyContent, useFileDropZone,
 import { useCommentUploads } from "./use-comment-uploads";
 import { FileUploadButton } from "@multica/ui/components/common/file-upload-button";
 import { api, dispatchReasonCode, errorCode } from "@multica/core/api";
-import { ReplyInput } from "./reply-input";
+import { ReplyInput, type ReplyInsertRequest } from "./reply-input";
 import { CommentTriggerChips } from "./comment-trigger-chips";
 import { useCommentTriggerPreview } from "../hooks/use-comment-trigger-preview";
 import type { TimelineEntry, Attachment } from "@multica/core/types";
@@ -229,6 +229,19 @@ function sameIdSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const set = new Set(a);
   return b.every((id) => set.has(id));
+}
+
+function formatCommentQuote(content: string): string {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const firstContentLine = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentLine === -1) return "";
+  let lastContentLine = lines.length - 1;
+  while (lines[lastContentLine]?.trim().length === 0) lastContentLine -= 1;
+
+  return lines
+    .slice(firstContentLine, lastContentLine + 1)
+    .map((line) => (line ? `> ${line}` : ">"))
+    .join("\n");
 }
 
 function initialStandaloneAttachmentIds(entry: TimelineEntry): Set<string> {
@@ -601,6 +614,7 @@ function CommentRow({
   onCreateSubIssue,
   onResolveToggle,
   onCopyLink,
+  onQuote,
 }: {
   issueId: string;
   entry: TimelineEntry;
@@ -616,6 +630,7 @@ function CommentRow({
   onCreateSubIssue?: (commentId: string) => void;
   onResolveToggle?: (commentId: string, resolved: boolean) => void;
   onCopyLink: (commentId: string) => void;
+  onQuote: (content: string) => void;
 }) {
   const { t } = useT("issues");
   const timeAgo = useTimeAgo();
@@ -695,6 +710,12 @@ function CommentRow({
                 <DropdownMenuItem onClick={() => onCreateSubIssue(entry.id)}>
                   <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden />
                   {t(($) => $.source_context.create_action)}
+                </DropdownMenuItem>
+              )}
+              {!!entry.content?.trim() && (
+                <DropdownMenuItem onClick={() => onQuote(entry.content ?? "")}>
+                  <Quote className="h-3.5 w-3.5" />
+                  {t(($) => $.comment.quote_reply_action)}
                 </DropdownMenuItem>
               )}
               {onResolveToggle && (
@@ -897,6 +918,8 @@ function CommentCardImpl({
   const canEditEntry = isOwn || (canModerate && entry.actor_type === "member");
   const canDeleteEntry = isOwn || canModerate;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const quoteRequestIdRef = useRef(0);
+  const [quoteRequest, setQuoteRequest] = useState<ReplyInsertRequest>();
 
   const copyCommentLink = useCallback(
     (commentId: string) => {
@@ -909,6 +932,17 @@ function CommentCardImpl({
       });
     },
     [issueHref, navigation, t],
+  );
+  const quoteInReply = useCallback(
+    (content: string) => {
+      const markdown = formatCommentQuote(content);
+      if (!markdown) return;
+
+      quoteRequestIdRef.current += 1;
+      setQuoteRequest({ id: quoteRequestIdRef.current, markdown });
+      onResolvedExpandChange?.(entry.id, true);
+    },
+    [entry.id, onResolvedExpandChange],
   );
 
   const allNestedReplies = replies;
@@ -1046,6 +1080,12 @@ function CommentCardImpl({
                         <DropdownMenuItem onClick={() => onCreateSubIssue(entry.id)}>
                           <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden />
                           {t(($) => $.source_context.create_action)}
+                        </DropdownMenuItem>
+                      )}
+                      {!!entry.content?.trim() && (
+                        <DropdownMenuItem onClick={() => quoteInReply(entry.content ?? "")}>
+                          <Quote className="h-3.5 w-3.5" />
+                          {t(($) => $.comment.quote_reply_action)}
                         </DropdownMenuItem>
                       )}
                       {onResolveToggle && (
@@ -1243,6 +1283,7 @@ function CommentCardImpl({
                     onCreateSubIssue={onCreateSubIssue}
                     onResolveToggle={onResolveToggle}
                     onCopyLink={copyCommentLink}
+                    onQuote={quoteInReply}
                   />
                 </div>
               )}
@@ -1284,6 +1325,7 @@ function CommentCardImpl({
                     onCreateSubIssue={onCreateSubIssue}
                     onResolveToggle={onResolveToggle}
                     onCopyLink={copyCommentLink}
+                    onQuote={quoteInReply}
                   />
                 </div>
               ))}
@@ -1298,6 +1340,7 @@ function CommentCardImpl({
                   avatarType="member"
                   avatarId={currentUserId ?? ""}
                   draftKey={`reply:${issueId}:${entry.id}`}
+                  insertRequest={quoteRequest}
                   onSubmit={(content, attachmentIds, suppressAgentIds) => onReply(entry.id, content, attachmentIds, suppressAgentIds)}
                   onAccepted={onReplyAccepted}
                 />
@@ -1317,4 +1360,4 @@ function CommentCardImpl({
 // every callback is stabilized via useCallback in use-issue-timeline.ts.
 const CommentCard = memo(CommentCardImpl);
 
-export { CommentCard, type CommentCardProps };
+export { CommentCard, formatCommentQuote, type CommentCardProps };

@@ -221,11 +221,13 @@ function renderReplyInput({
   onAccepted,
   size = "sm",
   draftKey,
+  insertRequest,
 }: {
   onSubmit?: (content: string, attachmentIds?: string[], suppressAgentIds?: string[]) => Promise<string | boolean>;
   onAccepted?: (commentId: string) => void;
   size?: "sm" | "default";
   draftKey?: `reply:${string}:${string}`;
+  insertRequest?: { id: number; markdown: string };
 } = {}) {
   const view = renderWithProviders(
     <ReplyInput
@@ -237,6 +239,7 @@ function renderReplyInput({
       onAccepted={onAccepted}
       size={size}
       draftKey={draftKey}
+      insertRequest={insertRequest}
     />,
   );
   return { ...view, onSubmit };
@@ -454,6 +457,25 @@ describe("comment composers", () => {
         .getDraft("reply:issue-1:comment-1"),
     ).toBe("test.de");
     expect(editorDefaultValues.values.at(-1)).toBeUndefined();
+  });
+
+  it("activates, appends a requested quote after an existing draft, and focuses", async () => {
+    useCommentDraftStore
+      .getState()
+      .setDraft("reply:issue-1:comment-1", "Keep this draft");
+
+    renderReplyInput({
+      draftKey: "reply:issue-1:comment-1",
+      insertRequest: { id: 1, markdown: "> Quoted comment" },
+    });
+
+    await waitFor(() =>
+      expect(insertMarkdownSpy).toHaveBeenCalledWith("> Quoted comment\n\n"),
+    );
+    expect(
+      useCommentDraftStore.getState().getDraft("reply:issue-1:comment-1"),
+    ).toContain("Keep this draft\n\n> Quoted comment");
+    expect(focusCalls.focused).toBeGreaterThan(0);
   });
 
   it("locks the editor while the send is in flight, then clears on success", async () => {

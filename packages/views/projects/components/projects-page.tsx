@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  CirclePlus,
   ExternalLink,
   Filter,
   FolderKanban,
@@ -41,6 +42,7 @@ import { useAuthStore } from "@multica/core/auth";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import { useModalStore } from "@multica/core/modals";
+import { openCreateIssueWithPreference } from "@multica/core/issues/stores";
 import { AppLink, useIntentNavigate, useRowLink } from "../../navigation";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { FILTER_ITEM_CLASS, HoverCheck } from "../../common/hover-check";
@@ -259,6 +261,14 @@ function ProjectRowActions({
           }
         />
         <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem
+            onClick={() =>
+              openCreateIssueWithPreference({ project_id: project.id })
+            }
+          >
+            <CirclePlus className="size-3.5" />
+            {t(($) => $.page.new_issue)}
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() =>
               intentNavigate(
