@@ -116,6 +116,7 @@
     "read_only": "読み取り専用",
     "delete_aria": "スキルを削除",
     "delete_tooltip": "スキルを削除",
+    "evolution": "スキル進化",
     "supporting_data_warning": "一部のワークスペースデータを読み込めませんでした。次回の更新まで、作成者の表示、ランタイム名、編集権限が不完全に見える場合があります。",
     "delete_file": "ファイルを削除",
     "name_placeholder": "skill-name",

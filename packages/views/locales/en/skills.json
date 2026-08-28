@@ -124,6 +124,7 @@
     "read_only": "Read-only",
     "delete_aria": "Delete skill",
     "delete_tooltip": "Delete skill",
+    "evolution": "Evolution",
     "supporting_data_warning": "Some workspace data failed to load. Creator attribution, runtime names, or edit permissions may appear incomplete until the next refresh.",
     "delete_file": "Delete file",
     "name_placeholder": "skill-name",

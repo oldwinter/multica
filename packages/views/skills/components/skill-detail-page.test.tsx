@@ -58,7 +58,10 @@ vi.mock("@multica/core/auth", () => {
 // SkillIcon, so the real module has to stay reachable.
 vi.mock("@multica/core/paths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@multica/core/paths")>()),
-  useWorkspacePaths: () => ({ skills: () => "/acme/skills" }),
+  useWorkspacePaths: () => ({
+    skills: () => "/acme/skills",
+    skillDetail: (id: string) => `/acme/skills/${id}`,
+  }),
 }));
 vi.mock("@multica/core/permissions", () => ({
   useSkillPermissions: () => ({ canEdit: { allowed: true, reason: null } }),
@@ -158,6 +161,13 @@ beforeEach(() => {
 });
 
 describe("SkillDetailPage tabs", () => {
+  it("links to the skill evolution workflow from the compact header action", async () => {
+    renderPage();
+
+    const evolution = await screen.findByRole("button", { name: "Evolution" });
+    expect(evolution.getAttribute("href")).toBe("/acme/skills/skill-1/evolution");
+  });
+
   it("opens on Overview and exposes exactly two tabs", async () => {
     renderPage();
     const tabs = await screen.findAllByRole("tab", { name: /Overview|Files/ });
