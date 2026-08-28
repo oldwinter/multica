@@ -7,6 +7,50 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-08-28 v0.4.36 Sync
+
+- Downstream start: `d3d9359d3`.
+- Merge base: `d06b6b6e5`.
+- Upstream ahead: 13 commits through `64ec7f541`
+  (`v0.4.36-2-g64ec7f541`).
+- Local unique commits: 59.
+- Textual conflict files: 0.
+- Merge commit: `0a940fd8a`.
+- Fork-remote reconciliation: none; `origin/main` was already an ancestor of
+  the downstream start.
+
+This update brought in the two-hour inactivity and tool budgets, live-end chat
+scrolling, issue-property filters, native OMP MCP configuration, public web
+URLs for desktop navigation, GitHub pull-request head-SHA lookup, CLI
+pagination documentation, and several daemon/service cleanup fixes. The Git
+merge was textual-conflict free, but validation found two semantic integration
+points that still required downstream work.
+
+First, both published histories used migration prefix 440:
+`440_github_pr_head_sha_index` upstream and
+`440_twin_deposition_request_index` downstream. Both filename identities stay
+unchanged so existing installations do not re-run either migration. The lint
+ledger freezes the exact pair and continues to reject any new unpublished
+collision. The existing downstream database advanced from 595 to 596 migration
+identities, retained the downstream 440, applied the upstream 440 and its
+index, and made a second `migrate up` a no-op. A temporary empty database
+applied all 585 current identities, recorded both 440 stems, created the index,
+and also made the second run a no-op before the database was removed.
+
+Second, upstream made `hash` part of the required `NavigationAdapter`
+location contract. Two downstream-only issue-detail test adapters still
+modeled the old boundary. Adding the empty fragment to those fixtures restored
+the shared contract without changing production behavior. This is why a
+conflict-free merge must still run workspace typechecking: downstream-only
+consumers cannot appear in Git's same-line conflict report.
+
+Targeted frontend verification passed 16 files and 200 tests across core,
+views, web, and desktop. Targeted Go verification passed the migration lint,
+timeout sweeper, watchdog, OMP MCP, repository-cache, property-facet, GitHub
+snapshot, and channel-media reconciliation paths. `sqlc` 1.31.1 regeneration
+produced no diff. Typecheck passed 7/7 workspace tasks; lint passed 6/6 with
+zero errors and 34 pre-existing warnings.
+
 ## 2026-08-28 Sync
 
 - Downstream start: `5d6feabfe`.
