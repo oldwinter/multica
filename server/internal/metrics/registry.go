@@ -18,6 +18,10 @@ type RegistryOptions struct {
 	Version  string
 	Commit   string
 
+	// ExtraCollectors lets leaf modules add content-free metrics through one
+	// composition-root registration without coupling this package to them.
+	ExtraCollectors []prometheus.Collector
+
 	// BusinessSampler, when non-nil, opts the registry into the
 	// scrape-time SQL sampler from PR4 (MUL-2947). It is intentionally
 	// separate from Pool so existing tests (and any deployment without
@@ -83,6 +87,11 @@ func NewRegistry(opts RegistryOptions) *Registry {
 	sampler := NewBusinessSamplerCollector(opts.BusinessSampler)
 	if sampler != nil {
 		reg.MustRegister(sampler.Collectors()...)
+	}
+	for _, collector := range opts.ExtraCollectors {
+		if collector != nil {
+			reg.MustRegister(collector)
+		}
 	}
 
 	return &Registry{
