@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -23,6 +24,7 @@ type AttributionReason string
 
 const (
 	AttributionReasonExactRevisionMatch      AttributionReason = "exact_revision_match"
+	AttributionReasonNoWorkspaceSkill        AttributionReason = "no_workspace_skill"
 	AttributionReasonCapabilityNotProven     AttributionReason = "capability_not_proven"
 	AttributionReasonInvalidInput            AttributionReason = "invalid_input"
 	AttributionReasonInvalidDispatch         AttributionReason = "invalid_dispatch"
@@ -41,25 +43,26 @@ const (
 	AttributionReasonPersistenceUnavailable  AttributionReason = "persistence_unavailable"
 )
 
-// DispatchSkillIdentity is the content-free identity of a Multica bundle that
-// the server dispatched. Bundle hashes are deliberately excluded: the daemon
-// may resolve a newer bundle before execution, and its post-resolution hash is
-// the value that must be attributed.
+// DispatchSkillIdentity is the stable content-free identity of a Multica
+// bundle selected at claim time. The daemon may resolve a newer workspace
+// bundle before execution, so its completion manifest owns the executed hash.
 type DispatchSkillIdentity struct {
-	Source  string
-	SkillID string
+	Source  string `json:"source"`
+	SkillID string `json:"skill_id"`
 }
 
 // AttributionInput carries only identities and a manifest that has already
 // crossed the neutral skillbundle normalizer. Record defensively normalizes it
 // again so direct callers cannot accidentally weaken the eligibility gate.
 type AttributionInput struct {
-	WorkspaceID      pgtype.UUID
-	TaskID           pgtype.UUID
-	RuntimeID        pgtype.UUID
-	CapabilityProven bool
-	DispatchedSkills []DispatchSkillIdentity
-	Manifest         skillbundle.ExecutionManifest
+	WorkspaceID        pgtype.UUID
+	TaskID             pgtype.UUID
+	RuntimeID          pgtype.UUID
+	DispatchSnapshotID pgtype.UUID
+	TaskDispatchedAt   time.Time
+	CapabilityProven   bool
+	DispatchedSkills   []DispatchSkillIdentity
+	Manifest           skillbundle.ExecutionManifest
 }
 
 type AttributionOutcome struct {
@@ -119,7 +122,8 @@ func (r *AttributionRecorder) Record(ctx context.Context, input AttributionInput
 	if !input.CapabilityProven {
 		return ineligibleAttributionReport(AttributionReasonCapabilityNotProven)
 	}
-	if r == nil || r.repository == nil || !validUUID(input.WorkspaceID) || !validUUID(input.TaskID) || !validUUID(input.RuntimeID) {
+	if r == nil || r.repository == nil || !validUUID(input.WorkspaceID) || !validUUID(input.TaskID) ||
+		!validUUID(input.RuntimeID) || !validUUID(input.DispatchSnapshotID) || input.TaskDispatchedAt.IsZero() {
 		return ineligibleAttributionReport(AttributionReasonInvalidInput)
 	}
 
@@ -143,6 +147,14 @@ func (r *AttributionRecorder) Record(ctx context.Context, input AttributionInput
 	inputs := make([]TaskAttributionInput, 0, len(records))
 	outcomes := make([]AttributionOutcome, 0, len(records))
 	for _, record := range records {
+		if record.Source != skillbundle.SourceWorkspace {
+			outcomes = append(outcomes, AttributionOutcome{
+				SkillID:     record.SkillID,
+				Eligibility: EvidenceEligibilityEligible,
+				Reason:      AttributionReasonExactRevisionMatch,
+			})
+			continue
+		}
 		inputRow, outcome, reason := r.resolveRecord(ctx, input, manifest.Version, digest, record)
 		if reason != "" {
 			return AttributionReport{
@@ -155,19 +167,25 @@ func (r *AttributionRecorder) Record(ctx context.Context, input AttributionInput
 		outcomes = append(outcomes, outcome)
 	}
 
-	if err := r.repository.recordAttributionBatch(ctx, inputs); err != nil {
-		reason := AttributionReasonPersistenceUnavailable
-		switch {
-		case errors.Is(err, ErrPersistenceConflict):
-			reason = AttributionReasonPersistenceConflict
-		case errors.Is(err, ErrPersistenceNotFound):
-			reason = AttributionReasonTaskDispatchNotProven
+	if len(inputs) > 0 {
+		if err := r.repository.recordAttributionBatch(ctx, inputs); err != nil {
+			reason := AttributionReasonPersistenceUnavailable
+			switch {
+			case errors.Is(err, ErrPersistenceConflict):
+				reason = AttributionReasonPersistenceConflict
+			case errors.Is(err, ErrPersistenceNotFound):
+				reason = AttributionReasonTaskDispatchNotProven
+			}
+			return ineligibleAttributionReport(reason)
 		}
-		return ineligibleAttributionReport(reason)
+	}
+	reason := AttributionReasonExactRevisionMatch
+	if len(inputs) == 0 {
+		reason = AttributionReasonNoWorkspaceSkill
 	}
 	return AttributionReport{
 		Eligibility: EvidenceEligibilityEligible,
-		Reason:      AttributionReasonExactRevisionMatch,
+		Reason:      reason,
 		Recorded:    len(inputs),
 		Outcomes:    outcomes,
 	}
@@ -247,17 +265,19 @@ func (r *AttributionRecorder) resolveRecord(
 	outcome.Eligibility = EvidenceEligibilityEligible
 	outcome.Reason = AttributionReasonExactRevisionMatch
 	return TaskAttributionInput{
-		WorkspaceID:     input.WorkspaceID,
-		TaskID:          input.TaskID,
-		RuntimeID:       input.RuntimeID,
-		SkillID:         skillID,
-		RevisionID:      revision.ID,
-		ManifestVersion: manifestVersion,
-		Source:          record.Source,
-		BundleHash:      Digest(record.BundleHash),
-		ManifestDigest:  manifestDigest,
-		Eligibility:     EvidenceEligibilityEligible,
-		Reason:          string(AttributionReasonExactRevisionMatch),
+		WorkspaceID:        input.WorkspaceID,
+		TaskID:             input.TaskID,
+		RuntimeID:          input.RuntimeID,
+		DispatchSnapshotID: input.DispatchSnapshotID,
+		TaskDispatchedAt:   input.TaskDispatchedAt,
+		SkillID:            skillID,
+		RevisionID:         revision.ID,
+		ManifestVersion:    manifestVersion,
+		Source:             record.Source,
+		BundleHash:         Digest(record.BundleHash),
+		ManifestDigest:     manifestDigest,
+		Eligibility:        EvidenceEligibilityEligible,
+		Reason:             string(AttributionReasonExactRevisionMatch),
 	}, outcome, ""
 }
 
@@ -270,7 +290,7 @@ func renormalizeExecutionManifest(manifest skillbundle.ExecutionManifest) (skill
 }
 
 func validateDispatchManifest(dispatched []DispatchSkillIdentity, manifest skillbundle.ExecutionManifest) AttributionReason {
-	if len(dispatched) == 0 {
+	if len(dispatched) == 0 || len(dispatched) > MaxDispatchSnapshotSkills {
 		return AttributionReasonInvalidDispatch
 	}
 	if len(manifest.Skills) < len(dispatched) {
@@ -282,7 +302,7 @@ func validateDispatchManifest(dispatched []DispatchSkillIdentity, manifest skill
 
 	expected := make(map[string]struct{}, len(dispatched))
 	for _, skill := range dispatched {
-		if !validAttributionIdentity(skill.Source) || !validAttributionIdentity(skill.SkillID) {
+		if !validTaskDispatchSource(skill.Source) || !validAttributionIdentity(skill.SkillID) {
 			return AttributionReasonInvalidDispatch
 		}
 		identity := skill.Source + "\x00" + skill.SkillID
@@ -292,6 +312,9 @@ func validateDispatchManifest(dispatched []DispatchSkillIdentity, manifest skill
 		expected[identity] = struct{}{}
 	}
 	for _, skill := range manifest.Skills {
+		if !validTaskDispatchSource(skill.Source) {
+			return AttributionReasonInvalidDispatch
+		}
 		if _, found := expected[skill.Source+"\x00"+skill.SkillID]; !found {
 			return AttributionReasonDispatchMismatch
 		}
