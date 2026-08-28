@@ -7,6 +7,50 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-08-28 Sync
+
+- Downstream start: `5d6feabfe`.
+- Merge base: `3d37828e9`.
+- Upstream ahead: 6 commits through `d06b6b6e5`
+  (`v0.4.35-16-gd06b6b6e5`).
+- Local unique commits: 53.
+- Upstream conflict files: 0.
+- Upstream merge commit: `9d8f04c4b`.
+- Fork-remote reconciliation: 3 unique commits, one conflict, merge
+  `aa0dedf41`.
+
+The upstream changes covered archived-runtime garbage collection, non-ASCII
+issue-status keys, OpenClaw and agent process-tree ownership, pricing tag
+normalization, and a stable working directory for repo-cache Git commands.
+The merge was textual-conflict free. Upstream changed `runtime.sql` and its
+generated Go output but no migrations; regenerating with `sqlc` 1.31.1
+produced no diff, so the two migration-history upgrade exercise was not
+required for this sync.
+
+`origin/main` still had three published Fork features that were not in the
+local branch: create an issue from a project menu, quote a comment in a reply,
+and copy issue identifiers. Its only conflict was
+`packages/views/issues/components/comment-card.tsx`. The local side registered
+"create source sub-issue" actions in both root and nested comment menus while
+the Fork side registered "quote in reply" in the same two positions. The
+resolution retained both actions, both icons, and the complete quote insertion
+path. Comparing the result to each parent showed only the other side's intended
+feature delta.
+
+Targeted frontend verification passed 179 core tests, 22 runtime-view tests,
+and 132 Fork/source-context view tests. Typecheck passed 7/7 workspace tasks;
+lint passed 6/6 with zero errors and existing warnings. Go verification passed
+the full issue-status, metrics, and repo-cache packages, the previously failing
+agent process-lifecycle cases, and targeted runtime-GC, runtime teardown, and
+non-Latin status handler tests against the existing local PostgreSQL database.
+The execenv suite's unreadable-file case fails when tests run as container root
+because root can read the fixture; the exact case passed as UID 1000.
+
+Process-tree tests need a real container init and sandbox identity. Run their
+Go container with `--init` and `IS_SANDBOX=1`; run permission-denial fixtures as
+a non-root UID. Without init, unreaped orphan descendants can look like cleanup
+regressions and turn bounded cancellation tests into multi-second timeouts.
+
 ## 2026-08-27 Sync
 
 - Downstream start: `f56235422`.
