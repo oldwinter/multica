@@ -6,8 +6,13 @@ const (
 	DaemonCapabilitySkillBundlesV1      = "skill-bundles-v1"
 	DaemonCapabilityCoalescedCommentsV1 = "coalesced-comments-v1"
 	DaemonCapabilityExecutionManifestV1 = "execution-manifest-v1"
-	DaemonCapabilityAgentSkillV1        = "agent-skill-v1"
-	DaemonCapabilityRemoteMCPV1         = "remote-mcp-v1"
+	// DaemonCapabilitySkillExecutionManifestV1 advertises the optional task
+	// completion field containing the daemon-resolved Multica Skill bundles.
+	// The older execution-manifest-v1 token described a removed claim-time
+	// plugin contract and must not enable this completion field.
+	DaemonCapabilitySkillExecutionManifestV1 = "skill-execution-manifest-v1"
+	DaemonCapabilityAgentSkillV1             = "agent-skill-v1"
+	DaemonCapabilityRemoteMCPV1              = "remote-mcp-v1"
 	// DaemonCapabilityTwinBriefingV1 advertises that the daemon understands
 	// the bounded, signed Twin briefing carried on a task claim and appends it
 	// as lower-authority per-turn context. A server must not send briefing

@@ -17,6 +17,7 @@ import (
 	"github.com/multica-ai/multica/server/pkg/agent"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 	"github.com/multica-ai/multica/server/pkg/remotemcp"
+	"github.com/multica-ai/multica/server/pkg/skillbundle"
 )
 
 // requestError is returned by postJSON/getJSON when the server responds with an error status.
@@ -193,6 +194,7 @@ func daemonClientCapabilities() string {
 		protocol.DaemonCapabilityRoomTasksV1,
 		protocol.DaemonCapabilityRoomOutcomesV2,
 		protocol.DaemonCapabilityExecutionManifestV1,
+		protocol.DaemonCapabilitySkillExecutionManifestV1,
 		protocol.DaemonCapabilityAgentSkillV1,
 		protocol.DaemonCapabilityRemoteMCPV1,
 		protocol.DaemonCapabilityTwinBriefingV1,
@@ -497,7 +499,7 @@ func (c *Client) ReportTaskMessages(ctx context.Context, taskID string, messages
 	}, nil)
 }
 
-func (c *Client) CompleteTask(ctx context.Context, taskID, output, branchName, sessionID, workDir string, sessionRolloutMissing bool, retiredSessionID, durableWorkDir string) error {
+func (c *Client) CompleteTask(ctx context.Context, taskID, output, branchName, sessionID, workDir string, sessionRolloutMissing bool, retiredSessionID, durableWorkDir string, skillExecutionManifest *skillbundle.ExecutionManifest) error {
 	body := map[string]any{"output": output}
 	if branchName != "" {
 		body["branch_name"] = branchName
@@ -516,6 +518,9 @@ func (c *Client) CompleteTask(ctx context.Context, taskID, output, branchName, s
 	}
 	if retiredSessionID != "" {
 		body["retired_session_id"] = retiredSessionID
+	}
+	if skillExecutionManifest != nil {
+		body["skill_execution_manifest"] = skillExecutionManifest
 	}
 	return c.postJSONWithRetry(ctx, fmt.Sprintf("/api/daemon/tasks/%s/complete", taskID), body, nil, defaultTerminalRetrySchedule)
 }

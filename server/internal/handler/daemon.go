@@ -4120,6 +4120,10 @@ type TaskCompleteRequest struct {
 	// to report" — this says "never hand this id to a later run". Older
 	// daemons omit it, which is exactly the pre-fix behaviour.
 	RetiredSessionID string `json:"retired_session_id,omitempty"`
+	// SkillExecutionManifest is accepted only from a daemon advertising the
+	// completion-specific capability. It identifies daemon-resolved Multica
+	// bundles, not provider filesystem materialization.
+	SkillExecutionManifest json.RawMessage `json:"skill_execution_manifest,omitempty"`
 }
 
 // sanitizeTaskCompleteRequest / sanitizeTaskFailRequest scrub every
@@ -4137,6 +4141,21 @@ func sanitizeTaskCompleteRequest(req *TaskCompleteRequest) {
 	req.DurableWorkDir = util.SanitizeTextForPostgres(req.DurableWorkDir)
 	req.BranchName = util.SanitizeTextForPostgres(req.BranchName)
 	req.RetiredSessionID = util.SanitizeTextForPostgres(req.RetiredSessionID)
+}
+
+func normalizeTaskSkillExecutionManifest(r *http.Request, raw json.RawMessage) json.RawMessage {
+	if !requestHasClientCapability(r, protocol.DaemonCapabilitySkillExecutionManifestV1) {
+		return nil
+	}
+	manifest, err := skillbundle.NormalizeExecutionManifest(raw)
+	if err != nil {
+		return nil
+	}
+	normalized, err := json.Marshal(manifest)
+	if err != nil {
+		return nil
+	}
+	return normalized
 }
 
 func sanitizeTaskFailRequest(req *TaskFailRequest) {
@@ -4172,6 +4191,7 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	// re-route below feeds req.Output into the failure classifier, and that
 	// classifier must see exactly the text we are going to persist.
 	sanitizeTaskCompleteRequest(&req)
+	req.SkillExecutionManifest = normalizeTaskSkillExecutionManifest(r, req.SkillExecutionManifest)
 
 	// GH #6402: a daemon whose backend does not (yet) read the provider's
 	// structured terminal reason reports a context-exhausted run as a clean

@@ -24,6 +24,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/daemon/repocache"
 	"github.com/multica-ai/multica/server/pkg/agent"
+	"github.com/multica-ai/multica/server/pkg/skillbundle"
 	"github.com/multica-ai/multica/server/pkg/taskfailure"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -4106,6 +4107,14 @@ func TestReportTaskResult_CompletedHitsCompleteEndpoint(t *testing.T) {
 		BranchName: "agent/foo",
 		SessionID:  "ses-1",
 		WorkDir:    "/tmp/foo",
+		SkillExecutionManifest: &skillbundle.ExecutionManifest{
+			Version: skillbundle.ExecutionManifestVersion,
+			Skills: []skillbundle.ExecutionRecord{{
+				Source:     "workspace",
+				SkillID:    "skill-1",
+				BundleHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			}},
+		},
 	}, slog.Default())
 
 	rec.mu.Lock()
@@ -4121,6 +4130,10 @@ func TestReportTaskResult_CompletedHitsCompleteEndpoint(t *testing.T) {
 	}
 	if rec.payload["session_id"] != "ses-1" {
 		t.Errorf("session_id: got %v", rec.payload["session_id"])
+	}
+	manifest, ok := rec.payload["skill_execution_manifest"].(map[string]any)
+	if !ok || manifest["version"] != float64(skillbundle.ExecutionManifestVersion) {
+		t.Errorf("skill_execution_manifest: got %#v", rec.payload["skill_execution_manifest"])
 	}
 }
 
@@ -4251,6 +4264,14 @@ func TestReportTaskResult_NonCompletedHitsFailEndpoint(t *testing.T) {
 				SessionID:     "ses-x",
 				WorkDir:       "/tmp/x",
 				FailureReason: tc.failureReasonIn,
+				SkillExecutionManifest: &skillbundle.ExecutionManifest{
+					Version: skillbundle.ExecutionManifestVersion,
+					Skills: []skillbundle.ExecutionRecord{{
+						Source:     "workspace",
+						SkillID:    "skill-1",
+						BundleHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					}},
+				},
 			}, slog.Default())
 
 			rec.mu.Lock()
@@ -4260,6 +4281,9 @@ func TestReportTaskResult_NonCompletedHitsFailEndpoint(t *testing.T) {
 			}
 			if rec.payload["error"] != tc.comment {
 				t.Errorf("error body: got %v", rec.payload["error"])
+			}
+			if _, present := rec.payload["skill_execution_manifest"]; present {
+				t.Errorf("non-completed task must not report a skill execution manifest: %v", rec.payload)
 			}
 			if got := rec.payload["failure_reason"]; got != tc.wantFailureReason {
 				t.Errorf("failure_reason: got %v, want %q", got, tc.wantFailureReason)

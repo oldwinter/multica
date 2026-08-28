@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // seedNULTask creates an agent with one running task, ready to be driven
@@ -83,11 +84,13 @@ func TestCompleteTaskCallbackWithNULSucceeds(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := daemonTaskRequest(t, "/api/daemon/tasks/"+taskID+"/complete", taskID, map[string]any{
-		"output":           "done\x00 summary text",
-		"work_dir":         "/tmp/work\x00dir",
-		"durable_work_dir": "/Users/dev/pro\x00ject",
-		"session_id":       "sess-nul-complete",
+		"output":                   "done\x00 summary text",
+		"work_dir":                 "/tmp/work\x00dir",
+		"durable_work_dir":         "/Users/dev/pro\x00ject",
+		"session_id":               "sess-nul-complete",
+		"skill_execution_manifest": json.RawMessage(`{"version":1,"skills":[{"source":"workspace\u0000","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`),
 	})
+	req.Header.Set("X-Client-Capabilities", protocol.DaemonCapabilitySkillExecutionManifestV1)
 
 	testHandler.CompleteTask(w, req)
 	if w.Code != http.StatusOK {
@@ -124,6 +127,63 @@ func TestCompleteTaskCallbackWithNULSucceeds(t *testing.T) {
 	}
 	if stored.DurableWorkDir != "/Users/dev/project" {
 		t.Fatalf("stored durable_work_dir = %q, want %q", stored.DurableWorkDir, "/Users/dev/project")
+	}
+	if len(stored.SkillExecutionManifest) != 0 {
+		t.Fatalf("invalid NUL manifest must be omitted, got %s", stored.SkillExecutionManifest)
+	}
+}
+
+func TestCompleteTaskSkillExecutionManifestCompatibility(t *testing.T) {
+	valid := `{"version":1,"skills":[{"source":"workspace","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"future_field":true}`
+	for _, tc := range []struct {
+		name         string
+		capabilities string
+		manifest     string
+		wantStored   bool
+	}{
+		{name: "absent", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1},
+		{name: "malformed shape", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1, manifest: `[]`},
+		{name: "unknown version", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1, manifest: `{"version":2,"skills":[{"source":"workspace","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`},
+		{name: "incomplete item", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1, manifest: `{"version":1,"skills":[{"source":"workspace","skill_id":"","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`},
+		{name: "duplicate identity", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1, manifest: `{"version":1,"skills":[{"source":"workspace","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"source":"workspace","skill_id":"skill-1","bundle_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`},
+		{name: "bad hash", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1, manifest: `{"version":1,"skills":[{"source":"workspace","skill_id":"skill-1","bundle_hash":"bad"}]}`},
+		{name: "stale capability", capabilities: protocol.DaemonCapabilityExecutionManifestV1, manifest: valid},
+		{name: "no capability", manifest: valid},
+		{name: "live capability", capabilities: protocol.DaemonCapabilitySkillExecutionManifestV1, manifest: valid, wantStored: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, taskID := seedNULTask(t, "manifest-"+strings.ReplaceAll(tc.name, " ", "-"))
+			body := map[string]any{"output": "done"}
+			if tc.manifest != "" {
+				body["skill_execution_manifest"] = json.RawMessage(tc.manifest)
+			}
+			req := daemonTaskRequest(t, "/api/daemon/tasks/"+taskID+"/complete", taskID, body)
+			if tc.capabilities != "" {
+				req.Header.Set("X-Client-Capabilities", tc.capabilities)
+			}
+
+			w := httptest.NewRecorder()
+			testHandler.CompleteTask(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("CompleteTask returned %d, want 200: %s", w.Code, w.Body.String())
+			}
+
+			var result []byte
+			if err := testPool.QueryRow(context.Background(), `SELECT result FROM agent_task_queue WHERE id = $1`, taskID).Scan(&result); err != nil {
+				t.Fatalf("read stored result: %v", err)
+			}
+			var stored map[string]json.RawMessage
+			if err := json.Unmarshal(result, &stored); err != nil {
+				t.Fatalf("stored result is invalid JSON: %v (%s)", err, result)
+			}
+			manifest, present := stored["skill_execution_manifest"]
+			if present != tc.wantStored {
+				t.Fatalf("stored manifest presence = %v, want %v (result: %s)", present, tc.wantStored, result)
+			}
+			if present && strings.Contains(string(manifest), "future_field") {
+				t.Fatalf("stored manifest was not normalized: %s", manifest)
+			}
+		})
 	}
 }
 
