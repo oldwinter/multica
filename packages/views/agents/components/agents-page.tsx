@@ -35,6 +35,7 @@ import {
 } from "@multica/core/agents/stores";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { canAssignAgentToIssue } from "@multica/core/permissions";
 import { useWorkspacePaths } from "@multica/core/paths";
 import {
   agentListOptions,
@@ -149,6 +150,7 @@ export interface AgentListRow {
   owner: MemberWithUser | null;
   isOwnedByMe: boolean;
   canManage: boolean;
+  canAssign: boolean;
 }
 
 // Most recent activity bucket with runs, as "days ago" (0 = today).
@@ -840,11 +842,12 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
     return m;
   }, [members]);
 
-  const isWorkspaceAdmin = useMemo(() => {
-    if (!currentUser) return false;
-    const me = members.find((m) => m.user_id === currentUser.id);
-    return me?.role === "owner" || me?.role === "admin";
+  const currentMember = useMemo(() => {
+    if (!currentUser) return null;
+    return members.find((m) => m.user_id === currentUser.id) ?? null;
   }, [members, currentUser]);
+  const isWorkspaceAdmin =
+    currentMember?.role === "owner" || currentMember?.role === "admin";
 
   // Scope counts come from the FULL set (filters never affect them).
   // Archived ignores the ownership lens (see the view store comment).
@@ -888,6 +891,10 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
         owner: agent.owner_id ? membersById.get(agent.owner_id) ?? null : null,
         isOwnedByMe: isOwner,
         canManage: isWorkspaceAdmin || isOwner,
+        canAssign: canAssignAgentToIssue(agent, {
+          userId: currentUser?.id ?? null,
+          role: currentMember?.role ?? null,
+        }).allowed,
       };
     });
   }, [
@@ -900,6 +907,7 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
     activityMap,
     runCountsById,
     isWorkspaceAdmin,
+    currentMember,
   ]);
 
   // Visible rows: local search + filters, then sort.
@@ -1172,6 +1180,7 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
                             agent={row.agent}
                             presence={row.presence}
                             canManage={row.canManage}
+                            canAssign={row.canAssign}
                             duplicateHref={duplicateHref(row.agent)}
                           />
                         </span>

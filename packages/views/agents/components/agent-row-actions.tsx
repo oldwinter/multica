@@ -6,6 +6,7 @@ import {
   Copy,
   ExternalLink,
   MoreHorizontal,
+  Plus,
   RotateCcw,
   Square,
   Trash2,
@@ -13,9 +14,13 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Agent } from "@multica/core/types";
-import type { AgentPresenceDetail } from "@multica/core/agents";
+import {
+  isAgentRuntimeBound,
+  type AgentPresenceDetail,
+} from "@multica/core/agents";
 import { api } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { useModalStore } from "@multica/core/modals";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import {
@@ -47,6 +52,10 @@ interface AgentRowActionsProps {
   // the server is still the source of truth, this only hides UI for ops
   // the user can't perform.
   canManage: boolean;
+  // Invocation permission is derived once by the list from the current
+  // member and the agent's access policy. Runtime readiness stays a click-time
+  // check so an unbound agent explains why work cannot start yet.
+  canAssign: boolean;
   // Destination of "Duplicate" — the manual create form, pre-populated with
   // this agent's config as a template. A href rather than a callback so the
   // menu item is a real link (modifier-click opens it in a new tab).
@@ -68,6 +77,7 @@ export function AgentRowActions({
   agent,
   presence,
   canManage,
+  canAssign,
   duplicateHref,
 }: AgentRowActionsProps) {
   const { t } = useT("agents");
@@ -89,6 +99,7 @@ export function AgentRowActions({
   // below a flat list of conditionals rather than a tangle of role/state
   // branches.
   const showStop = canManage && !isArchived && hasActiveWork;
+  const showAssign = canAssign && !isArchived;
   const showDuplicate = !isArchived; // any workspace member can duplicate
   // Multica's built-in agents cannot be archived — the server refuses it, and
   // the workspace's entry point runs through one. Hide the action rather than
@@ -135,6 +146,16 @@ export function AgentRowActions({
     }
   };
 
+  const handleAssign = () => {
+    if (!isAgentRuntimeBound(agent)) {
+      toast.error(t(($) => $.detail.runtime_required_toast));
+      return;
+    }
+    useModalStore
+      .getState()
+      .open("quick-create-issue", { agent_id: agent.id });
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -150,6 +171,12 @@ export function AgentRowActions({
           }
         />
         <DropdownMenuContent align="end" className="w-auto">
+          {showAssign && (
+            <DropdownMenuItem onClick={handleAssign}>
+              <Plus className="h-3.5 w-3.5" />
+              {t(($) => $.detail.assign_work)}
+            </DropdownMenuItem>
+          )}
           {/* Same shape as every other entity row menu: an explicit CTA is a
               foreground open executed through the adapter (an anchor-based
               item would depend on native activation surviving the menu
