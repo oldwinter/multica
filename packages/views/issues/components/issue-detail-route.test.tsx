@@ -50,6 +50,7 @@ function wrapperWithComment({ children }: { children: ReactNode }) {
     back: vi.fn(),
     pathname: "/acme/issues/x",
     searchParams: new URLSearchParams("comment=reply-1"),
+    hash: "",
     getShareableUrl: (p: string) => `https://app.multica.com${p}`,
   };
   return <NavigationProvider value={adapter}>{children}</NavigationProvider>;

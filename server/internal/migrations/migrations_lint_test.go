@@ -15,12 +15,13 @@ import (
 const maxLegacyMigrationPrefix = 148
 
 // legacyDuplicateMigrationStems lists prefixes that were already duplicated
-// before this lint existed. It is a frozen historical record, not an escape
-// hatch: a new collision must be renumbered instead of added here. Prefix 362
-// was briefly listed and is deliberately absent again — the later of the two
-// migrations was renumbered to 376, which its idempotent DDL made safe.
+// before this lint existed or arrived through a merge of published histories.
+// It is a frozen historical record, not an escape hatch: a new unpublished
+// collision must be renumbered instead of added here. Prefix 362 was briefly
+// listed and is deliberately absent again — the later of the two migrations
+// was renumbered to 376, which its idempotent DDL made safe.
 //
-// Prefixes 251–309, 403–432, and 437–439 record merges of already-published
+// Prefixes 251–309, 403–432, and 437–440 record merges of already-published
 // upstream and downstream histories. Renaming either side changes its
 // schema_migrations identity and can re-run DDL on existing installations, so
 // their exact stems stay frozen. The migration runner carries explicit aliases
@@ -145,6 +146,7 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"437": {"437_drop_agent_runtime_last_seen_at_index", "437_twin_deposition_replacement"},
 	"438": {"438_agent_runtime_online_last_seen_index", "438_drop_twin_proposal_identity_index"},
 	"439": {"439_agent_runtime_offline_last_seen_index", "439_twin_proposal_identity_partial_index"},
+	"440": {"440_github_pr_head_sha_index", "440_twin_deposition_request_index"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)
