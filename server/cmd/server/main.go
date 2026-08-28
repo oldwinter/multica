@@ -25,6 +25,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/scheduler"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/skillevolution"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/featureflag"
 	"github.com/multica-ai/multica/server/pkg/llm"
@@ -485,6 +486,12 @@ func main() {
 	defer analyticsClient.Close()
 
 	queries := db.New(pool)
+	skillEvolutionRegistration, err := skillevolution.NewProductionRegistration(pool)
+	if err != nil {
+		slog.Error("skill evolution: failed to initialize production registration", "error", err)
+		os.Exit(1)
+	}
+	defer skillEvolutionRegistration.Close()
 	hub.SetAuthorizer(newScopeAuthorizer(queries))
 	// Order matters: subscriber listeners must register BEFORE notification listeners.
 	// The notification listener queries the subscriber table to determine recipients,
@@ -515,11 +522,12 @@ func main() {
 		}
 
 		metricsRegistry := obsmetrics.NewRegistry(obsmetrics.RegistryOptions{
-			Pool:     pool,
-			Realtime: realtime.M,
-			DaemonWS: daemonws.M,
-			Version:  version,
-			Commit:   commit,
+			Pool:            pool,
+			Realtime:        realtime.M,
+			DaemonWS:        daemonws.M,
+			Version:         version,
+			Commit:          commit,
+			ExtraCollectors: skillEvolutionRegistration.Metrics().Collectors(),
 			BusinessSampler: func() *obsmetrics.BusinessSamplerOptions {
 				if samplerPool == nil {
 					return nil
@@ -566,17 +574,18 @@ func main() {
 	}
 
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
-		HTTPMetrics:         httpMetrics,
-		BusinessMetrics:     businessMetrics,
-		ChannelLeaseMetrics: channelLeaseMetrics,
-		SeatCapacityMetrics: seatCapacityMetrics,
-		ChannelLeaseRedis:   channelLeaseRedis,
-		WecomMetrics:        wecomMetrics,
-		DaemonHub:           daemonHub,
-		DaemonWakeup:        daemonWakeup,
-		FeatureFlags:        flags,
-		HeartbeatScheduler:  heartbeatScheduler,
-		LLMMaxRetries:       llmMaxRetries,
+		HTTPMetrics:            httpMetrics,
+		BusinessMetrics:        businessMetrics,
+		ChannelLeaseMetrics:    channelLeaseMetrics,
+		SeatCapacityMetrics:    seatCapacityMetrics,
+		ChannelLeaseRedis:      channelLeaseRedis,
+		WecomMetrics:           wecomMetrics,
+		DaemonHub:              daemonHub,
+		DaemonWakeup:           daemonWakeup,
+		FeatureFlags:           flags,
+		HeartbeatScheduler:     heartbeatScheduler,
+		LLMMaxRetries:          llmMaxRetries,
+		RegisterSkillEvolution: skillEvolutionRegistration.RegisterRoutes,
 	})
 
 	srv := newAPIServer(":"+port, r)
@@ -676,6 +685,14 @@ func main() {
 	// logging them on the tick that fails and retrying on the next
 	// cycle, so a temporary outage does not crash the server.
 	schedulerMgr := scheduler.NewManager(pool, scheduler.Options{})
+	skillEvolutionJob, err := skillEvolutionRegistration.JobSpec()
+	if err != nil {
+		slog.Error("skill evolution: failed to compose scheduled job", "error", err)
+		os.Exit(1)
+	}
+	if err := schedulerMgr.Register(skillEvolutionJob); err != nil {
+		slog.Warn("scheduler: failed to register skill_evolution job", "error", err)
+	}
 	if err := schedulerMgr.Register(scheduler.TaskUsageHourlyJob(pool)); err != nil {
 		slog.Warn("scheduler: failed to register task_usage_hourly rollup job", "error", err)
 	}

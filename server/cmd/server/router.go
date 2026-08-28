@@ -238,6 +238,9 @@ type RouterOptions struct {
 	// any test that happened to have the variable set. nil means unset, which
 	// is what tests and NewRouter get.
 	LLMMaxRetries *llm.RetryOverride
+	// RegisterSkillEvolution is the single downstream HTTP/composition hook.
+	// The router remains unaware of the optional module's types and policy.
+	RegisterSkillEvolution func(chi.Router, *handler.Handler, *db.Queries)
 }
 
 func buildChannelSupervisor(
@@ -1821,6 +1824,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		// --- Workspace-scoped routes (all require workspace membership) ---
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireWorkspaceMember(queries))
+			if opts.RegisterSkillEvolution != nil {
+				opts.RegisterSkillEvolution(r, h, queries)
+			}
 
 			r.Get("/api/twin/overview", h.GetTwinOverview)
 			r.Get("/api/wiki/search", h.SearchWikiPages)
