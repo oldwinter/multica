@@ -1704,17 +1704,18 @@ type TaskMessage struct {
 }
 
 type TaskRunReview struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	TaskID      pgtype.UUID        `json:"task_id"`
-	ReviewerID  pgtype.UUID        `json:"reviewer_id"`
-	Outcome     string             `json:"outcome"`
-	Target      string             `json:"target"`
-	SkillID     pgtype.UUID        `json:"skill_id"`
-	Correction  pgtype.Text        `json:"correction"`
-	Reason      string             `json:"reason"`
-	Digest      string             `json:"digest"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	TaskID         pgtype.UUID        `json:"task_id"`
+	ReviewerID     pgtype.UUID        `json:"reviewer_id"`
+	Outcome        string             `json:"outcome"`
+	Target         string             `json:"target"`
+	SkillID        pgtype.UUID        `json:"skill_id"`
+	Correction     pgtype.Text        `json:"correction"`
+	Reason         string             `json:"reason"`
+	Digest         string             `json:"digest"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	IdempotencyKey string             `json:"idempotency_key"`
 }
 
 type TaskToken struct {

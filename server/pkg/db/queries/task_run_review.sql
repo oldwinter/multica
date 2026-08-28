@@ -13,12 +13,12 @@ WHERE task.id = sqlc.arg(task_id);
 -- name: CreateTaskRunReview :one
 INSERT INTO task_run_review (
     id, workspace_id, task_id, reviewer_id, outcome, target, skill_id,
-    correction, reason, digest, created_at
+    correction, reason, idempotency_key, digest, created_at
 )
 SELECT
     sqlc.arg(id), sqlc.arg(workspace_id), task.id, sqlc.arg(reviewer_id),
     sqlc.arg(outcome), sqlc.arg(target), sqlc.narg(skill_id)::uuid,
-    sqlc.narg(correction)::text, sqlc.arg(reason), sqlc.arg(digest),
+    sqlc.narg(correction)::text, sqlc.arg(reason), sqlc.arg(idempotency_key), sqlc.arg(digest),
     sqlc.arg(created_at)
 FROM agent_task_queue task
 JOIN agent
@@ -38,6 +38,8 @@ WHERE task.id = sqlc.arg(task_id)
       ))
       OR (sqlc.arg(target)::text <> 'skill_procedure' AND sqlc.narg(skill_id)::uuid IS NULL)
   )
+ON CONFLICT (workspace_id, task_id, reviewer_id, idempotency_key) DO UPDATE
+SET idempotency_key = task_run_review.idempotency_key
 RETURNING task_run_review.*;
 
 -- name: LoadTaskRunReview :one
