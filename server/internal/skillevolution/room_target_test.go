@@ -196,6 +196,7 @@ func TestRoomSkillProposalTargetSerializesDriftCleanupAndNewBaseProposal(t *test
 			Name: candidate.Name, Description: candidate.Description, Content: candidate.Content, Files: []roomCandidateFile{}},
 		ObservedPattern: "the check was skipped", ExpectedBenefit: "the check becomes explicit",
 		RegressionRisk: "one additional bounded check", EvidenceDigests: []string{string(fixture.signalRef.Digest)},
+		AuthorizedChanges: BuildChangeAuthorizations(drifted, candidate, []Digest{fixture.signalRef.Digest}),
 	}
 	body, err := json.Marshal(envelope)
 	if err != nil {

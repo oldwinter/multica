@@ -113,7 +113,11 @@ func TestWorkspaceSkillPublisherReplacesExactBundleAndPreservesMetadata(t *testi
 		Files:  []skillbundle.File{{Path: "old.md", Content: "old"}, {Path: "refs/keep.md", Content: "replace me"}},
 	})
 	agentA, agentB := publisherUUID(), publisherUUID()
-	mustExecPublisher(t, pool, `INSERT INTO agent_skill (agent_id, skill_id, enabled) VALUES ($1, $3, TRUE), ($2, $3, FALSE)`, agentA, agentB, skillID)
+	fixture := testutil.New(pool, uuidText(workspaceID), uuidText(creatorID))
+	fixture.InsertNoID(t, "agent_skill", testutil.Cols{"agent_id": agentA, "skill_id": skillID, "enabled": true},
+		"agent_id = $1 AND skill_id = $2", agentA, skillID)
+	fixture.InsertNoID(t, "agent_skill", testutil.Cols{"agent_id": agentB, "skill_id": skillID, "enabled": false},
+		"agent_id = $1 AND skill_id = $2", agentB, skillID)
 
 	repo := NewWorkspaceSkillRepository(db.New(pool))
 	before := mustLoadPublisherSkill(t, repo, workspaceID, skillID)

@@ -390,11 +390,10 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 
 	fastTaskID := testUUID()
 	fastDispatchedAt := dispatchedAt.Add(time.Second)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
-id, agent_id, runtime_id, status, dispatched_at, completed_at
-) VALUES ($1, $2, $3, 'completed', $4, $4)`, fastTaskID, agentA, runtimeA, fastDispatchedAt); err != nil {
-		t.Fatalf("seed fast completed task: %v", err)
-	}
+	fixture.Insert(t, "agent_task_queue", testutil.Cols{
+		"id": fastTaskID, "agent_id": agentA, "runtime_id": runtimeA,
+		"status": "completed", "dispatched_at": fastDispatchedAt, "completed_at": fastDispatchedAt,
+	})
 	worker, err := NewAttributionWorker(store, 2, time.Second)
 	if err != nil {
 		t.Fatalf("NewAttributionWorker: %v", err)

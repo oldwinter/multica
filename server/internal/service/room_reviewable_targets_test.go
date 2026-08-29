@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	roomdomain "github.com/multica-ai/multica/server/internal/room"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -108,15 +109,11 @@ func TestRoomWikiProposalTargetCreatesPendingProposalWithoutMutatingPage(t *test
 
 	workspaceID, pageID, revisionID := roomArtifactTestUUID(), roomArtifactTestUUID(), roomArtifactTestUUID()
 	baseDigest := "sha256:" + strings.Repeat("a", 64)
-	// This row must be visible only inside the promotion transaction. The shared
-	// testutil fixture intentionally accepts *pgxpool.Pool, not pgx.Tx, so this
-	// transaction-scoped insert is the narrow exception to fixture builders.
-	if _, err := tx.Exec(ctx, `
-INSERT INTO wiki_page (id, workspace_id, scope, path, title, content, current_revision_number, current_revision_id, content_digest)
-VALUES ($1, $2, 'workspace', 'knowledge.md', 'Current', 'current body', 3, $3, $4)`,
-		pageID, workspaceID, revisionID, baseDigest); err != nil {
-		t.Fatal(err)
-	}
+	testutil.New(tx, workspaceID.String(), "").Insert(t, "wiki_page", testutil.Cols{
+		"id": pageID, "workspace_id": workspaceID, "scope": "workspace", "path": "knowledge.md",
+		"title": "Current", "content": "current body", "current_revision_number": 3,
+		"current_revision_id": revisionID, "content_digest": baseDigest,
+	})
 	artifact := roomReviewableArtifact(roomdomain.RecommendationTargetKnowledge)
 	artifact.WorkspaceID = workspaceID
 	artifact.Body = `{"schema_version":1,"page_id":"` + pageID.String() + `","base_revision_id":"` + revisionID.String() +

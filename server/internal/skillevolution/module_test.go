@@ -190,6 +190,10 @@ func TestProductionBehavioralEvaluatorRunsPairedCasesAndKeepsResultContentFree(t
 		{Content: `{"response":"candidate performed the check"}`, PromptTokens: 1, CompletionTokens: 1},
 		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
 		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"base missed the check again"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"candidate performed the check again"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
 	}}
 	evaluator, ok := newProductionBehavioralEvaluator(client).(*ProductionReplayEvaluator)
 	if !ok {
@@ -202,10 +206,13 @@ func TestProductionBehavioralEvaluatorRunsPairedCasesAndKeepsResultContentFree(t
 	candidate.Content = strings.Replace(candidate.Content, "Original.", "Updated with the focused check.", 1)
 	outcome, err := evaluator.Evaluate(context.Background(), ReplayRequest{
 		Base: fixture.base, Candidate: candidate,
-		Evidence: []ResolvedEvidence{{Ref: fixture.signalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"` + secretMarker + `","reason":"bounded"}`)}},
-		Limits:   ReplayLimits{Timeout: time.Second, MaxSamples: 1, MaxCostUSDTicks: 2_000_000, PolicyVersion: "v1"},
+		Evidence: []ResolvedEvidence{
+			{Ref: fixture.signalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"` + secretMarker + `","reason":"bounded"}`)},
+			{Ref: fixture.secondSignalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"independent case","reason":"bounded"}`)},
+		},
+		Limits: ReplayLimits{Timeout: time.Second, MaxSamples: 2, MaxCostUSDTicks: 2_000_000, PolicyVersion: "v1"},
 	})
-	if err != nil || outcome.Result != EvaluationResultPassed || outcome.SampleCount != 1 || outcome.FailureCount != 0 {
+	if err != nil || outcome.Result != EvaluationResultPassed || outcome.SampleCount != 2 || outcome.FailureCount != 0 {
 		t.Fatalf("paired replay = (%+v, %v)", outcome, err)
 	}
 	raw, err := json.Marshal(struct {
@@ -215,7 +222,7 @@ func TestProductionBehavioralEvaluatorRunsPairedCasesAndKeepsResultContentFree(t
 	if err != nil || strings.Contains(string(raw), secretMarker) {
 		t.Fatalf("content-free replay result leaked source payload: %s (err=%v)", raw, err)
 	}
-	if len(client.prompts) != 4 || !strings.Contains(client.prompts[0], secretMarker) {
+	if len(client.prompts) != 8 || !strings.Contains(client.prompts[0], secretMarker) {
 		t.Fatalf("authorized case was not loaded transiently: calls=%d", len(client.prompts))
 	}
 }
@@ -318,13 +325,16 @@ func TestProductionImprovementRoomQueuerCreatesVisibleRoomAndReplaysWake(t *test
 		ID: skillID, WorkspaceID: workspaceID, CreatorID: actorID, Name: "deploy",
 		Description: "Deploy safely", Content: "---\nname: deploy\ndescription: Deploy safely\n---\n\nVerify the release.", Config: `{}`,
 	})
-	mustExecPublisher(t, pool, `INSERT INTO agent (id, workspace_id) VALUES ($1, $2)`, agentID, workspaceID)
-	mustExecPublisher(t, pool, `INSERT INTO agent_skill (agent_id, skill_id, enabled) VALUES ($1, $2, TRUE)`, agentID, skillID)
-	mustExecPublisher(t, pool, `
-	INSERT INTO skill_evolution_loop (
-	    workspace_id, skill_id, is_enabled, mode, cooldown_seconds, minimum_signals,
-    max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version
-) VALUES ($1, $2, TRUE, 'propose', 60, 1, 5, 1, 0, 'v1')`, workspaceID, skillID)
+	fixture := internaltestutil.New(pool, uuidText(workspaceID), uuidText(actorID))
+	fixture.Insert(t, "agent", internaltestutil.Cols{"id": agentID, "workspace_id": workspaceID})
+	fixture.InsertNoID(t, "agent_skill", internaltestutil.Cols{
+		"agent_id": agentID, "skill_id": skillID, "enabled": true,
+	}, "agent_id = $1 AND skill_id = $2", agentID, skillID)
+	fixture.Insert(t, "skill_evolution_loop", internaltestutil.Cols{
+		"workspace_id": workspaceID, "skill_id": skillID, "is_enabled": true, "mode": "propose",
+		"cooldown_seconds": 60, "minimum_signals": 1, "max_evidence_refs": 5,
+		"max_replay_samples": 1, "max_cost_usd_ticks": 0, "policy_version": "v1",
+	})
 
 	snapshot := mustLoadPublisherSkill(t, NewWorkspaceSkillRepository(db.New(pool)), workspaceID, skillID)
 	ref := lifecycleEvidenceRef(workspaceID, skillID, "production-room")
@@ -340,7 +350,7 @@ func TestProductionImprovementRoomQueuerCreatesVisibleRoomAndReplaysWake(t *test
 	}
 	rooms := &productionRoomsStub{
 		t:       t,
-		fixture: internaltestutil.New(pool, uuidText(workspaceID), uuidText(actorID)),
+		fixture: fixture,
 		roomID:  publisherUUID(),
 	}
 	queuer := &productionImprovementRoomQueuer{
