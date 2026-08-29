@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -139,13 +140,10 @@ func createSchedulerClaimWorkspace(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	workspaceID := uuid.New()
 	slug := "scheduler-claim-" + workspaceID.String()[:12]
-	if _, err := pool.Exec(context.Background(), `
-		INSERT INTO workspace (id, name, slug)
-		VALUES ($1, 'Scheduler claim race', $2)
-	`, workspaceID, slug); err != nil {
-		t.Fatalf("create workspace: %v", err)
-	}
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM workspace WHERE id = $1`, workspaceID) })
+	fixture := testutil.New(pool, workspaceID.String(), "")
+	fixture.Insert(t, "workspace", testutil.Cols{
+		"id": workspaceID, "name": "Scheduler claim race", "slug": slug,
+	})
 	return workspaceID
 }
 

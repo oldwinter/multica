@@ -226,7 +226,7 @@ func (r *scheduledLoopRunnerFake) RunScheduledLoop(ctx context.Context, loop db.
 func scheduledLoop(workspaceID, skillID, loopID pgtype.UUID, mode LoopMode, enabled bool) db.SkillEvolutionLoop {
 	return db.SkillEvolutionLoop{
 		ID: loopID, WorkspaceID: workspaceID, SkillID: skillID,
-		Enabled: enabled, Mode: string(mode), MinimumSignals: 1, MaxEvidenceRefs: 8,
+		IsEnabled: enabled, Mode: string(mode), MinimumSignals: 1, MaxEvidenceRefs: 8,
 	}
 }
 

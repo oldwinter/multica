@@ -267,7 +267,6 @@ WHERE revision.workspace_id = $7
             AND release.pre_hash IS NOT NULL
             AND release.post_hash IS NOT NULL
             AND revision.bundle_hash = release.pre_hash
-            AND $4 = release.post_hash
       ))
   )
 ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
@@ -611,7 +610,7 @@ func (q *Queries) GetSkillEvolutionEvidenceByIdentity(ctx context.Context, arg G
 }
 
 const getSkillEvolutionLoop = `-- name: GetSkillEvolutionLoop :one
-SELECT id, workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at FROM skill_evolution_loop
+SELECT id, workspace_id, skill_id, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at, is_enabled FROM skill_evolution_loop
 WHERE workspace_id = $1
   AND skill_id = $2
 `
@@ -628,7 +627,6 @@ func (q *Queries) GetSkillEvolutionLoop(ctx context.Context, arg GetSkillEvoluti
 		&i.ID,
 		&i.WorkspaceID,
 		&i.SkillID,
-		&i.Enabled,
 		&i.Mode,
 		&i.CooldownSeconds,
 		&i.MinimumSignals,
@@ -641,6 +639,7 @@ func (q *Queries) GetSkillEvolutionLoop(ctx context.Context, arg GetSkillEvoluti
 		&i.NextEligibleAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsEnabled,
 	)
 	return i, err
 }
@@ -898,7 +897,7 @@ func (q *Queries) GetSkillEvolutionRevisionByHash(ctx context.Context, arg GetSk
 }
 
 const getSkillEvolutionTaskAttribution = `-- name: GetSkillEvolutionTaskAttribution :one
-SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at, dispatch_snapshot_id, task_dispatched_at FROM skill_evolution_task_attribution
+SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at, dispatch_snapshot_id, task_dispatched_at, feedback_covered_at FROM skill_evolution_task_attribution
 WHERE workspace_id = $1
   AND task_id = $2
   AND skill_id = $3
@@ -929,6 +928,7 @@ func (q *Queries) GetSkillEvolutionTaskAttribution(ctx context.Context, arg GetS
 		&i.CreatedAt,
 		&i.DispatchSnapshotID,
 		&i.TaskDispatchedAt,
+		&i.FeedbackCoveredAt,
 	)
 	return i, err
 }
@@ -984,6 +984,8 @@ SELECT EXISTS (
       AND task_id = $2
       AND skill_id = $3
       AND eligibility = 'eligible'
+      AND dispatch_snapshot_id IS NOT NULL
+      AND task_dispatched_at IS NOT NULL
 )
 `
 
@@ -1001,8 +1003,8 @@ func (q *Queries) HasExactSkillEvolutionTask(ctx context.Context, arg HasExactSk
 }
 
 const listEligibleSkillEvolutionLoops = `-- name: ListEligibleSkillEvolutionLoops :many
-SELECT id, workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at FROM skill_evolution_loop
-WHERE enabled
+SELECT id, workspace_id, skill_id, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at, is_enabled FROM skill_evolution_loop
+WHERE is_enabled
   AND mode = 'propose'
   AND (next_eligible_at IS NULL OR next_eligible_at <= $1::timestamptz)
   AND ($2::uuid IS NULL OR id > $2::uuid)
@@ -1029,7 +1031,6 @@ func (q *Queries) ListEligibleSkillEvolutionLoops(ctx context.Context, arg ListE
 			&i.ID,
 			&i.WorkspaceID,
 			&i.SkillID,
-			&i.Enabled,
 			&i.Mode,
 			&i.CooldownSeconds,
 			&i.MinimumSignals,
@@ -1042,6 +1043,7 @@ func (q *Queries) ListEligibleSkillEvolutionLoops(ctx context.Context, arg ListE
 			&i.NextEligibleAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -1059,6 +1061,8 @@ FROM skill_evolution_task_attribution
 WHERE workspace_id = $1
   AND skill_id = $2
   AND eligibility = 'eligible'
+  AND dispatch_snapshot_id IS NOT NULL
+  AND task_dispatched_at IS NOT NULL
 GROUP BY task_id
 ORDER BY max(created_at) DESC, task_id DESC
 LIMIT $3
@@ -1091,8 +1095,8 @@ func (q *Queries) ListExactSkillEvolutionTaskIDs(ctx context.Context, arg ListEx
 }
 
 const listScheduledSkillEvolutionLoops = `-- name: ListScheduledSkillEvolutionLoops :many
-SELECT id, workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at FROM skill_evolution_loop
-WHERE enabled
+SELECT id, workspace_id, skill_id, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at, is_enabled FROM skill_evolution_loop
+WHERE is_enabled
   AND mode IN ('observe', 'propose')
   AND (next_eligible_at IS NULL OR next_eligible_at <= $1::timestamptz)
   AND ($2::uuid IS NULL OR id > $2::uuid)
@@ -1119,7 +1123,6 @@ func (q *Queries) ListScheduledSkillEvolutionLoops(ctx context.Context, arg List
 			&i.ID,
 			&i.WorkspaceID,
 			&i.SkillID,
-			&i.Enabled,
 			&i.Mode,
 			&i.CooldownSeconds,
 			&i.MinimumSignals,
@@ -1132,6 +1135,7 @@ func (q *Queries) ListScheduledSkillEvolutionLoops(ctx context.Context, arg List
 			&i.NextEligibleAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -1534,7 +1538,7 @@ func (q *Queries) ListSkillEvolutionRevisions(ctx context.Context, arg ListSkill
 }
 
 const listSkillEvolutionTaskAttributions = `-- name: ListSkillEvolutionTaskAttributions :many
-SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at, dispatch_snapshot_id, task_dispatched_at FROM skill_evolution_task_attribution
+SELECT id, workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version, source, bundle_hash, manifest_digest, eligibility, reason, created_at, dispatch_snapshot_id, task_dispatched_at, feedback_covered_at FROM skill_evolution_task_attribution
 WHERE workspace_id = $1
   AND task_id = $2
 ORDER BY created_at, id
@@ -1570,6 +1574,7 @@ func (q *Queries) ListSkillEvolutionTaskAttributions(ctx context.Context, arg Li
 			&i.CreatedAt,
 			&i.DispatchSnapshotID,
 			&i.TaskDispatchedAt,
+			&i.FeedbackCoveredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1581,6 +1586,33 @@ func (q *Queries) ListSkillEvolutionTaskAttributions(ctx context.Context, arg Li
 	return items, nil
 }
 
+const markExactSkillEvolutionTaskFeedbackCovered = `-- name: MarkExactSkillEvolutionTaskFeedbackCovered :one
+WITH covered AS (
+    UPDATE skill_evolution_task_attribution
+    SET feedback_covered_at = now()
+    WHERE workspace_id = $1
+      AND task_id = $2
+      AND eligibility = 'eligible'
+      AND dispatch_snapshot_id IS NOT NULL
+      AND task_dispatched_at IS NOT NULL
+      AND feedback_covered_at IS NULL
+    RETURNING task_id
+)
+SELECT EXISTS (SELECT 1 FROM covered) AS newly_covered
+`
+
+type MarkExactSkillEvolutionTaskFeedbackCoveredParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	TaskID      pgtype.UUID `json:"task_id"`
+}
+
+func (q *Queries) MarkExactSkillEvolutionTaskFeedbackCovered(ctx context.Context, arg MarkExactSkillEvolutionTaskFeedbackCoveredParams) (bool, error) {
+	row := q.db.QueryRow(ctx, markExactSkillEvolutionTaskFeedbackCovered, arg.WorkspaceID, arg.TaskID)
+	var newly_covered bool
+	err := row.Scan(&newly_covered)
+	return newly_covered, err
+}
+
 const recordSkillEvolutionLoopObservation = `-- name: RecordSkillEvolutionLoopObservation :one
 UPDATE skill_evolution_loop
 SET last_observed_at = $1,
@@ -1588,7 +1620,7 @@ SET last_observed_at = $1,
     updated_at = now()
 WHERE workspace_id = $3
   AND id = $4
-RETURNING id, workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at
+RETURNING id, workspace_id, skill_id, mode, cooldown_seconds, minimum_signals, max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version, last_observed_at, last_proposal_at, next_eligible_at, created_at, updated_at, is_enabled
 `
 
 type RecordSkillEvolutionLoopObservationParams struct {
@@ -1610,7 +1642,6 @@ func (q *Queries) RecordSkillEvolutionLoopObservation(ctx context.Context, arg R
 		&i.ID,
 		&i.WorkspaceID,
 		&i.SkillID,
-		&i.Enabled,
 		&i.Mode,
 		&i.CooldownSeconds,
 		&i.MinimumSignals,
@@ -1623,6 +1654,7 @@ func (q *Queries) RecordSkillEvolutionLoopObservation(ctx context.Context, arg R
 		&i.NextEligibleAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsEnabled,
 	)
 	return i, err
 }
@@ -1678,7 +1710,7 @@ WHERE task.runtime_id = $1
   AND task.completed_at IS NOT NULL
   AND task.status = 'completed'
 ON CONFLICT (workspace_id, task_id, skill_id) DO NOTHING
-RETURNING skill_evolution_task_attribution.id, skill_evolution_task_attribution.workspace_id, skill_evolution_task_attribution.task_id, skill_evolution_task_attribution.runtime_id, skill_evolution_task_attribution.skill_id, skill_evolution_task_attribution.revision_id, skill_evolution_task_attribution.manifest_version, skill_evolution_task_attribution.source, skill_evolution_task_attribution.bundle_hash, skill_evolution_task_attribution.manifest_digest, skill_evolution_task_attribution.eligibility, skill_evolution_task_attribution.reason, skill_evolution_task_attribution.created_at, skill_evolution_task_attribution.dispatch_snapshot_id, skill_evolution_task_attribution.task_dispatched_at
+RETURNING skill_evolution_task_attribution.id, skill_evolution_task_attribution.workspace_id, skill_evolution_task_attribution.task_id, skill_evolution_task_attribution.runtime_id, skill_evolution_task_attribution.skill_id, skill_evolution_task_attribution.revision_id, skill_evolution_task_attribution.manifest_version, skill_evolution_task_attribution.source, skill_evolution_task_attribution.bundle_hash, skill_evolution_task_attribution.manifest_digest, skill_evolution_task_attribution.eligibility, skill_evolution_task_attribution.reason, skill_evolution_task_attribution.created_at, skill_evolution_task_attribution.dispatch_snapshot_id, skill_evolution_task_attribution.task_dispatched_at, skill_evolution_task_attribution.feedback_covered_at
 `
 
 type RecordSkillEvolutionTaskAttributionParams struct {
@@ -1730,6 +1762,7 @@ func (q *Queries) RecordSkillEvolutionTaskAttribution(ctx context.Context, arg R
 		&i.CreatedAt,
 		&i.DispatchSnapshotID,
 		&i.TaskDispatchedAt,
+		&i.FeedbackCoveredAt,
 	)
 	return i, err
 }
@@ -1802,6 +1835,67 @@ func (q *Queries) RecordSkillEvolutionTaskDispatchSnapshot(ctx context.Context, 
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const staleDriftedActiveSkillEvolutionProposals = `-- name: StaleDriftedActiveSkillEvolutionProposals :many
+UPDATE skill_evolution_proposal
+SET state = 'stale',
+    stale_reason = 'base_drift',
+    completed_at = now(),
+    updated_at = now()
+WHERE workspace_id = $1
+  AND skill_id = $2
+  AND state IN ('queued', 'running', 'ready')
+  AND base_hash <> $3
+RETURNING id, workspace_id, skill_id, loop_id, state, base_revision_id, candidate_revision_id, base_hash, candidate_hash, rationale_digest, failure_reason, stale_reason, generation_idempotency_key, requested_by_id, started_at, completed_at, created_at, updated_at, observed_pattern, expected_benefit, regression_risk
+`
+
+type StaleDriftedActiveSkillEvolutionProposalsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	SkillID     pgtype.UUID `json:"skill_id"`
+	LiveHash    string      `json:"live_hash"`
+}
+
+func (q *Queries) StaleDriftedActiveSkillEvolutionProposals(ctx context.Context, arg StaleDriftedActiveSkillEvolutionProposalsParams) ([]SkillEvolutionProposal, error) {
+	rows, err := q.db.Query(ctx, staleDriftedActiveSkillEvolutionProposals, arg.WorkspaceID, arg.SkillID, arg.LiveHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SkillEvolutionProposal{}
+	for rows.Next() {
+		var i SkillEvolutionProposal
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.SkillID,
+			&i.LoopID,
+			&i.State,
+			&i.BaseRevisionID,
+			&i.CandidateRevisionID,
+			&i.BaseHash,
+			&i.CandidateHash,
+			&i.RationaleDigest,
+			&i.FailureReason,
+			&i.StaleReason,
+			&i.GenerationIdempotencyKey,
+			&i.RequestedByID,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ObservedPattern,
+			&i.ExpectedBenefit,
+			&i.RegressionRisk,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const transitionSkillEvolutionProposal = `-- name: TransitionSkillEvolutionProposal :one
@@ -1962,7 +2056,7 @@ func (q *Queries) TransitionSkillEvolutionRelease(ctx context.Context, arg Trans
 
 const upsertSkillEvolutionLoop = `-- name: UpsertSkillEvolutionLoop :one
 INSERT INTO skill_evolution_loop (
-    workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals,
+    workspace_id, skill_id, is_enabled, mode, cooldown_seconds, minimum_signals,
     max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version,
     next_eligible_at
 )
@@ -1976,7 +2070,7 @@ FROM skill
 WHERE skill.workspace_id = $1
   AND skill.id = $11
 ON CONFLICT (workspace_id, skill_id) DO UPDATE SET
-    enabled = EXCLUDED.enabled,
+    is_enabled = EXCLUDED.is_enabled,
     mode = EXCLUDED.mode,
     cooldown_seconds = EXCLUDED.cooldown_seconds,
     minimum_signals = EXCLUDED.minimum_signals,
@@ -1986,7 +2080,7 @@ ON CONFLICT (workspace_id, skill_id) DO UPDATE SET
     policy_version = EXCLUDED.policy_version,
     next_eligible_at = EXCLUDED.next_eligible_at,
     updated_at = now()
-RETURNING skill_evolution_loop.id, skill_evolution_loop.workspace_id, skill_evolution_loop.skill_id, skill_evolution_loop.enabled, skill_evolution_loop.mode, skill_evolution_loop.cooldown_seconds, skill_evolution_loop.minimum_signals, skill_evolution_loop.max_evidence_refs, skill_evolution_loop.max_replay_samples, skill_evolution_loop.max_cost_usd_ticks, skill_evolution_loop.policy_version, skill_evolution_loop.last_observed_at, skill_evolution_loop.last_proposal_at, skill_evolution_loop.next_eligible_at, skill_evolution_loop.created_at, skill_evolution_loop.updated_at
+RETURNING skill_evolution_loop.id, skill_evolution_loop.workspace_id, skill_evolution_loop.skill_id, skill_evolution_loop.mode, skill_evolution_loop.cooldown_seconds, skill_evolution_loop.minimum_signals, skill_evolution_loop.max_evidence_refs, skill_evolution_loop.max_replay_samples, skill_evolution_loop.max_cost_usd_ticks, skill_evolution_loop.policy_version, skill_evolution_loop.last_observed_at, skill_evolution_loop.last_proposal_at, skill_evolution_loop.next_eligible_at, skill_evolution_loop.created_at, skill_evolution_loop.updated_at, skill_evolution_loop.is_enabled
 `
 
 type UpsertSkillEvolutionLoopParams struct {
@@ -2022,7 +2116,6 @@ func (q *Queries) UpsertSkillEvolutionLoop(ctx context.Context, arg UpsertSkillE
 		&i.ID,
 		&i.WorkspaceID,
 		&i.SkillID,
-		&i.Enabled,
 		&i.Mode,
 		&i.CooldownSeconds,
 		&i.MinimumSignals,
@@ -2035,6 +2128,7 @@ func (q *Queries) UpsertSkillEvolutionLoop(ctx context.Context, arg UpsertSkillE
 		&i.NextEligibleAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsEnabled,
 	)
 	return i, err
 }

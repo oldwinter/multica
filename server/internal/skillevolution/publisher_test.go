@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/skillbundle"
 )
@@ -348,12 +349,15 @@ func seedPublisherSkill(t *testing.T, pool *pgxpool.Pool, seed publisherSkillSee
 	if seed.Config == "" {
 		seed.Config = `{}`
 	}
-	mustExecPublisher(t, pool, `
-INSERT INTO skill (id, workspace_id, name, description, content, config, created_by, plugin_installation_id)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
-		seed.ID, seed.WorkspaceID, seed.Name, seed.Description, seed.Content, seed.Config, seed.CreatorID, seed.PluginInstallationID)
+	fixture := testutil.New(pool, uuidText(seed.WorkspaceID), uuidText(seed.CreatorID))
+	fixture.Insert(t, "skill", testutil.Cols{
+		"id": seed.ID, "workspace_id": seed.WorkspaceID, "name": seed.Name,
+		"description": seed.Description, "content": seed.Content,
+		"config":     testutil.Raw("'" + strings.ReplaceAll(seed.Config, "'", "''") + "'::jsonb"),
+		"created_by": seed.CreatorID, "plugin_installation_id": seed.PluginInstallationID,
+	})
 	for _, file := range seed.Files {
-		mustExecPublisher(t, pool, `INSERT INTO skill_file (skill_id, path, content) VALUES ($1, $2, $3)`, seed.ID, file.Path, file.Content)
+		fixture.Insert(t, "skill_file", testutil.Cols{"skill_id": seed.ID, "path": file.Path, "content": file.Content})
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -162,11 +163,7 @@ func TestCompleteTaskSkillExecutionManifestCompatibility(t *testing.T) {
 				req.Header.Set("X-Client-Capabilities", tc.capabilities)
 			}
 
-			w := httptest.NewRecorder()
-			testHandler.CompleteTask(w, req)
-			if w.Code != http.StatusOK {
-				t.Fatalf("CompleteTask returned %d, want 200: %s", w.Code, w.Body.String())
-			}
+			testutil.Call(t, testHandler.CompleteTask, req).Want(http.StatusOK)
 
 			var result []byte
 			if err := testPool.QueryRow(context.Background(), `SELECT result FROM agent_task_queue WHERE id = $1`, taskID).Scan(&result); err != nil {

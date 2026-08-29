@@ -895,7 +895,7 @@
       "target_product_defect": "产品缺陷",
       "target_required": "请选择这条反馈涉及的对象。",
       "skill_label": "目标 skill",
-      "skill_loading": "正在加载 skill…",
+      "skill_loading": "正在加载 skill...",
       "skill_placeholder": "选择工作区 skill",
       "skill_assigned": "该智能体正在使用",
       "skill_load_failed": "无法加载 skill。",
@@ -911,7 +911,7 @@
       "error_too_long": "请将内容控制在 4,096 个 UTF-8 字节以内。",
       "submit_failed": "无法提交这条评价，执行记录仍可正常查看。",
       "cancel": "取消",
-      "submitting": "提交中…",
+      "submitting": "提交中...",
       "retry": "重试",
       "submit": "提交评价"
     }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/room"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/llm"
 	"github.com/multica-ai/multica/server/pkg/skillbundle"
 )
 
@@ -149,6 +150,52 @@ func TestRoomCandidateEngineUsesOnlyBoundEvidenceAndReplayFailsClosed(t *testing
 	}
 }
 
+func TestProductionAcceptedCurrentRoomRecommendationBecomesReadyAndPublishable(t *testing.T) {
+	pool := skillEvolutionTestPool(t)
+	fixture := newRoomCandidateFixture(t)
+	actorID := fixture.outcomes.evidence.ReviewedByUserID
+	seedPersistenceFixture(t, pool, fixture.workspaceID, actorID, fixture.skillID, testUUID())
+	skills := &memorySkillLoader{current: lifecycleSnapshot(t, fixture.workspaceID, actorID, fixture.skillID, fixture.base)}
+	client := &replayJSONClientStub{enabled: true, responses: []llm.JSONGeneration{
+		{Content: `{"response":"base missed the focused check"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"candidate performs the focused check"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+	}}
+	lifecycle, err := NewLifecycle(
+		NewStore(db.New(pool), pool), skills, &memoryPublisher{skills: skills},
+		NewProductionImprover(fixture.source, DefaultReplayTimeout), newProductionBehavioralEvaluator(client),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycle.SetImprovementRecommendationSource(fixture.source)
+	actor := DecisionActor{ID: actorID, Kind: ActorKindHuman}
+	if _, err := lifecycle.Enable(context.Background(), actor, LoopConfig{
+		WorkspaceID: fixture.workspaceID, SkillID: fixture.skillID, Mode: LoopModePropose,
+		Cooldown: time.Hour, MinimumSignals: 1, MaxEvidenceRefs: 5, MaxReplaySamples: 1,
+		MaxCostUSDTicks: 2_000_000, PolicyVersion: "v1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	request := RoomRecommendationRequest{
+		WorkspaceID: fixture.workspaceID, SkillID: fixture.skillID,
+		RecommendationID: improvementRecommendationID(fixture.outcomes.ref), IdempotencyKey: "production-room-ready",
+	}
+	generation, err := lifecycle.CreateProposalFromRoomRecommendation(context.Background(), request)
+	if err != nil || generation.Proposal.State != string(ProposalStateReady) || generation.Replay.Result != string(EvaluationResultPassed) {
+		t.Fatalf("production Room generation = (%+v, %v)", generation, err)
+	}
+	publication, err := lifecycle.Publish(context.Background(), PublishRequest{
+		WorkspaceID: fixture.workspaceID, ProposalID: generation.Proposal.ID, Actor: actor,
+		Reason: "bounded production replay passed", IdempotencyKey: "publish-production-room-ready",
+	})
+	if err != nil || publication.Release.Outcome != string(ReleaseOutcomeSucceeded) ||
+		publication.Result.PostHash != Digest(generation.Proposal.CandidateHash.String) {
+		t.Fatalf("publish production Room proposal = (%+v, %v)", publication, err)
+	}
+}
+
 func TestRoomProposalRequesterNeverFallsBackToGenericGeneration(t *testing.T) {
 	fixture := newRoomCandidateFixture(t)
 	processor := &proposalProcessorStub{}
@@ -214,7 +261,7 @@ func newRoomCandidateFixture(t *testing.T) roomCandidateFixture {
 	signal := NewSignalAdapter(EvidenceKindTaskReview,
 		func(context.Context, SignalQuery) ([]EvidenceRef, error) { return []EvidenceRef{signalRef}, nil },
 		func(context.Context, SignalQuery, EvidenceRef) (ResolvedEvidence, error) {
-			return ResolvedEvidence{Ref: signalRef, Payload: []byte(`{"reason":"bounded"}`)}, nil
+			return ResolvedEvidence{Ref: signalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"add the focused check","reason":"bounded"}`)}, nil
 		})
 	envelope := roomCandidateEnvelope{SchemaVersion: 1, BaseSkillID: uuidText(skillID), BaseHash: string(baseHash),
 		Bundle: roomCandidateBundle{ID: uuidText(skillID), Source: skillbundle.SourceWorkspace, Name: base.Name, Description: base.Description,

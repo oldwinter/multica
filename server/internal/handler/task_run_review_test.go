@@ -154,6 +154,64 @@ func TestTaskRunReviewHTTPRejectsUnknownAndOversizeBodies(t *testing.T) {
 	}
 }
 
+func TestTaskRunReviewHTTPCanonicalizesUUIDBoundariesBeforeService(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*TaskRunReviewHTTPHandler, http.ResponseWriter, *http.Request)
+		req  *http.Request
+	}{
+		{
+			name: "workspace",
+			call: (*TaskRunReviewHTTPHandler).List,
+			req:  taskRunReviewRequest(http.MethodGet, "/api/task-run-reviews?workspace_id=not-a-uuid", "", nil),
+		},
+		{
+			name: "create task",
+			call: (*TaskRunReviewHTTPHandler).Create,
+			req: taskRunReviewRequest(http.MethodPost, "/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID,
+				`{"idempotency_key":"uuid-boundary","outcome":"helpful","target":"knowledge","reason":"bounded"}`,
+				map[string]string{"taskId": "not-a-uuid"}),
+		},
+		{
+			name: "review",
+			call: (*TaskRunReviewHTTPHandler).Get,
+			req: taskRunReviewRequest(http.MethodGet, "/api/task-run-reviews/not-a-uuid?workspace_id="+handlerTaskReviewWorkspaceID,
+				"", map[string]string{"reviewId": "not-a-uuid"}),
+		},
+		{
+			name: "manual rerun task",
+			call: (*TaskRunReviewHTTPHandler).GetManualRerun,
+			req: taskRunReviewRequest(http.MethodGet, "/api/task-run-reviews/manual-reruns/not-a-uuid?workspace_id="+handlerTaskReviewWorkspaceID,
+				"", map[string]string{"taskId": "not-a-uuid"}),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeTaskRunReviewHTTPService{}
+			h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+			result := testutil.Call(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				test.call(h, w, r)
+			}), test.req).Want(http.StatusBadRequest)
+			if fake.calls != 0 || !strings.Contains(result.Body.String(), "invalid") {
+				t.Fatalf("service calls=%d body=%s", fake.calls, result.Body.String())
+			}
+		})
+	}
+}
+
+func TestTaskRunReviewHTTPValidCanonicalUUIDPreservesNotFoundSemantics(t *testing.T) {
+	fake := &fakeTaskRunReviewHTTPService{err: service.ErrTaskRunReviewNotFound}
+	h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+	req := taskRunReviewRequest(http.MethodGet,
+		"/api/task-run-reviews/"+handlerTaskReviewReviewID+"?workspace_id="+strings.ToUpper(handlerTaskReviewWorkspaceID),
+		"", map[string]string{"reviewId": handlerTaskReviewReviewID},
+	)
+	result := testutil.Call(t, h.Get, req).Want(http.StatusNotFound)
+	if fake.calls != 1 || !strings.Contains(result.Text(), "not found") {
+		t.Fatalf("service calls=%d body=%s", fake.calls, result.Text())
+	}
+}
+
 func TestTaskRunReviewHTTPListIsContentFree(t *testing.T) {
 	fake := &fakeTaskRunReviewHTTPService{}
 	h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}

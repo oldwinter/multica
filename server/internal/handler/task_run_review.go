@@ -52,7 +52,11 @@ func (h *TaskRunReviewHTTPHandler) Create(w http.ResponseWriter, r *http.Request
 	if !decodeTaskRunReviewJSON(w, r, &input) {
 		return
 	}
-	input.TaskID = chi.URLParam(r, "taskId")
+	taskID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "taskId"), "task id")
+	if !ok {
+		return
+	}
+	input.TaskID = util.UUIDToString(taskID)
 	evidence, err := h.service.CreateTaskRunReview(r.Context(), workspaceID, reviewerID, input)
 	if err != nil {
 		h.writeError(w, err)
@@ -83,7 +87,11 @@ func (h *TaskRunReviewHTTPHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	evidence, err := h.service.LoadTaskRunReviewEvidence(r.Context(), workspaceID, reviewerID, chi.URLParam(r, "reviewId"))
+	reviewID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "reviewId"), "review id")
+	if !ok {
+		return
+	}
+	evidence, err := h.service.LoadTaskRunReviewEvidence(r.Context(), workspaceID, reviewerID, util.UUIDToString(reviewID))
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -113,7 +121,11 @@ func (h *TaskRunReviewHTTPHandler) GetManualRerun(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	evidence, err := h.service.LoadManualRerunEvidence(r.Context(), workspaceID, reviewerID, chi.URLParam(r, "taskId"))
+	taskID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "taskId"), "task id")
+	if !ok {
+		return
+	}
+	evidence, err := h.service.LoadManualRerunEvidence(r.Context(), workspaceID, reviewerID, util.UUIDToString(taskID))
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -139,9 +151,8 @@ func (h *TaskRunReviewHTTPHandler) requireHumanReviewer(w http.ResponseWriter, r
 		return "", "", false
 	}
 	workspaceID := h.root.resolveWorkspaceID(r)
-	workspaceUUID, err := util.ParseUUID(workspaceID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "workspace id is invalid")
+	workspaceUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
 		return "", "", false
 	}
 	workspaceID = util.UUIDToString(workspaceUUID)

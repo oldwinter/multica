@@ -201,7 +201,7 @@ func proposalDetailResponse(value ProposalView) proposalDetailDTO {
 
 func loopResponse(value db.SkillEvolutionLoop) loopDTO {
 	return loopDTO{
-		ID: util.UUIDToString(value.ID), Enabled: value.Enabled, Mode: value.Mode,
+		ID: util.UUIDToString(value.ID), Enabled: value.IsEnabled, Mode: value.Mode,
 		CooldownSeconds: value.CooldownSeconds, MinimumSignals: value.MinimumSignals,
 		MaxEvidenceRefs: value.MaxEvidenceRefs, MaxReplaySamples: value.MaxReplaySamples,
 		MaxCostUSDTicks: value.MaxCostUsdTicks, PolicyVersion: value.PolicyVersion,

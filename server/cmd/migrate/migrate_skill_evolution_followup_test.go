@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	migrationfiles "github.com/multica-ai/multica/server/internal/migrations"
 )
 
 func TestSkillEvolutionMigrationsUpgradeExisting514LedgerAndReplay(t *testing.T) {
@@ -16,10 +17,23 @@ func TestSkillEvolutionMigrationsUpgradeExisting514LedgerAndReplay(t *testing.T)
 
 	if _, err := pool.Exec(ctx, `
 CREATE TABLE skill_evolution_task_attribution (
-    id UUID NOT NULL, workspace_id UUID NOT NULL
+    id UUID NOT NULL, workspace_id UUID NOT NULL,
+    eligibility TEXT NOT NULL, reason TEXT NOT NULL
 );
 CREATE TABLE skill_evolution_proposal (
     id UUID NOT NULL, rationale_digest TEXT NULL
+);
+CREATE TABLE skill_evolution_loop (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    skill_id UUID NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE task_run_review (
+    id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    task_id UUID NOT NULL,
+    reviewer_id UUID NOT NULL
 );
 CREATE TABLE wiki_page_edit_proposal (
     id UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -46,6 +60,15 @@ CREATE TABLE wiki_page_edit_proposal (
 	if _, err := pool.Exec(ctx, `INSERT INTO wiki_page_edit_proposal (workspace_id, agent_id, idempotency_key) VALUES (gen_random_uuid(), gen_random_uuid(), 'agent-existing')`); err != nil {
 		t.Fatalf("seed existing agent proposal: %v", err)
 	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO skill_evolution_task_attribution (id, workspace_id, eligibility, reason)
+VALUES (gen_random_uuid(), gen_random_uuid(), 'eligible', 'legacy_without_dispatch_proof');
+INSERT INTO skill_evolution_loop (workspace_id, skill_id, enabled)
+VALUES (gen_random_uuid(), gen_random_uuid(), TRUE);
+INSERT INTO task_run_review (id, workspace_id, task_id, reviewer_id)
+VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid())`); err != nil {
+		t.Fatalf("seed follow-up migration rows: %v", err)
+	}
 
 	through521 := []string{
 		"515_skill_evolution_task_dispatch_snapshot",
@@ -60,6 +83,17 @@ CREATE TABLE wiki_page_edit_proposal (
 	if err := runMigrations(ctx, pool, opts); err != nil {
 		t.Fatalf("upgrade existing 514 ledger through 521: %v", err)
 	}
+	shadowSchema := schema + "_constraint_shadow"
+	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{shadowSchema}.Sanitize()); err != nil {
+		t.Fatalf("create duplicate-constraint schema: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), "DROP SCHEMA "+pgx.Identifier{shadowSchema}.Sanitize()+" CASCADE")
+	})
+	if _, err := pool.Exec(ctx, "CREATE TABLE "+pgx.Identifier{shadowSchema, "wiki_page_edit_proposal"}.Sanitize()+
+		" (source_kind TEXT CONSTRAINT wiki_page_edit_proposal_source CHECK (source_kind = 'shadow'))"); err != nil {
+		t.Fatalf("create duplicate named constraint: %v", err)
+	}
 	assertSkillEvolutionConstraintValidated(t, ctx, pool, "wiki_page_edit_proposal_source", false)
 
 	const validateVersion = "522_wiki_page_proposal_source_validate"
@@ -69,13 +103,43 @@ CREATE TABLE wiki_page_edit_proposal (
 	}
 	assertSkillEvolutionConstraintValidated(t, ctx, pool, "wiki_page_edit_proposal_source", true)
 
-	for _, version := range append(append([]string{existingVersion}, through521...), validateVersion) {
+	tailVersions := []string{
+		"523_task_run_review_idempotency",
+		"524_task_run_review_idempotency_index",
+		"525_skill_evolution_exact_coverage_and_loop_state",
+	}
+	opts.Files = realMigrationFiles(t, tailVersions, "up")
+	if err := runMigrations(ctx, pool, opts); err != nil {
+		t.Fatalf("upgrade existing 514 ledger through 525: %v", err)
+	}
+	var eligibility, reason string
+	var hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled bool
+	if err := pool.QueryRow(ctx, `SELECT eligibility, reason FROM skill_evolution_task_attribution LIMIT 1`).Scan(&eligibility, &reason); err != nil {
+		t.Fatalf("read downgraded legacy attribution: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+SELECT
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'skill_evolution_task_attribution' AND column_name = 'feedback_covered_at'),
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'skill_evolution_loop' AND column_name = 'is_enabled'),
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'skill_evolution_loop' AND column_name = 'enabled'),
+	EXISTS (SELECT 1 FROM skill_evolution_loop WHERE is_enabled),
+    EXISTS (SELECT 1 FROM task_run_review WHERE idempotency_key LIKE 'legacy:%')
+`).Scan(&hasCoverage, &hasIsEnabled, &hasLegacyEnabled, &enabledValuePreserved, &reviewKeyBackfilled); err != nil {
+		t.Fatalf("inspect follow-up schema: %v", err)
+	}
+	if eligibility != "ineligible" || reason != "dispatch_proof_missing" || !hasCoverage || !hasIsEnabled || hasLegacyEnabled || !enabledValuePreserved || !reviewKeyBackfilled {
+		t.Fatalf("follow-up state eligibility=%q reason=%q coverage=%t is_enabled=%t enabled=%t value_preserved=%t review_key=%t",
+			eligibility, reason, hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled)
+	}
+
+	allVersions := append(append(append([]string{existingVersion}, through521...), validateVersion), tailVersions...)
+	for _, version := range allVersions {
 		assertRoomMigrationRecorded(t, ctx, pool, version, true)
 	}
 
 	// Simulate DDL commit followed by a crash before either ledger write. Both
 	// the PK attach and validation migrations must accept their exact end state.
-	for _, version := range []string{"518_skill_evolution_task_dispatch_snapshot_primary_key", validateVersion} {
+	for _, version := range []string{"518_skill_evolution_task_dispatch_snapshot_primary_key", validateVersion, "525_skill_evolution_exact_coverage_and_loop_state"} {
 		if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
 			t.Fatalf("remove %s ledger row: %v", version, err)
 		}
@@ -107,6 +171,40 @@ WHERE c.conrelid = 'skill_evolution_task_dispatch_snapshot'::regclass
 `).Scan(&exactPrimaryKey); err != nil || !exactPrimaryKey {
 		t.Fatalf("dispatch snapshot primary key exact/error = %t/%v", exactPrimaryKey, err)
 	}
+}
+
+func TestSkillEvolutionFollowupReplaysAfterFreshMigration(t *testing.T) {
+	pool, schema := newRoomMigrationTestSchema(t)
+	// Full historical migrations use extension operator classes installed in
+	// public. Keep the throwaway schema first so every application table and
+	// constraint remains isolated while those extension objects stay visible.
+	pool = openTestPoolWithSearchPath(t, schema+", public")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	files, err := migrationfiles.Files("up")
+	if err != nil {
+		t.Fatalf("list fresh migration files: %v", err)
+	}
+	opts := runOptions{
+		Direction: "up", Files: files,
+		SchemaMigrationsTable: schema + ".schema_migrations",
+		AdvisoryLockKey:       roomMigrationTestLockKey(), Hooks: hooksForDirection("up"),
+		Conditions: conditionsForDirection("up"), VersionAliases: legacyMigrationVersionAliases,
+	}
+	if err := runMigrations(ctx, pool, opts); err != nil {
+		t.Fatalf("fresh migrate through skill evolution follow-up: %v", err)
+	}
+	for _, version := range []string{"522_wiki_page_proposal_source_validate", "525_skill_evolution_exact_coverage_and_loop_state"} {
+		if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
+			t.Fatalf("remove fresh ledger row %s: %v", version, err)
+		}
+		opts.Files = realMigrationFiles(t, []string{version}, "up")
+		if err := runMigrations(ctx, pool, opts); err != nil {
+			t.Fatalf("replay fresh follow-up %s: %v", version, err)
+		}
+		assertRoomMigrationRecorded(t, ctx, pool, version, true)
+	}
+	assertSkillEvolutionConstraintValidated(t, ctx, pool, "wiki_page_edit_proposal_source", true)
 }
 
 func TestSkillEvolutionPrimaryKeyMigrationRejectsWrongCandidateIndex(t *testing.T) {
@@ -178,7 +276,14 @@ func assertSkillEvolutionConstraintValidated(t *testing.T, ctx context.Context, 
 }, name string, want bool) {
 	t.Helper()
 	var got bool
-	if err := pool.QueryRow(ctx, `SELECT convalidated FROM pg_constraint WHERE conname = $1`, name).Scan(&got); err != nil {
+	if err := pool.QueryRow(ctx, `
+SELECT constraint_row.convalidated
+FROM pg_constraint constraint_row
+JOIN pg_class relation ON relation.oid = constraint_row.conrelid
+JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname = current_schema()
+  AND relation.relname = 'wiki_page_edit_proposal'
+  AND constraint_row.conname = $1`, name).Scan(&got); err != nil {
 		t.Fatalf("read constraint %s: %v", name, err)
 	}
 	if got != want {
