@@ -1,0 +1,117 @@
+{
+  "toolbar": {
+    "title": "Office",
+    "world_control": "Office world",
+    "worlds": {
+      "studio": "Studio",
+      "expedition": "Expedition"
+    },
+    "scene_counts": "Subjects shown in the scene",
+    "counts": {
+      "agents": "A {{shown}}/{{total}}",
+      "squads": "S {{shown}}/{{total}}",
+      "issues": "I {{shown}}/{{total}}"
+    },
+    "roster_toggle": "Toggle roster",
+    "fit": "Fit",
+    "zoom_out": "Zoom out",
+    "zoom_in": "Zoom in"
+  },
+  "poster": {
+    "studio_title": "Studio signal floor",
+    "studio_description": "Agent stations, squad boards, and active issue signals are held in one operational view.",
+    "expedition_title": "Expedition field base",
+    "expedition_description": "The same workspace facts are staged across field stations, route boards, and signal beacons.",
+    "renderer_fallback": "The visual scene is unavailable. The complete roster remains available."
+  },
+  "states": {
+    "loading_title": "Loading office",
+    "unavailable_title": "Office data is unavailable",
+    "unavailable_body": "The agent list could not be loaded. Try again to restore the office.",
+    "retry": "Try again",
+    "empty_title": "The office is quiet",
+    "empty_body": "There are no active agents, squads, or issue signals to show.",
+    "refreshing": "Refreshing workspace facts",
+    "partial_title": "Some office details are unavailable",
+    "partial_body": "Available workspace facts are shown without filling in missing details.",
+    "stale_title": "Showing last-known office data",
+    "stale_body": "Updates could not be refreshed. Counts and links remain available, but the scene may be out of date.",
+    "gaps": {
+      "availability": "Agent availability",
+      "workload": "Agent workload",
+      "squads": "Squads",
+      "issue_briefs": "Issue details",
+      "selected_squad": "Selected squad membership"
+    }
+  },
+  "roster": {
+    "title": "Office roster",
+    "tabs": {
+      "agents": "Agents",
+      "squads": "Squads",
+      "issues": "Active Issues"
+    },
+    "empty": {
+      "agents": "No agents to show",
+      "squads": "No squads to show",
+      "issues": "No active issues to show"
+    },
+    "preview": "Member preview",
+    "members": "{{count}} members",
+    "leader": "Leader: {{name}}",
+    "leader_unknown": "Leader unavailable",
+    "active_issue_count": "{{count}} active issues",
+    "executing_agent_count": "{{count}} executing agents",
+    "unresolved_issue": "Issue details unavailable",
+    "selected": "Selected"
+  },
+  "presence": {
+    "availability": "Availability",
+    "workload": "Workload",
+    "online": "Online",
+    "unstable": "Unstable",
+    "offline": "Offline",
+    "idle": "Idle",
+    "queued": "Queued",
+    "working": "Working",
+    "loading": "Loading",
+    "unavailable": "Unavailable",
+    "running_count": "{{count}} running",
+    "queued_count": "{{count}} queued",
+    "capacity": "Capacity {{count}}"
+  },
+  "inspector": {
+    "back": "Back to roster",
+    "agent_title": "Agent",
+    "squad_title": "Squad",
+    "issue_title": "Active Issue",
+    "description": "Description",
+    "active_issues": "Active Issues",
+    "open_agent": "Open Agent",
+    "open_squad": "Open Squad",
+    "open_issue": "Open Issue",
+    "leader": "Leader",
+    "member_count": "Complete member count",
+    "member_preview": "Member preview",
+    "members": "Members",
+    "members_loading": "Loading full membership",
+    "members_unavailable": "Full membership is unavailable",
+    "retry_members": "Try membership again",
+    "member_agent": "Agent",
+    "member_human": "Member",
+    "member_unknown": "Unknown member",
+    "assigned_squad": "Assigned Squad",
+    "executing_agents": "Executing Agents",
+    "none": "None",
+    "unresolved_title": "Issue {{id}}",
+    "unresolved_body": "The issue is active, but its title and status are unavailable.",
+    "missing_title": "Selection no longer available",
+    "missing_body": "This subject is no longer in the current office snapshot."
+  },
+  "a11y": {
+    "agent_row": "Select agent {{name}}",
+    "squad_row": "Select squad {{name}}",
+    "issue_row": "Select issue {{name}}",
+    "selection_disappeared": "The selected office subject is no longer available."
+  }
+}

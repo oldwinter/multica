@@ -30,6 +30,7 @@ import type billing from "../locales/en/billing.json";
 import type twins from "../locales/en/twins.json";
 import type wiki from "../locales/en/wiki.json";
 import type rooms from "../locales/en/rooms.json";
+import type office from "../locales/en/office.json";
 
 // Module augmentation enables i18next v26 selector API across the monorepo:
 // `t($ => $.signin.title)` resolves to the value in en/auth.json.
@@ -74,6 +75,7 @@ declare global {
     twins: typeof twins;
     wiki: typeof wiki;
     rooms: typeof rooms;
+    office: typeof office;
   }
 }
 
