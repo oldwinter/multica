@@ -24,7 +24,22 @@ case " $* " in
   *) printf '1\n' ;;
 esac
 EOF
-chmod +x "$fake_bin/psql"
+
+# These are registry fixtures, so their hand-written ports must remain stopped
+# even when a shared runner has unrelated listeners on the same machine ports.
+cat > "$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+exit 7
+EOF
+cat > "$fake_bin/lsof" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat > "$fake_bin/ss" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$fake_bin/psql" "$fake_bin/curl" "$fake_bin/lsof" "$fake_bin/ss"
 export PATH="$fake_bin:$PATH"
 
 fail() {
@@ -174,6 +189,18 @@ if bash -c 'source "$1"; api_started_after '\''{"status":"ok"}'\'' 1' _ "$root_d
   fail "legacy /health without started_at was accepted as current"
 fi
 
+# Linux lsof can miss a live Next listener that ss reports with its PID. The
+# listener lookup must retain lsof for macOS and fall back to the kernel socket
+# table on Linux instead of treating an answering port as ownerless.
+bash -c '
+  set -euo pipefail
+  source "$1"
+  lsof() { return 1; }
+  ss() { printf "%s\n" '\''LISTEN 0 511 *:13999 *:* users:(("next-server",pid=4242,fd=22))'\''; }
+  [ "$(port_listener_pid 13999)" = 4242 ]
+' _ "$root_dir/scripts/dev-env.sh" \
+  || fail "listener lookup must fall back to ss when lsof misses Next"
+
 # Next.js sits in a turbo/pnpm process group that is not the make launcher.
 # Ownership must follow PPID, not only PGID, or `make up` kills a healthy web.
 bash -c '
@@ -204,6 +231,82 @@ bash -c '
   process_is_descendant_of "$nested_pid" "$$" || { echo "new-process-group child was not a descendant"; exit 1; }
 ' _ "$root_dir/scripts/dev-env.sh" \
   || fail "listener ownership must follow PPID across a new process group"
+
+# The live pnpm/turbo chain can leave the launcher ancestry while both the
+# launcher and Next listener remain alive. A dedicated launch session survives
+# that reparenting, while an unrelated listener cannot join the session.
+bash -c '
+  set -euo pipefail
+  source "$1"
+  STATE_DIR="$2/session-state"
+  LOG_DIR="$STATE_DIR/logs"
+  mkdir -p "$LOG_DIR"
+  launcher_pid=""
+  listener_pid=""
+  unrelated_pid=""
+  cleanup() {
+    [ -z "$launcher_pid" ] || kill -TERM -"$launcher_pid" 2>/dev/null || kill "$launcher_pid" 2>/dev/null || true
+    [ -z "$listener_pid" ] || kill "$listener_pid" 2>/dev/null || true
+    [ -z "$unrelated_pid" ] || kill "$unrelated_pid" 2>/dev/null || true
+  }
+  trap cleanup EXIT
+
+  launch_detached web python3 -c "
+import os, sys, time
+
+middle = os.fork()
+if middle == 0:
+    listener = os.fork()
+    if listener == 0:
+        os.setpgid(0, 0)
+        time.sleep(30)
+        os._exit(0)
+    fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.write(fd, str(listener).encode())
+    os.close(fd)
+    os._exit(0)
+
+time.sleep(30)
+" "$STATE_DIR/listener.pid"
+  launcher_pid="$(cat "$(pid_file web)")"
+
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ -s "$STATE_DIR/listener.pid" ] && break
+    sleep 0.05
+  done
+  [ -s "$STATE_DIR/listener.pid" ] || { echo "reparented listener pid was not written"; exit 1; }
+  listener_pid="$(cat "$STATE_DIR/listener.pid")"
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    ! process_is_descendant_of "$listener_pid" "$launcher_pid" && break
+    sleep 0.05
+  done
+
+  launcher_sid="$(ps -p "$launcher_pid" -o sid= 2>/dev/null | tr -d " ")"
+  [ "$launcher_sid" = "$launcher_pid" ] || { echo "launcher did not start in a dedicated session"; exit 1; }
+  [ "$(ps -p "$listener_pid" -o sid= 2>/dev/null | tr -d " ")" = "$launcher_sid" ] \
+    || { echo "reparented listener left the launch session"; exit 1; }
+  [ "$(process_group_id "$listener_pid")" != "$launcher_pid" ] \
+    || { echo "reparented listener stayed in the launcher process group"; exit 1; }
+  if process_is_descendant_of "$listener_pid" "$launcher_pid"; then
+    echo "listener remained a launcher descendant"; exit 1
+  fi
+
+  port_listener_pid() { printf "%s" "$listener_pid"; }
+  listener_belongs_to_component web 13999 \
+    || { echo "same-session reparented listener was rejected"; exit 1; }
+
+  python3 -c "import os, time; os.setsid(); time.sleep(30)" &
+  unrelated_pid=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ "$(ps -p "$unrelated_pid" -o sid= 2>/dev/null | tr -d " ")" = "$unrelated_pid" ] && break
+    sleep 0.05
+  done
+  port_listener_pid() { printf "%s" "$unrelated_pid"; }
+  if listener_belongs_to_component web 13999; then
+    echo "unrelated session was accepted as the component listener"; exit 1
+  fi
+' _ "$root_dir/scripts/dev-env.sh" "$tmp_dir" \
+  || fail "listener ownership must survive reparenting without trusting an unrelated port owner"
 
 # ---------------------------------------------------------------------------
 # Unknown names and components fail loudly instead of doing something else.
