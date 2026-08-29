@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -58,7 +59,13 @@ var (
 
 // ValidateCandidatePolicy runs after T1's canonical bundle/frontmatter gate
 // and before behavioral replay. Its result contains rule codes and counts only.
-func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandidate, evidence []ResolvedEvidence, policy CandidatePolicy) ValidationOutcome {
+func ValidateCandidatePolicy(
+	base skillbundle.Skill,
+	candidate ImprovementCandidate,
+	evidence []ResolvedEvidence,
+	authorization ChangeAuthorizationArtifact,
+	policy CandidatePolicy,
+) ValidationOutcome {
 	codes := make([]string, 0, 8)
 	manifest, err := ValidateCandidateBundle(candidate.Bundle)
 	if err != nil {
@@ -116,7 +123,7 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 	if !candidateClaimsResolvedEvidence(candidate.EvidenceDigests, evidence) {
 		codes = append(codes, "provenance_invalid")
 	}
-	if !candidateChangesAreAuthorized(base, candidate, evidence) {
+	if !candidateChangesAreAuthorized(base, candidate, evidence, authorization) {
 		codes = append(codes, "change_authorization_invalid")
 	}
 	for _, value := range candidateText(candidate.Bundle) {
@@ -137,7 +144,10 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 		Result: result, RuleCodes: codes, ChangedFiles: changed, AddedFiles: added,
 		DeletedFiles: deleted, PrimaryGrowthBytes: primaryGrowth,
 	}
-	outcome.Digest = digestSafeValue("candidate-validation-v1", outcome)
+	outcome.Digest = digestSafeValue("candidate-validation-v1", struct {
+		Outcome             ValidationOutcome
+		AuthorizationDigest Digest
+	}{outcome, authorization.Digest})
 	return outcome
 }
 
@@ -232,25 +242,61 @@ type candidateChangeUnit struct {
 	Value     string
 }
 
-// BuildChangeAuthorizations produces the typed authorization skeleton an
-// improver must return. Callers choose which resolved evidence authorizes each
-// exact change; validation never infers that relationship from prose.
-func BuildChangeAuthorizations(base, candidate skillbundle.Skill, evidenceDigests []Digest) []ChangeAuthorization {
-	units := candidateChangeUnits(base, candidate)
-	result := make([]ChangeAuthorization, len(units))
-	for index, unit := range units {
-		result[index] = ChangeAuthorization{
-			Path: unit.Path, Operation: unit.Operation, Value: unit.Value,
-			EvidenceDigests: append([]Digest(nil), evidenceDigests...),
-		}
+func newChangeAuthorizationArtifact(
+	authorityID string,
+	baseHash Digest,
+	approvedBundle skillbundle.Skill,
+	evidenceDigests []Digest,
+) (ChangeAuthorizationArtifact, error) {
+	if !boundedToken(authorityID, MaxEvidenceIdentityBytes) || !baseHash.Valid() || len(evidenceDigests) == 0 ||
+		len(evidenceDigests) > MaxEvidenceRefs {
+		return ChangeAuthorizationArtifact{}, ErrImproverOutput
 	}
-	return result
+	if _, err := ValidateCandidateBundle(approvedBundle); err != nil {
+		return ChangeAuthorizationArtifact{}, ErrImproverOutput
+	}
+	seen := make(map[Digest]struct{}, len(evidenceDigests))
+	for _, digest := range evidenceDigests {
+		if !digest.Valid() {
+			return ChangeAuthorizationArtifact{}, ErrImproverOutput
+		}
+		if _, duplicate := seen[digest]; duplicate {
+			return ChangeAuthorizationArtifact{}, ErrImproverOutput
+		}
+		seen[digest] = struct{}{}
+	}
+	artifact := ChangeAuthorizationArtifact{
+		AuthorityID: authorityID, BaseHash: baseHash, ApprovedBundle: cloneSkillBundle(approvedBundle),
+		EvidenceDigests: append([]Digest(nil), evidenceDigests...),
+	}
+	artifact.Digest = changeAuthorizationArtifactDigest(artifact)
+	return artifact, nil
 }
 
-func candidateChangesAreAuthorized(base skillbundle.Skill, candidate ImprovementCandidate, evidence []ResolvedEvidence) bool {
+func changeAuthorizationArtifactDigest(artifact ChangeAuthorizationArtifact) Digest {
+	return digestSafeValue("change-authorization-artifact-v1", struct {
+		AuthorityID     string
+		BaseHash        Digest
+		ApprovedBundle  skillbundle.Skill
+		EvidenceDigests []Digest
+	}{artifact.AuthorityID, artifact.BaseHash, artifact.ApprovedBundle, artifact.EvidenceDigests})
+}
+
+func candidateChangesAreAuthorized(
+	base skillbundle.Skill,
+	candidate ImprovementCandidate,
+	evidence []ResolvedEvidence,
+	authorization ChangeAuthorizationArtifact,
+) bool {
+	baseManifest, baseErr := skillbundle.BuildValidatedManifest(base)
+	approvedManifest, approvedErr := ValidateCandidateBundle(authorization.ApprovedBundle)
+	candidateManifest, candidateErr := ValidateCandidateBundle(candidate.Bundle)
+	approvedUnits := candidateChangeUnits(base, authorization.ApprovedBundle)
 	units := candidateChangeUnits(base, candidate.Bundle)
-	if len(units) == 0 || len(candidate.AuthorizedChanges) != len(units) ||
-		len(candidate.AuthorizedChanges) > MaxCandidateChangeAuthorizations {
+	if baseErr != nil || approvedErr != nil || candidateErr != nil || !boundedToken(authorization.AuthorityID, MaxEvidenceIdentityBytes) ||
+		Digest(baseManifest.Hash) != authorization.BaseHash || authorization.Digest != changeAuthorizationArtifactDigest(authorization) ||
+		approvedManifest.Hash != candidateManifest.Hash || len(units) == 0 || len(units) != len(approvedUnits) ||
+		len(units) > MaxCandidateChangeAuthorizations || !reflect.DeepEqual(units, approvedUnits) {
 		return false
 	}
 	claims := make(map[Digest]struct{}, len(candidate.EvidenceDigests))
@@ -261,35 +307,17 @@ func candidateChangesAreAuthorized(base skillbundle.Skill, candidate Improvement
 	for _, item := range evidence {
 		available[item.Ref.Digest] = struct{}{}
 	}
-	want := make(map[candidateChangeUnit]int, len(units))
-	for _, unit := range units {
-		want[unit]++
+	if len(authorization.EvidenceDigests) != len(claims) {
+		return false
 	}
-	for _, authorization := range candidate.AuthorizedChanges {
-		unit := candidateChangeUnit{Path: authorization.Path, Operation: authorization.Operation, Value: authorization.Value}
-		if want[unit] == 0 || len(authorization.EvidenceDigests) == 0 {
+	for _, digest := range authorization.EvidenceDigests {
+		if !digest.Valid() {
 			return false
 		}
-		want[unit]--
-		seen := make(map[Digest]struct{}, len(authorization.EvidenceDigests))
-		for _, digest := range authorization.EvidenceDigests {
-			if !digest.Valid() {
-				return false
-			}
-			if _, duplicate := seen[digest]; duplicate {
-				return false
-			}
-			seen[digest] = struct{}{}
-			if _, ok := claims[digest]; !ok {
-				return false
-			}
-			if _, ok := available[digest]; !ok {
-				return false
-			}
+		if _, ok := claims[digest]; !ok {
+			return false
 		}
-	}
-	for _, remaining := range want {
-		if remaining != 0 {
+		if _, ok := available[digest]; !ok {
 			return false
 		}
 	}

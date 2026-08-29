@@ -34,22 +34,23 @@ type ImprovementRequest struct {
 // ImprovementCandidate is structured so provenance and review rationale do
 // not need to be inferred from free-form model output.
 type ImprovementCandidate struct {
-	Bundle            skillbundle.Skill
-	ObservedPattern   string
-	ExpectedBenefit   string
-	RegressionRisk    string
-	EvidenceDigests   []Digest
-	AuthorizedChanges []ChangeAuthorization
-	CostUSDTicks      int64
+	Bundle          skillbundle.Skill
+	ObservedPattern string
+	ExpectedBenefit string
+	RegressionRisk  string
+	EvidenceDigests []Digest
+	CostUSDTicks    int64
 }
 
-// ChangeAuthorization binds one exact, deterministic bundle change to the
-// evidence that authorizes it. Value is Skill content, never source evidence.
-type ChangeAuthorization struct {
-	Path            string   `json:"path"`
-	Operation       string   `json:"operation"`
-	Value           string   `json:"value"`
-	EvidenceDigests []Digest `json:"evidence_digests"`
+// ChangeAuthorizationArtifact is fixed before deterministic validation by an
+// independent authority. Production uses the exact bundle in a human-approved
+// Room artifact; candidate generation cannot add to or rewrite this plan.
+type ChangeAuthorizationArtifact struct {
+	AuthorityID     string
+	BaseHash        Digest
+	ApprovedBundle  skillbundle.Skill
+	EvidenceDigests []Digest
+	Digest          Digest
 }
 
 // Improver is the lifecycle-facing capability. Production should pass a
@@ -110,8 +111,7 @@ func (i *ProductionImprover) Improve(ctx context.Context, request ImprovementReq
 	}
 	if !validRationale(candidate.ObservedPattern) || !validRationale(candidate.ExpectedBenefit) ||
 		!validRationale(candidate.RegressionRisk) || len(candidate.EvidenceDigests) == 0 ||
-		len(candidate.EvidenceDigests) > len(request.Evidence) || len(candidate.AuthorizedChanges) == 0 ||
-		len(candidate.AuthorizedChanges) > MaxCandidateChangeAuthorizations {
+		len(candidate.EvidenceDigests) > len(request.Evidence) {
 		return ImprovementCandidate{}, ErrImproverOutput
 	}
 	return cloneImprovementCandidate(candidate), nil
@@ -147,17 +147,13 @@ func cloneImprovementCandidate(candidate ImprovementCandidate) ImprovementCandid
 	cloned := candidate
 	cloned.Bundle = cloneSkillBundle(candidate.Bundle)
 	cloned.EvidenceDigests = append([]Digest(nil), candidate.EvidenceDigests...)
-	cloned.AuthorizedChanges = cloneChangeAuthorizations(candidate.AuthorizedChanges)
 	return cloned
 }
 
-func cloneChangeAuthorizations(values []ChangeAuthorization) []ChangeAuthorization {
-	cloned := make([]ChangeAuthorization, len(values))
-	for index, value := range values {
-		cloned[index] = value
-		cloned[index].EvidenceDigests = append([]Digest(nil), value.EvidenceDigests...)
-	}
-	return cloned
+func cloneChangeAuthorizationArtifact(value ChangeAuthorizationArtifact) ChangeAuthorizationArtifact {
+	value.ApprovedBundle = cloneSkillBundle(value.ApprovedBundle)
+	value.EvidenceDigests = append([]Digest(nil), value.EvidenceDigests...)
+	return value
 }
 
 func cloneSkillBundle(bundle skillbundle.Skill) skillbundle.Skill {

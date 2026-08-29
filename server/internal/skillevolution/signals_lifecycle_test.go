@@ -66,16 +66,16 @@ func TestCandidatePolicyAndBoundedReplayFailClosed(t *testing.T) {
 		ObservedPattern: "repeated mismatch", ExpectedBenefit: "more precise output", RegressionRisk: "may be too strict",
 		EvidenceDigests: []Digest{ref.Digest},
 	}
-	candidate.AuthorizedChanges = BuildChangeAuthorizations(base, candidate.Bundle, candidate.EvidenceDigests)
 	resolved := []ResolvedEvidence{{Ref: ref, Payload: []byte(`{"reason":"bounded"}`)}}
-	passed := ValidateCandidatePolicy(base, candidate, resolved, DefaultCandidatePolicy())
+	authorization := testChangeAuthorization(t, "policy-approved", base, candidate.Bundle, candidate.EvidenceDigests)
+	passed := ValidateCandidatePolicy(base, candidate, resolved, authorization, DefaultCandidatePolicy())
 	if passed.Result != EvaluationResultPassed || !passed.Digest.Valid() {
 		t.Fatalf("valid candidate outcome = %+v", passed)
 	}
 
 	unsafe := candidate
 	unsafe.Bundle.Content += "\napi_key = abcdefghijklmnopqrstuvwxyz"
-	failed := ValidateCandidatePolicy(base, unsafe, resolved, DefaultCandidatePolicy())
+	failed := ValidateCandidatePolicy(base, unsafe, resolved, authorization, DefaultCandidatePolicy())
 	if failed.Result != EvaluationResultFailed || !containsString(failed.RuleCodes, "secret_like_content") {
 		t.Fatalf("unsafe candidate outcome = %+v", failed)
 	}
@@ -119,8 +119,8 @@ func TestCandidatePolicyRejectsAuthorityAndScopeManipulation(t *testing.T) {
 		ObservedPattern: "a checksum was skipped", ExpectedBenefit: "the existing check becomes explicit", RegressionRisk: "one extra check",
 		EvidenceDigests: []Digest{ref.Digest},
 	}
-	candidate.AuthorizedChanges = BuildChangeAuthorizations(base, candidate.Bundle, candidate.EvidenceDigests)
-	if got := ValidateCandidatePolicy(base, candidate, resolved, DefaultCandidatePolicy()); got.Result != EvaluationResultPassed {
+	authorization := testChangeAuthorization(t, "authority-policy-approved", base, candidate.Bundle, candidate.EvidenceDigests)
+	if got := ValidateCandidatePolicy(base, candidate, resolved, authorization, DefaultCandidatePolicy()); got.Result != EvaluationResultPassed {
 		t.Fatalf("minimal candidate = %+v", got)
 	}
 	longBase := base
@@ -128,7 +128,8 @@ func TestCandidatePolicyRejectsAuthorityAndScopeManipulation(t *testing.T) {
 	destructive := candidate
 	destructive.Bundle = longBase
 	destructive.Bundle.Content = "---\nname: skill\ndescription: desc\n---\nUse a completely different workflow."
-	if got := ValidateCandidatePolicy(longBase, destructive, resolved, DefaultCandidatePolicy()); got.Result != EvaluationResultFailed || !containsString(got.RuleCodes, "primary_rewrite_excessive") {
+	destructiveAuthorization := testChangeAuthorization(t, "destructive-plan", longBase, candidate.Bundle, candidate.EvidenceDigests)
+	if got := ValidateCandidatePolicy(longBase, destructive, resolved, destructiveAuthorization, DefaultCandidatePolicy()); got.Result != EvaluationResultFailed || !containsString(got.RuleCodes, "primary_rewrite_excessive") {
 		t.Fatalf("destructive rewrite = %+v", got)
 	}
 
@@ -173,7 +174,7 @@ func TestCandidatePolicyRejectsAuthorityAndScopeManipulation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			value := candidate
 			test.edit(&value)
-			got := ValidateCandidatePolicy(base, value, resolved, DefaultCandidatePolicy())
+			got := ValidateCandidatePolicy(base, value, resolved, authorization, DefaultCandidatePolicy())
 			if got.Result != EvaluationResultFailed || !containsString(got.RuleCodes, test.code) {
 				t.Fatalf("outcome = %+v, want %s", got, test.code)
 			}
@@ -227,7 +228,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 		Bundle: candidateBundle, ObservedPattern: "repeated mismatch", ExpectedBenefit: "more precise output",
 		RegressionRisk: "may be too strict", EvidenceDigests: []Digest{ref.Digest}, CostUSDTicks: 3,
 	}}
-	improver.Candidate.AuthorizedChanges = BuildChangeAuthorizations(baseBundle, candidateBundle, improver.Candidate.EvidenceDigests)
+	firstAuthorization := testChangeAuthorization(t, "generate-accept-plan", baseBundle, candidateBundle, improver.Candidate.EvidenceDigests)
 	replay := &DeterministicReplayEvaluator{Outcome: ReplayOutcome{ReplayResult: ReplayResult{
 		Result: EvaluationResultPassed, SampleCount: 2, CostUSDTicks: 2,
 	}}}
@@ -252,6 +253,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 
 	generation, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: skillID, RequestedByID: userID, GenerationKey: "generate-accept",
+		Authorization: firstAuthorization,
 	})
 	if err != nil || generation.Proposal.State != string(ProposalStateReady) ||
 		generation.Validation.Result != string(EvaluationResultPassed) || generation.Replay.Result != string(EvaluationResultPassed) {
@@ -262,6 +264,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	}
 	idempotentGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: skillID, RequestedByID: userID, GenerationKey: "generate-accept",
+		Authorization: firstAuthorization,
 	})
 	if err != nil || !idempotentGeneration.Replayed || idempotentGeneration.Proposal.ID != generation.Proposal.ID || improver.Calls != 1 {
 		t.Fatalf("idempotent Generate = (%+v, %v), improver calls=%d", idempotentGeneration, err, improver.Calls)
@@ -303,9 +306,10 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	// while retaining the selected release and target revision as audit links.
 	lifecycle.now = func() time.Time { return time.Date(2026, 8, 28, 14, 0, 0, 0, time.UTC) }
 	improver.Candidate.Bundle = lifecycleBundle(skillID, "updated-again")
-	improver.Candidate.AuthorizedChanges = BuildChangeAuthorizations(candidateBundle, improver.Candidate.Bundle, improver.Candidate.EvidenceDigests)
+	secondAuthorization := testChangeAuthorization(t, "generate-second-plan", candidateBundle, improver.Candidate.Bundle, improver.Candidate.EvidenceDigests)
 	secondGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: skillID, RequestedByID: userID, GenerationKey: "generate-second-release",
+		Authorization: secondAuthorization,
 	})
 	if err != nil {
 		t.Fatalf("Generate second release: %v", err)
@@ -371,7 +375,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	source = lifecycleSignalSourceWithHeldOut(ref)
 	rejectionCandidate := lifecycleBundle(rejectionSkillID, "updated")
 	improver.Candidate.Bundle = rejectionCandidate
-	improver.Candidate.AuthorizedChanges = BuildChangeAuthorizations(rejectionBase, rejectionCandidate, improver.Candidate.EvidenceDigests)
+	rejectionAuthorization := testChangeAuthorization(t, "generate-reject-plan", rejectionBase, rejectionCandidate, improver.Candidate.EvidenceDigests)
 	lifecycle.signals, _ = newSignalSet([]SignalSource{source})
 	config.SkillID = rejectionSkillID
 	if _, err := lifecycle.Enable(ctx, actor, config); err != nil {
@@ -379,6 +383,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	}
 	rejectedGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: rejectionSkillID, RequestedByID: userID, GenerationKey: "generate-reject",
+		Authorization: rejectionAuthorization,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -410,13 +415,16 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	skills.current = lifecycleSnapshot(t, workspaceID, userID, staleSkillID, staleBase)
 	ref.TargetSkillID = uuid.UUID(staleSkillID.Bytes).String()
 	lifecycle.signals, _ = newSignalSet([]SignalSource{lifecycleSignalSourceWithHeldOut(ref)})
-	improver.Candidate.Bundle = lifecycleBundle(staleSkillID, "updated")
+	staleCandidate := lifecycleBundle(staleSkillID, "updated")
+	improver.Candidate.Bundle = staleCandidate
+	staleAuthorization := testChangeAuthorization(t, "generate-stale-plan", staleBase, staleCandidate, improver.Candidate.EvidenceDigests)
 	config.SkillID = staleSkillID
 	if _, err := lifecycle.Enable(ctx, actor, config); err != nil {
 		t.Fatal(err)
 	}
 	staleGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: staleSkillID, RequestedByID: userID, GenerationKey: "generate-stale",
+		Authorization: staleAuthorization,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -443,13 +451,16 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	skills.current = lifecycleSnapshot(t, workspaceID, userID, unknownSkillID, unknownBase)
 	ref.TargetSkillID = uuid.UUID(unknownSkillID.Bytes).String()
 	lifecycle.signals, _ = newSignalSet([]SignalSource{lifecycleSignalSourceWithHeldOut(ref)})
-	improver.Candidate.Bundle = lifecycleBundle(unknownSkillID, "updated")
+	unknownCandidate := lifecycleBundle(unknownSkillID, "updated")
+	improver.Candidate.Bundle = unknownCandidate
+	unknownAuthorization := testChangeAuthorization(t, "generate-unknown-plan", unknownBase, unknownCandidate, improver.Candidate.EvidenceDigests)
 	config.SkillID = unknownSkillID
 	if _, err := lifecycle.Enable(ctx, actor, config); err != nil {
 		t.Fatal(err)
 	}
 	unknownGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: unknownSkillID, RequestedByID: userID, GenerationKey: "generate-unknown",
+		Authorization: unknownAuthorization,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -479,13 +490,16 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	skills.current = lifecycleSnapshot(t, workspaceID, userID, recordingSkillID, recordingBase)
 	ref.TargetSkillID = uuid.UUID(recordingSkillID.Bytes).String()
 	lifecycle.signals, _ = newSignalSet([]SignalSource{lifecycleSignalSourceWithHeldOut(ref)})
-	improver.Candidate.Bundle = lifecycleBundle(recordingSkillID, "updated")
+	recordingCandidate := lifecycleBundle(recordingSkillID, "updated")
+	improver.Candidate.Bundle = recordingCandidate
+	recordingAuthorization := testChangeAuthorization(t, "generate-recording-plan", recordingBase, recordingCandidate, improver.Candidate.EvidenceDigests)
 	config.SkillID = recordingSkillID
 	if _, err := lifecycle.Enable(ctx, actor, config); err != nil {
 		t.Fatal(err)
 	}
 	recordingGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: recordingSkillID, RequestedByID: userID, GenerationKey: "generate-recording",
+		Authorization: recordingAuthorization,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -521,6 +535,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	unsafeCandidate := lifecycleBundle(failedSkillID, "updated")
 	unsafeCandidate.Content += "\napi_key = abcdefghijklmnopqrstuvwxyz"
 	improver.Candidate.Bundle = unsafeCandidate
+	failedAuthorization := testChangeAuthorization(t, "generate-failed-plan", failedBase, unsafeCandidate, improver.Candidate.EvidenceDigests)
 	config.SkillID = failedSkillID
 	if _, err := lifecycle.Enable(ctx, actor, config); err != nil {
 		t.Fatal(err)
@@ -529,6 +544,7 @@ func TestLifecycleDBBackedGenerateRejectPublishStaleAndRollback(t *testing.T) {
 	beforeReplayCalls := replay.Calls
 	failedGeneration, err := lifecycle.Generate(ctx, GenerateRequest{
 		WorkspaceID: workspaceID, SkillID: failedSkillID, RequestedByID: userID, GenerationKey: "generate-validation-failure",
+		Authorization: failedAuthorization,
 	})
 	if !errors.Is(err, ErrEvaluationFailed) || failedGeneration.Proposal.State != string(ProposalStateFailed) ||
 		publisher.calls != beforeCalls || replay.Calls != beforeReplayCalls {
@@ -553,7 +569,7 @@ func TestLifecycleDBBackedDisabledObservePausedAndCooldownGates(t *testing.T) {
 		Bundle: lifecycleBundle(skillID, "updated"), ObservedPattern: "pattern", ExpectedBenefit: "benefit",
 		RegressionRisk: "risk", EvidenceDigests: []Digest{ref.Digest},
 	}}
-	improver.Candidate.AuthorizedChanges = BuildChangeAuthorizations(base, improver.Candidate.Bundle, improver.Candidate.EvidenceDigests)
+	authorization := testChangeAuthorization(t, "gates-plan", base, improver.Candidate.Bundle, improver.Candidate.EvidenceDigests)
 	replay := &DeterministicReplayEvaluator{Outcome: ReplayOutcome{ReplayResult: ReplayResult{Result: EvaluationResultPassed, SampleCount: 2}}}
 	publisher := &memoryPublisher{skills: skills}
 	lifecycle, err := NewLifecycle(NewStore(db.New(pool), pool), skills, publisher, improver, replay, lifecycleSignalSource(ref))
@@ -590,7 +606,9 @@ func TestLifecycleDBBackedDisabledObservePausedAndCooldownGates(t *testing.T) {
 	if _, err := lifecycle.Configure(ctx, actor, config); err != nil {
 		t.Fatal(err)
 	}
-	generation, err := lifecycle.Generate(ctx, GenerateRequest{WorkspaceID: workspaceID, SkillID: skillID, GenerationKey: "first"})
+	generation, err := lifecycle.Generate(ctx, GenerateRequest{
+		WorkspaceID: workspaceID, SkillID: skillID, GenerationKey: "first", Authorization: authorization,
+	})
 	if err != nil || generation.Proposal.State != string(ProposalStateReady) {
 		t.Fatalf("propose-mode Generate = (%+v, %v)", generation, err)
 	}
@@ -644,13 +662,13 @@ func TestLifecycleDBBackedDisabledDefaultAndAcceptedRoomRecommendation(t *testin
 			ExpectedBenefit: "clearer output", RegressionRisk: "narrower guidance",
 			EvidenceDigests: []Digest{ref.Digest}, CostUSDTicks: 1,
 		}
-		candidate.AuthorizedChanges = BuildChangeAuthorizations(base, candidate.Bundle, candidate.EvidenceDigests)
+		authorization := testChangeAuthorization(t, "accepted-room-plan", base, candidate.Bundle, candidate.EvidenceDigests)
 		replayOne := lifecycleEvidenceRef(workspaceID, skillID, "room-held-out-one")
 		replayTwo := lifecycleEvidenceRef(workspaceID, skillID, "room-held-out-two")
 		return AcceptedImprovementRecommendation{
 			WorkspaceID: workspaceID, SkillID: skillID, RecommendationID: request.RecommendationID,
 			ExpectedBaseHash: Digest(snapshot.Manifest.Hash), AcceptedByID: userID,
-			Candidate:         candidate,
+			Candidate: candidate, Authorization: authorization,
 			SynthesisEvidence: []ResolvedEvidence{{Ref: ref, Payload: []byte(`{"accepted":true}`)}},
 			ReplayEvidence: []ResolvedEvidence{
 				{Ref: replayOne, Payload: []byte(`{"accepted":true}`)},
@@ -797,9 +815,11 @@ func lifecycleSignalSource(refs ...EvidenceRef) SignalSource {
 func lifecycleSignalSourceWithHeldOut(ref EvidenceRef) SignalSource {
 	first, second := ref, ref
 	first.SourceID = uuid.NewSHA1(uuid.Nil, []byte(ref.SourceID+":held-out-one")).String()
+	first.SourceRevisionID = uuid.NewSHA1(uuid.Nil, []byte(ref.SourceRevisionID+":held-out-one-task")).String()
 	first.Digest = testDigest(ref.SourceID + ":held-out-one")
 	first.ObservedAt = ref.ObservedAt.Add(-time.Minute)
 	second.SourceID = uuid.NewSHA1(uuid.Nil, []byte(ref.SourceID+":held-out-two")).String()
+	second.SourceRevisionID = uuid.NewSHA1(uuid.Nil, []byte(ref.SourceRevisionID+":held-out-two-task")).String()
 	second.Digest = testDigest(ref.SourceID + ":held-out-two")
 	second.ObservedAt = ref.ObservedAt.Add(-2 * time.Minute)
 	return lifecycleSignalSource(ref, first, second)
@@ -808,8 +828,9 @@ func lifecycleSignalSourceWithHeldOut(ref EvidenceRef) SignalSource {
 func lifecycleEvidenceRef(workspaceID, skillID pgtype.UUID, seed string) EvidenceRef {
 	return EvidenceRef{
 		WorkspaceID: uuid.UUID(workspaceID.Bytes).String(), Kind: EvidenceKindTaskReview,
-		SourceID: uuid.NewSHA1(uuid.Nil, []byte(seed)).String(), TargetSkillID: uuid.UUID(skillID.Bytes).String(),
-		SourceState: "needs_correction", Digest: testDigest(seed), Eligibility: EvidenceEligibilityEligible,
+		SourceID: uuid.NewSHA1(uuid.Nil, []byte(seed)).String(), SourceRevisionID: uuid.NewSHA1(uuid.Nil, []byte(seed+":task")).String(),
+		TargetSkillID: uuid.UUID(skillID.Bytes).String(),
+		SourceState:   "needs_correction", Digest: testDigest(seed), Eligibility: EvidenceEligibilityEligible,
 		ObservedAt: time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC),
 	}
 }

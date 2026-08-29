@@ -87,7 +87,8 @@ func TestRoomCandidateSourceStrictlyLoadsAcceptedImprovement(t *testing.T) {
 		t.Fatal(err)
 	}
 	if accepted.ExpectedBaseHash != fixture.baseHash || len(accepted.SynthesisEvidence) != 1 || len(accepted.ReplayEvidence) != 2 ||
-		accepted.Candidate.Bundle.ID != uuidText(fixture.skillID) {
+		accepted.Candidate.Bundle.ID != uuidText(fixture.skillID) || !accepted.Authorization.Digest.Valid() ||
+		accepted.Authorization.AuthorityID != uuidText(fixture.metadata.artifacts[0].ID) {
 		t.Fatalf("accepted = %+v", accepted)
 	}
 	for _, heldOut := range accepted.ReplayEvidence {
@@ -100,6 +101,15 @@ func TestRoomCandidateSourceStrictlyLoadsAcceptedImprovement(t *testing.T) {
 		t.Fatalf("changed accepted ref error = %v", err)
 	}
 	fixture.outcomes.evidence.Ref = fixture.outcomes.ref
+	var selfAuthorized map[string]any
+	if err := json.Unmarshal([]byte(fixture.outcomes.evidence.Body), &selfAuthorized); err != nil {
+		t.Fatal(err)
+	}
+	selfAuthorized["authorized_changes"] = []map[string]any{{"path": "SKILL.md", "operation": "add", "value": "越权"}}
+	selfAuthorizedRaw, _ := json.Marshal(selfAuthorized)
+	if _, _, _, err := decodeRoomCandidate(string(selfAuthorizedRaw)); !errors.Is(err, ErrRoomCandidateInvalid) {
+		t.Fatalf("candidate self-authorization error = %v, want invalid", err)
+	}
 
 	var envelope map[string]any
 	if err := json.Unmarshal([]byte(fixture.outcomes.evidence.Body), &envelope); err != nil {
@@ -322,8 +332,7 @@ func newRoomCandidateFixture(t *testing.T) roomCandidateFixture {
 		Bundle: roomCandidateBundle{ID: uuidText(skillID), Source: skillbundle.SourceWorkspace, Name: base.Name, Description: base.Description,
 			Content: candidate.Content, Files: []roomCandidateFile{}},
 		ObservedPattern: "reviews repeatedly miss the focused check", ExpectedBenefit: "the procedure makes the check explicit",
-		RegressionRisk: "the added check may be too strict", EvidenceDigests: []string{string(signalRef.Digest)},
-		AuthorizedChanges: BuildChangeAuthorizations(base, candidate, []Digest{signalRef.Digest})}
+		RegressionRisk: "the added check may be too strict", EvidenceDigests: []string{string(signalRef.Digest)}}
 	body, err := json.Marshal(envelope)
 	if err != nil {
 		t.Fatal(err)
