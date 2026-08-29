@@ -9,6 +9,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type {
   OfficeAgent,
   OfficeInspector,
@@ -23,6 +24,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../i18n";
 import { AppLink } from "../navigation";
 import { OfficePresence } from "./office-presence";
+import { OfficeCompactIdentifier } from "./office-identity";
 
 function initials(name: string): string {
   return name
@@ -38,12 +40,20 @@ export function OfficeInspectorPanel({
   inspector,
   snapshot,
   onBack,
+  resolveStatusLabel,
+  focusBackOnMount,
 }: {
   readonly inspector: Exclude<OfficeInspector, { readonly kind: "closed" }>;
   readonly snapshot: OfficeSnapshot;
   readonly onBack: () => void;
+  readonly resolveStatusLabel: (statusKey: string) => string;
+  readonly focusBackOnMount: boolean;
 }) {
   const { t } = useT("office");
+  const backRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (focusBackOnMount) backRef.current?.focus();
+  }, [focusBackOnMount]);
   return (
     <div
       className="flex min-h-0 flex-1 flex-col bg-surface"
@@ -57,6 +67,7 @@ export function OfficeInspectorPanel({
     >
       <div className="flex min-h-11 shrink-0 items-center border-b border-surface-border px-2">
         <Button
+          ref={backRef}
           type="button"
           variant="ghost"
           className="min-h-11 justify-start px-2"
@@ -78,7 +89,11 @@ export function OfficeInspectorPanel({
           />
         ) : null}
         {inspector.kind === "issue" ? (
-          <IssueInspector issue={inspector.issue} snapshot={snapshot} />
+          <IssueInspector
+            issue={inspector.issue}
+            snapshot={snapshot}
+            resolveStatusLabel={resolveStatusLabel}
+          />
         ) : null}
         {inspector.kind === "missing" ? (
           <div>
@@ -250,26 +265,47 @@ function SquadInspector({
 
       <InspectorSection title={t(($) => $.inspector.member_preview)}>
         <ul className="space-y-1">
-          {squad.memberPreview.map((member) => (
-            <li
-              key={`${member.kind}:${member.id}`}
-              className="flex min-w-0 items-center gap-2 text-body"
-            >
-              {member.kind === "agent" ? (
-                <Bot className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              ) : member.kind === "member" ? (
-                <UserRound className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              ) : (
-                <CircleHelp className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              )}
-              <span className="min-w-0 flex-1 break-all font-mono text-caption text-foreground">
-                {member.id}
-              </span>
-              <span className="min-w-0 break-words text-caption text-muted-foreground">
-                {member.role}
-              </span>
-            </li>
-          ))}
+          {squad.memberPreview.map((member) => {
+            const selectedMember =
+              members.kind === "ready"
+                ? members.members.find(
+                    (candidate) =>
+                      candidate.kind === member.kind && candidate.id === member.id,
+                  )
+                : undefined;
+            const name =
+              member.kind === "agent"
+                ? snapshot.agents.find((agent) => agent.id === member.id)?.name ??
+                  selectedMember?.name
+                : selectedMember?.name;
+            return (
+              <li
+                key={`${member.kind}:${member.id}`}
+                className="flex min-w-0 items-center gap-2 text-body"
+              >
+                {member.kind === "agent" ? (
+                  <Bot className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                ) : member.kind === "member" ? (
+                  <UserRound className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                ) : (
+                  <CircleHelp className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                )}
+                {name ? (
+                  <span className="min-w-0 flex-1 break-words text-caption font-medium text-foreground">
+                    {name}
+                  </span>
+                ) : (
+                  <OfficeCompactIdentifier
+                    id={member.id}
+                    className="min-w-0 flex-1 text-caption text-foreground"
+                  />
+                )}
+                <span className="min-w-0 break-words text-caption text-muted-foreground">
+                  {member.role}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </InspectorSection>
 
@@ -329,11 +365,6 @@ function SquadMembers({
           member.kind === "agent"
             ? snapshot.agents.find((candidate) => candidate.id === member.id)
             : undefined;
-        const label =
-          member.name ??
-          (member.kind === "unknown"
-            ? t(($) => $.inspector.member_unknown)
-            : member.id);
         const href =
           member.kind === "agent"
             ? paths.agentDetail(member.id)
@@ -355,11 +386,15 @@ function SquadMembers({
                   href={href}
                   className="min-w-0 flex-1 break-words font-medium text-brand outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  {label}
+                  {member.name ?? (
+                    <OfficeCompactIdentifier id={member.id} />
+                  )}
                 </AppLink>
               ) : (
                 <span className="min-w-0 flex-1 break-words font-medium text-foreground">
-                  {label}
+                  {member.name ?? (
+                    <OfficeCompactIdentifier id={member.id} />
+                  )}
                 </span>
               )}
               <span className="text-caption text-muted-foreground">
@@ -381,15 +416,24 @@ function SquadMembers({
             ) : null}
             {member.activeIssueIds.length > 0 ? (
               <div className="mt-1 flex flex-wrap gap-1">
-                {member.activeIssueIds.map((issueId) => (
-                  <AppLink
-                    key={issueId}
-                    href={paths.issueDetail(issueId)}
-                    className="rounded-md px-1 font-mono text-caption text-brand outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {issueId}
-                  </AppLink>
-                ))}
+                {member.activeIssueIds.map((issueId) => {
+                  const issue = snapshot.activeIssues.find(
+                    (candidate) => candidate.id === issueId,
+                  );
+                  return (
+                    <AppLink
+                      key={issueId}
+                      href={paths.issueDetail(issueId)}
+                      className="rounded-md px-1 font-mono text-caption text-brand outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {issue?.kind === "resolved" ? (
+                        issue.identifier
+                      ) : (
+                        <OfficeCompactIdentifier id={issueId} />
+                      )}
+                    </AppLink>
+                  );
+                })}
               </div>
             ) : null}
           </li>
@@ -402,9 +446,11 @@ function SquadMembers({
 function IssueInspector({
   issue,
   snapshot,
+  resolveStatusLabel,
 }: {
   readonly issue: OfficeIssue;
   readonly snapshot: OfficeSnapshot;
+  readonly resolveStatusLabel: (statusKey: string) => string;
 }) {
   const { t } = useT("office");
   const paths = useWorkspacePaths();
@@ -431,8 +477,8 @@ function IssueInspector({
               <h2 className="mt-0.5 break-words text-title-sm font-semibold text-foreground">
                 {issue.title}
               </h2>
-              <div className="mt-1 font-mono text-caption text-muted-foreground">
-                {issue.status}
+              <div className="mt-1 text-caption text-muted-foreground">
+                {resolveStatusLabel(issue.status)}
               </div>
             </>
           ) : (

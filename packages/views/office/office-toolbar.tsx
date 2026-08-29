@@ -5,6 +5,7 @@ import {
   PanelRightClose,
   Plus,
 } from "lucide-react";
+import { useRef } from "react";
 import type { OfficeSnapshot, OfficeWorldId } from "@multica/core/office";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@multica/ui/components/ui/tooltip";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import { officeSnapshotCounts } from "./office-counts";
 import type { OfficeCameraControls } from "./scene-slot";
 
 interface OfficeToolbarProps {
@@ -29,18 +31,22 @@ function WorldOption({
   checked,
   label,
   swatchClassName,
+  buttonRef,
   onClick,
 }: {
   readonly checked: boolean;
   readonly label: string;
   readonly swatchClassName: string;
+  readonly buttonRef: (element: HTMLButtonElement | null) => void;
   readonly onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      ref={buttonRef}
       role="radio"
       aria-checked={checked}
+      tabIndex={checked ? 0 : -1}
       className={cn(
         "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-label font-medium text-muted-foreground outline-none transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:h-11",
         checked &&
@@ -99,12 +105,37 @@ export function OfficeToolbar({
   onRailToggle,
 }: OfficeToolbarProps) {
   const { t } = useT("office");
-  const agentsShown = snapshot?.agents.length ?? 0;
-  const squadsShown = snapshot?.squads.length ?? 0;
-  const issuesShown = snapshot?.activeIssues.length ?? 0;
-  const agentsTotal = agentsShown + (snapshot?.overflow.agents ?? 0);
-  const squadsTotal = squadsShown + (snapshot?.overflow.squads ?? 0);
-  const issuesTotal = issuesShown + (snapshot?.overflow.activeIssues ?? 0);
+  const worldRefs = useRef<Record<OfficeWorldId, HTMLButtonElement | null>>({
+    studio: null,
+    expedition: null,
+  });
+  const counts = snapshot
+    ? officeSnapshotCounts(snapshot)
+    : {
+        agents: { shown: 0, total: 0 },
+        squads: { shown: 0, total: 0 },
+        issues: { shown: 0, total: 0 },
+      };
+  const moveWorldFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const worlds: readonly OfficeWorldId[] = ["studio", "expedition"];
+    const currentIndex = worlds.indexOf(world);
+    let targetIndex: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      targetIndex = (currentIndex + 1) % worlds.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      targetIndex = (currentIndex - 1 + worlds.length) % worlds.length;
+    } else if (event.key === "Home") {
+      targetIndex = 0;
+    } else if (event.key === "End") {
+      targetIndex = worlds.length - 1;
+    }
+    if (targetIndex === null) return;
+    const target = worlds[targetIndex];
+    if (!target) return;
+    event.preventDefault();
+    onWorldChange(target);
+    worldRefs.current[target]?.focus();
+  };
 
   return (
     <header className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b border-surface-border bg-background px-3 md:h-11 md:flex-nowrap">
@@ -116,17 +147,24 @@ export function OfficeToolbar({
         role="radiogroup"
         aria-label={t(($) => $.toolbar.world_control)}
         className="flex min-w-0 items-center rounded-md bg-surface-raised p-0.5"
+        onKeyDown={moveWorldFocus}
       >
         <WorldOption
           checked={world === "studio"}
           label={t(($) => $.toolbar.worlds.studio)}
           swatchClassName="bg-success"
+          buttonRef={(element) => {
+            worldRefs.current.studio = element;
+          }}
           onClick={() => onWorldChange("studio")}
         />
         <WorldOption
           checked={world === "expedition"}
           label={t(($) => $.toolbar.worlds.expedition)}
           swatchClassName="bg-warning"
+          buttonRef={(element) => {
+            worldRefs.current.expedition = element;
+          }}
           onClick={() => onWorldChange("expedition")}
         />
       </div>
@@ -137,22 +175,22 @@ export function OfficeToolbar({
       >
         <span>
           {t(($) => $.toolbar.counts.agents, {
-            shown: agentsShown,
-            total: agentsTotal,
+            shown: counts.agents.shown,
+            total: counts.agents.total,
           })}
         </span>
         <span aria-hidden="true">/</span>
         <span>
           {t(($) => $.toolbar.counts.squads, {
-            shown: squadsShown,
-            total: squadsTotal,
+            shown: counts.squads.shown,
+            total: counts.squads.total,
           })}
         </span>
         <span aria-hidden="true">/</span>
         <span>
           {t(($) => $.toolbar.counts.issues, {
-            shown: issuesShown,
-            total: issuesTotal,
+            shown: counts.issues.shown,
+            total: counts.issues.total,
           })}
         </span>
       </div>

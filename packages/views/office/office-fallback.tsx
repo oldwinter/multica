@@ -2,6 +2,7 @@ import { Bot, Flag, MapPinned, RadioTower, Users } from "lucide-react";
 import type { OfficeSnapshot, OfficeWorldId } from "@multica/core/office";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import { officeSnapshotCounts } from "./office-counts";
 
 const POSTER_URLS = {
   studio: new URL("./worlds/studio/assets/poster.png", import.meta.url).href,
@@ -15,20 +16,20 @@ export function OfficeDomFallback({
   snapshot,
   world,
   reason,
+  onPosterReady,
+  onPosterError,
 }: {
   readonly snapshot: OfficeSnapshot;
   readonly world: OfficeWorldId;
   readonly reason: "slot" | "narrow" | "renderer";
+  readonly onPosterReady: (world: OfficeWorldId) => void;
+  readonly onPosterError: (world: OfficeWorldId) => void;
 }) {
   const { t } = useT("office");
   const isStudio = world === "studio";
+  const counts = officeSnapshotCounts(snapshot);
   const subjectCount =
-    snapshot.agents.length +
-    snapshot.squads.length +
-    snapshot.activeIssues.length +
-    snapshot.overflow.agents +
-    snapshot.overflow.squads +
-    snapshot.overflow.activeIssues;
+    counts.agents.total + counts.squads.total + counts.issues.total;
 
   return (
     <section
@@ -36,22 +37,25 @@ export function OfficeDomFallback({
       data-world={world}
       data-fallback-reason={reason}
       aria-labelledby="office-poster-title"
-      className="relative flex min-h-[36rem] flex-1 flex-col overflow-hidden bg-surface md:min-h-0"
+      className="relative flex min-h-[30rem] flex-1 flex-col overflow-hidden bg-surface md:min-h-0"
     >
       <div
         aria-hidden="true"
-        className="relative min-h-44 basis-[52%] overflow-hidden bg-surface-raised"
+        className="relative aspect-video w-full flex-none overflow-hidden bg-surface-raised md:min-h-44 md:basis-[52%] md:aspect-auto"
       >
         <img
+          key={world}
           src={POSTER_URLS[world]}
           alt=""
           draggable={false}
-          className="size-full object-contain"
+          className="h-full w-full object-cover"
           style={{ imageRendering: "pixelated" }}
+          onLoad={() => onPosterReady(world)}
+          onError={() => onPosterError(world)}
         />
       </div>
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between gap-6 border-t border-surface-border bg-surface p-5 sm:p-7">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between gap-6 border-t border-surface-border bg-surface p-5 max-md:flex-none sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2
@@ -81,21 +85,19 @@ export function OfficeDomFallback({
           <PosterMetric
             icon={<Bot aria-hidden="true" />}
             label={t(($) => $.roster.tabs.agents)}
-            value={snapshot.agents.length + snapshot.overflow.agents}
+            value={counts.agents.total}
             accentClassName="bg-success"
           />
           <PosterMetric
             icon={<Users aria-hidden="true" />}
             label={t(($) => $.roster.tabs.squads)}
-            value={snapshot.squads.length + snapshot.overflow.squads}
+            value={counts.squads.total}
             accentClassName="bg-info"
           />
           <PosterMetric
             icon={<Flag aria-hidden="true" />}
             label={t(($) => $.roster.tabs.issues)}
-            value={
-              snapshot.activeIssues.length + snapshot.overflow.activeIssues
-            }
+            value={counts.issues.total}
             accentClassName="bg-warning"
           />
         </div>

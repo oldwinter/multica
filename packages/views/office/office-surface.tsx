@@ -35,6 +35,8 @@ export interface OfficeSurfaceProps {
   readonly onWorldChange: (world: OfficeWorldId) => void;
   readonly onWorldReady: (world: OfficeWorldId) => void;
   readonly onWorldSwitchFailure: (retainedWorld: OfficeWorldId) => void;
+  readonly onPosterReady: (world: OfficeWorldId) => void;
+  readonly onPosterError: (world: OfficeWorldId) => void;
   readonly SceneSlot?: OfficeSceneSlot;
 }
 
@@ -46,6 +48,8 @@ export function OfficeSurface({
   onWorldChange,
   onWorldReady,
   onWorldSwitchFailure,
+  onPosterReady,
+  onPosterError,
   SceneSlot,
 }: OfficeSurfaceProps) {
   const { t } = useT("office");
@@ -56,10 +60,11 @@ export function OfficeSurface({
   const [cameraControls, setCameraControls] =
     useState<OfficeCameraControls | null>(null);
   const [rendererFallback, setRendererFallback] = useState(false);
+  const [wideViewportConfirmed, setWideViewportConfirmed] = useState(false);
 
   useEffect(() => {
-    setRendererFallback(false);
-  }, [SceneSlot, world]);
+    setWideViewportConfirmed(!isNarrow && window.innerWidth >= 768);
+  }, [isNarrow]);
 
   useEffect(() => {
     if (selected) setRailVisible(true);
@@ -99,7 +104,10 @@ export function OfficeSurface({
       {model.kind === "ready" ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
           <div className="flex min-h-64 min-w-0 flex-none flex-col md:min-h-0 md:flex-1">
-            {SceneSlot && !isNarrow && !rendererFallback ? (
+            {SceneSlot &&
+            wideViewportConfirmed &&
+            !isNarrow &&
+            !rendererFallback ? (
               <div
                 aria-hidden="true"
                 className="min-h-0 flex-1 overflow-hidden bg-surface"
@@ -129,6 +137,8 @@ export function OfficeSurface({
                 reason={
                   isNarrow ? "narrow" : rendererFallback ? "renderer" : "slot"
                 }
+                onPosterReady={onPosterReady}
+                onPosterError={onPosterError}
               />
             )}
           </div>
@@ -155,6 +165,7 @@ export function OfficeSurface({
                     inspector={model.inspector}
                     selected={selected}
                     narrow={false}
+                    focusInspectorOnOpen={false}
                     onSelect={onSelect}
                   />
                 </aside>
@@ -173,6 +184,7 @@ export function OfficeSurface({
                 inspector={model.inspector}
                 selected={selected}
                 narrow={isNarrow}
+                focusInspectorOnOpen={!isNarrow && !isCompact}
                 onSelect={onSelect}
               />
             </aside>

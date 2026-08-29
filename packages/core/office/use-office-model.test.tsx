@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, setApiInstance } from "../api";
@@ -149,6 +149,14 @@ function wrapper(queryClient: QueryClient) {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 function mockBaseQueries(options: { issueBriefs?: Issue[] } = {}) {
@@ -328,6 +336,124 @@ describe("useOfficeModel", () => {
       kind: "unknown",
       name: null,
     });
+  });
+
+  it("keeps selected Squad members loading while required human names load", async () => {
+    const { client } = mockBaseQueries();
+    vi.spyOn(client, "getSquadMemberStatus").mockResolvedValue({
+      members: [
+        {
+          member_type: "member",
+          member_id: "member-1",
+          status: null,
+          active_issues: [],
+          last_active_at: null,
+        },
+      ],
+    });
+    const pendingMembers = deferred<MemberWithUser[]>();
+    const members = vi
+      .spyOn(client, "listMembers")
+      .mockReturnValue(pendingMembers.promise);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () =>
+        useOfficeModel({
+          wsId: "ws-1",
+          selected: { kind: "squad", id: "squad-1" },
+        }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(members).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      if (result.current.kind !== "ready") return false;
+      if (result.current.inspector.kind !== "squad") return false;
+      expect(result.current.inspector.members.kind).toBe("loading");
+      return true;
+    });
+
+    pendingMembers.resolve([makeMember()]);
+    await waitFor(() => {
+      if (result.current.kind !== "ready") throw new Error("model not ready");
+      if (result.current.inspector.kind !== "squad") {
+        throw new Error("squad not selected");
+      }
+      if (result.current.inspector.members.kind !== "ready") {
+        throw new Error("members not ready");
+      }
+      expect(result.current.inspector.members.members[0]?.name).toBe("Human One");
+    });
+  });
+
+  it("makes a failed required human-name query locally retryable", async () => {
+    const { client } = mockBaseQueries();
+    vi.spyOn(client, "getSquadMemberStatus").mockResolvedValue({
+      members: [
+        {
+          member_type: "member",
+          member_id: "member-1",
+          status: null,
+          active_issues: [],
+          last_active_at: null,
+        },
+      ],
+    });
+    const members = vi
+      .spyOn(client, "listMembers")
+      .mockRejectedValueOnce(new Error("members unavailable"))
+      .mockResolvedValueOnce([makeMember()]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () =>
+        useOfficeModel({
+          wsId: "ws-1",
+          selected: { kind: "squad", id: "squad-1" },
+        }),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() =>
+      expect(
+        result.current.kind === "ready" &&
+          result.current.inspector.kind === "squad"
+          ? result.current.inspector.members.kind
+          : "not-ready",
+      ).toBe("unavailable"),
+    );
+    if (result.current.kind !== "ready") throw new Error("model not ready");
+    if (result.current.inspector.kind !== "squad") {
+      throw new Error("squad not selected");
+    }
+    if (result.current.inspector.members.kind !== "unavailable") {
+      throw new Error("members not unavailable");
+    }
+
+    await act(async () => {
+      if (
+        result.current.kind === "ready" &&
+        result.current.inspector.kind === "squad" &&
+        result.current.inspector.members.kind === "unavailable"
+      ) {
+        await result.current.inspector.members.retry();
+      }
+    });
+
+    await waitFor(() => {
+      if (result.current.kind !== "ready") throw new Error("model not ready");
+      if (result.current.inspector.kind !== "squad") {
+        throw new Error("squad not selected");
+      }
+      if (result.current.inspector.members.kind !== "ready") {
+        throw new Error("members not ready");
+      }
+      expect(result.current.inspector.members.members[0]?.name).toBe("Human One");
+    });
+    expect(members).toHaveBeenCalledTimes(2);
   });
 
   it("enables existing Issue detail only for a selected unresolved active Issue", async () => {

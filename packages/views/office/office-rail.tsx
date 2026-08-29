@@ -4,6 +4,7 @@ import type {
   OfficeSnapshot,
   OfficeSubjectRef,
 } from "@multica/core/office";
+import { useWorkspaceId } from "@multica/core/hooks";
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,7 @@ import {
   SheetTitle,
 } from "@multica/ui/components/ui/sheet";
 import { useT } from "../i18n";
+import { useStatusLabel } from "../issues/utils/status-label";
 import { OfficeInspectorPanel } from "./office-inspector";
 import {
   OfficeRoster,
@@ -30,19 +32,21 @@ export function OfficeRail({
   inspector,
   selected,
   narrow,
+  focusInspectorOnOpen,
   onSelect,
 }: {
   readonly snapshot: OfficeSnapshot;
   readonly inspector: OfficeInspector;
   readonly selected: OfficeSubjectRef | null;
   readonly narrow: boolean;
+  readonly focusInspectorOnOpen: boolean;
   readonly onSelect: (subject: OfficeSubjectRef | null) => void;
 }) {
   const { t } = useT("office");
+  const resolveStatusLabel = useStatusLabel(useWorkspaceId());
   const [activeTab, setActiveTab] = useState<OfficeRosterTab>("agents");
   const [rovingByTab, setRovingByTab] =
     useState<Record<OfficeRosterTab, OfficeSubjectRef | null>>(INITIAL_ROVING);
-  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const originRef = useRef<OfficeSubjectRef | null>(null);
   const pendingFocusRef = useRef<OfficeSubjectRef | null>(null);
 
@@ -58,14 +62,6 @@ export function OfficeRail({
     );
     if (!originRef.current) originRef.current = selected;
   }, [selected]);
-
-  useEffect(() => {
-    if (selected || !pendingFocusRef.current) return;
-    const subject = pendingFocusRef.current;
-    pendingFocusRef.current = null;
-    rowRefs.current.get(officeSubjectKey(subject))?.focus();
-    originRef.current = null;
-  }, [inspector.kind, selected]);
 
   const handleSelect = (subject: OfficeSubjectRef) => {
     const tab = officeRosterTabForSubject(subject);
@@ -97,11 +93,6 @@ export function OfficeRail({
       activeTab={activeTab}
       onActiveTabChange={setActiveTab}
       onSelect={handleSelect}
-      registerRow={(subject, element) => {
-        const key = officeSubjectKey(subject);
-        if (element) rowRefs.current.set(key, element);
-        else rowRefs.current.delete(key);
-      }}
       rovingSubject={rovingByTab[activeTab]}
       onRovingSubjectChange={(subject) => {
         const tab = officeRosterTabForSubject(subject);
@@ -111,6 +102,12 @@ export function OfficeRail({
             ? current
             : { ...current, [tab]: subject },
         );
+      }}
+      resolveStatusLabel={resolveStatusLabel}
+      restoreFocusSubject={pendingFocusRef.current}
+      onFocusRestored={() => {
+        pendingFocusRef.current = null;
+        originRef.current = null;
       }}
     />
   );
@@ -142,6 +139,8 @@ export function OfficeRail({
                 inspector={inspector}
                 snapshot={snapshot}
                 onBack={handleBack}
+                resolveStatusLabel={resolveStatusLabel}
+                focusBackOnMount={false}
               />
             ) : null}
           </SheetContent>
@@ -157,6 +156,8 @@ export function OfficeRail({
       inspector={inspector}
       snapshot={snapshot}
       onBack={handleBack}
+      resolveStatusLabel={resolveStatusLabel}
+      focusBackOnMount={focusInspectorOnOpen}
     />
   );
 }

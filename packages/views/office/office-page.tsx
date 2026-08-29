@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import {
@@ -25,19 +25,42 @@ export function OfficePage({ SceneSlot }: OfficePageProps = {}) {
   const model = useOfficeModel({ wsId, selected });
   const persistedWorld = useOfficeViewStore((state) => state.world);
   const [world, setWorld] = useState(persistedWorld);
-  useEffect(() => setWorld(persistedWorld), [persistedWorld, wsId]);
+  const requestedWorldRef = useRef(persistedWorld);
+  useEffect(() => {
+    requestedWorldRef.current = persistedWorld;
+    setWorld(persistedWorld);
+  }, [persistedWorld, wsId]);
   const handleWorldChange = useCallback((nextWorld: OfficeWorldId) => {
+    requestedWorldRef.current = nextWorld;
     setWorld(nextWorld);
   }, []);
-  const handleWorldReady = useCallback((readyWorld: OfficeWorldId) => {
+  const persistLoadedWorld = useCallback((readyWorld: OfficeWorldId) => {
+    if (requestedWorldRef.current !== readyWorld) return;
     setWorld(readyWorld);
     const state = useOfficeViewStore.getState();
     if (state.world !== readyWorld) state.setWorld(readyWorld);
   }, []);
+  const handleWorldReady = useCallback(
+    (readyWorld: OfficeWorldId) => persistLoadedWorld(readyWorld),
+    [persistLoadedWorld],
+  );
+  const handlePosterReady = useCallback(
+    (readyWorld: OfficeWorldId) => persistLoadedWorld(readyWorld),
+    [persistLoadedWorld],
+  );
   const handleWorldSwitchFailure = useCallback(
-    (retainedWorld: OfficeWorldId) => setWorld(retainedWorld),
+    (retainedWorld: OfficeWorldId) => {
+      requestedWorldRef.current = retainedWorld;
+      setWorld(retainedWorld);
+    },
     [],
   );
+  const handlePosterError = useCallback((failedWorld: OfficeWorldId) => {
+    if (requestedWorldRef.current !== failedWorld) return;
+    const retainedWorld = useOfficeViewStore.getState().world;
+    requestedWorldRef.current = retainedWorld;
+    setWorld(retainedWorld);
+  }, []);
 
   return (
     <OfficeSurface
@@ -48,6 +71,8 @@ export function OfficePage({ SceneSlot }: OfficePageProps = {}) {
       onWorldChange={handleWorldChange}
       onWorldReady={handleWorldReady}
       onWorldSwitchFailure={handleWorldSwitchFailure}
+      onPosterReady={handlePosterReady}
+      onPosterError={handlePosterError}
       SceneSlot={SceneSlot ?? OfficeSceneBridge}
     />
   );

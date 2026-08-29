@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   OfficeAgent,
@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   setWorld: vi.fn(),
   useOfficeModel: vi.fn(),
   resolveModel: vi.fn(),
+  statusEntries: new Map<string, { name: string }>(),
 }));
 
 vi.mock("@multica/core/hooks", () => ({
@@ -38,7 +39,7 @@ vi.mock("@multica/core/office", () => ({
     (selector: (state: { world: OfficeWorldId }) => unknown) =>
       selector({ world: mocks.world }),
     {
-      getState: () => ({ setWorld: mocks.setWorld }),
+      getState: () => ({ world: mocks.world, setWorld: mocks.setWorld }),
     },
   ),
   useOfficeTaskCache: () => [],
@@ -54,6 +55,12 @@ vi.mock("@multica/core/paths", () => ({
     memberDetail: (id: string) => `/acme/members/${id}`,
     squadDetail: (id: string) => `/acme/squads/${id}`,
     issueDetail: (id: string) => `/acme/issues/${id}`,
+  }),
+}));
+
+vi.mock("@multica/core/issue-statuses/hooks", () => ({
+  useIssueStatuses: () => ({
+    entryOf: (key: string) => mocks.statusEntries.get(key),
   }),
 }));
 
@@ -181,6 +188,23 @@ function ControlledScene(props: OfficeSceneSlotProps) {
   return <div data-testid="controlled-office-scene" />;
 }
 
+let sceneMountCount = 0;
+
+function MountCountingScene({ onRendererFallback }: OfficeSceneSlotProps) {
+  useEffect(() => {
+    sceneMountCount += 1;
+  }, []);
+  return (
+    <button
+      type="button"
+      data-testid="mount-counting-scene"
+      onClick={onRendererFallback}
+    >
+      Renderer
+    </button>
+  );
+}
+
 describe("OfficePage", () => {
   beforeEach(() => {
     mocks.model = readyModel;
@@ -189,8 +213,10 @@ describe("OfficePage", () => {
     mocks.useOfficeModel.mockReset();
     mocks.resolveModel.mockReset();
     mocks.resolveModel.mockImplementation(() => mocks.model);
+    mocks.statusEntries.clear();
     fitCamera.mockReset();
     controlledSceneProps = null;
+    sceneMountCount = 0;
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1024,
@@ -243,6 +269,33 @@ describe("OfficePage", () => {
 
     act(() => controlledSceneProps?.onWorldReady("expedition"));
     expect(mocks.setWorld).toHaveBeenCalledWith("expedition");
+  });
+
+  it("implements roving radio keyboard selection for Office worlds", async () => {
+    const user = userEvent.setup();
+    renderOffice();
+
+    const studio = screen.getByRole("radio", { name: "Studio" });
+    const expedition = screen.getByRole("radio", { name: "Expedition" });
+    expect(studio).toHaveAttribute("tabindex", "0");
+    expect(expedition).toHaveAttribute("tabindex", "-1");
+
+    studio.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(expedition).toHaveFocus();
+    expect(expedition).toHaveAttribute("aria-checked", "true");
+    expect(expedition).toHaveAttribute("tabindex", "0");
+    expect(studio).toHaveAttribute("tabindex", "-1");
+
+    await user.keyboard("{Home}");
+    expect(studio).toHaveFocus();
+    expect(studio).toHaveAttribute("aria-checked", "true");
+    await user.keyboard("{End}");
+    expect(expedition).toHaveFocus();
+    expect(expedition).toHaveAttribute("aria-checked", "true");
+    await user.keyboard("{ArrowLeft}");
+    expect(studio).toHaveFocus();
+    expect(studio).toHaveAttribute("aria-checked", "true");
   });
 
   it("reverts a failed world switch without changing the preference", async () => {
@@ -354,6 +407,9 @@ describe("OfficePage", () => {
 
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(
+      screen.getByRole("button", { name: "Back to roster" }),
+    ).toHaveFocus();
+    expect(
       screen.getByRole("heading", { name: "Release Team" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Squad" })).toHaveAttribute(
@@ -422,6 +478,162 @@ describe("OfficePage", () => {
     ).toHaveFocus();
   });
 
+  it("bounds large rosters and keeps offscreen keyboard selection focusable", async () => {
+    const user = userEvent.setup();
+    const agents = Array.from({ length: 80 }, (_, index) => ({
+      ...ada,
+      id: `agent-${index + 1}`,
+      name: `Agent ${index + 1}`,
+      activeIssueIds: [],
+    })) satisfies OfficeAgent[];
+    const squads = Array.from({ length: 80 }, (_, index) => ({
+      ...releaseSquad,
+      id: `squad-${index + 1}`,
+      name: `Squad ${index + 1}`,
+      memberPreview: [],
+    })) satisfies OfficeSquad[];
+    const issues = Array.from({ length: 80 }, (_, index) => ({
+      ...resolvedIssue,
+      id: `issue-${index + 1}`,
+      identifier: `MUL-${index + 1}`,
+      executingAgentIds: [],
+    })) satisfies OfficeIssue[];
+    const largeModel = {
+      ...readyModel,
+      snapshot: {
+        agents,
+        squads,
+        activeIssues: issues,
+        overflow: { agents: 40, squads: 68, activeIssues: 32 },
+      },
+    } satisfies OfficeModel;
+    mocks.resolveModel.mockImplementation(
+      (input: { selected: OfficeSubjectRef | null }) => {
+        if (input.selected?.kind !== "agent") return largeModel;
+        const agent = agents.find((candidate) => candidate.id === input.selected?.id);
+        return agent
+          ? ({
+              ...largeModel,
+              inspector: { kind: "agent", agent },
+            } satisfies OfficeModel)
+          : largeModel;
+      },
+    );
+
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const originalScrollTo = HTMLElement.prototype.scrollTo;
+    const originalResizeObserver = globalThis.ResizeObserver;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.getAttribute("role") === "tabpanel") {
+        return new DOMRect(0, 0, 300, 560);
+      }
+      if (this.tagName === "LI") return new DOMRect(0, 0, 300, 112);
+      return new DOMRect(0, 0, 0, 0);
+    };
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: function scrollTo(
+        leftOrOptions?: number | ScrollToOptions,
+        top?: number,
+      ) {
+        this.scrollTop =
+          typeof leftOrOptions === "object"
+            ? leftOrOptions.top ?? 0
+            : top ?? 0;
+        this.dispatchEvent(new Event("scroll"));
+      },
+    });
+    globalThis.ResizeObserver = class ImmediateResizeObserver
+      implements ResizeObserver
+    {
+      readonly #callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+
+      observe(target: Element) {
+        const contentRect = target.getBoundingClientRect();
+        const size: ResizeObserverSize = {
+          inlineSize: contentRect.width,
+          blockSize: contentRect.height,
+        };
+        const entry: ResizeObserverEntry = {
+          target,
+          contentRect,
+          borderBoxSize: [size],
+          contentBoxSize: [size],
+          devicePixelContentBoxSize: [size],
+        };
+        queueMicrotask(() => this.#callback([entry], this));
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+    };
+
+    try {
+      renderOffice();
+      await waitFor(() => {
+        const mountedAgents = screen.queryAllByRole("button", {
+          name: /^Select agent Agent /,
+        });
+        expect(mountedAgents.length).toBeGreaterThan(0);
+        expect(mountedAgents.length).toBeLessThan(30);
+      });
+
+      await user.click(screen.getByRole("tab", { name: "Squads 80" }));
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: /^Select squad Squad / }).length,
+        ).toBeLessThan(30),
+      );
+      await user.click(
+        screen.getByRole("tab", { name: "Active Issues 80" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getAllByRole("button", { name: /^Select issue MUL-/ }).length,
+        ).toBeLessThan(30),
+      );
+
+      await user.click(screen.getByRole("tab", { name: "Agents 80" }));
+      const first = await screen.findByRole("button", {
+        name: "Select agent Agent 1",
+      });
+      act(() => first.focus());
+      await user.keyboard("{End}");
+      const last = await screen.findByRole("button", {
+        name: "Select agent Agent 80",
+      });
+      expect(last).toHaveFocus();
+      expect(
+        screen.getAllByRole("button", { name: /^Select agent Agent / }).length,
+      ).toBeLessThan(30);
+
+      await user.keyboard(" ");
+      expect(
+        screen.getByRole("heading", { name: "Agent 80" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Back to roster" }),
+      ).toHaveFocus();
+      await user.click(screen.getByRole("button", { name: "Back to roster" }));
+      const restored = await screen.findByRole("button", {
+        name: "Select agent Agent 80",
+      });
+      await waitFor(() => expect(restored).toHaveFocus());
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+        configurable: true,
+        value: originalScrollTo,
+      });
+      globalThis.ResizeObserver = originalResizeObserver;
+    }
+  });
+
   it("uses adapter links and keeps availability separate from workload", async () => {
     const user = userEvent.setup();
     mocks.resolveModel.mockImplementation(
@@ -464,6 +676,104 @@ describe("OfficePage", () => {
     expect(row).toHaveTextContent("Leader: Ada");
     expect(row).toHaveTextContent("Reviewer");
     expect(row).not.toHaveTextContent("Online");
+  });
+
+  it("resolves Squad preview names and bounds unresolved rail identifiers", async () => {
+    const user = userEvent.setup();
+    const previewAgentId = "agent-12345678-1234-1234-1234-123456789012";
+    const previewMemberId = "member-12345678-1234-1234-1234-123456789012";
+    const unknownId = "future-12345678-1234-1234-1234-123456789012";
+    const previewAgent = {
+      ...ada,
+      id: previewAgentId,
+      name: "Lin Preview",
+      activeIssueIds: ["issue-1"],
+    } satisfies OfficeAgent;
+    const squad = {
+      ...releaseSquad,
+      memberPreview: [
+        { kind: "agent", id: previewAgentId, role: "Lead" },
+        { kind: "member", id: previewMemberId, role: "Reviewer" },
+        { kind: "unknown", id: unknownId, role: "Observer" },
+      ],
+    } satisfies OfficeSquad;
+    const snapshot = {
+      ...readyModel.snapshot,
+      agents: [previewAgent],
+      squads: [squad],
+    };
+    const model = { ...readyModel, snapshot } satisfies OfficeModel;
+    mocks.resolveModel.mockImplementation(
+      (input: { selected: OfficeSubjectRef | null }) =>
+        input.selected?.kind === "squad"
+          ? ({
+              ...model,
+              inspector: {
+                kind: "squad",
+                squad,
+                members: {
+                  kind: "ready",
+                  members: [
+                    {
+                      kind: "agent",
+                      id: previewAgentId,
+                      name: "Lin Preview",
+                      activeIssueIds: ["issue-1"],
+                    },
+                    {
+                      kind: "member",
+                      id: previewMemberId,
+                      name: "Mina Reviewer",
+                      activeIssueIds: ["issue-1"],
+                    },
+                    {
+                      kind: "unknown",
+                      id: unknownId,
+                      name: null,
+                      activeIssueIds: [],
+                    },
+                  ],
+                },
+              },
+            } satisfies OfficeModel)
+          : model,
+    );
+    renderOffice();
+
+    await user.click(screen.getByRole("tab", { name: /Squads/ }));
+    const squadRow = screen.getByRole("button", {
+      name: "Select squad Release Team",
+    });
+    expect(squadRow).toHaveTextContent("Lin Preview");
+    expect(squadRow).not.toHaveTextContent(previewAgentId);
+    const rosterMemberId = within(squadRow).getByLabelText(previewMemberId);
+    expect(rosterMemberId).toHaveAttribute("title", previewMemberId);
+    expect(rosterMemberId.textContent?.length).toBeLessThanOrEqual(12);
+
+    await user.click(squadRow);
+    const inspector = screen.getByTestId("office-inspector");
+    expect(inspector).toHaveTextContent("Lin Preview");
+    expect(inspector).toHaveTextContent("Mina Reviewer");
+    expect(inspector).not.toHaveTextContent(previewAgentId);
+    expect(inspector).not.toHaveTextContent(previewMemberId);
+    const unresolved = within(inspector).getAllByLabelText(unknownId);
+    expect(unresolved.length).toBeGreaterThan(0);
+    for (const element of unresolved) {
+      expect(element).toHaveAttribute("title", unknownId);
+      expect(element.textContent?.length).toBeLessThanOrEqual(12);
+    }
+    const minaLink = within(inspector).getByRole("link", {
+      name: "Mina Reviewer",
+    });
+    const minaRow = minaLink.closest("li");
+    expect(minaRow).not.toBeNull();
+    if (minaRow) {
+      expect(within(minaRow).getByRole("link", { name: "MUL-42" })).toHaveAttribute(
+        "href",
+        "/acme/issues/issue-1",
+      );
+      expect(within(minaRow).queryByText("issue-1")).not.toBeInTheDocument();
+    }
   });
 
   it("keeps unresolved active issues selectable and linkable without guessed details", async () => {
@@ -530,7 +840,7 @@ describe("OfficePage", () => {
     expect(
       screen.getByRole("heading", { name: "Ship the accessible office" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("in_progress")).toBeInTheDocument();
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ada" })).toHaveAttribute(
       "href",
       "/acme/agents/agent-1",
@@ -542,6 +852,71 @@ describe("OfficePage", () => {
     expect(screen.getByRole("link", { name: "Open Issue" })).toHaveAttribute(
       "href",
       "/acme/issues/issue-1",
+    );
+  });
+
+  it("localizes built-in Issue status labels in Simplified Chinese", async () => {
+    const user = userEvent.setup();
+    mocks.resolveModel.mockImplementation(
+      (input: { selected: OfficeSubjectRef | null }) =>
+        input.selected?.kind === "issue"
+          ? ({
+              ...readyModel,
+              inspector: { kind: "issue", issue: resolvedIssue },
+            } satisfies OfficeModel)
+          : readyModel,
+    );
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage />
+      </NavigationProvider>,
+      { locale: "zh-Hans" },
+    );
+
+    await user.click(screen.getByRole("tab", { name: /进行中的任务/ }));
+    const row = screen.getByRole("button", { name: "选择任务 MUL-42" });
+    expect(row).toHaveTextContent("进行中");
+    expect(row).not.toHaveTextContent("in_progress");
+    await user.click(row);
+    expect(screen.getByTestId("office-inspector")).toHaveTextContent("进行中");
+    expect(screen.getByTestId("office-inspector")).not.toHaveTextContent(
+      "in_progress",
+    );
+  });
+
+  it("uses the workspace-authored name for a custom Issue status", async () => {
+    const user = userEvent.setup();
+    const customIssue = {
+      ...resolvedIssue,
+      status: "quality_review",
+      statusCategory: "in_review",
+    } satisfies OfficeIssue;
+    const customModel = {
+      ...readyModel,
+      snapshot: { ...readyModel.snapshot, activeIssues: [customIssue] },
+    } satisfies OfficeModel;
+    mocks.statusEntries.set("quality_review", { name: "Product sign-off" });
+    mocks.resolveModel.mockImplementation(
+      (input: { selected: OfficeSubjectRef | null }) =>
+        input.selected?.kind === "issue"
+          ? ({
+              ...customModel,
+              inspector: { kind: "issue", issue: customIssue },
+            } satisfies OfficeModel)
+          : customModel,
+    );
+    renderOffice();
+
+    await user.click(screen.getByRole("tab", { name: /Active Issues/ }));
+    const row = screen.getByRole("button", { name: "Select issue MUL-42" });
+    expect(row).toHaveTextContent("Product sign-off");
+    expect(row).not.toHaveTextContent("quality_review");
+    await user.click(row);
+    expect(screen.getByTestId("office-inspector")).toHaveTextContent(
+      "Product sign-off",
+    );
+    expect(screen.getByTestId("office-inspector")).not.toHaveTextContent(
+      "quality_review",
     );
   });
 
@@ -580,6 +955,53 @@ describe("OfficePage", () => {
       screen.getByRole("heading", { name: "The office is quiet" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/no active agents, squads, or issue signals/i)).toBeInTheDocument();
+  });
+
+  it("shows capped scene counts and complete totals beyond every anchor budget", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const overflowModel = {
+      ...readyModel,
+      snapshot: {
+        agents: Array.from({ length: 42 }, (_, index) => ({
+          ...ada,
+          id: `agent-${index + 1}`,
+          name: `Agent ${index + 1}`,
+          activeIssueIds: [],
+        })),
+        squads: Array.from({ length: 13 }, (_, index) => ({
+          ...releaseSquad,
+          id: `squad-${index + 1}`,
+          name: `Squad ${index + 1}`,
+          memberPreview: [],
+        })),
+        activeIssues: Array.from({ length: 49 }, (_, index) => ({
+          ...resolvedIssue,
+          id: `issue-${index + 1}`,
+          identifier: `MUL-${index + 1}`,
+          executingAgentIds: [],
+        })),
+        overflow: { agents: 2, squads: 1, activeIssues: 1 },
+      },
+    } satisfies OfficeModel;
+    mocks.model = overflowModel;
+    mocks.resolveModel.mockImplementation(() => overflowModel);
+    renderOffice();
+
+    expect(screen.getByText("A 40/42")).toBeInTheDocument();
+    expect(screen.getByText("S 12/13")).toBeInTheDocument();
+    expect(screen.getByText("I 48/49")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Agents 42" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Squads 13" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Active Issues 49" }),
+    ).toBeInTheDocument();
+    const fallback = await screen.findByTestId("office-dom-fallback");
+    expect(within(fallback).getByText("42")).toBeInTheDocument();
+    expect(within(fallback).getByText("13")).toBeInTheDocument();
+    expect(within(fallback).getByText("49")).toBeInTheDocument();
   });
 
   it("distinguishes partial, refreshing, and stale data without a Live claim", () => {
@@ -726,6 +1148,144 @@ describe("OfficePage", () => {
       "href",
       "/acme/agents/agent-1",
     );
+  });
+
+  it("never mounts the scene slot on the first 390px client frame", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={MountCountingScene} />
+      </NavigationProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("office-dom-fallback")).toHaveAttribute(
+        "data-fallback-reason",
+        "narrow",
+      ),
+    );
+    expect(sceneMountCount).toBe(0);
+    expect(screen.queryByTestId("mount-counting-scene")).not.toBeInTheDocument();
+  });
+
+  it("persists a narrow world after its poster loads and restores it on reload", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const firstRender = renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={MountCountingScene} />
+      </NavigationProvider>,
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Expedition" }));
+    const fallback = await screen.findByTestId("office-dom-fallback");
+    expect(fallback).toHaveAttribute("data-world", "expedition");
+    expect(mocks.setWorld).not.toHaveBeenCalled();
+    const poster = fallback.querySelector("img");
+    expect(poster).not.toBeNull();
+    if (poster) fireEvent.load(poster);
+    expect(mocks.setWorld).toHaveBeenCalledWith("expedition");
+    expect(sceneMountCount).toBe(0);
+
+    firstRender.unmount();
+    mocks.world = "expedition";
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={MountCountingScene} />
+      </NavigationProvider>,
+    );
+    expect(screen.getByRole("radio", { name: "Expedition" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(await screen.findByTestId("office-dom-fallback")).toHaveAttribute(
+      "data-world",
+      "expedition",
+    );
+    expect(sceneMountCount).toBe(0);
+  });
+
+  it("restores the last persisted world when a narrow poster fails", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={MountCountingScene} />
+      </NavigationProvider>,
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Expedition" }));
+    const fallback = await screen.findByTestId("office-dom-fallback");
+    const poster = fallback.querySelector("img");
+    expect(poster).not.toBeNull();
+    if (poster) fireEvent.error(poster);
+
+    expect(screen.getByRole("radio", { name: "Studio" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("office-dom-fallback")).toHaveAttribute(
+      "data-world",
+      "studio",
+    );
+    expect(mocks.setWorld).not.toHaveBeenCalled();
+    expect(sceneMountCount).toBe(0);
+  });
+
+  it("keeps renderer retirement for the page mount across world switches", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={MountCountingScene} />
+      </NavigationProvider>,
+    );
+
+    expect(await screen.findByTestId("mount-counting-scene")).toBeInTheDocument();
+    expect(sceneMountCount).toBe(1);
+    await user.click(screen.getByTestId("mount-counting-scene"));
+    expect(screen.getByTestId("office-dom-fallback")).toHaveAttribute(
+      "data-fallback-reason",
+      "renderer",
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Expedition" }));
+    expect(screen.getByTestId("office-dom-fallback")).toHaveAttribute(
+      "data-world",
+      "expedition",
+    );
+    expect(screen.queryByTestId("mount-counting-scene")).not.toBeInTheDocument();
+    expect(sceneMountCount).toBe(1);
+  });
+
+  it("uses a full-width poster band without shrinking the narrow summary", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    renderOffice();
+
+    const fallback = await screen.findByTestId("office-dom-fallback");
+    const poster = fallback.querySelector("img");
+    expect(poster).not.toBeNull();
+    expect(poster).toHaveClass("h-full", "w-full", "object-cover");
+    expect(poster?.parentElement).toHaveClass(
+      "aspect-video",
+      "w-full",
+      "flex-none",
+    );
+    const summary = screen
+      .getByRole("heading", { name: "Studio signal floor" })
+      .closest("div.relative.z-10");
+    expect(summary).toHaveClass("max-md:flex-none");
   });
 
   it("separates the narrow fallback and roster into stable vertical bands", async () => {

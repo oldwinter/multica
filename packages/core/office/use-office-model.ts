@@ -241,6 +241,13 @@ export function useOfficeModel(input: {
       members = { kind: "loading" };
     } else if (!squadStatusQuery.data) {
       members = { kind: "unavailable", retry: async () => void (await squadStatusQuery.refetch()) };
+    } else if (needsHumanNames && membersQuery.isPending) {
+      members = { kind: "loading" };
+    } else if (needsHumanNames && !membersQuery.data) {
+      members = {
+        kind: "unavailable",
+        retry: async () => void (await membersQuery.refetch()),
+      };
     } else {
       const namesByMemberId = new Map(
         (membersQuery.data ?? []).map((member) => [member.id, member.name] as const),

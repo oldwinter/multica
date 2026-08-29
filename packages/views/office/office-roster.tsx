@@ -1,4 +1,9 @@
-import { useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type VirtualItem,
+} from "@tanstack/react-virtual";
 import {
   ArrowUpRight,
   Bot,
@@ -19,6 +24,8 @@ import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { AppLink } from "../navigation";
 import { OfficePresence } from "./office-presence";
+import { officeSnapshotCounts } from "./office-counts";
+import { OfficeCompactIdentifier } from "./office-identity";
 
 export type OfficeRosterTab = "agents" | "squads" | "issues";
 
@@ -27,6 +34,15 @@ const ROSTER_TABS: readonly OfficeRosterTab[] = [
   "squads",
   "issues",
 ];
+
+const VIRTUALIZATION_THRESHOLD = 12;
+const VIRTUAL_OVERSCAN = 4;
+const INITIAL_VIRTUAL_RECT = { width: 300, height: 560 };
+const ROW_HEIGHT_ESTIMATE: Record<OfficeRosterTab, number> = {
+  agents: 112,
+  squads: 152,
+  issues: 132,
+};
 
 function initials(name: string): string {
   return name
@@ -124,20 +140,21 @@ export function OfficeRoster({
   activeTab,
   onActiveTabChange,
   onSelect,
-  registerRow,
   rovingSubject,
   onRovingSubjectChange,
+  resolveStatusLabel,
+  restoreFocusSubject,
+  onFocusRestored,
 }: {
   readonly snapshot: OfficeSnapshot;
   readonly activeTab: OfficeRosterTab;
   readonly onActiveTabChange: (tab: OfficeRosterTab) => void;
   readonly onSelect: (subject: OfficeSubjectRef) => void;
-  readonly registerRow: (
-    subject: OfficeSubjectRef,
-    element: HTMLButtonElement | null,
-  ) => void;
   readonly rovingSubject: OfficeSubjectRef | null;
   readonly onRovingSubjectChange: (subject: OfficeSubjectRef) => void;
+  readonly resolveStatusLabel: (statusKey: string) => string;
+  readonly restoreFocusSubject: OfficeSubjectRef | null;
+  readonly onFocusRestored: () => void;
 }) {
   const { t } = useT("office");
   const tabRefs = useRef<Record<OfficeRosterTab, HTMLButtonElement | null>>({
@@ -145,18 +162,97 @@ export function OfficeRoster({
     squads: null,
     issues: null,
   });
-  const subjects = subjectsForTab(activeTab, snapshot);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const visibleRowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingRowFocusRef = useRef<OfficeSubjectRef | null>(null);
+  const completedRestoreKeyRef = useRef<string | null>(null);
+  const subjects = useMemo(
+    () => subjectsForTab(activeTab, snapshot),
+    [activeTab, snapshot],
+  );
   const firstSubject = subjects[0] ?? null;
   const activeRovingSubject =
     rovingSubject && officeRosterTabForSubject(rovingSubject) === activeTab
       ? rovingSubject
       : firstSubject;
+  const activeRovingIndex = activeRovingSubject
+    ? subjects.findIndex(
+        (subject) =>
+          officeSubjectKey(subject) === officeSubjectKey(activeRovingSubject),
+      )
+    : -1;
+  const virtualized = subjects.length > VIRTUALIZATION_THRESHOLD;
+  const rowVirtualizer = useVirtualizer({
+    count: virtualized ? subjects.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT_ESTIMATE[activeTab],
+    getItemKey: (index) => {
+      const subject = subjects[index];
+      return subject ? officeSubjectKey(subject) : index;
+    },
+    rangeExtractor: (range) => {
+      const indexes = defaultRangeExtractor(range);
+      if (activeRovingIndex < 0 || indexes.includes(activeRovingIndex)) {
+        return indexes;
+      }
+      return [...indexes, activeRovingIndex].sort((left, right) => left - right);
+    },
+    overscan: VIRTUAL_OVERSCAN,
+    initialRect: INITIAL_VIRTUAL_RECT,
+  });
+  const virtualItems = rowVirtualizer.getVirtualItems();
 
+  useEffect(() => {
+    if (!virtualized || activeRovingIndex <= 0) return;
+    const timeout = window.setTimeout(() => {
+      rowVirtualizer.scrollToIndex(activeRovingIndex, { align: "auto" });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [activeRovingIndex, activeTab, rowVirtualizer, virtualized]);
+
+  useLayoutEffect(() => {
+    const pending = pendingRowFocusRef.current;
+    if (!pending) return;
+    const element = visibleRowRefs.current.get(officeSubjectKey(pending));
+    if (!element) return;
+    pendingRowFocusRef.current = null;
+    element.focus();
+  }, [activeRovingSubject, virtualItems]);
+
+  useLayoutEffect(() => {
+    if (!restoreFocusSubject) {
+      completedRestoreKeyRef.current = null;
+      return;
+    }
+    if (virtualized) return;
+    const key = officeSubjectKey(restoreFocusSubject);
+    if (completedRestoreKeyRef.current === key) return;
+    const element = visibleRowRefs.current.get(key);
+    if (!element) return;
+    completedRestoreKeyRef.current = key;
+    element.focus();
+    onFocusRestored();
+  }, [onFocusRestored, restoreFocusSubject, virtualItems, virtualized]);
+
+  useEffect(() => {
+    if (!virtualized || !restoreFocusSubject) return;
+    const key = officeSubjectKey(restoreFocusSubject);
+    if (completedRestoreKeyRef.current === key) return;
+    const timeout = window.setTimeout(() => {
+      const element = visibleRowRefs.current.get(key);
+      if (!element) return;
+      completedRestoreKeyRef.current = key;
+      element.focus();
+      onFocusRestored();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [onFocusRestored, restoreFocusSubject, virtualItems, virtualized]);
+
+  const snapshotCounts = officeSnapshotCounts(snapshot);
   const counts: Record<OfficeRosterTab, number> = {
-    agents: snapshot.agents.length + snapshot.overflow.agents,
-    squads: snapshot.squads.length + snapshot.overflow.squads,
-    issues:
-      snapshot.activeIssues.length + snapshot.overflow.activeIssues,
+    agents: snapshotCounts.agents.total,
+    squads: snapshotCounts.squads.total,
+    issues: snapshotCounts.issues.total,
   };
 
   const moveTabFocus = (
@@ -205,9 +301,116 @@ export function OfficeRoster({
     event.preventDefault();
     const target = subjects[targetIndex];
     if (!target) return;
+    pendingRowFocusRef.current = target;
+    if (virtualized) {
+      rowVirtualizer.scrollToIndex(targetIndex, {
+        align:
+          event.key === "Home"
+            ? "start"
+            : event.key === "End"
+              ? "end"
+              : "auto",
+      });
+    }
     onRovingSubjectChange(target);
-    const selector = `[data-office-row-key="${CSS.escape(officeSubjectKey(target))}"]`;
-    document.querySelector<HTMLButtonElement>(selector)?.focus();
+    if (!virtualized) {
+      visibleRowRefs.current.get(officeSubjectKey(target))?.focus();
+      pendingRowFocusRef.current = null;
+    }
+  };
+
+  const registerVisibleRow = (
+    subject: OfficeSubjectRef,
+    element: HTMLButtonElement | null,
+  ) => {
+    const key = officeSubjectKey(subject);
+    if (element) visibleRowRefs.current.set(key, element);
+    else visibleRowRefs.current.delete(key);
+  };
+
+  const visibleRows: readonly {
+    readonly index: number;
+    readonly virtualItem: VirtualItem | null;
+  }[] = virtualized
+    ? virtualItems.map((virtualItem) => ({
+        index: virtualItem.index,
+        virtualItem,
+      }))
+    : subjects.map((_, index) => ({ index, virtualItem: null }));
+
+  const renderRow = ({
+    index,
+    virtualItem,
+  }: {
+    readonly index: number;
+    readonly virtualItem: VirtualItem | null;
+  }) => {
+    const interaction = {
+      onRegister: registerVisibleRow,
+      onFocus: onRovingSubjectChange,
+      onKeyDown: moveRowFocus,
+      onSelect,
+    };
+    const layout = {
+      virtualItem,
+      measureElement: rowVirtualizer.measureElement,
+    };
+    if (activeTab === "agents") {
+      const agent = snapshot.agents[index];
+      if (!agent) return null;
+      return (
+        <AgentRosterRow
+          key={agent.id}
+          {...interaction}
+          {...layout}
+          agent={agent}
+          snapshot={snapshot}
+          tabIndex={
+            activeRovingSubject?.kind === "agent" &&
+            activeRovingSubject.id === agent.id
+              ? 0
+              : -1
+          }
+        />
+      );
+    }
+    if (activeTab === "squads") {
+      const squad = snapshot.squads[index];
+      if (!squad) return null;
+      return (
+        <SquadRosterRow
+          key={squad.id}
+          {...interaction}
+          {...layout}
+          squad={squad}
+          snapshot={snapshot}
+          tabIndex={
+            activeRovingSubject?.kind === "squad" &&
+            activeRovingSubject.id === squad.id
+              ? 0
+              : -1
+          }
+        />
+      );
+    }
+    const issue = snapshot.activeIssues[index];
+    if (!issue) return null;
+    return (
+      <IssueRosterRow
+        key={issue.id}
+        {...interaction}
+        {...layout}
+        issue={issue}
+        snapshot={snapshot}
+        resolveStatusLabel={resolveStatusLabel}
+        tabIndex={
+          activeRovingSubject?.kind === "issue" &&
+          activeRovingSubject.id === issue.id
+            ? 0
+            : -1
+        }
+      />
+    );
   };
 
   return (
@@ -243,6 +446,7 @@ export function OfficeRoster({
       </div>
 
       <div
+        ref={scrollRef}
         role="tabpanel"
         id={`office-tabpanel-${activeTab}`}
         aria-labelledby={`office-tab-${activeTab}`}
@@ -253,64 +457,15 @@ export function OfficeRoster({
             {emptyLabel(activeTab, t)}
           </p>
         ) : (
-          <ul className="divide-y divide-surface-border/70">
-            {activeTab === "agents"
-              ? snapshot.agents.map((agent) => (
-                  <AgentRosterRow
-                    key={agent.id}
-                    agent={agent}
-                    snapshot={snapshot}
-                    tabIndex={
-                      activeRovingSubject?.kind === "agent" &&
-                      activeRovingSubject.id === agent.id
-                        ? 0
-                        : -1
-                    }
-                    onRegister={registerRow}
-                    onFocus={onRovingSubjectChange}
-                    onKeyDown={moveRowFocus}
-                    onSelect={onSelect}
-                  />
-                ))
-              : null}
-            {activeTab === "squads"
-              ? snapshot.squads.map((squad) => (
-                  <SquadRosterRow
-                    key={squad.id}
-                    squad={squad}
-                    snapshot={snapshot}
-                    tabIndex={
-                      activeRovingSubject?.kind === "squad" &&
-                      activeRovingSubject.id === squad.id
-                        ? 0
-                        : -1
-                    }
-                    onRegister={registerRow}
-                    onFocus={onRovingSubjectChange}
-                    onKeyDown={moveRowFocus}
-                    onSelect={onSelect}
-                  />
-                ))
-              : null}
-            {activeTab === "issues"
-              ? snapshot.activeIssues.map((issue) => (
-                  <IssueRosterRow
-                    key={issue.id}
-                    issue={issue}
-                    snapshot={snapshot}
-                    tabIndex={
-                      activeRovingSubject?.kind === "issue" &&
-                      activeRovingSubject.id === issue.id
-                        ? 0
-                        : -1
-                    }
-                    onRegister={registerRow}
-                    onFocus={onRovingSubjectChange}
-                    onKeyDown={moveRowFocus}
-                    onSelect={onSelect}
-                  />
-                ))
-              : null}
+          <ul
+            className={virtualized ? "relative" : "divide-y divide-surface-border/70"}
+            style={
+              virtualized
+                ? { height: `${rowVirtualizer.getTotalSize()}px` }
+                : undefined
+            }
+          >
+            {visibleRows.map(renderRow)}
           </ul>
         )}
       </div>
@@ -330,6 +485,37 @@ interface RowInteractionProps {
     subject: OfficeSubjectRef,
   ) => void;
   readonly onSelect: (subject: OfficeSubjectRef) => void;
+}
+
+interface RowLayoutProps {
+  readonly virtualItem: VirtualItem | null;
+  readonly measureElement: (element: Element | null) => void;
+}
+
+function RosterRowFrame({
+  virtualItem,
+  measureElement,
+  children,
+}: RowLayoutProps & { readonly children: React.ReactNode }) {
+  return (
+    <li
+      ref={virtualItem ? measureElement : undefined}
+      data-index={virtualItem?.index}
+      data-testid="office-roster-row"
+      className={
+        virtualItem
+          ? "absolute left-0 top-0 w-full border-b border-surface-border/70"
+          : undefined
+      }
+      style={
+        virtualItem
+          ? { transform: `translateY(${virtualItem.start}px)` }
+          : undefined
+      }
+    >
+      {children}
+    </li>
+  );
 }
 
 function RosterSelectionButton({
@@ -366,8 +552,10 @@ function RosterSelectionButton({
 function AgentRosterRow({
   agent,
   snapshot,
+  virtualItem,
+  measureElement,
   ...interaction
-}: RowInteractionProps & {
+}: RowInteractionProps & RowLayoutProps & {
   readonly agent: OfficeAgent;
   readonly snapshot: OfficeSnapshot;
 }) {
@@ -375,7 +563,10 @@ function AgentRosterRow({
   const paths = useWorkspacePaths();
   const subject: OfficeSubjectRef = { kind: "agent", id: agent.id };
   return (
-    <li>
+    <RosterRowFrame
+      virtualItem={virtualItem}
+      measureElement={measureElement}
+    >
       <RosterSelectionButton
         {...interaction}
         subject={subject}
@@ -420,15 +611,17 @@ function AgentRosterRow({
           })}
         </div>
       ) : null}
-    </li>
+    </RosterRowFrame>
   );
 }
 
 function SquadRosterRow({
   squad,
   snapshot,
+  virtualItem,
+  measureElement,
   ...interaction
-}: RowInteractionProps & {
+}: RowInteractionProps & RowLayoutProps & {
   readonly squad: OfficeSquad;
   readonly snapshot: OfficeSnapshot;
 }) {
@@ -438,7 +631,10 @@ function SquadRosterRow({
     (agent) => agent.id === squad.leaderAgentId,
   );
   return (
-    <li>
+    <RosterRowFrame
+      virtualItem={virtualItem}
+      measureElement={measureElement}
+    >
       <RosterSelectionButton
         {...interaction}
         subject={subject}
@@ -469,36 +665,55 @@ function SquadRosterRow({
             {t(($) => $.roster.preview)}
           </div>
           <ul className="space-y-1">
-            {squad.memberPreview.map((member) => (
-              <li
-                key={`${member.kind}:${member.id}`}
-                className="flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground"
-              >
-                {member.kind === "agent" ? (
-                  <Bot className="size-3.5 shrink-0" aria-hidden="true" />
-                ) : member.kind === "member" ? (
-                  <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
-                ) : (
-                  <ShieldQuestion className="size-3.5 shrink-0" aria-hidden="true" />
-                )}
-                <span className="min-w-0 break-all font-mono">{member.id}</span>
-                <span className="min-w-0 break-words">{member.role}</span>
-              </li>
-            ))}
+            {squad.memberPreview.map((member) => {
+              const agentName =
+                member.kind === "agent"
+                  ? snapshot.agents.find((agent) => agent.id === member.id)?.name
+                  : undefined;
+              return (
+                <li
+                  key={`${member.kind}:${member.id}`}
+                  className="flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground"
+                >
+                  {member.kind === "agent" ? (
+                    <Bot className="size-3.5 shrink-0" aria-hidden="true" />
+                  ) : member.kind === "member" ? (
+                    <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ShieldQuestion className="size-3.5 shrink-0" aria-hidden="true" />
+                  )}
+                  {agentName ? (
+                    <span className="min-w-0 break-words font-medium text-foreground">
+                      {agentName}
+                    </span>
+                  ) : (
+                    <OfficeCompactIdentifier
+                      id={member.id}
+                      className="min-w-0 text-caption"
+                    />
+                  )}
+                  <span className="min-w-0 break-words">{member.role}</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </RosterSelectionButton>
-    </li>
+    </RosterRowFrame>
   );
 }
 
 function IssueRosterRow({
   issue,
   snapshot,
+  resolveStatusLabel,
+  virtualItem,
+  measureElement,
   ...interaction
-}: RowInteractionProps & {
+}: RowInteractionProps & RowLayoutProps & {
   readonly issue: OfficeIssue;
   readonly snapshot: OfficeSnapshot;
+  readonly resolveStatusLabel: (statusKey: string) => string;
 }) {
   const { t } = useT("office");
   const paths = useWorkspacePaths();
@@ -509,7 +724,10 @@ function IssueRosterRow({
       ? snapshot.squads.find((squad) => squad.id === issue.assignedSquadId)
       : null;
   return (
-    <li>
+    <RosterRowFrame
+      virtualItem={virtualItem}
+      measureElement={measureElement}
+    >
       <RosterSelectionButton
         {...interaction}
         subject={subject}
@@ -534,7 +752,7 @@ function IssueRosterRow({
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-muted-foreground">
           {issue.kind === "resolved" ? (
-            <span className="font-mono">{issue.status}</span>
+            <span>{resolveStatusLabel(issue.status)}</span>
           ) : null}
           {issue.executingAgentIds.length > 0 ? (
             <span>
@@ -555,6 +773,6 @@ function IssueRosterRow({
           <ArrowUpRight className="size-3" aria-hidden="true" />
         </AppLink>
       </div>
-    </li>
+    </RosterRowFrame>
   );
 }
