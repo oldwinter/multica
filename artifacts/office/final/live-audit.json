@@ -1,0 +1,81 @@
+{
+  "sourceHead": "6225a4ec3e9cb532a90ae8e3ac3cf49d27969c36",
+  "url": "http://localhost:13258/pixel-office-lab/office",
+  "canvas": {
+    "box": {
+      "x": 256,
+      "y": 52,
+      "width": 876,
+      "height": 840
+    },
+    "studio": {
+      "width": 876,
+      "height": 840,
+      "sampledColorBuckets": 51,
+      "channelRange": [
+        17,
+        244
+      ],
+      "sha256": "87d238b2c39834eea2bc328a568d181e4d3d32d4cdebc9f7f665f6b7d5e26445"
+    },
+    "expedition": {
+      "width": 876,
+      "height": 840,
+      "sampledColorBuckets": 48,
+      "channelRange": [
+        13,
+        244
+      ],
+      "sha256": "7bd9e1023e934035b9c94df65d2061a531a00a5244295122bf3b93456f26020e"
+    },
+    "worldDifference": {
+      "changedPixelRatio": 0.931395412046097,
+      "meanChannelDelta": 111.6186892983982
+    }
+  },
+  "narrow": {
+    "canvasCount": 0,
+    "rosterVisible": true
+  },
+  "network": {
+    "apiCounts": {
+      "GET /api/agent-task-snapshot": 1,
+      "GET /api/agents": 1,
+      "GET /api/chat/pending-tasks": 1,
+      "GET /api/chat/pending-tasks/has-any": 1,
+      "GET /api/chat/sessions": 1,
+      "GET /api/config": 1,
+      "GET /api/inbox": 1,
+      "GET /api/inbox/unread-summary": 1,
+      "GET /api/invitations": 1,
+      "GET /api/issue-statuses": 1,
+      "GET /api/issues": 1,
+      "GET /api/me": 1,
+      "GET /api/pins": 1,
+      "GET /api/projects": 1,
+      "GET /api/runtimes": 1,
+      "GET /api/squads": 1,
+      "GET /api/squads/30000000-0000-4000-8000-000000000001/members/status": 1,
+      "GET /api/workspaces": 1,
+      "GET /api/workspaces/d34d857a-057a-49a9-833e-c7922a7897ac/members": 1,
+      "POST /api/client-usage": 1,
+      "POST /api/issues/query": 1
+    },
+    "writeLikeRequests": [
+      {
+        "method": "POST",
+        "path": "/api/client-usage"
+      },
+      {
+        "method": "POST",
+        "path": "/api/issues/query"
+      }
+    ],
+    "businessMutationRequests": [],
+    "activeIssueBatchRequests": 1,
+    "selectedSquadReads": 1,
+    "perAgentReads": [],
+    "taskMessageRequests": []
+  },
+  "pageErrors": []
+}
