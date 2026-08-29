@@ -3,10 +3,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY, clientErrorMessage } from "./client";
 import { EMPTY_PLUGIN_PACKAGE_LIST, EMPTY_PLUGIN_PREVIEW, EMPTY_PLUGIN_SURFACE_LAUNCH } from "./schemas";
-import type { Logger } from "../logger";
+import { setSchemaLogger } from "./schema";
+import { noopLogger, type Logger } from "../logger";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setSchemaLogger(noopLogger);
 });
 
 describe("ApiClient error logging", () => {
@@ -65,6 +67,52 @@ describe("ApiClient appearance boundary", () => {
       appearance_updated_at: "2026-08-23T12:00:00.000Z",
       appearance_token_version: 1,
     });
+  });
+});
+
+describe("ApiClient Agent task snapshot boundary", () => {
+  function stubSnapshot(body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  it("parses task rows and preserves a future status for downstream degradation", async () => {
+    stubSnapshot([{ id: "task-1", status: "pausing" }]);
+
+    const result = await new ApiClient("https://api.example.test")
+      .getAgentTaskSnapshot();
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: "task-1",
+        agent_id: "",
+        runtime_id: "",
+        issue_id: "",
+        status: "pausing",
+        priority: 0,
+      }),
+    ]);
+  });
+
+  it("falls back to an empty snapshot when the response is malformed", async () => {
+    stubSnapshot({ tasks: [{ id: "task-1" }] });
+    const warn = vi.fn();
+    setSchemaLogger({ ...noopLogger, warn });
+
+    await expect(
+      new ApiClient("https://api.example.test").getAgentTaskSnapshot(),
+    ).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("GET /api/agent-task-snapshot"),
+      expect.objectContaining({ received: null }),
+    );
   });
 });
 

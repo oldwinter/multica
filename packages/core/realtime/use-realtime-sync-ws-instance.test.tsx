@@ -13,8 +13,10 @@ import { chatKeys } from "../chat/queries";
 import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { officeKeys } from "../office/queries";
 import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
 import { wikiKeys as lmWikiKeys } from "../twins/queries";
+import type { Issue } from "../types";
 import {
   markWorkspaceDeletePending,
   unmarkWorkspaceDeletePending,
@@ -62,6 +64,33 @@ function createWrapper(qc: QueryClient) {
   };
 }
 
+function makeIssue(): Issue {
+  return {
+    id: "issue-1",
+    workspace_id: "ws-1",
+    number: 1,
+    identifier: "MUL-1",
+    title: "Issue One",
+    description: null,
+    status: "todo",
+    priority: "medium",
+    assignee_type: null,
+    assignee_id: null,
+    creator_type: "member",
+    creator_id: "member-1",
+    parent_issue_id: null,
+    project_id: null,
+    position: 0,
+    stage: null,
+    start_date: null,
+    due_date: null,
+    metadata: {},
+    properties: {},
+    created_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-01T00:00:00Z",
+  };
+}
+
 describe("useRealtimeSync — ws instance change", () => {
   let qc: QueryClient;
   let stores: RealtimeSyncStores;
@@ -103,14 +132,13 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it("invalidates exactly once when a new ws instance appears after null gap", () => {
+  it("invalidates Office Issue briefs once when a new ws instance appears after null gap", () => {
     const ws1 = createMockWs();
     const { rerender } = renderHook(
       ({ ws }) => useRealtimeSync(ws, stores),
       { initialProps: { ws: ws1 as WSClient | null }, wrapper: createWrapper(qc) },
     );
 
-    // Simulate workspace switch: ws -> null -> new ws
     invalidateSpy.mockClear();
     rerender({ ws: null });
     expect(invalidateSpy).not.toHaveBeenCalled();
@@ -118,12 +146,12 @@ describe("useRealtimeSync — ws instance change", () => {
     const ws2 = createMockWs();
     rerender({ ws: ws2 });
 
-    // Should have called invalidateQueries for all workspace-scoped keys
-    // (19 workspace-scoped [incl. Wiki, LM Wiki, properties, and rooms] + 6 per-issue
-    // prefixes + the workspace working-agents projection + 5 per-chat
-    // prefixes + 1 workspaceKeys.list() + 1 cross-workspace inbox unread
-    // summary = 34 calls)
-    expect(invalidateSpy).toHaveBeenCalledTimes(34);
+    const targetKey = JSON.stringify(officeKeys.issueBriefsAll("ws-1"));
+    const officeInvalidations = invalidateSpy.mock.calls.filter(
+      (call: [{ queryKey?: unknown }, ...unknown[]]) =>
+        JSON.stringify(call[0].queryKey) === targetKey,
+    );
+    expect(officeInvalidations).toHaveLength(1);
   });
 
   it("does not re-invalidate when rerendered with the same ws instance", () => {
@@ -163,6 +191,7 @@ describe("useRealtimeSync — ws instance change", () => {
     // A catalog edit made while this client was disconnected is otherwise
     // invisible for the query's whole 5-minute staleTime.
     expect(calls).toContainEqual(issueStatusKeys.all("ws-1"));
+    expect(calls).toContainEqual(officeKeys.issueBriefsAll("ws-1"));
   });
 
   it("invalidates per-issue caches (no wsId in key) on ws instance change", () => {
@@ -227,6 +256,32 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(chatKeys.messagesAll());
     expect(calls).toContainEqual(chatKeys.messagesPageAll());
     expect(calls).toContainEqual(chatKeys.pendingTaskAll());
+    expect(calls).toContainEqual(officeKeys.issueBriefsAll("ws-1"));
+  });
+
+  it.each([
+    ["issue:created", { issue: makeIssue() }],
+    ["issue:updated", { issue: makeIssue() }],
+    ["issue:deleted", { issue_id: "issue-1" }],
+  ])("invalidates Office Issue briefs on %s", (event, payload) => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const handler = vi
+      .mocked(ws.on)
+      .mock.calls.find(([eventType]) => eventType === event)?.[1];
+    expect(handler).toBeDefined();
+
+    invalidateSpy.mockClear();
+    (handler as (value: unknown) => void)(payload);
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: officeKeys.issueBriefsAll("ws-1"),
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: officeKeys.issueBriefsAll("ws-other"),
+    });
   });
 
   it("invalidates one issue attachment cache after detached channel media binds", () => {
