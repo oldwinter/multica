@@ -5,6 +5,7 @@ import { parseWithFallback } from "../api/schema";
 import {
   EMPTY_WIKI_PAGE,
   EMPTY_LM_WIKI_SOURCE_POLICY,
+  EMPTY_WIKI_KNOWLEDGE_READINESS,
   EMPTY_WIKI_PAGE_LIST,
   EMPTY_WIKI_PROPOSAL_LIST,
   EMPTY_WIKI_REVISION_LIST,
@@ -13,6 +14,8 @@ import {
   WikiProposalListSchema,
   WikiRevisionListSchema,
   LMWikiSourcePolicySchema,
+  WikiKnowledgeReadinessSchema,
+  parseLMWikiSourcePolicyStale,
   parseWikiRevisionConflict,
 } from "./schemas";
 
@@ -81,6 +84,90 @@ describe("Wiki API schemas", () => {
     )).toEqual([]);
   });
 
+  it("parses mixed agent and Room proposals without hiding the list", () => {
+    const shared = {
+      page_id: "page-1",
+      base_revision_number: 3,
+      proposed_path: "guide.md",
+      proposed_title: "Guide",
+      proposed_content: "# Guide",
+      content_digest: "sha256:proposal",
+      rationale: "Keep the guide current",
+      evidence_refs: ["issue:1"],
+      idempotency_key: "proposal-key",
+      status: "pending",
+      reviewed_by_id: null,
+      review_reason: null,
+      reviewed_at: null,
+      accepted_revision_id: null,
+      created_at: "2026-08-29T10:00:00Z",
+    };
+
+    const parsed = WikiProposalListSchema.parse([
+      {
+        ...shared,
+        id: "proposal-agent",
+        agent_id: "agent-1",
+        source_kind: "agent",
+        source_ref_id: null,
+      },
+      {
+        ...shared,
+        id: "proposal-room",
+        agent_id: null,
+        source_kind: "room",
+        source_ref_id: "room-1",
+      },
+    ]);
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toMatchObject({
+      id: "proposal-agent",
+      agentId: "agent-1",
+      sourceKind: "agent",
+      sourceRefId: null,
+    });
+    expect(parsed[1]).toMatchObject({
+      id: "proposal-room",
+      agentId: null,
+      sourceKind: "room",
+      sourceRefId: "room-1",
+    });
+  });
+
+  it("defaults legacy proposal provenance and degrades future sources", () => {
+    const legacy = WikiProposalListSchema.parse([{
+      id: "proposal-legacy",
+      page_id: "page-1",
+      base_revision_number: 1,
+      proposed_path: "guide.md",
+      content_digest: "sha256:legacy",
+      agent_id: "agent-1",
+      idempotency_key: "legacy-key",
+      status: "pending",
+    }]);
+    expect(legacy[0]).toMatchObject({
+      agentId: "agent-1",
+      sourceKind: "agent",
+      sourceRefId: null,
+    });
+
+    const future = WikiProposalListSchema.parse([{
+      id: "proposal-future",
+      page_id: "page-1",
+      base_revision_number: 1,
+      proposed_path: "guide.md",
+      content_digest: "sha256:future",
+      agent_id: null,
+      idempotency_key: "future-key",
+      status: "pending",
+      source_kind: "automated_review",
+      source_ref_id: null,
+    }]);
+    expect(future[0]?.sourceKind).toBe("unknown");
+    expect(future[0]?.agentId).toBeNull();
+  });
+
   it("rejects missing or invalid identity and digest fields", () => {
     const { content_digest: _digest, ...withoutDigest } = summary;
     expect(parseWithFallback(
@@ -142,5 +229,83 @@ describe("Wiki API schemas", () => {
       current_revision_number: 4,
     })).toEqual({ currentRevisionNumber: 4 });
     expect(parseWikiRevisionConflict({ code: "other", current_revision_number: 4 })).toBeNull();
+  });
+
+  it("parses bounded knowledge readiness and stale-policy conflicts", () => {
+    const policy = {
+      source_classes: ["issue", "wiki_page"],
+      wiki_pages: [{ page_id: "page-1", revision_number: 2 }],
+      remote_generation_enabled: false,
+      policy_version: 3,
+      policy_digest: "sha256:policy",
+      exclusions: [],
+    };
+    const readiness = WikiKnowledgeReadinessSchema.parse({
+      schema_version: 1,
+      policy,
+      sources: [{
+        page_id: "page-1",
+        scope: "workspace",
+        state: "newer_revision_available",
+        reason_code: "newer_revision_available",
+        responsible_role: "owner_admin",
+        selected_revision_id: "revision-2",
+        selected_revision_number: 2,
+        current_revision_id: "revision-3",
+        current_revision_number: 3,
+        policy_version: 3,
+        next_action: {
+          kind: "pin_revision",
+          page_id: "page-1",
+          revision_id: "revision-3",
+          revision_number: 3,
+        },
+      }],
+      maintenance_items: [{
+        id: "queue-1",
+        kind: "source_newer_revision",
+        severity: "warning",
+        reason_code: "newer_revision_available",
+        responsible_role: "owner_admin",
+        page_id: "page-1",
+        selected_revision_number: 2,
+        policy_version: 3,
+        next_action: {
+          kind: "pin_revision",
+          page_id: "page-1",
+          revision_id: "revision-3",
+          revision_number: 3,
+        },
+      }],
+      truncated: false,
+      can_manage: true,
+    });
+    expect(readiness).toMatchObject({
+      schemaVersion: 1,
+      canManage: true,
+      sources: [{ pageId: "page-1", state: "newer_revision_available" }],
+      maintenanceItems: [{ kind: "source_newer_revision" }],
+    });
+    expect(parseLMWikiSourcePolicyStale({
+      code: "wiki_source_policy_stale",
+      current_policy: policy,
+    })).toMatchObject({ currentPolicy: { policyVersion: 3, policyDigest: "sha256:policy" } });
+  });
+
+  it("fails malformed readiness responses closed", () => {
+    expect(parseWithFallback(
+      {
+        schema_version: 1,
+        policy: { source_classes: [], wiki_pages: [] },
+        sources: [{ page_id: "page-1", state: "current" }],
+        maintenance_items: [],
+        truncated: false,
+        can_manage: true,
+      },
+      WikiKnowledgeReadinessSchema,
+      EMPTY_WIKI_KNOWLEDGE_READINESS,
+      { endpoint: "GET /api/wiki/knowledge-readiness" },
+    )).toEqual(EMPTY_WIKI_KNOWLEDGE_READINESS);
+    expect(parseLMWikiSourcePolicyStale({ code: "wiki_source_policy_stale" })).toBeNull();
   });
 });

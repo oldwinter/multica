@@ -1,7 +1,8 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient } from "../api/client";
+import { ApiClient, ApiError } from "../api/client";
+import { parseLMWikiSourcePolicyStale } from "./schemas";
 
 const page = {
   id: "page-1",
@@ -221,6 +222,94 @@ describe("Wiki API client", () => {
       wiki_pages: wirePolicy.wiki_pages,
       remote_generation_enabled: false,
     });
+  });
+
+  it("loads readiness and pins an encoded exact revision with a policy expectation", async () => {
+    const wirePolicy = {
+      source_classes: ["wiki_page"],
+      wiki_pages: [{ page_id: "page/1", revision_number: 2 }],
+      remote_generation_enabled: false,
+      policy_version: 4,
+      policy_digest: "sha256:policy",
+      exclusions: [],
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(respond({
+        schema_version: 1,
+        policy: wirePolicy,
+        sources: [{
+          page_id: "page/1",
+          scope: "workspace",
+          state: "pinned_current",
+          reason_code: "revision_current",
+          responsible_role: "owner_admin",
+          selected_revision_id: "revision/2",
+          selected_revision_number: 2,
+          current_revision_id: "revision/2",
+          current_revision_number: 2,
+          policy_version: 4,
+          next_action: { kind: "none" },
+        }],
+        maintenance_items: [],
+        truncated: false,
+        can_manage: true,
+      }))
+      .mockResolvedValueOnce(respond(wirePolicy));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+
+    await expect(client.getWikiKnowledgeReadiness()).resolves.toMatchObject({
+      canManage: true,
+      sources: [{ pageId: "page/1", state: "pinned_current" }],
+    });
+    await client.pinWikiRevisionAsLMWikiEvidence({
+      pageId: "page/1",
+      revisionId: "revision/2",
+      expectedPolicyVersion: 4,
+      expectedPolicyDigest: "sha256:policy",
+    });
+
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "https://api.example.test/api/lm-wiki/source-policy/wiki-pages/page%2F1/revisions/revision%2F2",
+    );
+    expect(JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
+      expected_policy_version: 4,
+      expected_policy_digest: "sha256:policy",
+    });
+  });
+
+  it("preserves the authoritative policy from a structured stale response", async () => {
+    const currentPolicy = {
+      source_classes: ["wiki_page"],
+      wiki_pages: [],
+      remote_generation_enabled: false,
+      policy_version: 9,
+      policy_digest: "sha256:current",
+      exclusions: [],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond({
+      error: "policy changed",
+      code: "wiki_source_policy_stale",
+      current_policy: currentPolicy,
+    }, 409)));
+    const client = new ApiClient("https://api.example.test");
+
+    try {
+      await client.pinWikiRevisionAsLMWikiEvidence({
+        pageId: "page-1",
+        revisionId: "revision-1",
+        expectedPolicyVersion: 8,
+        expectedPolicyDigest: "sha256:stale",
+      });
+      throw new Error("expected pin to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      const conflict = parseLMWikiSourcePolicyStale((error as ApiError).body);
+      expect(conflict?.currentPolicy).toMatchObject({
+        policyVersion: 9,
+        policyDigest: "sha256:current",
+      });
+    }
   });
 
   it("serializes camelCase page and proposal inputs to wire field names", async () => {

@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "../api/client";
 import { AgentTaskSchema } from "../api/schemas";
 import {
+  TwinActivationReadinessSchema,
   TwinBindingsResponseSchema,
   TwinDepositionWireSchema,
   TwinTaskContextWireSchema,
+  TwinExecutionMetricsSchema,
 } from "./execution-schemas";
 
 const IDS = {
@@ -120,6 +122,93 @@ describe("Twin execution response schemas", () => {
     expect(parsed.id).toBe(IDS.task);
     expect(parsed.twin_context?.taskId).toBe(IDS.task);
     expect(parsed.twin_context?.attribution).toBeUndefined();
+  });
+
+  it("parses safe activation metadata and drops malformed maintenance rows", () => {
+    const parsed = TwinActivationReadinessSchema.parse({
+      contract_version: 1,
+      ready: false,
+      can_manage: true,
+      stages: [{ key: "preview", complete: false }],
+      next_action: {
+        key: "compile_preview",
+        reason: "current_twin_not_previewed",
+        target: "use",
+        responsible_role: "member",
+        can_act: true,
+      },
+      blockers: [{
+        kind: "missing_state",
+        reason: "current_twin_not_previewed",
+        responsible_role: "member",
+      }],
+      inspection_links: [{ key: "execution_evidence", target: "use" }],
+      maintenance: [
+        {
+          id: `stale_signed_version:${IDS.version}`,
+          kind: "stale_signed_version",
+          reason: "accepted_evidence_superseded_version",
+          severity: "high",
+          owner_role: "owner_admin",
+          subject_type: "twin_version",
+          subject_id: IDS.version,
+          version_number: 2,
+          action: "generate_twin",
+        },
+        { kind: "raw_content", prompt: "must not survive" },
+      ],
+    });
+
+    expect(parsed.nextAction.key).toBe("compile_preview");
+    expect(parsed.blockers[0]?.kind).toBe("missing_state");
+    expect(parsed.inspectionLinks[0]?.target).toBe("use");
+    expect(parsed.maintenance).toHaveLength(1);
+    expect(parsed.maintenance[0]?.subjectId).toBe(IDS.version);
+  });
+
+  it("preserves low-sample suppression in effectiveness metrics", () => {
+    const parsed = TwinExecutionMetricsSchema.parse({
+      attributed_runs: 2,
+      effectiveness: {
+        window_days: 28,
+        minimum_sample: 5,
+        cohort_definition: "explicit states",
+        revision_measure: "rerun proxy",
+        cost_measure: "provider reported",
+        cohorts: [{
+          policy_state: "enabled",
+          sample_size: 2,
+          completed_runs: 2,
+          attributed_runs: 2,
+          feedback_total: 1,
+          feedback_coverage: 0.5,
+          detail_suppressed: true,
+          feedback_helped: null,
+          feedback_irrelevant: null,
+          feedback_mismatch: null,
+          helped_rate: null,
+          revision_count: null,
+          revision_rate: null,
+          average_latency_ms: null,
+          average_briefing_tokens: null,
+          cost_usd_ticks: null,
+          costed_runs: 1,
+          uncosted_runs: 1,
+          cost_coverage: 0.5,
+          deposition_total: null,
+          deposition_accepted: null,
+          deposition_acceptance_rate: null,
+        }],
+        comparison: { eligible: false, enabled_state: "enabled", reason: "minimum_sample_not_met" },
+      },
+    });
+
+    expect(parsed.effectiveness.cohorts[0]).toMatchObject({
+      detailSuppressed: true,
+      helpedRate: null,
+      costUsdTicks: null,
+      depositionAcceptanceRate: null,
+    });
   });
 });
 

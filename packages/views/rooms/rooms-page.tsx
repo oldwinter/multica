@@ -15,6 +15,7 @@ import {
   roomListOptions,
   roomPreflightOptions,
   roomUsageOptions,
+  duplicateRoomConfiguration,
   deriveRoomOutcomeState,
   useCancelRoomCycle,
   useCreateRoom,
@@ -59,6 +60,7 @@ export function RoomsPage() {
   const linkedRoomId = nav.searchParams.get("room") ?? "";
   const [selectedRoomId, setSelectedRoomId] = useState(linkedRoomId);
   const [createOpen, setCreateOpen] = useState(false);
+  const [duplicateInput, setDuplicateInput] = useState<CreateRoomInput | null>(null);
   const [promotionSource, setPromotionSource] = useState<PromotionSource | null>(null);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const currentUser = useAuthStore((state) => state.user);
@@ -101,6 +103,17 @@ export function RoomsPage() {
     if (selectedRoomId && rooms.some((room) => room.id === selectedRoomId)) return;
     setSelectedRoomId(rooms[0]?.id ?? "");
   }, [linkedRoomId, rooms, selectedRoomId]);
+
+  useEffect(() => {
+    if (linkedRoomId && nav.searchParams.get("tab") === "outcome") {
+      setDetailTab("outcome");
+    }
+  }, [linkedRoomId, nav.searchParams, setDetailTab]);
+
+  const openCreate = () => {
+    setDuplicateInput(null);
+    setCreateOpen(true);
+  };
 
   const selectRoom = (roomId: string) => {
     setSelectedRoomId(roomId);
@@ -174,8 +187,9 @@ export function RoomsPage() {
           rooms={rooms}
           selectedId={activeRoomId}
           loading={roomsQuery.isPending}
+          showValueReview={canManageBudget}
           onSelect={selectRoom}
-          onCreate={() => setCreateOpen(true)}
+          onCreate={openCreate}
         />
 
         {roomsQuery.isError ? (
@@ -192,7 +206,7 @@ export function RoomsPage() {
             title={t(($) => $.states.no_room_title)}
             description={t(($) => $.states.no_room_description)}
             actionLabel={t(($) => $.actions.new_room)}
-            onAction={() => setCreateOpen(true)}
+            onAction={openCreate}
           />
         ) : detailQuery.isPending || !composer.draft ? (
           <WorkspaceState
@@ -235,6 +249,12 @@ export function RoomsPage() {
               retryPending={retrySynthesis.isPending}
               cancelPending={cancelCycle.isPending}
               recommendationPending={reviewRecommendation.isPending || promote.isPending}
+              attentionTarget={{
+                focus: nav.searchParams.get("focus"),
+                cycleId: nav.searchParams.get("cycle_id"),
+                memoryRevisionId: nav.searchParams.get("memory_revision_id"),
+                recommendationKey: nav.searchParams.get("recommendation_key"),
+              }}
               canManageBudget={canManageBudget}
               onPost={(input) => {
                 const submittedRoomId = activeRoomId;
@@ -359,6 +379,10 @@ export function RoomsPage() {
                 );
               }}
               onPromote={setPromotionSource}
+				onDuplicate={() => {
+					setDuplicateInput(duplicateRoomConfiguration(detail));
+					setCreateOpen(true);
+				}}
               onManageBudget={() => setBudgetOpen(true)}
             />
           </div>
@@ -371,7 +395,12 @@ export function RoomsPage() {
         squads={squads}
         members={members}
         pending={createRoom.isPending || directoryLoading}
-        onOpenChange={setCreateOpen}
+        initialInput={duplicateInput}
+        mode={duplicateInput ? "duplicate" : "create"}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setDuplicateInput(null);
+        }}
         onCreate={create}
       />
       <PromoteRoomDialog

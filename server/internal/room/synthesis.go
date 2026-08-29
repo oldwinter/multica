@@ -134,7 +134,7 @@ func validateDecodedSynthesis(synthesis Synthesis, allowedEntryIDs map[string]st
 		recommendation.Body = strings.TrimSpace(recommendation.Body)
 		recommendation.Rationale = strings.TrimSpace(recommendation.Rationale)
 		normalizeCitations(recommendation.CitationEntryIDs)
-		if recommendation.Kind != "issue" && recommendation.Kind != "wiki" && recommendation.Kind != "decision" {
+		if !RecommendationTarget(recommendation.Kind).Valid() {
 			return Synthesis{}, nil, "", fmt.Errorf("recommendation kind: %w", ErrInvalidSynthesis)
 		}
 		if recommendation.Title == "" || utf8.RuneCountInString(recommendation.Title) > 300 ||

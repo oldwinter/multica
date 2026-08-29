@@ -3,13 +3,16 @@
 import { describe, expect, it } from "vitest";
 import {
   WikiPageSchema,
+  WikiKnowledgeReadinessSchema,
   WikiPageSummaryListSchema,
   WikiProposalSchema,
   WikiRevisionSchema,
   buildAcceptWikiProposalBody,
   buildRejectWikiProposalBody,
+  buildPinWikiRevisionBody,
   buildUpdateWikiPageBody,
   getWikiRevisionConflict,
+  getLMWikiSourcePolicyStaleConflict,
 } from "./wiki-schema";
 
 const page = {
@@ -148,5 +151,72 @@ describe("mobile Wiki API schemas", () => {
       expected_revision_number: 4,
       title: "Reviewed title",
     });
+  });
+
+  it("parses the bounded readiness model without introducing Wiki content", () => {
+    const parsed = WikiKnowledgeReadinessSchema.parse({
+      schema_version: 1,
+      policy: {
+        source_classes: ["wiki_page"],
+        wiki_pages: [{ page_id: "page-1", revision_number: 2 }],
+        remote_generation_enabled: false,
+        policy_version: 5,
+        policy_digest: "sha256:policy-5",
+        exclusions: [],
+      },
+      sources: [{
+        page_id: "page-1",
+        scope: "workspace",
+        state: "newer_revision_available",
+        reason_code: "wiki_source_newer_revision_available",
+        responsible_role: "owner_admin",
+        selected_revision_id: "revision-2",
+        selected_revision_number: 2,
+        current_revision_id: "revision-3",
+        current_revision_number: 3,
+        policy_version: 5,
+        next_action: {
+          kind: "pin_revision",
+          page_id: "page-1",
+          revision_id: "revision-3",
+          revision_number: 3,
+        },
+        content: "must not cross the readiness boundary",
+      }],
+      maintenance_items: [],
+      truncated: false,
+      can_manage: true,
+    });
+
+    expect(parsed.sources[0]).toMatchObject({
+      state: "newer_revision_available",
+      selectedRevisionNumber: 2,
+      currentRevisionNumber: 3,
+      nextAction: { kind: "pin_revision", revisionId: "revision-3" },
+    });
+    expect(JSON.stringify(parsed)).not.toContain("must not cross");
+  });
+
+  it("serializes pin CAS identity and parses the structured stale result", () => {
+    expect(buildPinWikiRevisionBody({
+      pageId: "page-1",
+      revisionId: "revision-3",
+      expectedPolicyVersion: 5,
+      expectedPolicyDigest: "sha256:policy-5",
+    })).toEqual({
+      expected_policy_version: 5,
+      expected_policy_digest: "sha256:policy-5",
+    });
+    expect(getLMWikiSourcePolicyStaleConflict({
+      code: "wiki_source_policy_stale",
+      current_policy: {
+        source_classes: [],
+        wiki_pages: [],
+        remote_generation_enabled: false,
+        policy_version: 6,
+        policy_digest: "sha256:policy-6",
+        exclusions: [],
+      },
+    })?.currentPolicy.policyVersion).toBe(6);
   });
 });

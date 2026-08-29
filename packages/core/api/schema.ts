@@ -47,8 +47,11 @@ export function parseWithFallback<T>(
     `API response failed schema validation: ${opts.endpoint}`,
     {
       endpoint: opts.endpoint,
-      issues: result.error.issues,
-      received: data,
+      issueCount: result.error.issues.length,
+      issues: result.error.issues.map((issue) => ({
+        code: issue.code,
+        path: issue.path.map(String),
+      })),
     },
   );
   return fallback;

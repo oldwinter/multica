@@ -19,10 +19,12 @@ import (
 )
 
 const (
-	twinExecutionRequestMaxCodepoints = 16 * 1024
-	twinExecutionTagMaxCount          = 64
-	twinExecutionTagMaxCodepoints     = 200
-	twinDepositionEditMaxBytes        = 512 * 1024
+	twinExecutionRequestMaxCodepoints       = 16 * 1024
+	twinExecutionTagMaxCount                = 64
+	twinExecutionTagMaxCodepoints           = 200
+	twinDepositionEditMaxBytes              = 512 * 1024
+	TwinEffectivenessWindowDays       int32 = 28
+	TwinEffectivenessMinimumSample    int64 = 5
 )
 
 var (
@@ -79,6 +81,17 @@ func (s *TwinExecutionService) UpsertBinding(ctx context.Context, input TwinBind
 
 func (s *TwinExecutionService) DeleteBinding(ctx context.Context, workspaceID, bindingID pgtype.UUID) error {
 	return s.Store.DeleteBinding(ctx, workspaceID, bindingID)
+}
+
+func (s *TwinExecutionService) PauseWorkspace(ctx context.Context, workspaceID pgtype.UUID) (db.TwinBinding, error) {
+	version, err := s.Queries.GetCurrentTwinVersion(ctx, workspaceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return db.TwinBinding{}, ErrTwinExecutionNotFound
+	}
+	if err != nil {
+		return db.TwinBinding{}, fmt.Errorf("load current Twin version for pause: %w", err)
+	}
+	return s.Store.PauseBindings(ctx, workspaceID, version.ID)
 }
 
 // TwinExecutionOneOffPolicy is an immutable task snapshot supplied by the
@@ -284,6 +297,47 @@ func (s *TwinExecutionService) CompileBriefingPreview(ctx context.Context, works
 		return TwinExecutionBriefingPreview{}, err
 	}
 	return TwinExecutionBriefingPreview{Briefing: compiled, Version: reference}, nil
+}
+
+func (s *TwinExecutionService) RecordActivationPreview(ctx context.Context, workspaceID pgtype.UUID, preview TwinExecutionBriefingPreview) error {
+	if preview.Version == nil || preview.Briefing.PolicyDecision.State == TwinUseOff {
+		return nil
+	}
+	versionID, err := util.ParseUUID(preview.Version.ID)
+	if err != nil {
+		return invalidTwinExecutionInput("preview Twin version id")
+	}
+	return s.Store.RecordActivationPreview(ctx, workspaceID, versionID, string(preview.Briefing.PolicyDecision.State))
+}
+
+func (s *TwinExecutionService) GetActivationReadiness(ctx context.Context, workspaceID pgtype.UUID, canManage bool) (TwinActivationReadiness, error) {
+	row, err := s.Store.GetActivationFacts(ctx, workspaceID)
+	if err != nil {
+		return TwinActivationReadiness{}, err
+	}
+	facts := TwinActivationFacts{
+		FeatureEnabled: s.FeatureEnabled, CanManage: canManage,
+		SourcePolicyConfigured:     row.SourcePolicyConfigured,
+		PendingEvidenceRevisionID:  row.PendingEvidenceRevisionID,
+		AcceptedEvidenceRevisionID: row.AcceptedEvidenceRevisionID,
+		PendingProposalID:          row.PendingProposalID,
+		CurrentVersionID:           row.CurrentVersionID, CurrentVersionNumber: row.CurrentVersionNumber,
+		CurrentVersionSourceID: row.CurrentVersionSourceID, PreviewedVersionID: row.PreviewedVersionID,
+		ActiveBindingCount: row.ActiveBindingCount, ExplicitOffBindingCount: row.ExplicitOffBindingCount,
+		AttributedRunCount: row.AttributedRunCount,
+		FeedbackCount:      row.FeedbackCount, PendingDepositionID: row.PendingDepositionID,
+		PendingDepositionCount: row.PendingDepositionCount, RecentMismatchCount: row.RecentMismatchCount,
+		LowConfidenceAssertionCount: row.LowConfidenceAssertionCount,
+	}
+	if row.PendingProposalCreatedAt.Valid {
+		createdAt := row.PendingProposalCreatedAt.Time
+		facts.PendingProposalCreatedAt = &createdAt
+	}
+	if row.PendingDepositionCreatedAt.Valid {
+		createdAt := row.PendingDepositionCreatedAt.Time
+		facts.PendingDepositionCreatedAt = &createdAt
+	}
+	return BuildTwinActivationReadiness(facts), nil
 }
 
 func (s *TwinExecutionService) validateTaskEligibility(ctx context.Context, workspaceID pgtype.UUID, task TwinTaskEligibility) (TwinTaskEligibility, error) {
@@ -611,6 +665,49 @@ type TwinExecutionMetricsResponse struct {
 	Bindings        TwinExecutionBindingMetrics    `json:"bindings"`
 	HelpfulnessRate *float64                       `json:"helpfulness_rate"`
 	KillSwitch      TwinExecutionKillSwitch        `json:"kill_switch"`
+	Effectiveness   TwinEffectivenessMetrics       `json:"effectiveness"`
+}
+
+type TwinEffectivenessMetrics struct {
+	WindowDays       int32                       `json:"window_days"`
+	MinimumSample    int64                       `json:"minimum_sample"`
+	CohortDefinition string                      `json:"cohort_definition"`
+	RevisionMeasure  string                      `json:"revision_measure"`
+	CostMeasure      string                      `json:"cost_measure"`
+	Cohorts          []TwinEffectivenessCohort   `json:"cohorts"`
+	Comparison       TwinEffectivenessComparison `json:"comparison"`
+}
+
+type TwinEffectivenessCohort struct {
+	PolicyState           string   `json:"policy_state"`
+	SampleSize            int64    `json:"sample_size"`
+	CompletedRuns         int64    `json:"completed_runs"`
+	AttributedRuns        int64    `json:"attributed_runs"`
+	FeedbackTotal         int64    `json:"feedback_total"`
+	FeedbackCoverage      float64  `json:"feedback_coverage"`
+	DetailSuppressed      bool     `json:"detail_suppressed"`
+	FeedbackHelped        *int64   `json:"feedback_helped"`
+	FeedbackIrrelevant    *int64   `json:"feedback_irrelevant"`
+	FeedbackMismatch      *int64   `json:"feedback_mismatch"`
+	HelpedRate            *float64 `json:"helped_rate"`
+	RevisionCount         *int64   `json:"revision_count"`
+	RevisionRate          *float64 `json:"revision_rate"`
+	AverageLatencyMS      *int64   `json:"average_latency_ms"`
+	AverageBriefingTokens *int64   `json:"average_briefing_tokens"`
+	CostUSDTicks          *int64   `json:"cost_usd_ticks"`
+	CostedRuns            int64    `json:"costed_runs"`
+	UncostedRuns          int64    `json:"uncosted_runs"`
+	CostCoverage          float64  `json:"cost_coverage"`
+	DepositionTotal       *int64   `json:"deposition_total"`
+	DepositionAccepted    *int64   `json:"deposition_accepted"`
+	DepositionAcceptance  *float64 `json:"deposition_acceptance_rate"`
+}
+
+type TwinEffectivenessComparison struct {
+	Eligible     bool   `json:"eligible"`
+	EnabledState string `json:"enabled_state"`
+	ControlState string `json:"control_state,omitempty"`
+	Reason       string `json:"reason"`
 }
 
 type TwinExecutionFeedbackMetrics struct {
@@ -649,8 +746,73 @@ func (s *TwinExecutionService) GetMetrics(ctx context.Context, workspaceID pgtyp
 		Depositions:     TwinExecutionDepositionMetrics{Total: metrics.DepositionsTotal, Pending: metrics.DepositionsPending, Accepted: metrics.DepositionsAccepted, Rejected: metrics.DepositionsRejected},
 		Bindings:        TwinExecutionBindingMetrics{Off: metrics.BindingsOff, Preview: metrics.BindingsPreview, Enabled: metrics.BindingsEnabled},
 		HelpfulnessRate: rate, KillSwitch: s.KillSwitch(),
+		Effectiveness: buildTwinEffectivenessMetrics(metrics.Cohorts),
 	}, nil
 }
+
+func buildTwinEffectivenessMetrics(rows []TwinExecutionCohortMetrics) TwinEffectivenessMetrics {
+	cohorts := make([]TwinEffectivenessCohort, len(rows))
+	sampleByState := make(map[string]int64, len(rows))
+	for index, row := range rows {
+		sampleByState[row.PolicyState] = row.SampleSize
+		cohort := TwinEffectivenessCohort{
+			PolicyState: row.PolicyState, SampleSize: row.SampleSize, CompletedRuns: row.CompletedRuns,
+			AttributedRuns: row.AttributedRuns, FeedbackTotal: row.FeedbackTotal,
+			FeedbackCoverage: twinRatio(row.FeedbackTotal, row.SampleSize),
+			DetailSuppressed: row.SampleSize < TwinEffectivenessMinimumSample,
+			CostedRuns:       row.CostedRuns, UncostedRuns: row.UncostedRuns,
+			CostCoverage: twinRatio(row.CostedRuns, row.SampleSize),
+		}
+		if !cohort.DetailSuppressed {
+			cohort.FeedbackHelped = twinInt64Pointer(row.FeedbackHelped)
+			cohort.FeedbackIrrelevant = twinInt64Pointer(row.FeedbackIrrelevant)
+			cohort.FeedbackMismatch = twinInt64Pointer(row.FeedbackMismatch)
+			if row.FeedbackTotal > 0 {
+				cohort.HelpedRate = twinFloat64Pointer(twinRatio(row.FeedbackHelped, row.FeedbackTotal))
+			}
+			cohort.RevisionCount = twinInt64Pointer(row.RevisionCount)
+			cohort.RevisionRate = twinFloat64Pointer(twinRatio(row.RevisionCount, row.SampleSize))
+			cohort.AverageLatencyMS = twinInt64Pointer(row.AverageLatencyMS)
+			cohort.AverageBriefingTokens = twinInt64Pointer(row.AverageBriefingTokens)
+			cohort.CostUSDTicks = twinInt64Pointer(row.CostUSDTicks)
+			cohort.DepositionTotal = twinInt64Pointer(row.DepositionTotal)
+			cohort.DepositionAccepted = twinInt64Pointer(row.DepositionAccepted)
+			if row.DepositionTotal > 0 {
+				cohort.DepositionAcceptance = twinFloat64Pointer(twinRatio(row.DepositionAccepted, row.DepositionTotal))
+			}
+		}
+		cohorts[index] = cohort
+	}
+	comparison := TwinEffectivenessComparison{EnabledState: string(TwinUseEnabled), Reason: "minimum_sample_not_met"}
+	if sampleByState[string(TwinUseEnabled)] >= TwinEffectivenessMinimumSample {
+		for _, control := range []string{string(TwinUsePreview), string(TwinUseOff)} {
+			if sampleByState[control] >= TwinEffectivenessMinimumSample {
+				comparison = TwinEffectivenessComparison{
+					Eligible: true, EnabledState: string(TwinUseEnabled), ControlState: control,
+					Reason: "descriptive_comparison_only",
+				}
+				break
+			}
+		}
+	}
+	return TwinEffectivenessMetrics{
+		WindowDays: TwinEffectivenessWindowDays, MinimumSample: TwinEffectivenessMinimumSample,
+		CohortDefinition: "workspace issue tasks with a persisted Twin policy state created in the window",
+		RevisionMeasure:  "human manual rerun proxy; not a causal attribution",
+		CostMeasure:      "provider-reported cost only; costed and uncosted run coverage is disclosed",
+		Cohorts:          cohorts, Comparison: comparison,
+	}
+}
+
+func twinRatio(numerator, denominator int64) float64 {
+	if denominator == 0 {
+		return 0
+	}
+	return float64(numerator) / float64(denominator)
+}
+
+func twinInt64Pointer(value int64) *int64       { return &value }
+func twinFloat64Pointer(value float64) *float64 { return &value }
 
 type TwinDepositionRequest struct {
 	RequestedByID      pgtype.UUID

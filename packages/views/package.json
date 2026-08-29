@@ -32,6 +32,8 @@
     "./twins": "./twins/index.tsx",
     "./wiki": "./wiki/index.tsx",
     "./rooms": "./rooms/index.ts",
+    "./skill-evolution": "./skill-evolution/index.ts",
+    "./task-run-reviews": "./task-run-reviews/index.ts",
     "./appearance": "./appearance/index.ts",
     "./squads": "./squads/index.ts",
     "./squads/components": "./squads/components/index.ts",

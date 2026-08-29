@@ -6,12 +6,14 @@
   "actions": {
     "new_room": "New room",
     "create": "Create room",
+    "duplicate": "Duplicate room",
     "cancel": "Cancel",
     "post": "Send",
     "posting": "Sending",
     "pause": "Pause",
     "resume": "Resume",
     "wake": "Run now",
+    "run_again": "Run again",
     "waking": "Starting",
     "promote": "Promote",
     "promoting": "Promoting",
@@ -29,7 +31,7 @@
     "error_title": "Rooms could not be loaded",
     "error_description": "Check the connection and try again.",
     "empty_title": "No rooms yet",
-    "empty_description": "Create a room to start a durable conversation.",
+    "empty_description": "Create a room from an outcome template to run a repeatable workflow.",
     "detail_loading": "Loading room",
     "no_room_title": "Select a room",
     "no_room_description": "Choose a room from the list to open its conversation."
@@ -44,7 +46,12 @@
     "participants": "{{count}} participants",
     "updated": "Updated {{time}}",
     "search": "Search Rooms",
-    "no_results": "No matching Rooms"
+    "no_results": "No matching Rooms",
+    "last_accepted": "Accepted {{time}}",
+    "last_cost": "{{count}} cost ticks",
+    "next_scheduled": "Next {{time}}",
+    "value_review": "Outcome review",
+    "value_score": "{{accepted}} accepted · {{repeats}} repeats"
   },
   "detail": {
     "participants": "Participants",
@@ -89,7 +96,27 @@
   },
   "create": {
     "title": "Create room",
-    "description": "Choose who facilitates and who joins the room.",
+    "description": "Start with the outcome, then choose who runs it.",
+    "duplicate_title": "Duplicate room",
+    "duplicate_description": "Review the copied configuration before creating a fresh Room.",
+    "copy_name_suffix": " (Copy)",
+    "choose_template": "Choose an outcome template",
+    "reset_defaults": "Reset defaults",
+    "bounded_execution": "Bounded execution",
+    "advanced": "Advanced configuration",
+    "summary": "Preflight summary",
+    "summary_runner": "Runner",
+    "summary_synthesis": "Result",
+    "summary_turns": "Daily turns",
+    "summary_cost": "Spend limit",
+    "summary_execution": "Timing",
+    "summary_people": "{{facilitator}} + {{count}} participants",
+    "summary_not_selected": "Not selected",
+    "summary_required": "Facilitator synthesis",
+    "summary_direct": "Direct result",
+    "scheduled_copy_paused": "This scheduled copy will be created paused. Resume it after reviewing the schedule.",
+    "manual": "Manual",
+    "turn_limit": "{{count}} turns",
     "fields": {
       "title": "Name",
       "template": "Template",
@@ -125,11 +152,12 @@
       "squad": "Squad"
     },
     "templates": {
-      "research": { "label": "Research", "objective": "Answer the research question with cited evidence and explicit uncertainty.", "success_criteria": "The conclusion cites supporting entries\nMaterial uncertainty is visible", "stop_conditions": "Required sources have been assessed\nNo new evidence changes the conclusion" },
-      "planning": { "label": "Planning", "objective": "Produce an ordered, owner-ready execution plan.", "success_criteria": "Dependencies and risks are explicit\nEvery action has a clear result", "stop_conditions": "The next executable action is clear\nRemaining questions have owners" },
-      "risk": { "label": "Risk review", "objective": "Identify, rank, and mitigate the material risks.", "success_criteria": "Risks are ranked by impact and likelihood\nMitigations are actionable", "stop_conditions": "No unowned critical risk remains" },
-      "incident": { "label": "Incident review", "objective": "Establish the incident timeline, causes, and prevention actions.", "success_criteria": "Facts are separated from hypotheses\nFollow-up actions address root causes", "stop_conditions": "The timeline and contributing factors are supported" },
-      "decision": { "label": "Decision", "objective": "Recommend a decision with tradeoffs, evidence, and dissent preserved.", "success_criteria": "Options and tradeoffs are comparable\nThe recommendation is evidence-backed", "stop_conditions": "A decision can be accepted or explicitly deferred" }
+      "research": { "label": "Research", "outcome": "A cited answer with uncertainty made explicit.", "example": "Example: assess a market or technical approach", "objective": "Answer the research question with cited evidence and explicit uncertainty.", "success_criteria": "The conclusion cites supporting entries\nMaterial uncertainty is visible", "stop_conditions": "Required sources have been assessed\nNo new evidence changes the conclusion" },
+      "planning": { "label": "Planning", "outcome": "An ordered plan with owners, dependencies, and risks.", "example": "Example: turn a goal into the next executable steps", "objective": "Produce an ordered, owner-ready execution plan.", "success_criteria": "Dependencies and risks are explicit\nEvery action has a clear result", "stop_conditions": "The next executable action is clear\nRemaining questions have owners" },
+      "risk": { "label": "Risk review", "outcome": "Ranked risks with actionable mitigations.", "example": "Example: challenge a launch or architecture", "objective": "Identify, rank, and mitigate the material risks.", "success_criteria": "Risks are ranked by impact and likelihood\nMitigations are actionable", "stop_conditions": "No unowned critical risk remains" },
+      "incident": { "label": "Incident review", "outcome": "A supported timeline, causes, and prevention actions.", "example": "Example: review an outage or failed rollout", "objective": "Establish the incident timeline, causes, and prevention actions.", "success_criteria": "Facts are separated from hypotheses\nFollow-up actions address root causes", "stop_conditions": "The timeline and contributing factors are supported" },
+      "decision": { "label": "Decision", "outcome": "A recommendation with tradeoffs and dissent preserved.", "example": "Example: choose between competing approaches", "objective": "Recommend a decision with tradeoffs, evidence, and dissent preserved.", "success_criteria": "Options and tradeoffs are comparable\nThe recommendation is evidence-backed", "stop_conditions": "A decision can be accepted or explicitly deferred" },
+      "improvement": { "label": "Skill improvement", "outcome": "A cited recommendation for the smallest useful Skill change.", "example": "Example: improve a Skill from repeated review feedback", "objective": "Turn eligible feedback into the smallest evidence-backed Skill improvement recommendation.", "success_criteria": "Every recommendation cites the signals that support it\nThe proposed change is small, reviewable, and explains why\nThe target and possible regression are explicit", "stop_conditions": "Evidence is sufficient for one focused recommendation\nWeak or conflicting signals are called out instead of guessed", "instructions": "Compare detailed feedback with the Skill's current procedure. Look for a repeated or domain-specific pattern. Propose principles, not exhaustive rules, and explain why the change should generalize. Prefer the smallest focused edit; keep the Skill concise by moving detail into a supporting file when appropriate. Classify each recommendation as Wiki knowledge, a Twin preference or constraint, a Skill procedure, a product defect, or a decision. Cite every supporting signal. Do not mutate any target. For executable_procedure, body must be strict JSON schema_version 1 with exactly base_skill_id, base_hash, bundle (id, source, name, description, content, files with path and content), observed_pattern, expected_benefit, regression_risk, and evidence_digests. Use unsupported if any exact value is unavailable." }
     }
   },
   "budget": {
@@ -161,7 +189,14 @@
     "kinds": {
       "issue": "Issue",
       "wiki": "Wiki",
-      "decision": "Decision"
+      "knowledge": "Wiki knowledge",
+      "preference": "Twin preference",
+      "constraint": "Twin constraint",
+      "executable_procedure": "Skill procedure",
+      "implementation_defect": "Product defect",
+      "decision": "Decision",
+      "unsupported": "Unsupported",
+      "unknown": "Unknown recommendation"
     },
     "source_entry": "Transcript entry",
     "source_cycle": "Completed cycle"
@@ -213,7 +248,7 @@
     "requires_accepted": "Promotion is available after this outcome is accepted and its cycle completes.",
     "status": { "approved": "Promoted", "rejected": "Rejected", "unknown": "Reviewed" }
   },
-  "usage": { "title": "Value and usage", "turns": "Turns", "cost": "Cost ticks", "accepted": "Accepted", "promoted": "Promoted", "failures": "Failures", "uncosted": "Uncosted" },
+  "usage": { "title": "Value and usage", "turns": "Turns", "cost": "Cost ticks", "accepted": "Accepted", "promoted": "Promoted", "failures": "Failures", "uncosted": "Uncosted", "repeat_runs": "Repeat runs", "active_weeks": "Active weeks", "accepted_per_week": "Accepted / week", "review_latency": "Median review", "promotion_rate": "Promotion rate", "failed_refused": "Failed / refused", "cost_per_outcome": "Cost / accepted", "seconds": "{{count}}s", "minutes": "{{count}}m", "hours": "{{count}}h" },
   "preflight": { "title": "Run estimate", "manual": "Manual", "schedule": "Scheduled", "turns": "{{count}} max turns", "synthesis": "Facilitator synthesis", "direct": "Direct result", "agents_ready": "{{ready}} / {{count}} Agents ready", "ready": "Ready", "blocked": "Blocked", "daily": "{{used}} / {{limit}} daily turns", "cost": "{{used}} / {{limit}} cost ticks", "remaining": "{{count}} remaining", "reserved": "{{count}} reserved for active work", "uncosted": "{{count}} uncosted turns" },
   "cycle": {
     "status": {
@@ -252,7 +287,13 @@
     "kinds": {
       "issue": "Issue",
       "wiki": "Wiki",
+      "knowledge": "Wiki knowledge",
+      "preference": "Twin preference",
+      "constraint": "Twin constraint",
+      "executable_procedure": "Skill procedure",
+      "implementation_defect": "Product defect",
       "decision": "Decision",
+      "unsupported": "Unsupported",
       "unknown": "Artifact"
     }
   },

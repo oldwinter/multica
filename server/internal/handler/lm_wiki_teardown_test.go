@@ -118,6 +118,11 @@ func TestDeleteWorkspaceRemovesWikiTwinData(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create teardown Twin version: %v", err)
 		}
+		if err := queries.RecordTwinActivationPreview(ctx, db.RecordTwinActivationPreviewParams{
+			WorkspaceID: workspaceID, TwinVersionID: version.ID, PolicyState: "preview",
+		}); err != nil {
+			t.Fatalf("create teardown Twin activation preview checkpoint: %v", err)
+		}
 		taskID, agentID, runtimeID := randomTwinExecutionIDs(t, ctx)
 		dispatchedAt := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
 		if _, err := queries.UpsertTwinBinding(ctx, db.UpsertTwinBindingParams{
@@ -170,7 +175,7 @@ func TestDeleteWorkspaceRemovesWikiTwinData(t *testing.T) {
 	testutil.Call(t, testHandler.DeleteWorkspace, req).Want(http.StatusNoContent)
 
 	for _, table := range []string{
-		"twin_binding", "twin_task_attribution", "twin_run_feedback", "twin_deposition",
+		"twin_activation_preview_checkpoint", "twin_binding", "twin_task_attribution", "twin_run_feedback", "twin_deposition",
 		"twin_proposal_review", "twin_version", "twin_proposal",
 		"lm_wiki_review", "lm_wiki_citation", "lm_wiki_revision",
 		"lm_wiki_source_wiki_page", "lm_wiki_source_policy",

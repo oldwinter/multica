@@ -1,0 +1,1 @@
+ALTER TABLE wiki_page_edit_proposal VALIDATE CONSTRAINT wiki_page_edit_proposal_source;

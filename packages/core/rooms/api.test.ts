@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "../api/client";
-import { EMPTY_ROOM_DETAIL } from "./schemas";
+import {
+  EMPTY_ROOM_DETAIL,
+  RoomArtifactSchema,
+  RoomRecommendationSchema,
+  RoomSchema,
+} from "./schemas";
 
 const room = {
   id: "room-1",
@@ -61,6 +66,53 @@ afterEach(() => {
 });
 
 describe("ApiClient rooms", () => {
+  it("parses recommendation targets and safely degrades future kinds", () => {
+    const knownKinds = [
+      "knowledge",
+      "preference",
+      "constraint",
+      "executable_procedure",
+      "implementation_defect",
+      "decision",
+      "unsupported",
+    ] as const;
+    const recommendation = {
+      key: "recommendation-1",
+      title: "Route this recommendation",
+      confidence: 0.8,
+    };
+
+    for (const kind of knownKinds) {
+      expect(RoomRecommendationSchema.parse({ ...recommendation, kind }).kind).toBe(kind);
+    }
+    expect(
+      RoomRecommendationSchema.parse({ ...recommendation, kind: "future-kind" }).kind,
+    ).toBe("unknown");
+    expect(
+      RoomArtifactSchema.parse({
+        id: "artifact-1",
+        cycle_id: null,
+        turn_id: null,
+        entry_id: null,
+        kind: "executable_procedure",
+        target_id: "proposal-1",
+        title: "Improve the Skill",
+        body: "",
+        created_by_user_id: "user-1",
+        created_at: "2026-08-28T00:00:00Z",
+      }).kind,
+    ).toBe("executable_procedure");
+  });
+
+  it("recognizes improvement Rooms and safely degrades future templates", () => {
+    expect(RoomSchema.parse({ ...room, template_id: "improvement" }).template_id).toBe(
+      "improvement",
+    );
+    expect(RoomSchema.parse({ ...room, template_id: "future-template" }).template_id).toBe(
+      "unknown",
+    );
+  });
+
   it("uses the Room endpoints with the caller's idempotency keys", async () => {
     const fetchMock = vi
       .fn()

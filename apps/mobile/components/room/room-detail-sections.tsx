@@ -519,6 +519,27 @@ function UsageSection({ usage }: { usage: RoomUsage | undefined }) {
           <Metric value={usage.accepted_syntheses} label="Accepted" />
           <Metric value={usage.promoted_artifacts} label="Promoted" />
           <Metric value={usage.failures} label="Failures" />
+          <Metric value={usage.repeat_run_count} label="Repeat runs" />
+          <Metric
+            value={formatMetric(usage.accepted_outcomes_per_active_week)}
+            label="Accepted / week"
+          />
+          <Metric
+            value={`${Math.round(usage.promotion_rate * 100)}%`}
+            label="Promotion rate"
+          />
+          <Metric
+            value={formatDuration(usage.median_review_latency_seconds)}
+            label="Median review"
+          />
+          <Metric
+            value={`${usage.failed_cycles} / ${usage.refused_cycles}`}
+            label="Failed / refused"
+          />
+          <Metric
+            value={formatMetric(usage.cost_ticks_per_accepted_outcome)}
+            label="Cost / accepted"
+          />
           {usage.uncosted_turns > 0 ? (
             <Metric value={usage.uncosted_turns} label="Uncosted" />
           ) : null}
@@ -528,7 +549,7 @@ function UsageSection({ usage }: { usage: RoomUsage | undefined }) {
   );
 }
 
-function Metric({ value, label }: { value: number; label: string }) {
+function Metric({ value, label }: { value: number | string; label: string }) {
   return (
     <View className="min-w-16 gap-0.5">
       <Text className="text-lg font-semibold text-foreground tabular-nums">
@@ -537,6 +558,16 @@ function Metric({ value, label }: { value: number; label: string }) {
       <Text className="text-xs text-muted-foreground">{label}</Text>
     </View>
   );
+}
+
+function formatMetric(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h`;
 }
 
 function ArtifactsSection({

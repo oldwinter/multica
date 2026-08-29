@@ -1,0 +1,10 @@
+ALTER TABLE task_run_review DROP CONSTRAINT IF EXISTS task_run_review_pkey;
+ALTER TABLE skill_evolution_task_attribution DROP CONSTRAINT IF EXISTS skill_evolution_task_attribution_pkey;
+ALTER TABLE skill_evolution_release DROP CONSTRAINT IF EXISTS skill_evolution_release_pkey;
+ALTER TABLE skill_evolution_review DROP CONSTRAINT IF EXISTS skill_evolution_review_pkey;
+ALTER TABLE skill_evolution_evaluation DROP CONSTRAINT IF EXISTS skill_evolution_evaluation_pkey;
+ALTER TABLE skill_evolution_evidence DROP CONSTRAINT IF EXISTS skill_evolution_evidence_pkey;
+ALTER TABLE skill_evolution_proposal DROP CONSTRAINT IF EXISTS skill_evolution_proposal_pkey;
+ALTER TABLE skill_evolution_revision_file DROP CONSTRAINT IF EXISTS skill_evolution_revision_file_pkey;
+ALTER TABLE skill_evolution_revision DROP CONSTRAINT IF EXISTS skill_evolution_revision_pkey;
+ALTER TABLE skill_evolution_loop DROP CONSTRAINT IF EXISTS skill_evolution_loop_pkey;

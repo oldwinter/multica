@@ -41,7 +41,7 @@ const (
 	labelEdited       = "edited"
 	labelRating       = "rating"
 	labelExclusion    = "exclusion_code"
-	labelSurface      = "surface"
+	labelStage        = "stage"
 )
 
 var businessMetricLabels = map[string][]string{
@@ -64,6 +64,9 @@ var businessMetricLabels = map[string][]string{
 	"multica_chat_claim_session_fallback_needed_total": {},
 	"multica_chat_claim_session_fallback_result_total": {labelResult},
 	"multica_chat_claim_resume_query_duration_seconds": {labelQuery},
+	"multica_runtime_sweeper_stage_duration_seconds":   {labelStage},
+	"multica_runtime_sweeper_candidate_rows_total":     {labelStage},
+	"multica_runtime_sweeper_rows_changed_total":       {labelStage},
 
 	// PR3 funnel / community / commercial.
 	"multica_signup_total":                             {labelSignupSource},
@@ -86,6 +89,8 @@ var businessMetricLabels = map[string][]string{
 	"multica_runtime_ready_seconds":                    {labelRuntimeMode, labelProvider},
 	"multica_runtime_failed_total":                     {labelRuntimeMode, labelProvider, labelFailureReason, labelRecoverable},
 	"multica_runtime_offline_total":                    {labelRuntimeMode, labelProvider},
+	"multica_runtime_gc_skipped_total":                 {labelReason},
+	"multica_runtime_gc_backlog_runtimes":              {labelReason},
 	"multica_daemon_ws_message_received_total":         {labelKind},
 	"multica_autopilot_run_started_total":              {labelCadence, labelTriggerKind},
 	"multica_autopilot_run_terminal_total":             {labelCadence, labelTriggerKind, labelTerminalStatus},
@@ -116,12 +121,11 @@ var businessMetricLabels = map[string][]string{
 	"multica_entitlement_refresh_total":                {labelOutcome},
 	"multica_entitlement_refresh_duration_seconds":     {labelOutcome},
 	"multica_entitlement_decision_total":               {labelGate, labelAction, labelReason},
-	"multica_entitlement_version_regression_total":     {labelSource},
+	"multica_entitlement_version_regression_total":     {},
 	"multica_autopilot_quota_decision_total":           {labelAction, labelSource, labelResult},
 	"multica_wiki_search_total":                        {labelScope, labelResult},
 	"multica_wiki_proposal_review_total":               {labelDecision, labelEdited},
 	"multica_lm_wiki_review_total":                     {labelDecision},
-	"multica_issue_window_decision_total":              {labelAction, labelSurface, labelResult},
 }
 
 var knownRoomEvents = map[string]string{
@@ -224,6 +228,7 @@ var (
 		"reasonix":      "reasonix",
 		"dim":           "dim",
 		"mcode":         "mcode",
+		"zeroclaw":      "zeroclaw",
 		"multica_agent": "multica_agent",
 		"openclaw":      "openclaw",
 		"opencode":      "opencode",

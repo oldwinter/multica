@@ -1913,33 +1913,63 @@ func (q *Queries) GetRoomTurnByTask(ctx context.Context, taskID pgtype.UUID) (Ro
 }
 
 const getRoomUsageSummary = `-- name: GetRoomUsageSummary :one
-SELECT
-    count(*) FILTER (WHERE rt.status <> 'refused')::bigint AS turns_total,
-    COALESCE(sum(attempt_usage.cost_ticks), 0)::bigint AS cost_ticks,
-    count(*) FILTER (
-        WHERE rt.status <> 'refused' AND attempt_usage.has_task
-          AND attempt_usage.has_uncosted_usage
-    )::bigint AS uncosted_turns,
-    count(*) FILTER (WHERE rt.status IN ('failed', 'cancelled'))::bigint AS failures,
-    (SELECT count(*) FROM room_memory_revision rmr
-     WHERE rmr.workspace_id = $1 AND rmr.room_id = $2
-       AND rmr.review_status = 'accepted')::bigint AS accepted_syntheses,
-    (SELECT count(*) FROM room_artifact ra
-     WHERE ra.workspace_id = $1 AND ra.room_id = $2
-       AND ra.target_id IS NOT NULL)::bigint AS promoted_artifacts
-FROM room_turn rt
-LEFT JOIN LATERAL (
-    SELECT COALESCE(bool_or(atq.id IS NOT NULL), false) AS has_task,
-           COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks,
-           COALESCE(bool_or(
-               atq.id IS NOT NULL
-               AND (tu.task_id IS NULL OR tu.cost_usd_ticks IS NULL)
-           ), false) AS has_uncosted_usage
-    FROM agent_task_queue atq
-    LEFT JOIN task_usage tu ON tu.task_id = atq.id
-    WHERE atq.room_turn_id = rt.id
-) attempt_usage ON true
-WHERE rt.workspace_id = $1 AND rt.room_id = $2
+WITH turn_usage AS (
+    SELECT count(*) FILTER (WHERE rt.status <> 'refused')::bigint AS turns_total,
+           COALESCE(sum(attempt_usage.cost_ticks), 0)::bigint AS cost_ticks,
+           count(*) FILTER (
+               WHERE rt.status <> 'refused' AND attempt_usage.has_task
+                 AND attempt_usage.has_uncosted_usage
+           )::bigint AS uncosted_turns,
+           count(*) FILTER (WHERE rt.status IN ('failed', 'cancelled'))::bigint AS failures
+    FROM room_turn rt
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(bool_or(atq.id IS NOT NULL), false) AS has_task,
+               COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks,
+               COALESCE(bool_or(
+                   atq.id IS NOT NULL
+                   AND (tu.task_id IS NULL OR tu.cost_usd_ticks IS NULL)
+               ), false) AS has_uncosted_usage
+        FROM agent_task_queue atq
+        LEFT JOIN task_usage tu ON tu.task_id = atq.id
+        WHERE atq.room_turn_id = rt.id
+    ) attempt_usage ON true
+    WHERE rt.workspace_id = $1 AND rt.room_id = $2
+), cycle_usage AS (
+    SELECT GREATEST(count(*) - 1, 0)::bigint AS repeat_run_count,
+           count(*) FILTER (WHERE status = 'failed')::bigint AS failed_cycles,
+           count(*) FILTER (WHERE status = 'refused')::bigint AS refused_cycles,
+           count(DISTINCT date_trunc('week', created_at))::bigint AS active_weeks
+    FROM room_cycle
+    WHERE workspace_id = $1 AND room_id = $2
+), review_usage AS (
+    SELECT count(*) FILTER (WHERE review_status = 'accepted')::bigint AS accepted_syntheses,
+           COALESCE(
+               percentile_cont(0.5) WITHIN GROUP (
+                   ORDER BY extract(epoch FROM (reviewed_at - created_at))
+               ) FILTER (WHERE reviewed_at IS NOT NULL),
+               0
+           )::double precision AS median_review_latency_seconds
+    FROM room_memory_revision
+    WHERE workspace_id = $1 AND room_id = $2
+), artifact_usage AS (
+    SELECT count(*) FILTER (WHERE target_id IS NOT NULL)::bigint AS promoted_artifacts
+    FROM room_artifact
+    WHERE workspace_id = $1 AND room_id = $2
+)
+SELECT turns.turns_total, turns.cost_ticks, turns.uncosted_turns, turns.failures,
+       reviews.accepted_syntheses, artifacts.promoted_artifacts,
+       cycles.repeat_run_count, cycles.active_weeks, reviews.median_review_latency_seconds,
+       CASE WHEN cycles.active_weeks = 0 THEN 0::double precision
+            ELSE reviews.accepted_syntheses::double precision / cycles.active_weeks
+       END::double precision AS accepted_outcomes_per_active_week,
+       CASE WHEN reviews.accepted_syntheses = 0 THEN 0::double precision
+            ELSE artifacts.promoted_artifacts::double precision / reviews.accepted_syntheses
+       END::double precision AS promotion_rate,
+       cycles.failed_cycles, cycles.refused_cycles,
+       CASE WHEN reviews.accepted_syntheses = 0 THEN 0::double precision
+            ELSE turns.cost_ticks::double precision / reviews.accepted_syntheses
+       END::double precision AS cost_ticks_per_accepted_outcome
+FROM turn_usage turns, cycle_usage cycles, review_usage reviews, artifact_usage artifacts
 `
 
 type GetRoomUsageSummaryParams struct {
@@ -1948,12 +1978,20 @@ type GetRoomUsageSummaryParams struct {
 }
 
 type GetRoomUsageSummaryRow struct {
-	TurnsTotal        int64 `json:"turns_total"`
-	CostTicks         int64 `json:"cost_ticks"`
-	UncostedTurns     int64 `json:"uncosted_turns"`
-	Failures          int64 `json:"failures"`
-	AcceptedSyntheses int64 `json:"accepted_syntheses"`
-	PromotedArtifacts int64 `json:"promoted_artifacts"`
+	TurnsTotal                    int64   `json:"turns_total"`
+	CostTicks                     int64   `json:"cost_ticks"`
+	UncostedTurns                 int64   `json:"uncosted_turns"`
+	Failures                      int64   `json:"failures"`
+	AcceptedSyntheses             int64   `json:"accepted_syntheses"`
+	PromotedArtifacts             int64   `json:"promoted_artifacts"`
+	RepeatRunCount                int64   `json:"repeat_run_count"`
+	ActiveWeeks                   int64   `json:"active_weeks"`
+	MedianReviewLatencySeconds    float64 `json:"median_review_latency_seconds"`
+	AcceptedOutcomesPerActiveWeek float64 `json:"accepted_outcomes_per_active_week"`
+	PromotionRate                 float64 `json:"promotion_rate"`
+	FailedCycles                  int64   `json:"failed_cycles"`
+	RefusedCycles                 int64   `json:"refused_cycles"`
+	CostTicksPerAcceptedOutcome   float64 `json:"cost_ticks_per_accepted_outcome"`
 }
 
 func (q *Queries) GetRoomUsageSummary(ctx context.Context, arg GetRoomUsageSummaryParams) (GetRoomUsageSummaryRow, error) {
@@ -1966,6 +2004,14 @@ func (q *Queries) GetRoomUsageSummary(ctx context.Context, arg GetRoomUsageSumma
 		&i.Failures,
 		&i.AcceptedSyntheses,
 		&i.PromotedArtifacts,
+		&i.RepeatRunCount,
+		&i.ActiveWeeks,
+		&i.MedianReviewLatencySeconds,
+		&i.AcceptedOutcomesPerActiveWeek,
+		&i.PromotionRate,
+		&i.FailedCycles,
+		&i.RefusedCycles,
+		&i.CostTicksPerAcceptedOutcome,
 	)
 	return i, err
 }
@@ -2600,6 +2646,147 @@ func (q *Queries) ListRoomTurnsByCycle(ctx context.Context, arg ListRoomTurnsByC
 			&i.TurnKind,
 			&i.Attempt,
 			&i.IdempotencyKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoomValueSignals = `-- name: ListRoomValueSignals :many
+WITH cycle_stats AS (
+    SELECT room_id,
+           count(*)::bigint AS cycle_count,
+           GREATEST(count(*) - 1, 0)::bigint AS repeat_run_count,
+           count(*) FILTER (WHERE status = 'failed')::bigint AS failed_cycles,
+           count(*) FILTER (WHERE status = 'refused')::bigint AS refused_cycles,
+           count(DISTINCT date_trunc('week', created_at))::bigint AS active_weeks
+    FROM room_cycle
+    WHERE workspace_id = $1
+    GROUP BY room_id
+), review_stats AS (
+    SELECT room_id,
+           count(*) FILTER (WHERE review_status = 'accepted')::bigint AS accepted_outcomes,
+           COALESCE(
+               percentile_cont(0.5) WITHIN GROUP (
+                   ORDER BY extract(epoch FROM (reviewed_at - created_at))
+               ) FILTER (WHERE reviewed_at IS NOT NULL),
+               0
+           )::double precision AS median_review_latency_seconds
+    FROM room_memory_revision
+    WHERE workspace_id = $1
+    GROUP BY room_id
+), artifact_stats AS (
+    SELECT room_id,
+           count(*) FILTER (WHERE target_id IS NOT NULL)::bigint AS promoted_artifacts
+    FROM room_artifact
+    WHERE workspace_id = $1
+    GROUP BY room_id
+)
+SELECT r.id AS room_id,
+       accepted.id AS last_accepted_revision_id,
+       accepted.reviewed_at AS last_accepted_at,
+       latest.id AS last_cycle_id,
+       COALESCE(latest.status, '') AS last_run_status,
+       COALESCE(latest.phase, '') AS last_run_phase,
+       latest.refusal_reason AS last_run_reason,
+       COALESCE(latest.completed_at, latest.created_at) AS last_run_at,
+       COALESCE(latest_cost.cost_ticks, 0)::bigint AS last_run_cost_ticks,
+       COALESCE(cycles.repeat_run_count, 0)::bigint AS repeat_run_count,
+       COALESCE(reviews.accepted_outcomes, 0)::bigint AS accepted_outcomes,
+       COALESCE(cycles.active_weeks, 0)::bigint AS active_weeks,
+       CASE WHEN COALESCE(cycles.active_weeks, 0) = 0 THEN 0::double precision
+            ELSE COALESCE(reviews.accepted_outcomes, 0)::double precision / cycles.active_weeks
+       END::double precision AS accepted_outcomes_per_active_week,
+       COALESCE(reviews.median_review_latency_seconds, 0)::double precision AS median_review_latency_seconds,
+       CASE WHEN COALESCE(reviews.accepted_outcomes, 0) = 0 THEN 0::double precision
+            ELSE COALESCE(artifacts.promoted_artifacts, 0)::double precision / reviews.accepted_outcomes
+       END::double precision AS promotion_rate,
+       COALESCE(cycles.failed_cycles, 0)::bigint AS failed_cycles,
+       COALESCE(cycles.refused_cycles, 0)::bigint AS refused_cycles
+FROM room r
+LEFT JOIN cycle_stats cycles ON cycles.room_id = r.id
+LEFT JOIN review_stats reviews ON reviews.room_id = r.id
+LEFT JOIN artifact_stats artifacts ON artifacts.room_id = r.id
+LEFT JOIN LATERAL (
+    SELECT revision.id, revision.reviewed_at
+    FROM room_memory_revision revision
+    WHERE revision.workspace_id = r.workspace_id AND revision.room_id = r.id
+      AND revision.review_status = 'accepted'
+    ORDER BY revision.reviewed_at DESC, revision.id DESC
+    LIMIT 1
+) accepted ON true
+LEFT JOIN LATERAL (
+    SELECT cycle.id, cycle.status, cycle.phase, cycle.refusal_reason,
+           cycle.completed_at, cycle.created_at
+    FROM room_cycle cycle
+    WHERE cycle.workspace_id = r.workspace_id AND cycle.room_id = r.id
+    ORDER BY cycle.sequence DESC, cycle.id DESC
+    LIMIT 1
+) latest ON true
+LEFT JOIN LATERAL (
+    SELECT COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks
+    FROM room_turn turn_row
+    LEFT JOIN agent_task_queue task ON task.room_turn_id = turn_row.id
+    LEFT JOIN task_usage tu ON tu.task_id = task.id
+    WHERE turn_row.workspace_id = r.workspace_id AND turn_row.room_id = r.id
+      AND turn_row.cycle_id = latest.id AND turn_row.status <> 'refused'
+) latest_cost ON true
+WHERE r.workspace_id = $1
+ORDER BY r.updated_at DESC, r.id
+`
+
+type ListRoomValueSignalsRow struct {
+	RoomID                        pgtype.UUID        `json:"room_id"`
+	LastAcceptedRevisionID        pgtype.UUID        `json:"last_accepted_revision_id"`
+	LastAcceptedAt                pgtype.Timestamptz `json:"last_accepted_at"`
+	LastCycleID                   pgtype.UUID        `json:"last_cycle_id"`
+	LastRunStatus                 string             `json:"last_run_status"`
+	LastRunPhase                  string             `json:"last_run_phase"`
+	LastRunReason                 pgtype.Text        `json:"last_run_reason"`
+	LastRunAt                     pgtype.Timestamptz `json:"last_run_at"`
+	LastRunCostTicks              int64              `json:"last_run_cost_ticks"`
+	RepeatRunCount                int64              `json:"repeat_run_count"`
+	AcceptedOutcomes              int64              `json:"accepted_outcomes"`
+	ActiveWeeks                   int64              `json:"active_weeks"`
+	AcceptedOutcomesPerActiveWeek float64            `json:"accepted_outcomes_per_active_week"`
+	MedianReviewLatencySeconds    float64            `json:"median_review_latency_seconds"`
+	PromotionRate                 float64            `json:"promotion_rate"`
+	FailedCycles                  int64              `json:"failed_cycles"`
+	RefusedCycles                 int64              `json:"refused_cycles"`
+}
+
+func (q *Queries) ListRoomValueSignals(ctx context.Context, workspaceID pgtype.UUID) ([]ListRoomValueSignalsRow, error) {
+	rows, err := q.db.Query(ctx, listRoomValueSignals, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoomValueSignalsRow{}
+	for rows.Next() {
+		var i ListRoomValueSignalsRow
+		if err := rows.Scan(
+			&i.RoomID,
+			&i.LastAcceptedRevisionID,
+			&i.LastAcceptedAt,
+			&i.LastCycleID,
+			&i.LastRunStatus,
+			&i.LastRunPhase,
+			&i.LastRunReason,
+			&i.LastRunAt,
+			&i.LastRunCostTicks,
+			&i.RepeatRunCount,
+			&i.AcceptedOutcomes,
+			&i.ActiveWeeks,
+			&i.AcceptedOutcomesPerActiveWeek,
+			&i.MedianReviewLatencySeconds,
+			&i.PromotionRate,
+			&i.FailedCycles,
+			&i.RefusedCycles,
 		); err != nil {
 			return nil, err
 		}

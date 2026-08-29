@@ -7,7 +7,6 @@
     "show_archived": "アーカイブ済みを表示（{{count}}）",
     "archived_badge": "アーカイブ済み",
     "archived_hint": "新規の割り当てには使えません。すでにこのステータスのタスクはそのままです。",
-    "flag_off": "このデプロイではカスタムステータスがまだ有効化されていません。下の組み込みステータスは通常どおり使えます。",
     "reorder_failed": "並び順を保存できませんでした。",
     "actions": {
       "open": "{{name}} の操作",
@@ -22,6 +21,7 @@
       "name": "名前",
       "name_placeholder": "例: Code Review",
       "key_hint": "API と CLI では {{key}} として参照されます。",
+      "created": "ステータスを作成しました。API と CLI では {{key}} として参照されます。",
       "category": "カテゴリ",
       "category_locked": "カテゴリは変更できません。すでにこのステータスのタスクが依存しています。",
       "description": "説明",
@@ -107,13 +107,24 @@
     "appearance_title": "外観",
     "appearance_hint": "画面の素材感と、周囲の明るさへの反応を選びます。",
     "appearance_sync": {
-      "default": "製品のデフォルトを使用中",
+      "default": "Tension とシステム設定を使用中",
       "synced": "デバイス間で同期済み",
-      "pending": "同期待ち",
-      "local_only": "このデバイスに保存済み",
-      "failed": "同期に失敗しました",
+      "pending": "このデバイスに適用し、同期待ちです",
+      "local_only": "このデバイスのみに適用して保存しました",
+      "failed": "同期に失敗しました。選択内容はこのデバイスに適用されています。",
       "retry": "同期を再試行",
-      "reset": "外観をリセット"
+      "copy_diagnostics": "診断情報をコピー",
+      "diagnostics_copied": "外観の診断情報をコピーしました",
+      "diagnostics_copy_failed": "外観の診断情報をコピーできませんでした",
+      "reset": "外観をリセット",
+      "reset_title": "外観をリセットしますか？",
+      "reset_description": "スキンを Tension、カラーモードをシステム設定に戻します。",
+      "reset_confirm": "デフォルトに戻す",
+      "cancel": "キャンセル",
+      "undo": "元に戻す",
+      "undo_applied": "以前の外観に戻しました",
+      "undo_expired": "別の場所で外観が変更されたため、元に戻せませんでした",
+      "recovered": "無効な外観設定を安全なデフォルト値に置き換えました"
     },
     "skin": {
       "title": "スキン",
@@ -611,6 +622,10 @@
       "agent_activity": {
         "label": "エージェントのアクティビティ",
         "description": "エージェントの作業が完了または失敗したとき"
+      },
+      "rooms": {
+        "label": "ルーム",
+        "description": "レビュー待ち、失敗したサイクル、ブロックされたルーム実行"
       }
     },
     "system": {
@@ -1182,6 +1197,15 @@
     "inviting": "招待中...",
     "toast_invitation_sent": "招待を送信しました",
     "toast_invitation_failed": "招待を送信できませんでした",
+    "toast_seat_capacity_unavailable": "メンバー席を確認できませんでした。もう一度お試しください。",
+    "toast_seat_capacity_rate_limited": "席数のリクエストが集中しています。しばらくしてからもう一度お試しください。",
+    "seat_purchase_title": "席を追加して招待を送信しますか？",
+    "seat_purchase_description": "{{email}} に使用できる購入済みの席がありません。Stripe の見積もりを確認し、席の購入と招待をまとめて承認してください。",
+    "purchase_seat_and_invite": "1 席を購入して招待",
+    "retry_seat_purchase": "購入を再試行",
+    "seat_purchase_waiting": "Stripe による新しい席の確認を待っています。招待を自動送信するには、このページを開いたままにしてください。ページを離れても購入済みの席は保持され、後で再度招待できます。",
+    "seat_purchase_timeout": "席の購入は送信されましたが、確認に時間がかかっています。招待は送信されていません。請求画面に空き席が表示された後、もう一度招待してください。",
+    "seat_purchase_capacity_taken": "購入した席はすでに利用できないため、招待は送信されませんでした。現在の席を確認してから再試行してください。",
     "no_members": "メンバーが見つかりません。",
     "pending_title": "保留中の招待（{{count}}）",
     "pending_status": "保留中",

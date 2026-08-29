@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, ChevronRight, ListChevronsDownUp, Copy, Link, Loader2, MoreHorizontal, Pencil, Quote, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, ListChevronsDownUp, Copy, Link, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, Quote, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@multica/ui/components/ui/card";
 import { Button } from "@multica/ui/components/ui/button";
@@ -114,6 +114,7 @@ interface CommentCardProps {
   onEdit: (commentId: string, content: string, attachmentIds: string[], suppressAgentIds?: string[], contentBase?: string) => Promise<void>;
   onDelete: (commentId: string) => void;
   onToggleReaction: (commentId: string, emoji: string) => void;
+  onCreateSubIssue?: (commentId: string) => void;
   /** Resolve/unresolve any comment in this thread (commentId = the target row). */
   onResolveToggle?: (commentId: string, resolved: boolean) => void;
   /**
@@ -571,21 +572,26 @@ function CommentRevisionConflict({
       localLabel={t(($) => $.revision.local_version)}
       serverValue={serverContent}
       localValue={localContent}
-      actions={(
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={saving}
-            onClick={onKeepLocal}
-          >
-            {t(($) => $.revision.keep_local)}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onUseServer}>
-            {t(($) => $.revision.use_server)}
-          </Button>
-        </div>
+      serverAction={(
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onUseServer}
+        >
+          {t(($) => $.revision.use_server)}
+        </Button>
+      )}
+      localAction={(
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={saving}
+          onClick={onKeepLocal}
+        >
+          {t(($) => $.revision.keep_local)}
+        </Button>
       )}
     />
   );
@@ -605,6 +611,7 @@ function CommentRow({
   onEdit,
   onDelete,
   onToggleReaction,
+  onCreateSubIssue,
   onResolveToggle,
   onCopyLink,
   onQuote,
@@ -620,6 +627,7 @@ function CommentRow({
   onEdit: (commentId: string, content: string, attachmentIds: string[], suppressAgentIds?: string[], contentBase?: string) => Promise<void>;
   onDelete: (commentId: string) => void;
   onToggleReaction: (commentId: string, emoji: string) => void;
+  onCreateSubIssue?: (commentId: string) => void;
   onResolveToggle?: (commentId: string, resolved: boolean) => void;
   onCopyLink: (commentId: string) => void;
   onQuote: (content: string) => void;
@@ -675,8 +683,13 @@ function CommentRow({
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
-                  <MoreHorizontal className="h-4 w-4" />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground"
+                  aria-label={t(($) => $.comment.more_actions)}
+                >
+                  <MoreHorizontal className="h-4 w-4" aria-hidden />
                 </Button>
               }
             />
@@ -693,6 +706,12 @@ function CommentRow({
                 <Link className="h-3.5 w-3.5" />
                 {t(($) => $.comment.copy_link_action)}
               </DropdownMenuItem>
+              {onCreateSubIssue && entry.comment_type === "comment" && (
+                <DropdownMenuItem onClick={() => onCreateSubIssue(entry.id)}>
+                  <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden />
+                  {t(($) => $.source_context.create_action)}
+                </DropdownMenuItem>
+              )}
               {!!entry.content?.trim() && (
                 <DropdownMenuItem onClick={() => onQuote(entry.content ?? "")}>
                   <Quote className="h-3.5 w-3.5" />
@@ -870,6 +889,7 @@ function CommentCardImpl({
   onEdit,
   onDelete,
   onToggleReaction,
+  onCreateSubIssue,
   onResolveToggle,
   onCollapseResolved,
   expandedResolvedIds,
@@ -1033,8 +1053,13 @@ function CommentCardImpl({
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
-                          <MoreHorizontal className="h-4 w-4" />
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground"
+                          aria-label={t(($) => $.comment.more_actions)}
+                        >
+                          <MoreHorizontal className="h-4 w-4" aria-hidden />
                         </Button>
                       }
                     />
@@ -1051,6 +1076,12 @@ function CommentCardImpl({
                         <Link className="h-3.5 w-3.5" />
                         {t(($) => $.comment.copy_link_action)}
                       </DropdownMenuItem>
+                      {onCreateSubIssue && entry.comment_type === "comment" && (
+                        <DropdownMenuItem onClick={() => onCreateSubIssue(entry.id)}>
+                          <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden />
+                          {t(($) => $.source_context.create_action)}
+                        </DropdownMenuItem>
+                      )}
                       {!!entry.content?.trim() && (
                         <DropdownMenuItem onClick={() => quoteInReply(entry.content ?? "")}>
                           <Quote className="h-3.5 w-3.5" />
@@ -1249,6 +1280,7 @@ function CommentCardImpl({
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onToggleReaction={onToggleReaction}
+                    onCreateSubIssue={onCreateSubIssue}
                     onResolveToggle={onResolveToggle}
                     onCopyLink={copyCommentLink}
                     onQuote={quoteInReply}
@@ -1290,6 +1322,7 @@ function CommentCardImpl({
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onToggleReaction={onToggleReaction}
+                    onCreateSubIssue={onCreateSubIssue}
                     onResolveToggle={onResolveToggle}
                     onCopyLink={copyCommentLink}
                     onQuote={quoteInReply}

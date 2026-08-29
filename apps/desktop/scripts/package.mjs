@@ -18,9 +18,9 @@
 // renderer code and white-screens on launch.
 //
 // Extra CLI args after `pnpm package --` are forwarded to electron-builder
-// unchanged (e.g. `--mac --arm64`). For an unsigned local smoke-test
-// build, set `CSC_IDENTITY_AUTO_DISCOVERY=false` so electron-builder falls
-// back to an ad-hoc signature instead of requiring a Developer ID cert.
+// unchanged (e.g. `--mac --arm64`). For an unsigned build, set
+// `CSC_IDENTITY_AUTO_DISCOVERY=false` so electron-builder skips
+// Developer ID signing instead of requiring a certificate.
 //
 // The `normalizeGitVersion`, `deriveVersion`, and `DESCRIBE_ARGS` exports let
 // tests cover version derivation both as a pure string transform and as the
@@ -329,7 +329,7 @@ export function builderArgsForTarget(
   parsed,
   version,
   {
-    disableMacNotarize = false,
+    unsignedMac = false,
     hostPlatform = process.platform,
     publishRepositoryArgs = [],
     useScopedOutputDir = false,
@@ -337,7 +337,9 @@ export function builderArgsForTarget(
 ) {
   const builderArgs = [];
   if (version) builderArgs.push(`-c.extraMetadata.version=${version}`);
-  if (disableMacNotarize) builderArgs.push("-c.mac.notarize=false");
+  if (unsignedMac && target.platform === "mac") {
+    builderArgs.push("-c.mac.identity=null", "-c.mac.notarize=false");
+  }
   builderArgs.push(PLATFORM_CONFIG[target.platform].builderFlag);
   const requestedTargets = parsed.platformTargets[target.platform];
   if (
@@ -448,10 +450,12 @@ function main() {
     );
   }
 
-  const disableMacNotarize = !process.env.APPLE_TEAM_ID;
-  if (disableMacNotarize) {
+  const unsignedMac =
+    buildMatrix.some((target) => target.platform === "mac") &&
+    !process.env.APPLE_TEAM_ID;
+  if (unsignedMac) {
     console.warn(
-      "[package] APPLE_TEAM_ID not set — skipping notarization (local dev build). " +
+      "[package] APPLE_TEAM_ID not set — producing an unsigned, non-notarized macOS build. " +
         "Set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID for a release build.",
     );
   }
@@ -478,7 +482,7 @@ function main() {
     );
 
     const builderArgs = builderArgsForTarget(target, parsed, version, {
-      disableMacNotarize,
+      unsignedMac,
       hostPlatform: process.platform,
       publishRepositoryArgs,
       useScopedOutputDir,

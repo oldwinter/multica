@@ -39,6 +39,77 @@ func TestNormalizeLMWikiSourceClassesAllowsEverySharedClass(t *testing.T) {
 	}
 }
 
+func TestNormalizeLMWikiSourceWikiPagesCanonicalizesAndRejectsConflicts(t *testing.T) {
+	t.Parallel()
+
+	got, err := normalizeLMWikiSourceWikiPages([]LMWikiSourceWikiPage{
+		{PageID: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB", RevisionNumber: 3},
+		{PageID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", RevisionNumber: 1},
+		{PageID: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", RevisionNumber: 3},
+	})
+	if err != nil {
+		t.Fatalf("normalize Wiki page sources: %v", err)
+	}
+	want := []LMWikiSourceWikiPage{
+		{PageID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", RevisionNumber: 1},
+		{PageID: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", RevisionNumber: 3},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Wiki page sources = %#v, want %#v", got, want)
+	}
+
+	_, err = normalizeLMWikiSourceWikiPages([]LMWikiSourceWikiPage{
+		{PageID: want[0].PageID, RevisionNumber: 1},
+		{PageID: want[0].PageID, RevisionNumber: 2},
+	})
+	if !errors.Is(err, ErrLMWikiInvalidSourcePolicy) {
+		t.Fatalf("conflicting selection error = %v, want ErrLMWikiInvalidSourcePolicy", err)
+	}
+}
+
+func TestLMWikiSourcePolicyExpectationDetectsStaleVersionOrDigest(t *testing.T) {
+	t.Parallel()
+
+	current, err := newLMWikiSourcePolicyState(LMWikiSourcePolicy{SourceClasses: []string{"issue"}}, 4)
+	if err != nil {
+		t.Fatalf("build current policy: %v", err)
+	}
+	if err := checkLMWikiSourcePolicyExpectation(current, LMWikiSourcePolicyExpectation{
+		PolicyVersion: current.PolicyVersion, PolicyDigest: current.PolicyDigest,
+	}); err != nil {
+		t.Fatalf("matching expectation: %v", err)
+	}
+	for _, expectation := range []LMWikiSourcePolicyExpectation{
+		{PolicyVersion: 3, PolicyDigest: current.PolicyDigest},
+		{PolicyVersion: current.PolicyVersion, PolicyDigest: "sha256:stale"},
+	} {
+		err := checkLMWikiSourcePolicyExpectation(current, expectation)
+		var stale *LMWikiSourcePolicyStaleError
+		if !errors.As(err, &stale) || stale.Current.PolicyVersion != current.PolicyVersion {
+			t.Fatalf("stale expectation error = %#v, want current policy", err)
+		}
+	}
+}
+
+func TestLMWikiPolicyPinsRevisionRequiresEnabledClassAndExactRevision(t *testing.T) {
+	t.Parallel()
+
+	state := LMWikiSourcePolicyState{LMWikiSourcePolicy: LMWikiSourcePolicy{
+		SourceClasses: []string{"issue", "wiki_page"},
+		WikiPages:     []LMWikiSourceWikiPage{{PageID: "page-1", RevisionNumber: 7}},
+	}}
+	if !lmWikiPolicyPinsRevision(state, "page-1", 7) {
+		t.Fatal("exact enabled revision was not recognized")
+	}
+	if lmWikiPolicyPinsRevision(state, "page-1", 8) {
+		t.Fatal("newer revision was treated as pinned")
+	}
+	state.SourceClasses = []string{"issue"}
+	if lmWikiPolicyPinsRevision(state, "page-1", 7) {
+		t.Fatal("disabled Wiki class was treated as pinned")
+	}
+}
+
 func TestLMWikiSourcePolicyStateCanonicalizesDigestAndExclusions(t *testing.T) {
 	t.Parallel()
 

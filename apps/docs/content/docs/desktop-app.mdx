@@ -36,6 +36,20 @@ After installing, sign in with the same email you use on the web. Once signed in
 The CLI bundled with Desktop only serves the app's managed runtime. If you also want to run commands like `multica issue` in a terminal, install the CLI separately following [step 2 of the quickstart](/cloud-quickstart#2-connect-a-computer).
 </Callout>
 
+<Callout type="warning">
+Some community and downstream macOS releases are unsigned and have not been notarized by Apple. Only override the warning when you downloaded the installer from the GitHub repository you trust.
+</Callout>
+
+### macOS: opening an unsigned build
+
+If macOS says it cannot verify the developer or check the app for malicious software:
+
+1. Try to open Multica once, then close the warning.
+2. Open **Apple menu → System Settings → Privacy & Security** and scroll to **Security**.
+3. Click **Open Anyway** next to the blocked Multica app, authenticate, then confirm **Open**.
+
+macOS records an exception for that copy of Multica, so later launches work normally. The button only appears after a blocked launch and may be available for a limited time. Do not disable Gatekeeper globally. See [Apple's current instructions](https://support.apple.com/102445) for the exact system wording.
+
 ## Desktop tabs
 
 Desktop saves tabs per workspace. For example, if you open three issues in workspace A and switch to workspace B, you see B's own tabs; switch back to A and the three earlier tabs are still there.
@@ -65,6 +79,7 @@ Updates are distributed per OS and CPU architecture:
 - Windows arm64 and macOS x64 (Intel) each use their own update feed;
 - all other architectures use the default feed;
 - the app matches the update feed automatically — no manual selection needed;
+- unsigned community or downstream macOS builds cannot auto-update; install each newer `.dmg` manually;
 - on Linux, auto-update only works for `.AppImage`; update `.deb` and `.rpm` by installing a new package over the old one;
 - if auto-update fails, likewise install over the top with the matching installer from the downloads page.
 

@@ -53,6 +53,12 @@ func (s *Service) Usage(ctx context.Context, workspaceID, roomID pgtype.UUID) (U
 	return UsageSummary{
 		TurnsTotal: usage.TurnsTotal, CostTicks: usage.CostTicks, UncostedTurns: usage.UncostedTurns,
 		Failures: usage.Failures, AcceptedSyntheses: usage.AcceptedSyntheses, PromotedArtifacts: usage.PromotedArtifacts,
+		RepeatRunCount: usage.RepeatRunCount, ActiveWeeks: usage.ActiveWeeks,
+		MedianReviewLatencySeconds:    usage.MedianReviewLatencySeconds,
+		AcceptedOutcomesPerActiveWeek: usage.AcceptedOutcomesPerActiveWeek,
+		PromotionRate:                 usage.PromotionRate, FailedCycles: usage.FailedCycles,
+		RefusedCycles:               usage.RefusedCycles,
+		CostTicksPerAcceptedOutcome: usage.CostTicksPerAcceptedOutcome,
 	}, nil
 }
 

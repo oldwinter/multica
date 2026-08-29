@@ -165,7 +165,7 @@ export function RunConfirmModal({
     return handoffSupported(readRuntimeCliVersion(runtime.metadata));
   }, [targetAgentId, agents, runtimes]);
 
-  const twinPreview = usePreviewTwinBriefing();
+  const twinPreview = usePreviewTwinBriefing(wsId);
   const canPreviewTwin = issueIds.length === 1 && !!targetAgentId && !!d.request;
   const previewIntentKey = [targetAgentId, d.projectId, issueIds[0], d.request].join("\u0000");
   useEffect(() => {
@@ -435,7 +435,7 @@ export function RunConfirmModal({
                   <dl className="grid min-w-0 gap-2 text-caption sm:grid-cols-2">
                     <div className="min-w-0">
                       <dt className="text-muted-foreground">{t(($) => $.run_confirm.twin_version_id)}</dt>
-                      <dd className="break-all font-mono text-foreground">{activePreview.twinVersion.id}</dd>
+                      <dd className="text-foreground">{activePreview.twinVersion.versionNumber}</dd>
                     </div>
                     <div className="min-w-0">
                       <dt className="text-muted-foreground">{t(($) => $.run_confirm.twin_version_digest)}</dt>

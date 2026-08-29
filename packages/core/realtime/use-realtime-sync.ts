@@ -45,7 +45,7 @@ import {
   invalidateUpdatedAtSortedIssueLists,
 } from "../issues/cache-coordinator";
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged, onInboxIssueDeleted, onInboxSummaryInvalidate } from "../inbox/ws-updaters";
-import { inboxKeys } from "../inbox/queries";
+import { inboxKeys, isRoomInboxItem } from "../inbox/queries";
 import {
   notificationPreferenceOptions,
   notificationPreferenceKeys,
@@ -78,7 +78,7 @@ import {
   promotePendingChatTask,
   removePendingChatTask,
 } from "../chat/pending";
-import { resolvePostAuthDestination, useHasOnboarded } from "../paths";
+import { paths, resolvePostAuthDestination, useHasOnboarded } from "../paths";
 import type {
   MemberAddedPayload,
   WorkspaceDeletedPayload,
@@ -124,6 +124,7 @@ import type {
   ChatPendingTask,
   ChatMessagesPage,
   ChatSession,
+  ChatSessionCreatedPayload,
   InvitationCreatedPayload,
   WikiProposalReviewedPayload,
   WSEventType,
@@ -213,6 +214,7 @@ export function invalidateTwinRealtimeQueries(
       if (!proposalId) return invalidateAllTwinQueries(qc, wsId);
       qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
       qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       const versionId = twinRealtimeID(payload, "version_id");
       if (versionId) {
         qc.invalidateQueries({ queryKey: twinKeys.version(wsId, versionId) });
@@ -227,6 +229,7 @@ export function invalidateTwinRealtimeQueries(
       qc.invalidateQueries({ queryKey: twinKeys.version(wsId, versionId) });
       qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
       qc.invalidateQueries({ queryKey: twinProfileKeys.overview(wsId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       return;
     }
     case "twin:binding_changed": {
@@ -235,6 +238,7 @@ export function invalidateTwinRealtimeQueries(
       }
       qc.invalidateQueries({ queryKey: twinExecutionKeys.bindings(wsId) });
       qc.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       return;
     }
     case "twin:deposition_changed": {
@@ -245,6 +249,7 @@ export function invalidateTwinRealtimeQueries(
       qc.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) });
       qc.invalidateQueries({ queryKey: twinKeys.overview(wsId) });
       qc.invalidateQueries({ queryKey: twinKeys.proposal(wsId, proposalId) });
+      qc.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
       return;
     }
     default:
@@ -686,6 +691,7 @@ export async function handleInboxNew(
             notificationPreferenceKeys.all(sourceWsId),
           );
       if (prefData?.preferences?.system_notifications === "muted") return;
+			if (isRoomInboxItem(item) && prefData?.preferences?.rooms === "muted") return;
     } catch {
       // Fall through with default behavior.
     }
@@ -697,12 +703,14 @@ export async function handleInboxNew(
   // client can't see) still shows the banner — the user should learn about
   // the inbox item — but with an empty slug so the click is a no-op
   // (the inbox bridge ignores empty slugs) instead of routing wrong.
+	const targetPath = roomInboxTargetPath(slug, item);
   const payload: SystemNotificationPayload = {
     slug: slug ?? "",
     itemId: item.id,
     issueKey: item.issue_id ?? item.id,
     title: item.title,
-    body: item.body ?? "",
+		body: item.body ?? "",
+		...(targetPath ? { targetPath } : {}),
   };
   const desktopAPI = (
     globalThis as unknown as {
@@ -721,6 +729,13 @@ export async function handleInboxNew(
   showWebNotification(payload);
 }
 
+function roomInboxTargetPath(slug: string | null, item: InboxItem): string | undefined {
+	if (!slug || !isRoomInboxItem(item)) return undefined;
+	const route = item.details?.route;
+	if (!route?.startsWith("/rooms?")) return undefined;
+	return `${paths.workspace(slug).rooms()}${route.slice("/rooms".length)}`;
+}
+
 function invalidateWikiCollections(qc: QueryClient, wsId: string): void {
   qc.invalidateQueries({
     predicate: (query) => {
@@ -732,6 +747,10 @@ function invalidateWikiCollections(qc: QueryClient, wsId: string): void {
       );
     },
   });
+}
+
+function invalidateWikiKnowledgeReadiness(qc: QueryClient, wsId: string): void {
+  qc.invalidateQueries({ queryKey: workspaceWikiKeys.readiness(wsId) });
 }
 
 function wikiPageID(payload: unknown): string | null {
@@ -760,22 +779,26 @@ export function applyWikiRealtimeEvent(
   switch (eventType) {
     case "wiki:page_created":
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:page_deleted":
       // detail is the parent key for revisions and proposals, so removing the
       // subtree prevents a deleted page from surviving in an inactive cache.
       qc.removeQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId) });
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:page_updated":
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:revision_created":
     case "wiki:revision_restored":
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.revisions(wsId, pageId) });
       invalidateWikiCollections(qc, wsId);
+      invalidateWikiKnowledgeReadiness(qc, wsId);
       return;
     case "wiki:proposal_created":
       qc.invalidateQueries({ queryKey: workspaceWikiKeys.proposals(wsId, pageId) });
@@ -788,6 +811,7 @@ export function applyWikiRealtimeEvent(
           qc.invalidateQueries({ queryKey: workspaceWikiKeys.detail(wsId, pageId), exact: true });
           qc.invalidateQueries({ queryKey: workspaceWikiKeys.revisions(wsId, pageId) });
           invalidateWikiCollections(qc, wsId);
+          invalidateWikiKnowledgeReadiness(qc, wsId);
           return;
         case "rejected":
           return;
@@ -814,6 +838,7 @@ export function applyLMWikiRealtimeEvent(
   eventType: LMWikiRealtimeEventType,
   payload: unknown,
 ): void {
+  invalidateWikiKnowledgeReadiness(qc, wsId);
   if (eventType === "lm_wiki:source_policy_changed") {
     qc.invalidateQueries({ queryKey: workspaceWikiKeys.sourcePolicy(wsId) });
     qc.invalidateQueries({ queryKey: lmWikiKeys.overview(wsId) });
@@ -1178,7 +1203,7 @@ export function useRealtimeSync(
       "daemon:heartbeat",
       // Chat events are handled explicitly below; do not double-invalidate.
       "chat:message", "chat:done", "chat:quick_actions", "chat:cancel_finalized", "chat:session_read",
-      "chat:session_deleted", "chat:session_updated",
+      "chat:session_created", "chat:session_deleted", "chat:session_updated",
       // Known Wiki lifecycle events use targeted invalidation handlers below.
       // Unknown future wiki:* / lm_wiki:* events still take the generic prefix
       // path above and invalidate the corresponding query tree safely.
@@ -1905,6 +1930,13 @@ export function useRealtimeSync(
       invalidateSessionLists();
     });
 
+    const unsubChatSessionCreated = ws.on("chat:session_created", (p) => {
+      const payload = p as ChatSessionCreatedPayload;
+      chatWsLogger.info("chat:session_created (global)", payload);
+      if (payload.workspace_id !== getCurrentWsId()) return;
+      invalidateSessionLists();
+    });
+
     // chat:session_updated fires after the creator renames, pins, or archives
     // a session in any tab/device. Patch the cached row inline so the dropdown
     // and badges reflect the change without a full sessions-list refetch — see
@@ -1989,6 +2021,7 @@ export function useRealtimeSync(
       unsubTaskCompleted();
       unsubTaskFailed();
       unsubChatSessionRead();
+      unsubChatSessionCreated();
       unsubChatSessionDeleted();
       unsubChatSessionUpdated();
       if (taskMessageFlushTimer) clearTimeout(taskMessageFlushTimer);

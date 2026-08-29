@@ -35,7 +35,8 @@ RETURNING *;
 -- Appearance preferences use a client-authored explicit-change timestamp.
 -- The four values are validated as a complete tuple by the handler and schema.
 -- A delayed write from an older device therefore returns the current row
--- without replacing a newer explicit choice.
+-- without replacing a newer explicit choice. Undo additionally supplies the
+-- timestamp it expects to replace so the authoritative write is atomic.
 UPDATE "user" SET
     name = COALESCE($2, name),
     avatar_url = COALESCE($3, avatar_url),
@@ -49,24 +50,28 @@ UPDATE "user" SET
     skin = CASE
         WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+            AND (sqlc.narg('appearance_expected_updated_at')::timestamptz IS NULL OR appearance_updated_at = sqlc.narg('appearance_expected_updated_at')::timestamptz)
         THEN sqlc.narg('skin')::text
         ELSE skin
     END,
     appearance = CASE
         WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+            AND (sqlc.narg('appearance_expected_updated_at')::timestamptz IS NULL OR appearance_updated_at = sqlc.narg('appearance_expected_updated_at')::timestamptz)
         THEN sqlc.narg('appearance')::text
         ELSE appearance
     END,
     appearance_token_version = CASE
         WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+            AND (sqlc.narg('appearance_expected_updated_at')::timestamptz IS NULL OR appearance_updated_at = sqlc.narg('appearance_expected_updated_at')::timestamptz)
         THEN sqlc.narg('appearance_token_version')::integer
         ELSE appearance_token_version
     END,
     appearance_updated_at = CASE
         WHEN sqlc.narg('appearance_change_at')::timestamptz IS NOT NULL
             AND (appearance_updated_at IS NULL OR sqlc.narg('appearance_change_at')::timestamptz >= appearance_updated_at)
+            AND (sqlc.narg('appearance_expected_updated_at')::timestamptz IS NULL OR appearance_updated_at = sqlc.narg('appearance_expected_updated_at')::timestamptz)
         THEN sqlc.narg('appearance_change_at')::timestamptz
         ELSE appearance_updated_at
     END,

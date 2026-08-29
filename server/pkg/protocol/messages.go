@@ -6,8 +6,13 @@ const (
 	DaemonCapabilitySkillBundlesV1      = "skill-bundles-v1"
 	DaemonCapabilityCoalescedCommentsV1 = "coalesced-comments-v1"
 	DaemonCapabilityExecutionManifestV1 = "execution-manifest-v1"
-	DaemonCapabilityAgentSkillV1        = "agent-skill-v1"
-	DaemonCapabilityRemoteMCPV1         = "remote-mcp-v1"
+	// DaemonCapabilitySkillExecutionManifestV1 advertises the optional task
+	// completion field containing the daemon-resolved Multica Skill bundles.
+	// The older execution-manifest-v1 token described a removed claim-time
+	// plugin contract and must not enable this completion field.
+	DaemonCapabilitySkillExecutionManifestV1 = "skill-execution-manifest-v1"
+	DaemonCapabilityAgentSkillV1             = "agent-skill-v1"
+	DaemonCapabilityRemoteMCPV1              = "remote-mcp-v1"
 	// DaemonCapabilityTwinBriefingV1 advertises that the daemon understands
 	// the bounded, signed Twin briefing carried on a task claim and appends it
 	// as lower-authority per-turn context. A server must not send briefing
@@ -25,6 +30,10 @@ const (
 	// unblocked, which let exactly such a daemon through (MUL-5707). A daemon
 	// that implements the mode says so; one that does not, cannot.
 	DaemonCapabilityLocalWorktreeV1 = "local-worktree-v1"
+	// DaemonCapabilitySourceContextQuickCreateV1 advertises support for the
+	// two-section quick-create prompt that keeps a new instruction separate
+	// from immutable historical source context.
+	DaemonCapabilitySourceContextQuickCreateV1 = "source_context_quick_create_v1"
 
 	// DaemonCapabilityRPCV1 advertises that the daemon can carry
 	// request/response RPCs over the WebSocket control connection (MUL-4257).
@@ -294,6 +303,22 @@ type ChatCancelFinalizedPayload struct {
 // Fires to other devices so their unread counts stay in sync.
 type ChatSessionReadPayload struct {
 	ChatSessionID string `json:"chat_session_id"`
+}
+
+type ChatSessionCreatedPayload struct {
+	WorkspaceID           string                   `json:"workspace_id"`
+	ChatSessionID         string                   `json:"chat_session_id"`
+	AgentID               string                   `json:"agent_id"`
+	CreatorID             string                   `json:"creator_id"`
+	Title                 string                   `json:"title"`
+	ChannelSource         ChatSessionChannelSource `json:"channel_source"`
+	IsCurrentChannelRoute bool                     `json:"is_current_channel_route"`
+}
+
+type ChatSessionChannelSource struct {
+	ChannelType    string `json:"channel_type"`
+	InstallationID string `json:"installation_id"`
+	RouteRevision  int64  `json:"route_revision"`
 }
 
 // ChatSessionDeletedPayload is broadcast when a chat session is hard-deleted

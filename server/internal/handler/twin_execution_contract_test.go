@@ -23,6 +23,7 @@ func TestTwinModelAndExecutionWritesRejectMachineCredentialsBeforeBodyDecode(t *
 			"binding":    h.UpsertTwinExecutionBinding,
 			"deposition": h.CreateTwinExecutionDeposition,
 			"feedback":   h.UpsertTwinExecutionFeedback,
+			"pause":      h.PauseTwinExecution,
 		} {
 			t.Run(actorSource+"/"+name, func(t *testing.T) {
 				req, err := http.NewRequest(http.MethodPost, "/api/twins", bytes.NewBufferString("not-json"))

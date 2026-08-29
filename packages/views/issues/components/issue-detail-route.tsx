@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCanonicalIssue } from "@multica/core/issues/canonical-id";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -24,13 +24,17 @@ interface IssueDetailRouteProps {
  * A replace, not a push: the UUID URL is the same page, and a history entry
  * for it would make Back bounce the user between two spellings of one issue.
  */
-export function useCanonicalIssueUrl(routeId: string, identifier: string | undefined) {
+export function useCanonicalIssueUrl(
+  routeId: string,
+  identifier: string | undefined,
+  hash = "",
+) {
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
   const canonicalPath = identifier ? paths.issueDetail(identifier) : null;
   const search = navigation.searchParams.toString();
   const canonicalHref = canonicalPath
-    ? `${canonicalPath}${search ? `?${search}` : ""}`
+    ? `${canonicalPath}${search ? `?${search}` : ""}${hash}`
     : null;
   // `useWorkspacePaths()` and the navigation adapter are both rebuilt on
   // render, so this ref — not the dependency array — is what guarantees the
@@ -43,6 +47,24 @@ export function useCanonicalIssueUrl(routeId: string, identifier: string | undef
     replacedRef.current = canonicalHref;
     navigation.replace(canonicalHref);
   }, [canonicalHref, identifier, routeId, navigation]);
+}
+
+export function parseCommentHighlightHash(hash: string): string | undefined {
+  const match = /^#comment-([A-Za-z0-9_-]+)$/.exec(hash);
+  return match?.[1];
+}
+
+function useCommentHighlightHash(): { hash: string; commentId?: string } {
+  const read = () => typeof window === "undefined" ? "" : window.location.hash;
+  const [hash, setHash] = useState(read);
+
+  useEffect(() => {
+    const onHashChange = () => setHash(read());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  return { hash, commentId: parseCommentHighlightHash(hash) };
 }
 
 /**
@@ -60,9 +82,11 @@ export function IssueDetailRoute({ routeId, onDelete }: IssueDetailRouteProps) {
   const wsId = useWorkspaceId();
   const navigation = useNavigation();
   const { canonicalId, issue, isResolving, notFound } = useCanonicalIssue(wsId, routeId);
+  const highlight = useCommentHighlightHash();
   const highlightCommentId = navigation.searchParams.get("comment") || undefined;
+  const resolvedHighlightCommentId = highlightCommentId ?? highlight.commentId;
 
-  useCanonicalIssueUrl(routeId, issue?.identifier);
+  useCanonicalIssueUrl(routeId, issue?.identifier, highlight.hash);
 
   if (isResolving) return <IssueDetailSkeleton />;
 
@@ -76,7 +100,7 @@ export function IssueDetailRoute({ routeId, onDelete }: IssueDetailRouteProps) {
     <IssueDetail
       issueId={canonicalId}
       onDelete={onDelete}
-      highlightCommentId={highlightCommentId}
+      highlightCommentId={resolvedHighlightCommentId}
     />
   );
 }

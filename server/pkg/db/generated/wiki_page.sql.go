@@ -13,7 +13,7 @@ import (
 
 const acceptWikiPageEditProposal = `-- name: AcceptWikiPageEditProposal :one
 WITH candidate AS (
-    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at
+    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at, proposal.source_kind, proposal.source_ref_id
     FROM wiki_page_edit_proposal proposal
     JOIN wiki_page page
       ON page.workspace_id = proposal.workspace_id
@@ -135,6 +135,117 @@ func (q *Queries) AcceptWikiPageEditProposal(ctx context.Context, arg AcceptWiki
 	return i, err
 }
 
+const createRoomWikiPageEditProposal = `-- name: CreateRoomWikiPageEditProposal :one
+WITH existing AS (
+    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at, proposal.source_kind, proposal.source_ref_id
+    FROM wiki_page_edit_proposal proposal
+    WHERE proposal.workspace_id = $1
+      AND proposal.source_kind = 'room'
+      AND proposal.source_ref_id = $2
+      AND proposal.idempotency_key = $3
+), inserted AS (
+    INSERT INTO wiki_page_edit_proposal (
+        workspace_id, page_id, base_revision_number, proposed_path,
+        proposed_title, proposed_content, content_digest, rationale,
+        evidence_refs, agent_id, idempotency_key, source_kind, source_ref_id
+    )
+    SELECT page.workspace_id, page.id, $4,
+           $5, $6, $7,
+           'sha256:' || encode(sha256(convert_to($7, 'UTF8')), 'hex'),
+           $8, $9::jsonb,
+           NULL, $3, 'room', $2
+    FROM wiki_page page
+    WHERE page.id = $10
+      AND page.workspace_id = $1
+      AND page.scope IN ('workspace', 'project')
+      AND page.current_revision_number = $4
+      AND NOT EXISTS (SELECT 1 FROM existing)
+    ON CONFLICT (workspace_id, source_ref_id, idempotency_key)
+        WHERE source_kind = 'room'
+        DO NOTHING
+    RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id
+)
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM inserted
+UNION ALL
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM existing
+LIMIT 1
+`
+
+type CreateRoomWikiPageEditProposalParams struct {
+	WorkspaceID        pgtype.UUID `json:"workspace_id"`
+	SourceRefID        pgtype.UUID `json:"source_ref_id"`
+	IdempotencyKey     string      `json:"idempotency_key"`
+	BaseRevisionNumber int64       `json:"base_revision_number"`
+	ProposedPath       string      `json:"proposed_path"`
+	ProposedTitle      string      `json:"proposed_title"`
+	ProposedContent    string      `json:"proposed_content"`
+	Rationale          string      `json:"rationale"`
+	EvidenceRefs       []byte      `json:"evidence_refs"`
+	PageID             pgtype.UUID `json:"page_id"`
+}
+
+type CreateRoomWikiPageEditProposalRow struct {
+	ID                 pgtype.UUID        `json:"id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	PageID             pgtype.UUID        `json:"page_id"`
+	BaseRevisionNumber int64              `json:"base_revision_number"`
+	ProposedPath       string             `json:"proposed_path"`
+	ProposedTitle      string             `json:"proposed_title"`
+	ProposedContent    string             `json:"proposed_content"`
+	ContentDigest      string             `json:"content_digest"`
+	Rationale          string             `json:"rationale"`
+	EvidenceRefs       []byte             `json:"evidence_refs"`
+	AgentID            pgtype.UUID        `json:"agent_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	Status             string             `json:"status"`
+	ReviewedByID       pgtype.UUID        `json:"reviewed_by_id"`
+	ReviewReason       pgtype.Text        `json:"review_reason"`
+	ReviewedAt         pgtype.Timestamptz `json:"reviewed_at"`
+	AcceptedRevisionID pgtype.UUID        `json:"accepted_revision_id"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	SourceKind         string             `json:"source_kind"`
+	SourceRefID        pgtype.UUID        `json:"source_ref_id"`
+}
+
+func (q *Queries) CreateRoomWikiPageEditProposal(ctx context.Context, arg CreateRoomWikiPageEditProposalParams) (CreateRoomWikiPageEditProposalRow, error) {
+	row := q.db.QueryRow(ctx, createRoomWikiPageEditProposal,
+		arg.WorkspaceID,
+		arg.SourceRefID,
+		arg.IdempotencyKey,
+		arg.BaseRevisionNumber,
+		arg.ProposedPath,
+		arg.ProposedTitle,
+		arg.ProposedContent,
+		arg.Rationale,
+		arg.EvidenceRefs,
+		arg.PageID,
+	)
+	var i CreateRoomWikiPageEditProposalRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.PageID,
+		&i.BaseRevisionNumber,
+		&i.ProposedPath,
+		&i.ProposedTitle,
+		&i.ProposedContent,
+		&i.ContentDigest,
+		&i.Rationale,
+		&i.EvidenceRefs,
+		&i.AgentID,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.ReviewedByID,
+		&i.ReviewReason,
+		&i.ReviewedAt,
+		&i.AcceptedRevisionID,
+		&i.CreatedAt,
+		&i.SourceKind,
+		&i.SourceRefID,
+	)
+	return i, err
+}
+
 const createWikiPage = `-- name: CreateWikiPage :one
 WITH created AS (
     INSERT INTO wiki_page (
@@ -227,7 +338,7 @@ func (q *Queries) CreateWikiPage(ctx context.Context, arg CreateWikiPageParams) 
 
 const createWikiPageEditProposal = `-- name: CreateWikiPageEditProposal :one
 WITH existing AS (
-    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at
+    SELECT proposal.id, proposal.workspace_id, proposal.page_id, proposal.base_revision_number, proposal.proposed_path, proposal.proposed_title, proposal.proposed_content, proposal.content_digest, proposal.rationale, proposal.evidence_refs, proposal.agent_id, proposal.idempotency_key, proposal.status, proposal.reviewed_by_id, proposal.review_reason, proposal.reviewed_at, proposal.accepted_revision_id, proposal.created_at, proposal.source_kind, proposal.source_ref_id
     FROM wiki_page_edit_proposal proposal
     WHERE proposal.workspace_id = $1
       AND proposal.agent_id = $2
@@ -250,11 +361,11 @@ WITH existing AS (
       AND page.current_revision_number = $4
       AND NOT EXISTS (SELECT 1 FROM existing)
     ON CONFLICT (workspace_id, agent_id, idempotency_key) DO NOTHING
-    RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at
+    RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id
 )
-SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM inserted
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM inserted
 UNION ALL
-SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM existing
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM existing
 LIMIT 1
 `
 
@@ -290,6 +401,8 @@ type CreateWikiPageEditProposalRow struct {
 	ReviewedAt         pgtype.Timestamptz `json:"reviewed_at"`
 	AcceptedRevisionID pgtype.UUID        `json:"accepted_revision_id"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	SourceKind         string             `json:"source_kind"`
+	SourceRefID        pgtype.UUID        `json:"source_ref_id"`
 }
 
 func (q *Queries) CreateWikiPageEditProposal(ctx context.Context, arg CreateWikiPageEditProposalParams) (CreateWikiPageEditProposalRow, error) {
@@ -325,6 +438,8 @@ func (q *Queries) CreateWikiPageEditProposal(ctx context.Context, arg CreateWiki
 		&i.ReviewedAt,
 		&i.AcceptedRevisionID,
 		&i.CreatedAt,
+		&i.SourceKind,
+		&i.SourceRefID,
 	)
 	return i, err
 }
@@ -427,9 +542,7 @@ func (q *Queries) CreateWikiPageWithProvenance(ctx context.Context, arg CreateWi
 }
 
 const deleteWikiPage = `-- name: DeleteWikiPage :exec
-WITH deleted_policy_selection AS (
-    DELETE FROM lm_wiki_source_wiki_page WHERE page_id = $1
-), deleted_proposals AS (
+WITH deleted_proposals AS (
     DELETE FROM wiki_page_edit_proposal WHERE page_id = $1
 )
 DELETE FROM wiki_page page WHERE page.id = $1::uuid
@@ -458,6 +571,48 @@ func (q *Queries) GetRoomArtifactInWorkspaceForWikiEvidence(ctx context.Context,
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getRoomWikiPageEditProposalByIdempotencyKey = `-- name: GetRoomWikiPageEditProposalByIdempotencyKey :one
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM wiki_page_edit_proposal
+WHERE workspace_id = $1
+  AND source_kind = 'room'
+  AND source_ref_id = $2
+  AND idempotency_key = $3
+`
+
+type GetRoomWikiPageEditProposalByIdempotencyKeyParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	SourceRefID    pgtype.UUID `json:"source_ref_id"`
+	IdempotencyKey string      `json:"idempotency_key"`
+}
+
+func (q *Queries) GetRoomWikiPageEditProposalByIdempotencyKey(ctx context.Context, arg GetRoomWikiPageEditProposalByIdempotencyKeyParams) (WikiPageEditProposal, error) {
+	row := q.db.QueryRow(ctx, getRoomWikiPageEditProposalByIdempotencyKey, arg.WorkspaceID, arg.SourceRefID, arg.IdempotencyKey)
+	var i WikiPageEditProposal
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.PageID,
+		&i.BaseRevisionNumber,
+		&i.ProposedPath,
+		&i.ProposedTitle,
+		&i.ProposedContent,
+		&i.ContentDigest,
+		&i.Rationale,
+		&i.EvidenceRefs,
+		&i.AgentID,
+		&i.IdempotencyKey,
+		&i.Status,
+		&i.ReviewedByID,
+		&i.ReviewReason,
+		&i.ReviewedAt,
+		&i.AcceptedRevisionID,
+		&i.CreatedAt,
+		&i.SourceKind,
+		&i.SourceRefID,
+	)
+	return i, err
 }
 
 const getWikiPage = `-- name: GetWikiPage :one
@@ -491,7 +646,7 @@ func (q *Queries) GetWikiPage(ctx context.Context, id pgtype.UUID) (WikiPage, er
 }
 
 const getWikiPageEditProposal = `-- name: GetWikiPageEditProposal :one
-SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM wiki_page_edit_proposal
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM wiki_page_edit_proposal
 WHERE workspace_id = $1
   AND page_id = $2
   AND id = $3
@@ -525,12 +680,14 @@ func (q *Queries) GetWikiPageEditProposal(ctx context.Context, arg GetWikiPageEd
 		&i.ReviewedAt,
 		&i.AcceptedRevisionID,
 		&i.CreatedAt,
+		&i.SourceKind,
+		&i.SourceRefID,
 	)
 	return i, err
 }
 
 const getWikiPageEditProposalByIdempotencyKey = `-- name: GetWikiPageEditProposalByIdempotencyKey :one
-SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM wiki_page_edit_proposal
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM wiki_page_edit_proposal
 WHERE workspace_id = $1
   AND agent_id = $2
   AND idempotency_key = $3
@@ -564,6 +721,8 @@ func (q *Queries) GetWikiPageEditProposalByIdempotencyKey(ctx context.Context, a
 		&i.ReviewedAt,
 		&i.AcceptedRevisionID,
 		&i.CreatedAt,
+		&i.SourceKind,
+		&i.SourceRefID,
 	)
 	return i, err
 }
@@ -726,7 +885,7 @@ func (q *Queries) GetWikiPageRevisionForActor(ctx context.Context, arg GetWikiPa
 }
 
 const listWikiPageEditProposals = `-- name: ListWikiPageEditProposals :many
-SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at FROM wiki_page_edit_proposal
+SELECT id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id FROM wiki_page_edit_proposal
 WHERE workspace_id = $1
   AND page_id = $2
 ORDER BY created_at DESC
@@ -765,6 +924,8 @@ func (q *Queries) ListWikiPageEditProposals(ctx context.Context, arg ListWikiPag
 			&i.ReviewedAt,
 			&i.AcceptedRevisionID,
 			&i.CreatedAt,
+			&i.SourceKind,
+			&i.SourceRefID,
 		); err != nil {
 			return nil, err
 		}
@@ -1032,7 +1193,7 @@ WHERE workspace_id = $3
   AND page_id = $4
   AND id = $5
   AND status = 'pending'
-RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at
+RETURNING id, workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content, content_digest, rationale, evidence_refs, agent_id, idempotency_key, status, reviewed_by_id, review_reason, reviewed_at, accepted_revision_id, created_at, source_kind, source_ref_id
 `
 
 type RejectWikiPageEditProposalParams struct {
@@ -1071,6 +1232,8 @@ func (q *Queries) RejectWikiPageEditProposal(ctx context.Context, arg RejectWiki
 		&i.ReviewedAt,
 		&i.AcceptedRevisionID,
 		&i.CreatedAt,
+		&i.SourceKind,
+		&i.SourceRefID,
 	)
 	return i, err
 }

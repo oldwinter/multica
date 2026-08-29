@@ -31,8 +31,12 @@ export function WebNotificationBridge() {
 
   useEffect(() => {
     registerSystemNotificationClickHandler(
-      ({ slug, issueKey }: SystemNotificationPayload) => {
+      ({ slug, issueKey, targetPath }: SystemNotificationPayload) => {
         if (!slug) return;
+				if (targetPath) {
+					pushRef.current(targetPath);
+					return;
+				}
         const inboxPath = `${paths.workspace(slug).inbox()}?issue=${encodeURIComponent(issueKey)}`;
         pushRef.current(inboxPath);
       },

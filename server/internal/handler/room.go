@@ -40,6 +40,7 @@ type createRoomRequest struct {
 	DailyTurnLimit          *int32                   `json:"daily_turn_limit,omitempty"`
 	MaxCostTicks            *int64                   `json:"max_cost_ticks,omitempty"`
 	ScheduleIntervalMinutes *int32                   `json:"schedule_interval_minutes,omitempty"`
+	StartPaused             bool                     `json:"start_paused,omitempty"`
 }
 
 type roomMessageRequest struct {
@@ -96,29 +97,49 @@ type roomRecommendationReviewRequest struct {
 }
 
 type roomResponse struct {
-	ID                       string          `json:"id"`
-	WorkspaceID              string          `json:"workspace_id"`
-	Title                    string          `json:"title"`
-	Instructions             string          `json:"instructions"`
-	Objective                string          `json:"objective"`
-	SuccessCriteria          json.RawMessage `json:"success_criteria"`
-	StopConditions           json.RawMessage `json:"stop_conditions"`
-	TemplateID               *string         `json:"template_id"`
-	CreatedByUserID          string          `json:"created_by_user_id"`
-	FacilitatorAgentID       string          `json:"facilitator_agent_id"`
-	FacilitatorSquadID       *string         `json:"facilitator_squad_id"`
-	Status                   string          `json:"status"`
-	DailyTurnLimit           *int32          `json:"daily_turn_limit"`
-	MaxCostTicks             *int64          `json:"max_cost_ticks"`
-	ScheduleIntervalMinutes  *int32          `json:"schedule_interval_minutes"`
-	NextWakeAt               *string         `json:"next_wake_at"`
-	ActiveCycleID            *string         `json:"active_cycle_id"`
-	Memory                   json.RawMessage `json:"memory"`
-	MemoryVersion            int64           `json:"memory_version"`
-	AcceptedMemoryRevisionID *string         `json:"accepted_memory_revision_id"`
-	CapabilityVersion        int32           `json:"capability_version"`
-	CreatedAt                string          `json:"created_at"`
-	UpdatedAt                string          `json:"updated_at"`
+	ID                       string                   `json:"id"`
+	WorkspaceID              string                   `json:"workspace_id"`
+	Title                    string                   `json:"title"`
+	Instructions             string                   `json:"instructions"`
+	Objective                string                   `json:"objective"`
+	SuccessCriteria          json.RawMessage          `json:"success_criteria"`
+	StopConditions           json.RawMessage          `json:"stop_conditions"`
+	TemplateID               *string                  `json:"template_id"`
+	CreatedByUserID          string                   `json:"created_by_user_id"`
+	FacilitatorAgentID       string                   `json:"facilitator_agent_id"`
+	FacilitatorSquadID       *string                  `json:"facilitator_squad_id"`
+	Status                   string                   `json:"status"`
+	DailyTurnLimit           *int32                   `json:"daily_turn_limit"`
+	MaxCostTicks             *int64                   `json:"max_cost_ticks"`
+	ScheduleIntervalMinutes  *int32                   `json:"schedule_interval_minutes"`
+	NextWakeAt               *string                  `json:"next_wake_at"`
+	ActiveCycleID            *string                  `json:"active_cycle_id"`
+	Memory                   json.RawMessage          `json:"memory"`
+	MemoryVersion            int64                    `json:"memory_version"`
+	AcceptedMemoryRevisionID *string                  `json:"accepted_memory_revision_id"`
+	CapabilityVersion        int32                    `json:"capability_version"`
+	CreatedAt                string                   `json:"created_at"`
+	UpdatedAt                string                   `json:"updated_at"`
+	Value                    *roomValueSignalResponse `json:"value,omitempty"`
+}
+
+type roomValueSignalResponse struct {
+	LastAcceptedRevisionID        *string `json:"last_accepted_revision_id"`
+	LastAcceptedAt                *string `json:"last_accepted_at"`
+	LastCycleID                   *string `json:"last_cycle_id"`
+	LastRunStatus                 *string `json:"last_run_status"`
+	LastRunPhase                  *string `json:"last_run_phase"`
+	LastRunReason                 *string `json:"last_run_reason"`
+	LastRunAt                     *string `json:"last_run_at"`
+	LastRunCostTicks              int64   `json:"last_run_cost_ticks"`
+	RepeatRunCount                int64   `json:"repeat_run_count"`
+	AcceptedOutcomes              int64   `json:"accepted_outcomes"`
+	ActiveWeeks                   int64   `json:"active_weeks"`
+	AcceptedOutcomesPerActiveWeek float64 `json:"accepted_outcomes_per_active_week"`
+	MedianReviewLatencySeconds    float64 `json:"median_review_latency_seconds"`
+	PromotionRate                 float64 `json:"promotion_rate"`
+	FailedCycles                  int64   `json:"failed_cycles"`
+	RefusedCycles                 int64   `json:"refused_cycles"`
 }
 
 type roomDetailResponse struct {
@@ -280,12 +301,20 @@ type roomPreflightResponse struct {
 }
 
 type roomUsageResponse struct {
-	TurnsTotal        int64 `json:"turns_total"`
-	CostTicks         int64 `json:"cost_ticks"`
-	UncostedTurns     int64 `json:"uncosted_turns"`
-	Failures          int64 `json:"failures"`
-	AcceptedSyntheses int64 `json:"accepted_syntheses"`
-	PromotedArtifacts int64 `json:"promoted_artifacts"`
+	TurnsTotal                    int64   `json:"turns_total"`
+	CostTicks                     int64   `json:"cost_ticks"`
+	UncostedTurns                 int64   `json:"uncosted_turns"`
+	Failures                      int64   `json:"failures"`
+	AcceptedSyntheses             int64   `json:"accepted_syntheses"`
+	PromotedArtifacts             int64   `json:"promoted_artifacts"`
+	RepeatRunCount                int64   `json:"repeat_run_count"`
+	ActiveWeeks                   int64   `json:"active_weeks"`
+	MedianReviewLatencySeconds    float64 `json:"median_review_latency_seconds"`
+	AcceptedOutcomesPerActiveWeek float64 `json:"accepted_outcomes_per_active_week"`
+	PromotionRate                 float64 `json:"promotion_rate"`
+	FailedCycles                  int64   `json:"failed_cycles"`
+	RefusedCycles                 int64   `json:"refused_cycles"`
+	CostTicksPerAcceptedOutcome   float64 `json:"cost_ticks_per_accepted_outcome"`
 }
 
 type roomSynthesisRetryResponse struct {
@@ -317,9 +346,21 @@ func (h *Handler) ListRooms(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to list rooms")
 		return
 	}
+	signals, err := h.Rooms.ListValueSignals(r.Context(), workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list Room value signals")
+		return
+	}
+	signalByRoom := make(map[string]roomValueSignalResponse, len(signals))
+	for _, signal := range signals {
+		signalByRoom[uuidToString(signal.RoomID)] = roomValueSignalToResponse(signal)
+	}
 	response := make([]roomResponse, len(rooms))
 	for index, roomRow := range rooms {
 		response[index] = roomToResponse(roomRow)
+		if signal, exists := signalByRoom[uuidToString(roomRow.ID)]; exists {
+			response[index].Value = &signal
+		}
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -388,7 +429,38 @@ func (h *Handler) GetRoomUsage(w http.ResponseWriter, r *http.Request) {
 		TurnsTotal: result.TurnsTotal, CostTicks: result.CostTicks,
 		UncostedTurns: result.UncostedTurns, Failures: result.Failures,
 		AcceptedSyntheses: result.AcceptedSyntheses, PromotedArtifacts: result.PromotedArtifacts,
+		RepeatRunCount: result.RepeatRunCount, ActiveWeeks: result.ActiveWeeks,
+		MedianReviewLatencySeconds:    result.MedianReviewLatencySeconds,
+		AcceptedOutcomesPerActiveWeek: result.AcceptedOutcomesPerActiveWeek,
+		PromotionRate:                 result.PromotionRate, FailedCycles: result.FailedCycles,
+		RefusedCycles:               result.RefusedCycles,
+		CostTicksPerAcceptedOutcome: result.CostTicksPerAcceptedOutcome,
 	})
+}
+
+func roomValueSignalToResponse(signal roomdomain.ValueSignal) roomValueSignalResponse {
+	return roomValueSignalResponse{
+		LastAcceptedRevisionID: uuidToPtr(signal.LastAcceptedRevisionID),
+		LastAcceptedAt:         timestampToPtr(signal.LastAcceptedAt),
+		LastCycleID:            uuidToPtr(signal.LastCycleID),
+		LastRunStatus:          optionalString(signal.LastRunStatus),
+		LastRunPhase:           optionalString(signal.LastRunPhase),
+		LastRunReason:          textToPtr(signal.LastRunReason),
+		LastRunAt:              timestampToPtr(signal.LastRunAt),
+		LastRunCostTicks:       signal.LastRunCostTicks, RepeatRunCount: signal.RepeatRunCount,
+		AcceptedOutcomes: signal.AcceptedOutcomes, ActiveWeeks: signal.ActiveWeeks,
+		AcceptedOutcomesPerActiveWeek: signal.AcceptedOutcomesPerActiveWeek,
+		MedianReviewLatencySeconds:    signal.MedianReviewLatencySeconds,
+		PromotionRate:                 signal.PromotionRate, FailedCycles: signal.FailedCycles,
+		RefusedCycles: signal.RefusedCycles,
+	}
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
@@ -432,6 +504,7 @@ func (h *Handler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		FacilitatorSquadID: facilitatorSquadID, Participants: participants,
 		DailyTurnLimit: request.DailyTurnLimit, MaxCostTicks: request.MaxCostTicks,
 		ScheduleIntervalMinutes: request.ScheduleIntervalMinutes,
+		StartPaused:             request.StartPaused,
 	})
 	if err != nil {
 		h.writeRoomError(w, err)

@@ -41,15 +41,16 @@ type roomMemory struct {
 }
 
 type taskSyncOutcome struct {
-	changed       bool
-	room          db.Room
-	cycle         db.RoomCycle
-	entry         *db.RoomEntry
-	task          *db.AgentTaskQueue
-	turn          *db.RoomTurn
-	revision      *db.RoomMemoryRevision
-	failureReason string
-	budgetRefused bool
+	changed        bool
+	room           db.Room
+	cycle          db.RoomCycle
+	entry          *db.RoomEntry
+	task           *db.AgentTaskQueue
+	turn           *db.RoomTurn
+	revision       *db.RoomMemoryRevision
+	attentionItems []db.InboxItem
+	failureReason  string
+	budgetRefused  bool
 }
 
 func (s *Service) SyncTask(ctx context.Context, taskID pgtype.UUID) (bool, error) {
@@ -72,6 +73,7 @@ func (s *Service) SyncTask(ctx context.Context, taskID pgtype.UUID) (bool, error
 	if outcome.revision != nil {
 		s.publish(EventRoomMemoryRevision, outcome.room, pgtype.UUID{}, roomMemoryRevisionEventPayload(*outcome.revision))
 	}
+	s.publishRoomAttentionItems(outcome.attentionItems)
 	if outcome.failureReason != "" {
 		s.recordRoomCycleFailed(outcome.room, outcome.cycle, outcome.failureReason)
 	}
@@ -309,21 +311,27 @@ func (s *Service) syncOutcomeV2Tx(ctx context.Context, tx pgx.Tx, queries *db.Qu
 			if err != nil {
 				return taskSyncOutcome{}, fmt.Errorf("clear failed Room outcome cycle: %w", err)
 			}
+			attentionItems, attentionErr := s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxCycleFailed, roomAttentionInput{
+				RoomID: roomRow.ID, CycleID: cycle.ID, Phase: cycle.Phase, ReasonCode: "participant_results_unavailable",
+			})
+			if attentionErr != nil {
+				return taskSyncOutcome{}, attentionErr
+			}
 			if err := tx.Commit(ctx); err != nil {
 				return taskSyncOutcome{}, fmt.Errorf("commit failed Room outcome cycle: %w", err)
 			}
-			return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, failureReason: "participant_failed"}, nil
+			return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, attentionItems: attentionItems, failureReason: "participant_failed"}, nil
 		}
 
 		requiresSynthesis := cycle.Source == "schedule" || participantCount > 1
 		if !requiresSynthesis && task.Status == "completed" && entry != nil {
-			if revision, revisedCycle, ok, reviseErr := s.tryCreateRoomRevision(ctx, queries, roomRow, cycle, completedTurn, []byte(entry.Body), true); reviseErr != nil {
+			if revision, revisedCycle, attentionItems, ok, reviseErr := s.tryCreateRoomRevision(ctx, queries, roomRow, cycle, completedTurn, []byte(entry.Body), true); reviseErr != nil {
 				return taskSyncOutcome{}, reviseErr
 			} else if ok {
 				if err := tx.Commit(ctx); err != nil {
 					return taskSyncOutcome{}, fmt.Errorf("commit direct Room synthesis: %w", err)
 				}
-				return taskSyncOutcome{changed: true, room: roomRow, cycle: revisedCycle, entry: entry, revision: &revision}, nil
+				return taskSyncOutcome{changed: true, room: roomRow, cycle: revisedCycle, entry: entry, revision: &revision, attentionItems: attentionItems}, nil
 			}
 		}
 
@@ -337,10 +345,16 @@ func (s *Service) syncOutcomeV2Tx(ctx context.Context, tx pgx.Tx, queries *db.Qu
 				if err != nil {
 					return taskSyncOutcome{}, fmt.Errorf("persist budget-blocked Room synthesis: %w", err)
 				}
+				attentionItems, attentionErr := s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxCycleBlocked, roomAttentionInput{
+					RoomID: roomRow.ID, CycleID: cycle.ID, Phase: cycle.Phase, ReasonCode: "budget_exhausted",
+				})
+				if attentionErr != nil {
+					return taskSyncOutcome{}, attentionErr
+				}
 				if err := tx.Commit(ctx); err != nil {
 					return taskSyncOutcome{}, fmt.Errorf("commit budget-blocked Room synthesis: %w", err)
 				}
-				return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, entry: entry, budgetRefused: true}, nil
+				return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, entry: entry, attentionItems: attentionItems, budgetRefused: true}, nil
 			}
 			if errors.Is(enqueueErr, ErrSynthesisNotRetryable) || errors.Is(enqueueErr, ErrInvalidParticipant) {
 				errorData, _ := json.Marshal(synthesisError{Code: "facilitator_unavailable", Message: "The facilitator is unavailable or lacks the Room outcome capability.", Retryable: true})
@@ -350,10 +364,16 @@ func (s *Service) syncOutcomeV2Tx(ctx context.Context, tx pgx.Tx, queries *db.Qu
 				if err != nil {
 					return taskSyncOutcome{}, fmt.Errorf("persist blocked Room synthesis: %w", err)
 				}
+				attentionItems, attentionErr := s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxCycleBlocked, roomAttentionInput{
+					RoomID: roomRow.ID, CycleID: cycle.ID, Phase: cycle.Phase, ReasonCode: "facilitator_unavailable",
+				})
+				if attentionErr != nil {
+					return taskSyncOutcome{}, attentionErr
+				}
 				if err := tx.Commit(ctx); err != nil {
 					return taskSyncOutcome{}, fmt.Errorf("commit blocked Room synthesis: %w", err)
 				}
-				return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, entry: entry, failureReason: "facilitator_unavailable"}, nil
+				return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, entry: entry, attentionItems: attentionItems, failureReason: "facilitator_unavailable"}, nil
 			}
 			return taskSyncOutcome{}, enqueueErr
 		}
@@ -376,7 +396,7 @@ func (s *Service) syncOutcomeV2Tx(ctx context.Context, tx pgx.Tx, queries *db.Qu
 		return taskSyncOutcome{}, fmt.Errorf("unsupported Room turn kind %q", completedTurn.TurnKind)
 	}
 	if task.Status == "completed" && entry != nil {
-		revision, revisedCycle, ok, reviseErr := s.tryCreateRoomRevision(ctx, queries, roomRow, cycle, completedTurn, []byte(entry.Body), false)
+		revision, revisedCycle, attentionItems, ok, reviseErr := s.tryCreateRoomRevision(ctx, queries, roomRow, cycle, completedTurn, []byte(entry.Body), false)
 		if reviseErr != nil {
 			return taskSyncOutcome{}, reviseErr
 		}
@@ -384,7 +404,7 @@ func (s *Service) syncOutcomeV2Tx(ctx context.Context, tx pgx.Tx, queries *db.Qu
 			if err := tx.Commit(ctx); err != nil {
 				return taskSyncOutcome{}, fmt.Errorf("commit Room memory revision: %w", err)
 			}
-			return taskSyncOutcome{changed: true, room: roomRow, cycle: revisedCycle, entry: entry, revision: &revision}, nil
+			return taskSyncOutcome{changed: true, room: roomRow, cycle: revisedCycle, entry: entry, revision: &revision, attentionItems: attentionItems}, nil
 		}
 	}
 	errorCode := "synthesis_failed"
@@ -400,19 +420,25 @@ func (s *Service) syncOutcomeV2Tx(ctx context.Context, tx pgx.Tx, queries *db.Qu
 	if err != nil {
 		return taskSyncOutcome{}, fmt.Errorf("persist Room synthesis error: %w", err)
 	}
+	attentionItems, attentionErr := s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxCycleFailed, roomAttentionInput{
+		RoomID: roomRow.ID, CycleID: cycle.ID, Phase: cycle.Phase, ReasonCode: errorCode,
+	})
+	if attentionErr != nil {
+		return taskSyncOutcome{}, attentionErr
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return taskSyncOutcome{}, fmt.Errorf("commit Room synthesis error: %w", err)
 	}
-	return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, entry: entry, failureReason: errorCode}, nil
+	return taskSyncOutcome{changed: true, room: roomRow, cycle: cycle, entry: entry, attentionItems: attentionItems, failureReason: errorCode}, nil
 }
 
-func (s *Service) tryCreateRoomRevision(ctx context.Context, queries *db.Queries, roomRow db.Room, cycle db.RoomCycle, turn db.RoomTurn, raw []byte, direct bool) (db.RoomMemoryRevision, db.RoomCycle, bool, error) {
+func (s *Service) tryCreateRoomRevision(ctx context.Context, queries *db.Queries, roomRow db.Room, cycle db.RoomCycle, turn db.RoomTurn, raw []byte, direct bool) (db.RoomMemoryRevision, db.RoomCycle, []db.InboxItem, bool, error) {
 	_, canonical, digest, validateErr := validateRoomSynthesis(ctx, queries, roomRow.WorkspaceID, roomRow.ID, raw)
 	if validateErr != nil {
 		if errors.Is(validateErr, ErrInvalidSynthesis) {
-			return db.RoomMemoryRevision{}, cycle, false, nil
+			return db.RoomMemoryRevision{}, cycle, nil, false, nil
 		}
-		return db.RoomMemoryRevision{}, cycle, false, validateErr
+		return db.RoomMemoryRevision{}, cycle, nil, false, validateErr
 	}
 	var err error
 	if direct {
@@ -420,7 +446,7 @@ func (s *Service) tryCreateRoomRevision(ctx context.Context, queries *db.Queries
 			SynthesisTurnID: turn.ID, ID: cycle.ID, WorkspaceID: cycle.WorkspaceID, RoomID: cycle.RoomID,
 		})
 		if err != nil {
-			return db.RoomMemoryRevision{}, cycle, false, fmt.Errorf("advance direct Room synthesis: %w", err)
+			return db.RoomMemoryRevision{}, cycle, nil, false, fmt.Errorf("advance direct Room synthesis: %w", err)
 		}
 	}
 	revision, err := queries.CreateRoomMemoryRevision(ctx, db.CreateRoomMemoryRevisionParams{
@@ -429,15 +455,21 @@ func (s *Service) tryCreateRoomRevision(ctx context.Context, queries *db.Queries
 		Synthesis: canonical, Digest: digest, CreatorType: "agent", CreatorID: turn.AgentID,
 	})
 	if err != nil {
-		return db.RoomMemoryRevision{}, cycle, false, fmt.Errorf("create Room memory revision: %w", err)
+		return db.RoomMemoryRevision{}, cycle, nil, false, fmt.Errorf("create Room memory revision: %w", err)
 	}
 	cycle, err = queries.SetRoomCycleAwaitingReview(ctx, db.SetRoomCycleAwaitingReviewParams{
 		MemoryRevisionID: revision.ID, ID: cycle.ID, WorkspaceID: cycle.WorkspaceID, RoomID: cycle.RoomID,
 	})
 	if err != nil {
-		return db.RoomMemoryRevision{}, cycle, false, fmt.Errorf("link Room memory revision: %w", err)
+		return db.RoomMemoryRevision{}, cycle, nil, false, fmt.Errorf("link Room memory revision: %w", err)
 	}
-	return revision, cycle, true, nil
+	attentionItems, err := s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxOutcomeReviewRequired, roomAttentionInput{
+		RoomID: roomRow.ID, CycleID: cycle.ID, MemoryRevisionID: revision.ID, Phase: cycle.Phase,
+	})
+	if err != nil {
+		return db.RoomMemoryRevision{}, cycle, nil, false, err
+	}
+	return revision, cycle, attentionItems, true, nil
 }
 
 func participantTurnsTerminal(turns []db.RoomTurn) (int, int, bool) {

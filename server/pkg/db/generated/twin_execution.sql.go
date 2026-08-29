@@ -181,6 +181,8 @@ WITH deleted_feedback AS (
     DELETE FROM twin_deposition WHERE workspace_id = $1
 ), deleted_attributions AS (
     DELETE FROM twin_task_attribution WHERE workspace_id = $1
+), deleted_preview_checkpoints AS (
+    DELETE FROM twin_activation_preview_checkpoint WHERE workspace_id = $1
 )
 DELETE FROM twin_binding WHERE twin_binding.workspace_id = $1
 `
@@ -188,6 +190,184 @@ DELETE FROM twin_binding WHERE twin_binding.workspace_id = $1
 func (q *Queries) DeleteWorkspaceTwinExecutionData(ctx context.Context, workspaceID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteWorkspaceTwinExecutionData, workspaceID)
 	return err
+}
+
+const getTwinActivationFacts = `-- name: GetTwinActivationFacts :one
+SELECT
+    EXISTS (
+        SELECT 1 FROM lm_wiki_source_policy policy
+        WHERE policy.workspace_id = $1
+    ) AS source_policy_configured,
+    COALESCE((
+        SELECT revision.id::text
+        FROM lm_wiki_revision revision
+        WHERE revision.workspace_id = $1
+          AND NOT EXISTS (
+              SELECT 1 FROM lm_wiki_review review
+              WHERE review.workspace_id = revision.workspace_id
+                AND review.revision_id = revision.id
+          )
+        ORDER BY revision.revision_number DESC
+        LIMIT 1
+    ), '')::text AS pending_evidence_revision_id,
+    COALESCE((
+        SELECT revision.id::text
+        FROM lm_wiki_revision revision
+        JOIN lm_wiki_review review
+          ON review.workspace_id = revision.workspace_id
+         AND review.revision_id = revision.id
+         AND review.decision = 'accepted'
+        WHERE revision.workspace_id = $1
+        ORDER BY revision.revision_number DESC
+        LIMIT 1
+    ), '')::text AS accepted_evidence_revision_id,
+    COALESCE((
+        SELECT proposal.id::text
+        FROM twin_proposal proposal
+        WHERE proposal.workspace_id = $1
+          AND NOT EXISTS (
+              SELECT 1 FROM twin_proposal_review review
+              WHERE review.workspace_id = proposal.workspace_id
+                AND review.proposal_id = proposal.id
+          )
+        ORDER BY proposal.created_at DESC, proposal.id DESC
+        LIMIT 1
+    ), '')::text AS pending_proposal_id,
+    (
+        SELECT proposal.created_at
+        FROM twin_proposal proposal
+        WHERE proposal.workspace_id = $1
+          AND NOT EXISTS (
+              SELECT 1 FROM twin_proposal_review review
+              WHERE review.workspace_id = proposal.workspace_id
+                AND review.proposal_id = proposal.id
+          )
+        ORDER BY proposal.created_at DESC, proposal.id DESC
+        LIMIT 1
+    ) AS pending_proposal_created_at,
+    COALESCE((
+        SELECT version.id::text FROM twin_version version
+        WHERE version.workspace_id = $1
+        ORDER BY version.version_number DESC
+        LIMIT 1
+    ), '')::text AS current_version_id,
+    COALESCE((
+        SELECT version.version_number FROM twin_version version
+        WHERE version.workspace_id = $1
+        ORDER BY version.version_number DESC
+        LIMIT 1
+    ), 0)::bigint AS current_version_number,
+    COALESCE((
+        SELECT version.source_wiki_revision_id::text FROM twin_version version
+        WHERE version.workspace_id = $1
+        ORDER BY version.version_number DESC
+        LIMIT 1
+    ), '')::text AS current_version_source_id,
+    COALESCE((
+        SELECT checkpoint.twin_version_id::text
+        FROM twin_activation_preview_checkpoint checkpoint
+        WHERE checkpoint.workspace_id = $1
+          AND checkpoint.twin_version_id = (
+              SELECT version.id FROM twin_version version
+              WHERE version.workspace_id = $1
+              ORDER BY version.version_number DESC
+              LIMIT 1
+          )
+        ORDER BY checkpoint.compiled_at DESC
+        LIMIT 1
+    ), '')::text AS previewed_version_id,
+    (SELECT count(*) FROM twin_binding binding
+        WHERE binding.workspace_id = $1
+          AND binding.state IN ('preview', 'enabled')) AS active_binding_count,
+    (SELECT count(*) FROM twin_binding binding
+        WHERE binding.workspace_id = $1
+          AND binding.state = 'off') AS explicit_off_binding_count,
+    (SELECT count(*) FROM twin_task_attribution attribution
+        JOIN agent_task_queue task ON task.id = attribution.task_id
+        WHERE attribution.workspace_id = $1
+          AND task.status = 'completed') AS attributed_run_count,
+    (SELECT count(*) FROM twin_run_feedback feedback
+        WHERE feedback.workspace_id = $1) AS feedback_count,
+    COALESCE((
+        SELECT deposition.id::text FROM twin_deposition deposition
+        WHERE deposition.workspace_id = $1
+          AND deposition.state = 'pending'
+        ORDER BY deposition.created_at ASC, deposition.id ASC
+        LIMIT 1
+    ), '')::text AS pending_deposition_id,
+    (
+        SELECT deposition.created_at FROM twin_deposition deposition
+        WHERE deposition.workspace_id = $1
+          AND deposition.state = 'pending'
+        ORDER BY deposition.created_at ASC, deposition.id ASC
+        LIMIT 1
+    ) AS pending_deposition_created_at,
+    (SELECT count(*) FROM twin_deposition deposition
+        WHERE deposition.workspace_id = $1
+          AND deposition.state = 'pending') AS pending_deposition_count,
+    (SELECT count(*) FROM twin_run_feedback feedback
+        WHERE feedback.workspace_id = $1
+          AND feedback.rating = 'mismatch'
+          AND feedback.updated_at >= now() - interval '28 days') AS recent_mismatch_count,
+    COALESCE((
+        SELECT count(*)
+        FROM twin_version version
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(version.content->'assertions', '[]'::jsonb)) assertion
+        WHERE version.workspace_id = $1
+          AND version.version_number = (
+              SELECT max(current.version_number) FROM twin_version current
+              WHERE current.workspace_id = $1
+          )
+          AND jsonb_typeof(assertion->'confidence') = 'number'
+          AND (assertion->>'confidence')::numeric < 0.6
+    ), 0)::bigint AS low_confidence_assertion_count
+`
+
+type GetTwinActivationFactsRow struct {
+	SourcePolicyConfigured      bool               `json:"source_policy_configured"`
+	PendingEvidenceRevisionID   string             `json:"pending_evidence_revision_id"`
+	AcceptedEvidenceRevisionID  string             `json:"accepted_evidence_revision_id"`
+	PendingProposalID           string             `json:"pending_proposal_id"`
+	PendingProposalCreatedAt    pgtype.Timestamptz `json:"pending_proposal_created_at"`
+	CurrentVersionID            string             `json:"current_version_id"`
+	CurrentVersionNumber        int64              `json:"current_version_number"`
+	CurrentVersionSourceID      string             `json:"current_version_source_id"`
+	PreviewedVersionID          string             `json:"previewed_version_id"`
+	ActiveBindingCount          int64              `json:"active_binding_count"`
+	ExplicitOffBindingCount     int64              `json:"explicit_off_binding_count"`
+	AttributedRunCount          int64              `json:"attributed_run_count"`
+	FeedbackCount               int64              `json:"feedback_count"`
+	PendingDepositionID         string             `json:"pending_deposition_id"`
+	PendingDepositionCreatedAt  pgtype.Timestamptz `json:"pending_deposition_created_at"`
+	PendingDepositionCount      int64              `json:"pending_deposition_count"`
+	RecentMismatchCount         int64              `json:"recent_mismatch_count"`
+	LowConfidenceAssertionCount int64              `json:"low_confidence_assertion_count"`
+}
+
+func (q *Queries) GetTwinActivationFacts(ctx context.Context, workspaceID pgtype.UUID) (GetTwinActivationFactsRow, error) {
+	row := q.db.QueryRow(ctx, getTwinActivationFacts, workspaceID)
+	var i GetTwinActivationFactsRow
+	err := row.Scan(
+		&i.SourcePolicyConfigured,
+		&i.PendingEvidenceRevisionID,
+		&i.AcceptedEvidenceRevisionID,
+		&i.PendingProposalID,
+		&i.PendingProposalCreatedAt,
+		&i.CurrentVersionID,
+		&i.CurrentVersionNumber,
+		&i.CurrentVersionSourceID,
+		&i.PreviewedVersionID,
+		&i.ActiveBindingCount,
+		&i.ExplicitOffBindingCount,
+		&i.AttributedRunCount,
+		&i.FeedbackCount,
+		&i.PendingDepositionID,
+		&i.PendingDepositionCreatedAt,
+		&i.PendingDepositionCount,
+		&i.RecentMismatchCount,
+		&i.LowConfidenceAssertionCount,
+	)
+	return i, err
 }
 
 const getTwinDeposition = `-- name: GetTwinDeposition :one
@@ -585,6 +765,143 @@ func (q *Queries) ListTwinDepositionsForTask(ctx context.Context, arg ListTwinDe
 	return items, nil
 }
 
+const listTwinExecutionCohortMetrics = `-- name: ListTwinExecutionCohortMetrics :many
+WITH policy_states AS (
+    SELECT 'off'::text AS policy_state
+    UNION ALL SELECT 'preview'::text
+    UNION ALL SELECT 'enabled'::text
+), cohort_tasks AS (
+    SELECT task.id, task.twin_use_state::text AS policy_state, task.status,
+           task.started_at, task.completed_at, feedback.rating,
+           attribution.id AS attribution_id, attribution.briefing,
+           EXISTS (
+               SELECT 1 FROM agent_task_queue rerun
+               WHERE rerun.rerun_of_task_id = task.id
+           ) AS revised,
+           usage.cost_usd_ticks, usage.usage_rows, usage.uncosted_rows,
+           deposition.total AS deposition_total,
+           deposition.accepted AS deposition_accepted
+    FROM agent_task_queue task
+    JOIN issue ON issue.id = task.issue_id
+              AND issue.workspace_id = $1
+    LEFT JOIN twin_task_attribution attribution
+           ON attribution.workspace_id = issue.workspace_id
+          AND attribution.task_id = task.id
+    LEFT JOIN twin_run_feedback feedback
+           ON feedback.workspace_id = issue.workspace_id
+          AND feedback.task_id = task.id
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(sum(task_usage.cost_usd_ticks), 0)::bigint AS cost_usd_ticks,
+               count(*)::bigint AS usage_rows,
+               count(*) FILTER (WHERE task_usage.cost_usd_ticks IS NULL)::bigint AS uncosted_rows
+        FROM task_usage
+        WHERE task_usage.task_id = task.id
+    ) usage ON true
+    LEFT JOIN LATERAL (
+        SELECT count(*)::bigint AS total,
+               count(*) FILTER (WHERE twin_deposition.state = 'accepted')::bigint AS accepted
+        FROM twin_deposition
+        WHERE twin_deposition.workspace_id = issue.workspace_id
+          AND twin_deposition.task_id = task.id
+    ) deposition ON true
+    WHERE task.created_at >= now() - make_interval(days => $2::int)
+      AND task.twin_use_state IN ('off', 'preview', 'enabled')
+)
+SELECT policy_states.policy_state,
+       count(cohort_tasks.id)::bigint AS sample_size,
+       count(cohort_tasks.id) FILTER (WHERE cohort_tasks.status = 'completed')::bigint AS completed_runs,
+       count(cohort_tasks.attribution_id)::bigint AS attributed_runs,
+       count(cohort_tasks.rating)::bigint AS feedback_total,
+       count(cohort_tasks.rating) FILTER (WHERE cohort_tasks.rating = 'helped')::bigint AS feedback_helped,
+       count(cohort_tasks.rating) FILTER (WHERE cohort_tasks.rating = 'irrelevant')::bigint AS feedback_irrelevant,
+       count(cohort_tasks.rating) FILTER (WHERE cohort_tasks.rating = 'mismatch')::bigint AS feedback_mismatch,
+       count(cohort_tasks.id) FILTER (WHERE cohort_tasks.revised)::bigint AS revision_count,
+       COALESCE(round(avg(
+           extract(epoch FROM (cohort_tasks.completed_at - cohort_tasks.started_at)) * 1000
+       ) FILTER (
+           WHERE cohort_tasks.status = 'completed'
+             AND cohort_tasks.started_at IS NOT NULL
+             AND cohort_tasks.completed_at IS NOT NULL
+       )), 0)::bigint AS average_latency_ms,
+       COALESCE(round(avg(
+           (octet_length(cohort_tasks.briefing) + 3) / 4.0
+       ) FILTER (WHERE cohort_tasks.attribution_id IS NOT NULL)), 0)::bigint AS average_briefing_tokens,
+       COALESCE(sum(cohort_tasks.cost_usd_ticks), 0)::bigint AS cost_usd_ticks,
+       count(cohort_tasks.id) FILTER (
+           WHERE cohort_tasks.usage_rows > 0 AND cohort_tasks.uncosted_rows = 0
+       )::bigint AS costed_runs,
+       count(cohort_tasks.id) FILTER (
+           WHERE cohort_tasks.usage_rows = 0 OR cohort_tasks.uncosted_rows > 0
+       )::bigint AS uncosted_runs,
+       COALESCE(sum(cohort_tasks.deposition_total), 0)::bigint AS deposition_total,
+       COALESCE(sum(cohort_tasks.deposition_accepted), 0)::bigint AS deposition_accepted
+FROM policy_states
+LEFT JOIN cohort_tasks ON cohort_tasks.policy_state = policy_states.policy_state
+GROUP BY policy_states.policy_state
+ORDER BY CASE policy_states.policy_state WHEN 'off' THEN 1 WHEN 'preview' THEN 2 ELSE 3 END
+`
+
+type ListTwinExecutionCohortMetricsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	WindowDays  int32       `json:"window_days"`
+}
+
+type ListTwinExecutionCohortMetricsRow struct {
+	PolicyState           string `json:"policy_state"`
+	SampleSize            int64  `json:"sample_size"`
+	CompletedRuns         int64  `json:"completed_runs"`
+	AttributedRuns        int64  `json:"attributed_runs"`
+	FeedbackTotal         int64  `json:"feedback_total"`
+	FeedbackHelped        int64  `json:"feedback_helped"`
+	FeedbackIrrelevant    int64  `json:"feedback_irrelevant"`
+	FeedbackMismatch      int64  `json:"feedback_mismatch"`
+	RevisionCount         int64  `json:"revision_count"`
+	AverageLatencyMs      int64  `json:"average_latency_ms"`
+	AverageBriefingTokens int64  `json:"average_briefing_tokens"`
+	CostUsdTicks          int64  `json:"cost_usd_ticks"`
+	CostedRuns            int64  `json:"costed_runs"`
+	UncostedRuns          int64  `json:"uncosted_runs"`
+	DepositionTotal       int64  `json:"deposition_total"`
+	DepositionAccepted    int64  `json:"deposition_accepted"`
+}
+
+func (q *Queries) ListTwinExecutionCohortMetrics(ctx context.Context, arg ListTwinExecutionCohortMetricsParams) ([]ListTwinExecutionCohortMetricsRow, error) {
+	rows, err := q.db.Query(ctx, listTwinExecutionCohortMetrics, arg.WorkspaceID, arg.WindowDays)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTwinExecutionCohortMetricsRow{}
+	for rows.Next() {
+		var i ListTwinExecutionCohortMetricsRow
+		if err := rows.Scan(
+			&i.PolicyState,
+			&i.SampleSize,
+			&i.CompletedRuns,
+			&i.AttributedRuns,
+			&i.FeedbackTotal,
+			&i.FeedbackHelped,
+			&i.FeedbackIrrelevant,
+			&i.FeedbackMismatch,
+			&i.RevisionCount,
+			&i.AverageLatencyMs,
+			&i.AverageBriefingTokens,
+			&i.CostUsdTicks,
+			&i.CostedRuns,
+			&i.UncostedRuns,
+			&i.DepositionTotal,
+			&i.DepositionAccepted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTwinTaskAttributions = `-- name: ListTwinTaskAttributions :many
 SELECT id, workspace_id, task_id, agent_id, runtime_id, task_dispatched_at, twin_version_id, briefing, briefing_digest, assertion_ids, citation_keys, policy_scope_type, policy_scope_id, policy_state, compiler_version, created_at
 FROM twin_task_attribution
@@ -633,6 +950,66 @@ func (q *Queries) ListTwinTaskAttributions(ctx context.Context, arg ListTwinTask
 		return nil, err
 	}
 	return items, nil
+}
+
+const pauseTwinBindings = `-- name: PauseTwinBindings :one
+WITH paused AS (
+    UPDATE twin_binding
+    SET state = 'off', updated_at = now()
+    WHERE workspace_id = $1
+)
+INSERT INTO twin_binding (
+    workspace_id, scope_type, scope_id, state, twin_version_id
+)
+SELECT $1, 'workspace', $1, 'off', version.id
+FROM twin_version version
+WHERE version.workspace_id = $1
+  AND version.id = $2
+ON CONFLICT (workspace_id, scope_type, scope_id) DO UPDATE
+SET state = 'off',
+    twin_version_id = EXCLUDED.twin_version_id,
+    updated_at = now()
+RETURNING id, workspace_id, scope_type, scope_id, state, twin_version_id, created_at, updated_at
+`
+
+type PauseTwinBindingsParams struct {
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	TwinVersionID pgtype.UUID `json:"twin_version_id"`
+}
+
+func (q *Queries) PauseTwinBindings(ctx context.Context, arg PauseTwinBindingsParams) (TwinBinding, error) {
+	row := q.db.QueryRow(ctx, pauseTwinBindings, arg.WorkspaceID, arg.TwinVersionID)
+	var i TwinBinding
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ScopeType,
+		&i.ScopeID,
+		&i.State,
+		&i.TwinVersionID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const recordTwinActivationPreview = `-- name: RecordTwinActivationPreview :exec
+INSERT INTO twin_activation_preview_checkpoint (
+    workspace_id, twin_version_id, policy_state
+) VALUES (
+    $1, $2, $3
+)
+`
+
+type RecordTwinActivationPreviewParams struct {
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	TwinVersionID pgtype.UUID `json:"twin_version_id"`
+	PolicyState   string      `json:"policy_state"`
+}
+
+func (q *Queries) RecordTwinActivationPreview(ctx context.Context, arg RecordTwinActivationPreviewParams) error {
+	_, err := q.db.Exec(ctx, recordTwinActivationPreview, arg.WorkspaceID, arg.TwinVersionID, arg.PolicyState)
+	return err
 }
 
 const rejectReviewedTwinDepositions = `-- name: RejectReviewedTwinDepositions :exec

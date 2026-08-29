@@ -26,7 +26,7 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 	isRecommendation := input.MemoryRevisionID.Valid && input.RecommendationKey != "" && !input.EntryID.Valid && !input.CycleID.Valid
 	isLegacySource := input.EntryID.Valid != input.CycleID.Valid && !input.MemoryRevisionID.Valid && input.RecommendationKey == ""
 	if !input.WorkspaceID.Valid || !input.RoomID.Valid || !input.ActorUserID.Valid ||
-		(input.Kind != "issue" && input.Kind != "wiki" && input.Kind != "decision") ||
+		!validPromotionKind(input.Kind) ||
 		input.IdempotencyKey == "" || input.Title == "" || len([]rune(input.Title)) > 300 ||
 		len([]rune(input.Rationale)) > 20000 || len([]rune(input.Body)) > 200000 || (!isRecommendation && !isLegacySource) {
 		return PromotionResult{}, ErrInvalidInput
@@ -114,16 +114,12 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 	if err != nil {
 		return PromotionResult{}, fmt.Errorf("create Room artifact: %w", err)
 	}
-	targetID := artifact.ID
-	switch input.Kind {
-	case "issue", "wiki":
-		if s.targets == nil {
-			return PromotionResult{}, fmt.Errorf("Room artifact target creator is unavailable")
-		}
-		targetID, err = s.targets.CreateRoomArtifactTarget(ctx, tx, queries, artifact)
-		if err != nil {
-			return PromotionResult{}, fmt.Errorf("create Room %s target: %w", input.Kind, err)
-		}
+	if s.targets == nil {
+		return PromotionResult{}, fmt.Errorf("Room artifact target router is unavailable")
+	}
+	targetID, err := s.targets.CreateRoomArtifactTarget(ctx, tx, queries, artifact)
+	if err != nil {
+		return PromotionResult{}, fmt.Errorf("route Room %s target: %w", input.Kind, err)
 	}
 	artifact, err = queries.SetRoomArtifactTarget(ctx, db.SetRoomArtifactTargetParams{
 		TargetID: targetID, ID: artifact.ID, WorkspaceID: artifact.WorkspaceID,
@@ -132,6 +128,7 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 		return PromotionResult{}, fmt.Errorf("finalize Room artifact target: %w", err)
 	}
 	var recommendationReview *db.RoomRecommendationReview
+	var archivedAttention []db.ArchiveRoomInboxItemsRow
 	if isRecommendation {
 		reviewDigest := lifecycleDigest("approve", recommendationKey, digest)
 		review, reviewErr := queries.CreateRoomRecommendationReview(ctx, db.CreateRoomRecommendationReviewParams{
@@ -152,12 +149,19 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 			return PromotionResult{}, fmt.Errorf("approve Room recommendation: %w", reviewErr)
 		}
 		recommendationReview = &review
+		archivedAttention, err = archiveRoomAttention(
+			ctx, queries, roomRow, cycleID, RoomInboxRecommendationReviewRequired, recommendationKey,
+		)
+		if err != nil {
+			return PromotionResult{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return PromotionResult{}, fmt.Errorf("commit Room promotion: %w", err)
 	}
 	s.recordRoomArtifactPromoted(roomRow, artifact, input.ActorUserID)
 	if recommendationReview != nil {
+		s.publishRoomAttentionArchived(roomRow.WorkspaceID, archivedAttention)
 		s.publish(EventRoomRecommendationReview, roomRow, input.ActorUserID, roomRecommendationReviewEventPayload(*recommendationReview))
 	}
 	s.publish(EventRoomArtifact, roomRow, input.ActorUserID, roomArtifactEventPayload(artifact))
@@ -169,19 +173,11 @@ func (s *Service) Promote(ctx context.Context, input PromotionInput) (PromotionR
 
 func promotionSource(ctx context.Context, queries *db.Queries, roomRow db.Room, input PromotionInput) (string, pgtype.UUID, pgtype.UUID, pgtype.UUID, pgtype.UUID, string, []byte, error) {
 	if input.MemoryRevisionID.Valid {
-		revision, err := queries.GetRoomMemoryRevision(ctx, db.GetRoomMemoryRevisionParams{ID: input.MemoryRevisionID, WorkspaceID: input.WorkspaceID, RoomID: input.RoomID})
-		if err != nil || revision.ReviewStatus != "accepted" || !roomRow.AcceptedMemoryRevisionID.Valid || roomRow.AcceptedMemoryRevisionID != revision.ID {
-			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, ErrInvalidInput
+		outcome, err := loadAcceptedCurrentOutcome(ctx, queries, roomRow, input.WorkspaceID, input.RoomID, input.MemoryRevisionID)
+		if err != nil {
+			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, err
 		}
-		cycle, err := queries.GetRoomCycle(ctx, db.GetRoomCycleParams{ID: revision.CycleID, WorkspaceID: input.WorkspaceID, RoomID: input.RoomID})
-		if err != nil || cycle.Status != "completed" || cycle.Phase != "completed" {
-			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, ErrInvalidInput
-		}
-		var synthesis Synthesis
-		if json.Unmarshal(revision.Synthesis, &synthesis) != nil {
-			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, ErrInvalidSynthesis
-		}
-		recommendation, ok := FindRecommendation(synthesis, input.RecommendationKey)
+		recommendation, ok := FindRecommendation(outcome.synthesis, input.RecommendationKey)
 		if !ok || recommendation.Kind != input.Kind {
 			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, ErrInvalidInput
 		}
@@ -189,7 +185,7 @@ func promotionSource(ctx context.Context, queries *db.Queries, roomRow db.Room, 
 			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, ErrPromotionSourceMismatch
 		}
 		if existing, existingErr := queries.GetRoomRecommendationReview(ctx, db.GetRoomRecommendationReviewParams{
-			WorkspaceID: input.WorkspaceID, RoomID: input.RoomID, MemoryRevisionID: revision.ID,
+			WorkspaceID: input.WorkspaceID, RoomID: input.RoomID, MemoryRevisionID: outcome.revision.ID,
 			RecommendationKey: recommendation.Key,
 		}); existingErr == nil && existing.Status != "approved" {
 			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, ErrRecommendationReviewed
@@ -204,7 +200,7 @@ func promotionSource(ctx context.Context, queries *db.Queries, roomRow db.Room, 
 		if err != nil {
 			return "", pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, pgtype.UUID{}, "", nil, fmt.Errorf("encode Room recommendation citations: %w", err)
 		}
-		return body, revision.CycleID, revision.SynthesisTurnID, pgtype.UUID{}, revision.ID, recommendation.Key, citationJSON, nil
+		return body, outcome.revision.CycleID, outcome.revision.SynthesisTurnID, pgtype.UUID{}, outcome.revision.ID, recommendation.Key, citationJSON, nil
 	}
 	if input.EntryID.Valid {
 		entry, err := queries.GetRoomEntry(ctx, db.GetRoomEntryParams{ID: input.EntryID, WorkspaceID: input.WorkspaceID, RoomID: input.RoomID})

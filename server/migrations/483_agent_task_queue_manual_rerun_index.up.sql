@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_agent_task_queue_manual_rerun_source ON agent_task_queue (rerun_of_task_id, created_at DESC, id DESC) WHERE rerun_of_task_id IS NOT NULL AND retry_of_task_id IS NULL;

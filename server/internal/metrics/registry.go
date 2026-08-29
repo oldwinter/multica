@@ -18,6 +18,10 @@ type RegistryOptions struct {
 	Version  string
 	Commit   string
 
+	// ExtraCollectors lets leaf modules add content-free metrics through one
+	// composition-root registration without coupling this package to them.
+	ExtraCollectors []prometheus.Collector
+
 	// BusinessSampler, when non-nil, opts the registry into the
 	// scrape-time SQL sampler from PR4 (MUL-2947). It is intentionally
 	// separate from Pool so existing tests (and any deployment without
@@ -32,6 +36,7 @@ type Registry struct {
 	Business     *BusinessMetrics
 	ChannelMedia *ChannelMediaReconcilerMetrics
 	ChannelLease *ChannelLeaseMetrics
+	SeatCapacity *SeatCapacityMetrics
 	Wecom        *WecomMetrics
 	// Sampler is non-nil only when RegistryOptions.BusinessSampler was
 	// supplied with a valid Pool. Exposed so the cmd/server entrypoint
@@ -63,6 +68,9 @@ func NewRegistry(opts RegistryOptions) *Registry {
 	channelLease := NewChannelLeaseMetrics()
 	reg.MustRegister(channelLease.Collectors()...)
 
+	seatCapacity := NewSeatCapacityMetrics()
+	reg.MustRegister(seatCapacity.Collectors()...)
+
 	wecomMetrics := NewWecomMetrics()
 	reg.MustRegister(wecomMetrics.Collectors()...)
 
@@ -80,6 +88,11 @@ func NewRegistry(opts RegistryOptions) *Registry {
 	if sampler != nil {
 		reg.MustRegister(sampler.Collectors()...)
 	}
+	for _, collector := range opts.ExtraCollectors {
+		if collector != nil {
+			reg.MustRegister(collector)
+		}
+	}
 
 	return &Registry{
 		Gatherer:     reg,
@@ -87,6 +100,7 @@ func NewRegistry(opts RegistryOptions) *Registry {
 		Business:     businessMetrics,
 		ChannelMedia: channelMedia,
 		ChannelLease: channelLease,
+		SeatCapacity: seatCapacity,
 		Wecom:        wecomMetrics,
 		Sampler:      sampler,
 	}

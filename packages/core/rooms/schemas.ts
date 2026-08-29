@@ -62,7 +62,31 @@ const RoomRefusalReasonSchema = z
   ])
   .or(z.string().transform(() => "unknown" as const));
 const RoomTemplateIdSchema = z
-  .enum(["research", "planning", "risk", "incident", "decision"])
+  .enum(["research", "planning", "risk", "incident", "decision", "improvement"])
+  .or(z.string().transform(() => "unknown" as const));
+const RoomRecommendationKindSchema = z
+  .enum([
+    "knowledge",
+    "preference",
+    "constraint",
+    "executable_procedure",
+    "implementation_defect",
+    "decision",
+    "unsupported",
+  ])
+  .or(z.string().transform(() => "unknown" as const));
+const RoomArtifactKindSchema = z
+  .enum([
+    "issue",
+    "wiki",
+    "knowledge",
+    "preference",
+    "constraint",
+    "executable_procedure",
+    "implementation_defect",
+    "decision",
+    "unsupported",
+  ])
   .or(z.string().transform(() => "unknown" as const));
 const RoomMemoryReviewStatusSchema = z
   .enum(["pending", "accepted", "rejected", "corrected"])
@@ -76,7 +100,7 @@ export const RoomSynthesisItemSchema = z.object({
 
 export const RoomRecommendationSchema = z.object({
   key: z.string(),
-  kind: z.enum(["issue", "wiki", "decision"]),
+  kind: RoomRecommendationKindSchema,
   title: z.string(),
   body: z.string().optional().default(""),
   rationale: z.string().optional().default(""),
@@ -109,6 +133,25 @@ export const RoomMemorySchema = z.object({
   }).loose()).optional().default([]),
 }).loose();
 
+export const RoomValueSignalSchema = z.object({
+	last_accepted_revision_id: z.string().nullable().optional().default(null),
+	last_accepted_at: z.string().nullable().optional().default(null),
+	last_cycle_id: z.string().nullable().optional().default(null),
+	last_run_status: RoomCycleStatusSchema.nullable().optional().default(null),
+	last_run_phase: RoomCyclePhaseSchema.nullable().optional().default(null),
+	last_run_reason: z.string().nullable().optional().default(null),
+	last_run_at: z.string().nullable().optional().default(null),
+	last_run_cost_ticks: z.number().int().nonnegative().optional().default(0),
+	repeat_run_count: z.number().int().nonnegative().optional().default(0),
+	accepted_outcomes: z.number().int().nonnegative().optional().default(0),
+	active_weeks: z.number().int().nonnegative().optional().default(0),
+	accepted_outcomes_per_active_week: z.number().nonnegative().optional().default(0),
+	median_review_latency_seconds: z.number().nonnegative().optional().default(0),
+	promotion_rate: z.number().nonnegative().optional().default(0),
+	failed_cycles: z.number().int().nonnegative().optional().default(0),
+	refused_cycles: z.number().int().nonnegative().optional().default(0),
+}).loose();
+
 export const RoomSchema = z.object({
   id: z.string(),
   workspace_id: z.string(),
@@ -139,6 +182,7 @@ export const RoomSchema = z.object({
   capability_version: z.number().int().nonnegative().optional().default(0),
   created_at: z.string(),
   updated_at: z.string(),
+	value: RoomValueSignalSchema.nullable().optional().default(null),
 }).loose();
 
 export const RoomParticipantSchema = z.object({
@@ -206,9 +250,7 @@ export const RoomArtifactSchema = z.object({
   cycle_id: z.string().nullable().optional().default(null),
   turn_id: z.string().nullable().optional().default(null),
   entry_id: z.string().nullable().optional().default(null),
-  kind: z.enum(["issue", "wiki", "decision"]).or(
-    z.string().transform(() => "unknown" as const),
-  ),
+  kind: RoomArtifactKindSchema,
   target_id: z.string().nullable().optional().default(null),
   title: z.string(),
   body: z.string(),
@@ -301,6 +343,14 @@ export const RoomUsageSchema = z.object({
   failures: z.number().int().nonnegative(),
   accepted_syntheses: z.number().int().nonnegative(),
   promoted_artifacts: z.number().int().nonnegative(),
+	repeat_run_count: z.number().int().nonnegative().optional().default(0),
+	active_weeks: z.number().int().nonnegative().optional().default(0),
+	median_review_latency_seconds: z.number().nonnegative().optional().default(0),
+	accepted_outcomes_per_active_week: z.number().nonnegative().optional().default(0),
+	promotion_rate: z.number().nonnegative().optional().default(0),
+	failed_cycles: z.number().int().nonnegative().optional().default(0),
+	refused_cycles: z.number().int().nonnegative().optional().default(0),
+	cost_ticks_per_accepted_outcome: z.number().nonnegative().optional().default(0),
 }).loose();
 
 export const RetryRoomSynthesisResultSchema = z.object({
@@ -366,6 +416,7 @@ export const EMPTY_ROOM: Room = {
   capability_version: 0,
   created_at: "",
   updated_at: "",
+	value: null,
 };
 
 export const EMPTY_ROOM_LIST: readonly Room[] = [];
@@ -457,6 +508,14 @@ export const EMPTY_ROOM_USAGE: RoomUsage = {
   failures: 0,
   accepted_syntheses: 0,
   promoted_artifacts: 0,
+	repeat_run_count: 0,
+	active_weeks: 0,
+	median_review_latency_seconds: 0,
+	accepted_outcomes_per_active_week: 0,
+	promotion_rate: 0,
+	failed_cycles: 0,
+	refused_cycles: 0,
+	cost_ticks_per_accepted_outcome: 0,
 };
 
 export const EMPTY_ROOM_WAKE_RESULT: RoomWakeResult = {

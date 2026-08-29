@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS wiki_page_edit_proposal_room_idempotency_uidx;

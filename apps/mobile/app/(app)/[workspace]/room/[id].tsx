@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,7 @@ import {
   usePostRoomMessage,
   useRetryRoomSynthesis,
   useSetRoomStatus,
+  useWakeRoom,
 } from "@/data/mutations/rooms";
 import {
   roomDetailOptions,
@@ -45,7 +46,13 @@ import {
 import { latestRoomCycle } from "@/lib/room-selectors";
 
 export default function RoomDetailPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+	const { id, focus, cycleId, memoryRevisionId, recommendationKey } = useLocalSearchParams<{
+		id: string;
+		focus?: string;
+		cycleId?: string;
+		memoryRevisionId?: string;
+		recommendationKey?: string;
+	}>();
   const wsId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((state) => state.currentWorkspaceSlug);
   const qc = useQueryClient();
@@ -60,8 +67,10 @@ export default function RoomDetailPage() {
   });
   const usage = useQuery(roomUsageOptions(wsId, id));
   const postMessage = usePostRoomMessage(id);
+  const wakeRoom = useWakeRoom(id);
   const setStatus = useSetRoomStatus(id);
-  const latestCycleId = latestRoomCycle(detail.data?.cycles ?? [])?.id ?? "";
+  const currentLatestCycle = latestRoomCycle(detail.data?.cycles ?? []);
+  const latestCycleId = currentLatestCycle?.id ?? "";
   const retrySynthesis = useRetryRoomSynthesis(id, latestCycleId);
   const cancelCycle = useCancelRoomCycle(id, latestCycleId);
   const draftKey = roomDraftKey(wsId, id);
@@ -78,6 +87,20 @@ export default function RoomDetailPage() {
   useRoomRealtime(id);
 
   const room = detail.data?.room;
+  const canRunAgain =
+    room?.status === "active" &&
+    !room.active_cycle_id &&
+    currentLatestCycle !== undefined &&
+    ["completed", "failed", "cancelled", "refused"].includes(
+      currentLatestCycle.phase,
+    );
+
+  const runAgain = useCallback(() => {
+    wakeRoom.mutate(createRoomIdempotencyKey("run-again"), {
+      onError: (error) =>
+        Alert.alert("Run not started", roomErrorMessage(error)),
+    });
+  }, [wakeRoom]);
 
   const refresh = useCallback(async () => {
     await Promise.all([
@@ -176,6 +199,48 @@ export default function RoomDetailPage() {
     [wsSlug, id],
   );
 
+	const openedAttentionRef = useRef("");
+	useEffect(() => {
+		const attentionKey = [focus, cycleId, memoryRevisionId, recommendationKey].join(":");
+		if (!detail.data || !attentionKey || openedAttentionRef.current === attentionKey) return;
+		if (focus === "outcome_review" && cycleId && memoryRevisionId) {
+			const cycle = detail.data.cycles.find((candidate) => candidate.id === cycleId);
+			const revision = detail.data.memory_revisions.find(
+				(candidate) => candidate.id === memoryRevisionId,
+			);
+			if (cycle?.phase === "awaiting_review" && revision?.review_status === "pending") {
+				openedAttentionRef.current = attentionKey;
+				openReview(cycleId, memoryRevisionId);
+			}
+			return;
+		}
+		if (focus === "recommendation_review" && memoryRevisionId && recommendationKey) {
+			const revision = detail.data.memory_revisions.find(
+				(candidate) => candidate.id === memoryRevisionId,
+			);
+			const recommendation = revision?.synthesis.recommendations.find(
+				(candidate) => candidate.key === recommendationKey,
+			);
+			const reviewed = detail.data.recommendation_reviews.some(
+				(candidate) =>
+					candidate.memory_revision_id === memoryRevisionId &&
+					candidate.recommendation_key === recommendationKey,
+			);
+			if (revision?.review_status === "accepted" && recommendation && !reviewed) {
+				openedAttentionRef.current = attentionKey;
+				openRecommendation(memoryRevisionId, recommendation);
+			}
+		}
+	}, [
+		focus,
+		cycleId,
+		memoryRevisionId,
+		recommendationKey,
+		detail.data,
+		openReview,
+		openRecommendation,
+	]);
+
   const retry = useCallback(
     (cycleId: string) => {
       if (cycleId !== latestCycleId) return;
@@ -252,6 +317,14 @@ export default function RoomDetailPage() {
             room && room.status !== "archived"
               ? () => (
                   <View className="flex-row gap-1">
+                    {canRunAgain ? (
+                      <IconButton
+                        name="refresh-outline"
+                        onPress={runAgain}
+                        disabled={wakeRoom.isPending}
+                        accessibilityLabel="Run again"
+                      />
+                    ) : null}
                     <IconButton
                       name={room.status === "paused" ? "play" : "pause"}
                       onPress={confirmStatusChange}

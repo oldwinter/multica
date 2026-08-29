@@ -141,11 +141,147 @@ test.describe("Settings", () => {
       expect(hydrationErrors).toEqual([]);
 
       await page.getByRole("button", { name: "Reset appearance" }).click();
+      await expect(page.getByText(/skin to Tension/i)).toBeVisible();
+      await page.getByRole("button", { name: "Reset to defaults" }).click();
       await expect(page.getByRole("radio", { name: /Tension/ })).toBeChecked();
       await expect(page.getByRole("radio", { name: "System" })).toBeChecked();
       await expect(page.getByText("Synced across devices")).toBeVisible();
     } finally {
       await page.context().setOffline(false).catch(() => undefined);
+      await api.resetAppearancePreferences();
+      await api.cleanup();
+    }
+  });
+
+  test("appearance confidence and recovery", async ({ page, browser }) => {
+    test.setTimeout(360000);
+    const { api, workspaceSlug } = await loginAsDefaultWithApi(page, {
+      navigate: false,
+    });
+    const settingsUrl = `/${workspaceSlug}/settings?tab=preferences`;
+    let secondContext: Awaited<ReturnType<typeof browser.newContext>> | null =
+      null;
+
+    try {
+      await api.resetAppearancePreferences();
+      await page.goto(settingsUrl, { waitUntil: "domcontentloaded" });
+      await waitForPageText(page, "Appearance", 60000);
+
+      let appearancePatchCount = 0;
+      page.on("request", (request) => {
+        if (
+          request.method() === "PATCH" &&
+          new URL(request.url()).pathname === "/api/me" &&
+          request.postData()?.includes('"skin"')
+        ) {
+          appearancePatchCount += 1;
+        }
+      });
+
+      const previews = page.locator("[data-appearance-fixture]");
+      await expect(previews).toHaveCount(3);
+      await expect(
+        previews.first().locator('[data-fixture-role="form-control"]'),
+      ).toBeVisible();
+      await expect(
+        previews.first().locator('[data-fixture-role="code-editor"]'),
+      ).toBeVisible();
+      expect(appearancePatchCount).toBe(0);
+
+      await page.getByRole("radio", { name: /Relay/ }).click();
+      await expect(page.getByText("Synced across devices")).toBeVisible();
+      await page.getByRole("button", { name: "Undo" }).click();
+      await expect(
+        page.getByText("Previous appearance restored"),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("radio", { name: /Tension/ }),
+      ).toBeChecked();
+      await expect(page.getByText("Synced across devices")).toBeVisible();
+      expect(appearancePatchCount).toBe(2);
+
+      secondContext = await browser.newContext();
+      const secondPage = await secondContext.newPage();
+      await authenticatePageWithApi(secondPage, api);
+      await secondPage.goto(
+        new URL(settingsUrl, page.url()).toString(),
+        { waitUntil: "domcontentloaded" },
+      );
+      await waitForPageText(secondPage, "Appearance", 60000);
+
+      await page.getByRole("radio", { name: /Field/ }).click();
+      await expect(page.getByText("Synced across devices")).toBeVisible();
+      await secondPage.waitForTimeout(25);
+      await secondPage.getByRole("radio", { name: /Relay/ }).click();
+      await expect(
+        secondPage.getByText("Synced across devices"),
+      ).toBeVisible();
+
+      await page.getByRole("button", { name: "Undo" }).click();
+      await expect(
+        page.getByText(
+          "Undo expired because appearance changed elsewhere",
+        ),
+      ).toBeVisible();
+      await expect(page.getByRole("radio", { name: /Relay/ })).toBeChecked();
+
+      await secondContext.close();
+      secondContext = null;
+
+      let failedAttempts = 0;
+      await page.route("**/api/me", async (route) => {
+        const request = route.request();
+        if (
+          request.method() === "PATCH" &&
+          request.postData()?.includes('"skin":"field"')
+        ) {
+          failedAttempts += 1;
+          await route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "appearance sync unavailable" }),
+          });
+          return;
+        }
+        await route.fallback();
+      });
+
+      await page.getByRole("radio", { name: /Field/ }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-skin", "field");
+      await expect(page.getByText(/Sync failed/)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Copy diagnostics" }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "Retry sync" }).click();
+      await expect(
+        page.getByRole("button", { name: "Copy diagnostics" }),
+      ).toBeVisible();
+      expect(failedAttempts).toBe(2);
+
+      await page.context().grantPermissions(
+        ["clipboard-read", "clipboard-write"],
+        { origin: new URL(page.url()).origin },
+      );
+      await page.getByRole("button", { name: "Copy diagnostics" }).click();
+      await expect(
+        page.getByText("Appearance diagnostics copied"),
+      ).toBeVisible();
+      await page.unroute("**/api/me");
+
+      await page.getByRole("button", { name: "Reset appearance" }).click();
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await expect(page.getByText(/skin to Tension/i)).toBeVisible();
+      await expect(page.getByText(/color mode to System/i)).toBeVisible();
+      await expect(page.getByRole("radio", { name: /Field/ })).toBeChecked();
+      await page.getByRole("button", { name: "Reset to defaults" }).click();
+      await expect(
+        page.getByRole("radio", { name: /Tension/ }),
+      ).toBeChecked();
+      await expect(page.getByRole("radio", { name: "System" })).toBeChecked();
+      await expect(page.getByText("Synced across devices")).toBeVisible();
+    } finally {
+      await page.unroute("**/api/me").catch(() => undefined);
+      if (secondContext) await secondContext.close();
       await api.resetAppearancePreferences();
       await api.cleanup();
     }

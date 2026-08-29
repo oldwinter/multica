@@ -7,7 +7,6 @@
     "show_archived": "보관됨 표시 ({{count}})",
     "archived_badge": "보관됨",
     "archived_hint": "새로 지정할 수 없습니다. 이미 이 상태인 태스크는 그대로 유지됩니다.",
-    "flag_off": "이 배포에서는 사용자 지정 상태가 아직 활성화되지 않았습니다. 아래 기본 상태는 평소대로 동작합니다.",
     "reorder_failed": "새 순서를 저장하지 못했습니다.",
     "actions": {
       "open": "{{name}} 작업",
@@ -22,6 +21,7 @@
       "name": "이름",
       "name_placeholder": "예: Code Review",
       "key_hint": "API와 CLI에서는 {{key}}로 참조합니다.",
+      "created": "상태를 만들었습니다. API와 CLI에서는 {{key}}로 참조합니다.",
       "category": "카테고리",
       "category_locked": "카테고리는 변경할 수 없습니다. 이미 이 상태인 태스크가 이에 의존합니다.",
       "description": "설명",
@@ -107,13 +107,24 @@
     "appearance_title": "화면 모양",
     "appearance_hint": "화면의 재질과 주변 밝기에 반응하는 방식을 선택하세요.",
     "appearance_sync": {
-      "default": "제품 기본값 사용 중",
+      "default": "Tension과 시스템 설정 사용 중",
       "synced": "기기 간 동기화됨",
-      "pending": "동기화 대기 중",
-      "local_only": "이 기기에 저장됨",
-      "failed": "동기화 실패",
+      "pending": "이 기기에 적용했으며 동기화 대기 중",
+      "local_only": "이 기기에만 적용하고 저장함",
+      "failed": "동기화에 실패했습니다. 현재 선택은 이 기기에 적용되어 있습니다.",
       "retry": "동기화 재시도",
-      "reset": "화면 모양 재설정"
+      "copy_diagnostics": "진단 정보 복사",
+      "diagnostics_copied": "화면 모양 진단 정보를 복사했습니다",
+      "diagnostics_copy_failed": "화면 모양 진단 정보를 복사하지 못했습니다",
+      "reset": "화면 모양 재설정",
+      "reset_title": "화면 모양을 재설정할까요?",
+      "reset_description": "스킨을 Tension으로, 색상 모드를 시스템 설정으로 되돌립니다.",
+      "reset_confirm": "기본값으로 재설정",
+      "cancel": "취소",
+      "undo": "실행 취소",
+      "undo_applied": "이전 화면 모양을 복원했습니다",
+      "undo_expired": "다른 곳에서 화면 모양이 변경되어 실행 취소할 수 없습니다",
+      "recovered": "잘못된 화면 모양 설정을 안전한 기본값으로 교체했습니다"
     },
     "skin": {
       "title": "스킨",
@@ -611,6 +622,10 @@
       "agent_activity": {
         "label": "에이전트 활동",
         "description": "에이전트 작업이 완료되거나 실패할 때"
+      },
+      "rooms": {
+        "label": "룸",
+        "description": "리뷰 대기, 실패한 사이클, 차단된 룸 실행"
       }
     },
     "system": {
@@ -920,6 +935,15 @@
     "inviting": "초대하는 중...",
     "toast_invitation_sent": "초대를 보냈습니다",
     "toast_invitation_failed": "초대를 보내지 못했습니다",
+    "toast_seat_capacity_unavailable": "멤버 좌석을 확인할 수 없습니다. 다시 시도해 주세요.",
+    "toast_seat_capacity_rate_limited": "좌석 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+    "seat_purchase_title": "좌석을 추가하고 초대를 보내시겠어요?",
+    "seat_purchase_description": "{{email}}에 사용할 구매 좌석이 없습니다. Stripe 견적을 확인한 뒤 좌석 구매와 초대를 함께 승인하세요.",
+    "purchase_seat_and_invite": "좌석 1개 구매 후 초대",
+    "retry_seat_purchase": "구매 다시 시도",
+    "seat_purchase_waiting": "Stripe의 새 좌석 확인을 기다리는 중입니다. 초대가 자동으로 전송되도록 이 페이지를 열어 두세요. 페이지를 벗어나도 구매한 좌석은 유지되며 나중에 다시 초대할 수 있습니다.",
+    "seat_purchase_timeout": "좌석 구매가 제출되었지만 확인이 예상보다 오래 걸리고 있습니다. 초대는 전송되지 않았습니다. 결제 화면에 사용 가능한 좌석이 표시된 후 다시 초대하세요.",
+    "seat_purchase_capacity_taken": "구매한 좌석을 더 이상 사용할 수 없어 초대가 전송되지 않았습니다. 현재 좌석을 확인한 후 다시 시도하세요.",
     "no_members": "멤버를 찾을 수 없습니다.",
     "pending_title": "대기 중인 초대 ({{count}})",
     "pending_status": "대기 중",

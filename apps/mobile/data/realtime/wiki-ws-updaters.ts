@@ -51,10 +51,14 @@ export function invalidateWikiCollections(qc: QueryClient, wsId: string) {
       return (
         key[0] === "wiki" &&
         key[1] === wsId &&
-        (key[2] === "list" || key[2] === "search")
+        (key[2] === "list" || key[2] === "search" || key[2] === "knowledge-readiness")
       );
     },
   });
+}
+
+export function invalidateWikiKnowledgeReadiness(qc: QueryClient, wsId: string) {
+  return qc.invalidateQueries({ queryKey: wikiKeys.readiness(wsId) });
 }
 
 export function invalidateWikiPage(
