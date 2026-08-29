@@ -9,7 +9,10 @@ import { TestApiClient } from "./fixtures";
 const DATABASE_URL =
   process.env.DATABASE_URL ??
   "postgres://multica:multica@localhost:5432/multica?sslmode=disable";
-const APP_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const APP_URL =
+  process.env.PLAYWRIGHT_BASE_URL ??
+  process.env.FRONTEND_ORIGIN ??
+  "http://localhost:3000";
 
 interface RoomDetailResponse {
   room: {
