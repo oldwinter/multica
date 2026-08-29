@@ -300,9 +300,30 @@ test("Web and Desktop shared evolution workflow keeps review actions human-gated
   await expect(page.getByText("evidence-review", { exact: true }).first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.getByRole("button", { name: "Evolution" }).click();
+  const evolutionAction = page.getByRole("button", { name: "Evolution" });
+  const evolutionPath = `/${workspaceSlug}/skills/${SKILL_ID}/evolution`;
+  const evolutionPrefetch = await page.evaluate(async (path) => {
+    const response = await fetch(path, {
+      headers: {
+        "Next-Router-Prefetch": "1",
+        RSC: "1",
+      },
+    });
+    return {
+      contentType: response.headers.get("content-type"),
+      status: response.status,
+    };
+  }, evolutionPath);
+  expect(evolutionPrefetch).toEqual({
+    contentType: expect.stringContaining("text/x-component"),
+    status: 200,
+  });
+
+  await evolutionAction.hover();
+  await evolutionAction.focus();
+  await evolutionAction.click();
   await expect(page).toHaveURL(
-    new RegExp(`/${workspaceSlug}/skills/${SKILL_ID}/evolution$`),
+    new RegExp(`${evolutionPath}$`),
   );
   await expect(page.getByText("Evolution is off", { exact: true })).toBeVisible();
 

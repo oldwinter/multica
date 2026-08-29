@@ -119,9 +119,10 @@ function renderPage(searchParams = new URLSearchParams()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const push = vi.fn();
   const replace = vi.fn();
   const navigation: NavigationAdapter = {
-    push: vi.fn(),
+    push,
     replace,
     back: vi.fn(),
     pathname: "/acme/skills/skill-1",
@@ -138,7 +139,7 @@ function renderPage(searchParams = new URLSearchParams()) {
       </NavigationProvider>
     </I18nProvider>,
   );
-  return { replace, queryClient };
+  return { push, replace, queryClient };
 }
 
 /** Publishes a new server version of the skill, as a `skill:updated` event would. */
@@ -162,10 +163,12 @@ beforeEach(() => {
 
 describe("SkillDetailPage tabs", () => {
   it("links to the skill evolution workflow from the compact header action", async () => {
-    renderPage();
+    const { push } = renderPage();
 
     const evolution = await screen.findByRole("button", { name: "Evolution" });
     expect(evolution.getAttribute("href")).toBe("/acme/skills/skill-1/evolution");
+    await userEvent.click(evolution);
+    expect(push).toHaveBeenCalledWith("/acme/skills/skill-1/evolution");
   });
 
   it("opens on Overview and exposes exactly two tabs", async () => {
