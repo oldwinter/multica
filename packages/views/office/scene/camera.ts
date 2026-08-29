@@ -14,7 +14,7 @@ export interface CameraSize {
 
 const MIN_SCALE = 0.35;
 const MAX_SCALE = 4;
-const FIT_FACTOR = 0.9375;
+const FIT_FACTOR = 0.985;
 
 function clampScale(scale: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));

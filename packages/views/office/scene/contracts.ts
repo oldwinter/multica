@@ -67,6 +67,12 @@ export interface OfficeAgentSceneState {
   readonly flicker: boolean;
 }
 
+export interface OfficeAgentVisualVariant {
+  readonly accent: number;
+  readonly body: number;
+  readonly silhouette: number;
+}
+
 interface OfficeSceneEntityBase {
   readonly key: string;
   readonly id: string;
@@ -77,6 +83,7 @@ interface OfficeSceneEntityBase {
 export interface OfficeAgentSceneEntity extends OfficeSceneEntityBase {
   readonly kind: "agent";
   readonly state: OfficeAgentSceneState;
+  readonly visualVariant: OfficeAgentVisualVariant;
 }
 
 export interface OfficeSquadSceneEntity extends OfficeSceneEntityBase {

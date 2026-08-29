@@ -48,7 +48,9 @@ function makeSquad(id: string): OfficeSquad {
   };
 }
 
-function makeIssue(id: string): OfficeIssue {
+function makeIssue(
+  id: string,
+): Extract<OfficeIssue, { readonly kind: "resolved" }> {
   return {
     kind: "resolved",
     id,
@@ -224,6 +226,73 @@ describe("Office scene reconciliation", () => {
       ]),
     );
     expect(JSON.stringify(plan)).not.toContain("private-");
+  });
+
+  it("suppresses the relationship graph until an Issue selection reveals its exact links", async () => {
+    const port = new RecordingPort();
+    const controller = new OfficeSceneController({ port, onStatus: () => {} });
+    const secondIssue: OfficeIssue = {
+      ...makeIssue("issue-b"),
+      assignedSquadId: null,
+      executingAgentIds: ["agent-b"],
+    };
+    const multiIssueSnapshot = {
+      ...snapshot(),
+      activeIssues: [makeIssue("issue-a"), secondIssue],
+    };
+
+    controller.reconcile(commit({ snapshot: multiIssueSnapshot }));
+    await controller.whenIdle();
+    expect(port.plans.at(-1)?.links).toEqual([]);
+
+    controller.reconcile(
+      commit({
+        snapshot: multiIssueSnapshot,
+        selected: { kind: "issue", id: "issue-a" },
+      }),
+    );
+    await controller.whenIdle();
+
+    expect(port.plans.at(-1)?.links).toEqual([
+      { from: "issue:issue-a", to: "agent:agent-a", kind: "execution" },
+      { from: "issue:issue-a", to: "agent:agent-b", kind: "execution" },
+      { from: "issue:issue-a", to: "squad:squad-a", kind: "assignment" },
+    ]);
+
+    controller.reconcile(
+      commit({
+        snapshot: multiIssueSnapshot,
+        selected: { kind: "squad", id: "squad-a" },
+      }),
+    );
+    await controller.whenIdle();
+    expect(port.plans.at(-1)?.links).toEqual([
+      { from: "issue:issue-a", to: "agent:agent-a", kind: "execution" },
+      { from: "issue:issue-a", to: "agent:agent-b", kind: "execution" },
+      { from: "issue:issue-a", to: "squad:squad-a", kind: "assignment" },
+    ]);
+  });
+
+  it("derives stable, non-content Agent visual variants from entity IDs", async () => {
+    const port = new RecordingPort();
+    const controller = new OfficeSceneController({ port, onStatus: () => {} });
+
+    controller.reconcile(commit());
+    await controller.whenIdle();
+
+    expect(port.plans.at(-1)?.entities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "agent-a",
+          visualVariant: { accent: 0, body: 2, silhouette: 0 },
+        }),
+        expect.objectContaining({
+          id: "agent-b",
+          visualVariant: { accent: 1, body: 3, silhouette: 1 },
+        }),
+      ]),
+    );
+    expect(JSON.stringify(port.plans.at(-1))).not.toContain("private-name");
   });
 
   it("loads a new pack before switching, keeps the old pack on failure, and disposes once", async () => {

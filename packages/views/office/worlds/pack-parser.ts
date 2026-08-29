@@ -3,6 +3,7 @@ import {
   OFFICE_WORLD_CONTRACT_VERSION,
   REQUIRED_MOTION_CLIPS,
   type OfficeFrame,
+  type OfficeDecorElement,
   type OfficeMotionClip,
   type OfficePoint,
   type OfficeWorldPack,
@@ -83,11 +84,79 @@ function frames(value: unknown): Readonly<Record<string, OfficeFrame>> {
 
 function clip(value: unknown, path: string): OfficeMotionClip {
   const input = record(value, path);
+  const variants = array(input.variants, `${path}.variants`).map(
+    (variant, index) => strings(variant, `${path}.variants[${index}]`),
+  );
+  if (variants.length !== 4 || variants.some((frames) => frames.length < 2)) {
+    throw new Error(`${path}.variants must define four two-frame variants`);
+  }
   return {
-    frames: strings(input.frames, `${path}.frames`),
+    variants,
     fps: number(input.fps, `${path}.fps`),
     loop: boolean(input.loop, `${path}.loop`),
   };
+}
+
+function paletteIndex(value: unknown, path: string, paletteSize: number): number {
+  const index = number(value, path);
+  if (!Number.isInteger(index) || index < 0 || index >= paletteSize) {
+    throw new Error(`${path} must be a palette index`);
+  }
+  return index;
+}
+
+function coordinateList(value: unknown, path: string): readonly number[] {
+  const points = array(value, path).map((coordinate, index) =>
+    number(coordinate, `${path}[${index}]`),
+  );
+  if (points.length < 4 || points.length % 2 !== 0) {
+    throw new Error(`${path} must contain coordinate pairs`);
+  }
+  return points;
+}
+
+function decorElement(
+  value: unknown,
+  path: string,
+  paletteSize: number,
+): OfficeDecorElement {
+  const input = record(value, path);
+  const kind = string(input.kind, `${path}.kind`);
+  const color = paletteIndex(input.color, `${path}.color`, paletteSize);
+  switch (kind) {
+    case "rect":
+      return {
+        kind,
+        color,
+        x: number(input.x, `${path}.x`),
+        y: number(input.y, `${path}.y`),
+        width: number(input.width, `${path}.width`),
+        height: number(input.height, `${path}.height`),
+      };
+    case "circle":
+      return {
+        kind,
+        color,
+        x: number(input.x, `${path}.x`),
+        y: number(input.y, `${path}.y`),
+        radius: number(input.radius, `${path}.radius`),
+      };
+    case "polygon":
+      return {
+        kind,
+        color,
+        points: coordinateList(input.points, `${path}.points`),
+      };
+    case "line":
+      return {
+        kind,
+        color,
+        points: coordinateList(input.points, `${path}.points`),
+        width: number(input.width, `${path}.width`),
+      };
+    default:
+      throw new Error(`${path}.kind is invalid`);
+  }
 }
 
 function worldId(value: unknown): OfficeWorldId {
@@ -117,6 +186,7 @@ export function parseOfficeWorldPack(
   const light = record(lighting.light, "lighting.light");
   const dark = record(lighting.dark, "lighting.dark");
   const visuals = record(input.visuals, "visuals");
+  const palette = strings(input.palette, "palette");
   string(map.asset, "map.asset");
   string(assets.atlas, "assets.atlas");
   string(assets.poster, "assets.poster");
@@ -176,7 +246,7 @@ export function parseOfficeWorldPack(
       camera: points(anchors.camera, "anchors.camera"),
     },
     clips: parsedClips,
-    palette: strings(input.palette, "palette"),
+    palette,
     lighting: {
       light: {
         ambient: string(light.ambient, "lighting.light.ambient"),
@@ -200,6 +270,14 @@ export function parseOfficeWorldPack(
       ),
       stationStyle: string(visuals.stationStyle, "visuals.stationStyle"),
       props: strings(visuals.props, "visuals.props"),
+      backdropColor: paletteIndex(
+        visuals.backdropColor,
+        "visuals.backdropColor",
+        palette.length,
+      ),
+      decor: array(visuals.decor, "visuals.decor").map((element, index) =>
+        decorElement(element, `visuals.decor[${index}]`, palette.length),
+      ),
     },
     hitRegions: array(input.hitRegions, "hitRegions").map((region, index) => {
       const item = record(region, `hitRegions[${index}]`);

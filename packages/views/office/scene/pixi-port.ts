@@ -10,7 +10,7 @@ import {
   Texture,
   type Ticker,
 } from "pixi.js";
-import type { OfficeWorldPack } from "../worlds/types";
+import type { OfficeDecorElement, OfficeWorldPack } from "../worlds/types";
 import {
   fitCamera,
   isWorldPointVisible,
@@ -53,6 +53,118 @@ function regionFor(pack: OfficeWorldPack, entity: OfficeSceneEntity) {
 
 function colorAt(pack: OfficeWorldPack, index: number) {
   return pack.palette[index % pack.palette.length] ?? "#ffffff";
+}
+
+type SignalColor =
+  | "assignment"
+  | "execution"
+  | "offline"
+  | "online"
+  | "queued"
+  | "selection"
+  | "unknown"
+  | "unstable"
+  | "working";
+
+const SIGNAL_COLOR_INDEX = {
+  studio: {
+    assignment: 3,
+    execution: 4,
+    offline: 5,
+    online: 2,
+    queued: 4,
+    selection: 4,
+    unknown: 11,
+    unstable: 4,
+    working: 3,
+  },
+  expedition: {
+    assignment: 3,
+    execution: 10,
+    offline: 9,
+    online: 4,
+    queued: 10,
+    selection: 10,
+    unknown: 11,
+    unstable: 10,
+    working: 3,
+  },
+} satisfies Record<OfficeWorldPack["id"], Record<SignalColor, number>>;
+
+function signalColor(pack: OfficeWorldPack, role: SignalColor) {
+  return colorAt(pack, SIGNAL_COLOR_INDEX[pack.id][role]);
+}
+
+function drawPolygon(graphics: Graphics, points: readonly number[], color: string) {
+  const startX = points[0];
+  const startY = points[1];
+  if (startX === undefined || startY === undefined) return;
+  graphics.moveTo(startX, startY);
+  for (let index = 2; index + 1 < points.length; index += 2) {
+    graphics.lineTo(points[index] ?? startX, points[index + 1] ?? startY);
+  }
+  graphics.closePath().fill(color);
+}
+
+function drawDecorElement(
+  graphics: Graphics,
+  element: OfficeDecorElement,
+  pack: OfficeWorldPack,
+) {
+  const color = colorAt(pack, element.color);
+  switch (element.kind) {
+    case "rect":
+      graphics.rect(element.x, element.y, element.width, element.height).fill(color);
+      return;
+    case "circle":
+      graphics.circle(element.x, element.y, element.radius).fill(color);
+      return;
+    case "polygon":
+      drawPolygon(graphics, element.points, color);
+      return;
+    case "line": {
+      const startX = element.points[0];
+      const startY = element.points[1];
+      if (startX === undefined || startY === undefined) return;
+      graphics.moveTo(startX, startY);
+      for (let index = 2; index + 1 < element.points.length; index += 2) {
+        graphics.lineTo(
+          element.points[index] ?? startX,
+          element.points[index + 1] ?? startY,
+        );
+      }
+      graphics.stroke({ color, width: element.width });
+      return;
+    }
+    default: {
+      const exhaustive: never = element;
+      return exhaustive;
+    }
+  }
+}
+
+function drawSegmentedLine(
+  graphics: Graphics,
+  from: { readonly x: number; readonly y: number },
+  to: { readonly x: number; readonly y: number },
+) {
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  if (distance === 0) return;
+  const dash = 18;
+  const gap = 10;
+  for (let offset = 0; offset < distance; offset += dash + gap) {
+    const start = offset / distance;
+    const end = Math.min(distance, offset + dash) / distance;
+    graphics
+      .moveTo(
+        from.x + (to.x - from.x) * start,
+        from.y + (to.y - from.y) * start,
+      )
+      .lineTo(
+        from.x + (to.x - from.x) * end,
+        from.y + (to.y - from.y) * end,
+      );
+  }
 }
 
 export class PixiOfficeScenePort implements OfficeScenePort {
@@ -330,25 +442,16 @@ export class PixiOfficeScenePort implements OfficeScenePort {
     const height = pack.map.height * pack.map.tileSize;
     const lighting = this.#isDark() ? pack.lighting.dark : pack.lighting.light;
     const geometry = new Graphics();
-    geometry.rect(0, 0, width, height).fill(lighting.ambient);
-    if (pack.id === "studio") {
-      geometry.rect(48, 48, width - 96, height - 96).fill(colorAt(pack, 1));
-      for (let x = 80; x < width - 64; x += 80) {
-        geometry.moveTo(x, 64).lineTo(x, height - 64).stroke({ color: colorAt(pack, 5), alpha: 0.24, width: 1 });
-      }
-      geometry.rect(width * 0.63, 88, width * 0.31, height - 176).fill({ color: colorAt(pack, 0), alpha: 0.88 });
-    } else {
-      geometry.rect(48, 48, width - 96, height - 96).fill(colorAt(pack, 0));
-      geometry.rect(72, height * 0.43, width - 144, height * 0.14).fill(colorAt(pack, 2));
-      geometry.rect(width * 0.43, 72, width * 0.14, height - 144).fill(colorAt(pack, 2));
-      for (let index = 0; index < 18; index += 1) {
-        const x = 90 + ((index * 197) % Math.max(1, width - 180));
-        const y = 90 + ((index * 113) % Math.max(1, height - 180));
-        geometry.circle(x, y, 18 + (index % 4) * 5).fill({ color: colorAt(pack, 1), alpha: 0.72 });
-      }
+    geometry
+      .rect(-width * 2, -height * 2, width * 5, height * 5)
+      .fill(colorAt(pack, pack.visuals.backdropColor));
+    for (const element of pack.visuals.decor) {
+      drawDecorElement(geometry, element, pack);
     }
     if (lighting.overlayAlpha > 0) {
-      geometry.rect(0, 0, width, height).fill({ color: lighting.ambient, alpha: lighting.overlayAlpha });
+      geometry
+        .rect(-width * 2, -height * 2, width * 5, height * 5)
+        .fill({ color: lighting.ambient, alpha: lighting.overlayAlpha });
     }
     layer.addChild(geometry);
   }
@@ -386,9 +489,14 @@ export class PixiOfficeScenePort implements OfficeScenePort {
     container.addChild(graphics);
     let actor: AnimatedSprite | null = null;
     if (entity.kind === "agent") {
-      actor = this.#animatedSprite(pack.clips.idle.frames);
+      const idleFrames =
+        pack.clips.idle.variants[entity.visualVariant.silhouette] ??
+        pack.clips.idle.variants[0] ??
+        [];
+      actor = this.#animatedSprite(idleFrames);
       actor.anchor.set(0.5, 1);
-      actor.position.set(0, 12);
+      actor.position.set(0, 13);
+      actor.scale.set(1.08);
       container.addChild(actor);
     }
     const subject = subjectOf(entity);
@@ -425,46 +533,99 @@ export class PixiOfficeScenePort implements OfficeScenePort {
     node.container.position.set(entity.anchor.x, entity.anchor.y);
     const graphics = node.graphics.clear();
     if (entity.highlighted) {
-      graphics.circle(0, 0, 27).stroke({ color: colorAt(pack, 4), width: 3 });
+      const color = signalColor(pack, "selection");
+      graphics.circle(0, -4, 36).stroke({ color, width: 3 });
+      graphics.rect(-39, -35, 10, 3).fill(color);
+      graphics.rect(29, -35, 10, 3).fill(color);
+      graphics.rect(-39, 24, 10, 3).fill(color);
+      graphics.rect(29, 24, 10, 3).fill(color);
     }
     if (entity.kind === "agent") {
+      const bodyIndices =
+        pack.id === "studio" ? [8, 2, 5, 3] : [2, 1, 4, 6];
+      const accentIndices =
+        pack.id === "studio" ? [4, 3, 11, 10] : [3, 10, 8, 11];
+      const bodyColor = colorAt(
+        pack,
+        bodyIndices[entity.visualVariant.body] ?? bodyIndices[0] ?? 0,
+      );
+      const accentColor = colorAt(
+        pack,
+        accentIndices[entity.visualVariant.accent] ?? accentIndices[0] ?? 0,
+      );
       if (pack.id === "studio") {
-        graphics.rect(-24, 10, 48, 18).fill(colorAt(pack, 0));
-        graphics.rect(-19, 14, 38, 8).fill(
-          entity.state.stationLit ? colorAt(pack, 4) : colorAt(pack, 5),
+        graphics.rect(-31, 9, 62, 21).fill(colorAt(pack, 0));
+        graphics.rect(-27, 13, 54, 10).fill(
+          entity.state.stationLit ? signalColor(pack, "working") : bodyColor,
         );
+        graphics.rect(-21, 16, 24, 4).fill(colorAt(pack, 7));
+        graphics.rect(9, 16, 12, 4).fill(accentColor);
+        graphics.rect(-25, 25, 7, 5).fill(colorAt(pack, 5));
+        graphics.rect(18, 25, 7, 5).fill(colorAt(pack, 5));
       } else {
-        graphics.circle(0, 18, 23).fill(colorAt(pack, 5));
-        graphics.circle(0, 18, 14).fill(
-          entity.state.stationLit ? colorAt(pack, 3) : colorAt(pack, 1),
+        drawPolygon(
+          graphics,
+          [-34, 11, -16, 1, 18, 3, 35, 14, 24, 31, -20, 30],
+          colorAt(pack, 5),
         );
+        graphics.rect(-24, 10, 48, 10).fill(colorAt(pack, 6));
+        graphics.rect(-17, 13, 20, 4).fill(
+          entity.state.stationLit ? signalColor(pack, "working") : bodyColor,
+        );
+        graphics.rect(8, 13, 10, 4).fill(accentColor);
+        graphics.rect(-9, 23, 18, 6).fill(colorAt(pack, 9));
       }
-      const availabilityColor =
-        entity.state.availability === "online"
-          ? colorAt(pack, 2)
-          : entity.state.availability === "unstable"
-            ? colorAt(pack, 4)
-            : entity.state.availability === "offline"
-              ? colorAt(pack, 5)
-              : colorAt(pack, 6);
-      graphics.circle(-20, -18, 5).fill(availabilityColor);
+      const availabilityColor = signalColor(pack, entity.state.availability);
+      if (entity.state.availability === "online") {
+        graphics.rect(-31, -31, 9, 9).fill(availabilityColor);
+        graphics.rect(-28, -34, 3, 3).fill(availabilityColor);
+      } else if (entity.state.availability === "unstable") {
+        drawPolygon(graphics, [-32, -22, -27, -34, -20, -22], availabilityColor);
+        graphics.rect(-28, -28, 3, 6).fill(colorAt(pack, 7));
+      } else if (entity.state.availability === "offline") {
+        graphics.circle(-26, -27, 7).stroke({ color: availabilityColor, width: 2 });
+        graphics.moveTo(-32, -33).lineTo(-20, -21).stroke({ color: availabilityColor, width: 2 });
+      } else {
+        graphics.rect(-32, -33, 12, 12).stroke({ color: availabilityColor, width: 2 });
+        graphics.rect(-28, -29, 4, 4).fill(availabilityColor);
+        graphics.rect(-28, -22, 4, 3).fill(availabilityColor);
+      }
       if (entity.state.workload === "working") {
-        graphics.rect(14, -22, 10, 10).fill(colorAt(pack, 3));
+        const count = Math.min(3, Math.max(1, entity.state.runningCount));
+        graphics.rect(19, -33, 14, 11).fill(signalColor(pack, "working"));
+        graphics.rect(22, -30, 8, 3).fill(colorAt(pack, 7));
+        for (let index = 0; index < count; index += 1) {
+          graphics.rect(20 + index * 5, -19, 3, 4).fill(signalColor(pack, "working"));
+        }
       } else if (entity.state.workload === "queued") {
-        graphics.circle(19, -17, 5).stroke({ color: colorAt(pack, 4), width: 2 });
+        const color = signalColor(pack, "queued");
+        graphics.moveTo(26, -34).lineTo(34, -26).lineTo(26, -18).lineTo(18, -26).closePath().stroke({ color, width: 2 });
+        const count = Math.min(3, Math.max(1, entity.state.queuedCount));
+        for (let index = 0; index < count; index += 1) {
+          graphics.rect(21 + index * 5, -15, 3, 3).fill(color);
+        }
       } else if (entity.state.workload === "unknown") {
-        graphics.moveTo(15, -22).lineTo(23, -14).moveTo(23, -22).lineTo(15, -14).stroke({ color: colorAt(pack, 6), width: 2 });
+        const color = signalColor(pack, "unknown");
+        graphics.moveTo(20, -32).lineTo(32, -20).moveTo(32, -32).lineTo(20, -20).stroke({ color, width: 3 });
+      } else {
+        graphics.rect(20, -25, 13, 3).fill(colorAt(pack, 5));
+        graphics.rect(24, -29, 5, 3).fill(colorAt(pack, 5));
       }
       const actor = node.actor;
       if (actor) {
         const clip = pack.clips[entity.state.clip];
-        const textures = clip.frames.flatMap((name) => {
+        const frameNames =
+          clip.variants[entity.visualVariant.silhouette] ??
+          clip.variants[0] ??
+          [];
+        const textures = frameNames.flatMap((name) => {
           const texture = this.#frameTextures.get(name);
           return texture ? [texture] : [];
         });
         if (textures.length > 0) actor.textures = textures;
         actor.animationSpeed = clip.fps / 60;
         actor.loop = clip.loop;
+        actor.alpha = entity.state.availability === "offline" ? 0.55 : 1;
         if (reducedMotion) {
           actor.stop();
           actor.gotoAndStop(0);
@@ -474,20 +635,36 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       }
     } else if (entity.kind === "squad") {
       if (pack.id === "studio") {
-        graphics.rect(-28, -19, 56, 38).fill(colorAt(pack, 0));
-        graphics.rect(-22, -12, 44, 8).fill(colorAt(pack, 2));
+        graphics.rect(-31, -22, 62, 44).fill(colorAt(pack, 0));
+        graphics.rect(-26, -17, 52, 24).fill(colorAt(pack, 8));
+        graphics.rect(-21, -12, 22, 5).fill(colorAt(pack, 11));
+        graphics.rect(7, -12, 14, 5).fill(colorAt(pack, 3));
+        graphics.rect(-21, -2, 42, 4).fill(colorAt(pack, 4));
       } else {
-        graphics.moveTo(0, -28).lineTo(24, 18).lineTo(-24, 18).closePath().fill(colorAt(pack, 2));
-        graphics.rect(-3, -30, 6, 51).fill(colorAt(pack, 6));
+        graphics.rect(-25, 16, 50, 8).fill(colorAt(pack, 5));
+        graphics.rect(-3, -34, 6, 51).fill(colorAt(pack, 6));
+        drawPolygon(graphics, [2, -31, 29, -18, 2, -4], colorAt(pack, 2));
+        drawPolygon(graphics, [7, -25, 24, -18, 7, -10], colorAt(pack, 12));
+        graphics.rect(-18, 8, 36, 8).fill(colorAt(pack, 9));
       }
-      graphics.rect(-20, 7, Math.min(40, Math.max(2, entity.memberCount * 2)), 4).fill(colorAt(pack, 4));
+      graphics.rect(-20, 9, Math.min(40, Math.max(2, entity.memberCount * 2)), 4).fill(signalColor(pack, "execution"));
       for (let index = 0; index < entity.previewCount; index += 1) {
-        graphics.circle(-10 + index * 10, 15, 3).fill(colorAt(pack, 3));
+        graphics.rect(-11 + index * 10, 16, 5, 5).fill(signalColor(pack, "assignment"));
       }
     } else if (entity.kind === "issue") {
-      const fill = entity.resolved ? colorAt(pack, 3) : colorAt(pack, 5);
-      graphics.moveTo(0, -14).lineTo(14, 0).lineTo(0, 14).lineTo(-14, 0).closePath().fill(fill);
-      graphics.circle(0, 0, 4).fill(colorAt(pack, 7));
+      const fill = entity.resolved
+        ? signalColor(pack, "assignment")
+        : signalColor(pack, "offline");
+      if (pack.id === "studio") {
+        drawPolygon(graphics, [0, -15, 15, 0, 0, 15, -15, 0], fill);
+        graphics.rect(-4, -4, 8, 8).fill(colorAt(pack, 7));
+        graphics.rect(-2, -2, 4, 4).fill(colorAt(pack, 4));
+      } else {
+        graphics.rect(-2, -8, 4, 25).fill(colorAt(pack, 6));
+        drawPolygon(graphics, [0, -18, 13, -6, 0, 6, -13, -6], fill);
+        graphics.rect(-8, 15, 16, 5).fill(colorAt(pack, 5));
+        graphics.rect(-2, -9, 4, 6).fill(colorAt(pack, 10));
+      }
     } else {
       graphics.rect(-20, -13, 40, 26).fill(colorAt(pack, 0));
       const bars = Math.min(8, Math.max(1, entity.count));
@@ -508,11 +685,20 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       const from = anchors.get(link.from);
       const to = anchors.get(link.to);
       if (!from || !to) continue;
-      graphics.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({
-        alpha: link.kind === "assignment" ? 0.72 : 0.42,
-        color: link.kind === "assignment" ? colorAt(pack, 3) : colorAt(pack, 2),
-        width: link.kind === "assignment" ? 2 : 1,
-      });
+      if (link.kind === "assignment") {
+        drawSegmentedLine(graphics, from, to);
+        graphics.stroke({
+          alpha: 0.94,
+          color: signalColor(pack, "assignment"),
+          width: 3,
+        });
+      } else {
+        graphics.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({
+          alpha: 0.82,
+          color: signalColor(pack, "execution"),
+          width: 2,
+        });
+      }
     }
     layer.addChild(graphics);
   }
@@ -551,9 +737,28 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       const graphic = new Graphics();
       const color =
         effect.kind === "task-finished" && effect.outcome === "failed"
-          ? colorAt(pack, 3)
-          : colorAt(pack, 4);
-      graphic.circle(0, 0, effect.kind === "task-started" ? 5 : 7).fill(color);
+          ? signalColor(pack, "assignment")
+          : signalColor(pack, "execution");
+      if (pack.id === "studio") {
+        graphic
+          .rect(
+            effect.kind === "task-started" ? -4 : -6,
+            effect.kind === "task-started" ? -4 : -6,
+            effect.kind === "task-started" ? 8 : 12,
+            effect.kind === "task-started" ? 8 : 12,
+          )
+          .fill(color);
+        graphic.rect(-2, -2, 4, 4).fill(colorAt(pack, 7));
+      } else {
+        drawPolygon(
+          graphic,
+          effect.kind === "task-started"
+            ? [0, -6, 6, 0, 0, 6, -6, 0]
+            : [0, -9, 9, 0, 0, 9, -9, 0],
+          color,
+        );
+        graphic.rect(-2, -2, 4, 4).fill(colorAt(pack, 7));
+      }
       layer.addChild(graphic);
       const staysAtTarget = effect.kind === "task-finished";
       this.#effects.push({

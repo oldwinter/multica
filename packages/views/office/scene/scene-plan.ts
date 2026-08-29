@@ -1,6 +1,7 @@
 import type { OfficeIssue } from "@multica/core/office";
 import type { OfficeWorldPack } from "../worlds/types";
 import type {
+  OfficeAgentVisualVariant,
   OfficeSceneCommit,
   OfficeSceneEntity,
   OfficeSceneLink,
@@ -13,6 +14,23 @@ function resolvedIssue(
   issue: OfficeIssue,
 ): issue is Extract<OfficeIssue, { readonly kind: "resolved" }> {
   return issue.kind === "resolved";
+}
+
+function stableHash(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+export function agentVisualVariant(id: string): OfficeAgentVisualVariant {
+  return {
+    accent: stableHash(`accent|${id}`) % 4,
+    body: stableHash(`body|${id}`) % 4,
+    silhouette: stableHash(`silhouette|${id}`) % 4,
+  };
 }
 
 export function buildOfficeScenePlan(input: {
@@ -67,6 +85,7 @@ export function buildOfficeScenePlan(input: {
       anchor,
       highlighted: highlightedAgentIds.has(agent.id),
       state: mapAgentSceneState(agent, commit.reducedMotion),
+      visualVariant: agentVisualVariant(agent.id),
     });
   }
 
@@ -129,7 +148,15 @@ export function buildOfficeScenePlan(input: {
 
   const visibleKeys = new Set(entities.map((entity) => entity.key));
   const links: OfficeSceneLink[] = [];
-  for (const issue of commit.snapshot.activeIssues) {
+  const linkedIssues = commit.snapshot.activeIssues.filter((issue) => {
+    if (commit.selected?.kind === "issue") return issue.id === commit.selected.id;
+    return (
+      commit.selected?.kind === "squad" &&
+      resolvedIssue(issue) &&
+      issue.assignedSquadId === commit.selected.id
+    );
+  });
+  for (const issue of linkedIssues) {
     const issueKey = `issue:${issue.id}`;
     if (!visibleKeys.has(issueKey)) continue;
     for (const agentId of [...issue.executingAgentIds].sort()) {

@@ -3,6 +3,14 @@ import type { OfficeSnapshot, OfficeWorldId } from "@multica/core/office";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 
+const POSTER_URLS = {
+  studio: new URL("./worlds/studio/assets/poster.png", import.meta.url).href,
+  expedition: new URL(
+    "./worlds/expedition/assets/poster.png",
+    import.meta.url,
+  ).href,
+} satisfies Record<OfficeWorldId, string>;
+
 export function OfficeDomFallback({
   snapshot,
   world,
@@ -28,14 +36,22 @@ export function OfficeDomFallback({
       data-world={world}
       data-fallback-reason={reason}
       aria-labelledby="office-poster-title"
-      className="relative flex min-h-64 flex-1 overflow-hidden bg-surface md:min-h-0"
+      className="relative flex min-h-[36rem] flex-1 flex-col overflow-hidden bg-surface md:min-h-0"
     >
-      <div className="absolute inset-x-0 top-0 h-px bg-border" />
-      <div className="absolute inset-y-0 left-1/3 w-px bg-border/70" />
-      <div className="absolute inset-y-0 right-1/3 w-px bg-border/70" />
-      <div className="absolute inset-x-0 top-1/2 h-px bg-border/70" />
+      <div
+        aria-hidden="true"
+        className="relative min-h-44 basis-[52%] overflow-hidden bg-surface-raised"
+      >
+        <img
+          src={POSTER_URLS[world]}
+          alt=""
+          draggable={false}
+          className="size-full object-contain"
+          style={{ imageRendering: "pixelated" }}
+        />
+      </div>
 
-      <div className="relative z-10 flex w-full flex-col justify-between gap-8 p-5 sm:p-7">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between gap-6 border-t border-surface-border bg-surface p-5 sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2

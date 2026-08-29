@@ -29,10 +29,38 @@ export interface OfficeFrame {
 }
 
 export interface OfficeMotionClip {
-  readonly frames: readonly string[];
+  readonly variants: readonly (readonly string[])[];
   readonly fps: number;
   readonly loop: boolean;
 }
+
+interface OfficeDecorBase {
+  readonly color: number;
+}
+
+export type OfficeDecorElement =
+  | (OfficeDecorBase & {
+      readonly kind: "rect";
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    })
+  | (OfficeDecorBase & {
+      readonly kind: "circle";
+      readonly x: number;
+      readonly y: number;
+      readonly radius: number;
+    })
+  | (OfficeDecorBase & {
+      readonly kind: "polygon";
+      readonly points: readonly number[];
+    })
+  | (OfficeDecorBase & {
+      readonly kind: "line";
+      readonly points: readonly number[];
+      readonly width: number;
+    });
 
 export interface OfficeWorldPack {
   readonly id: OfficeWorldId;
@@ -73,6 +101,8 @@ export interface OfficeWorldPack {
     readonly actorSilhouette: string;
     readonly stationStyle: string;
     readonly props: readonly string[];
+    readonly backdropColor: number;
+    readonly decor: readonly OfficeDecorElement[];
   };
   readonly hitRegions: readonly {
     readonly role: "agent" | "squad" | "issue";

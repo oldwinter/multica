@@ -14,7 +14,7 @@
       "license": "LicenseRef-Multica-Proprietary",
       "modificationNote": "Generated from checked-in numeric geometry and palette constants",
       "attributionRequired": false,
-      "sha256": "cbaf5c9eb0479549dc44ce6e9381df6c23bb68bd6c1adbd32a84715f0860bccb"
+      "sha256": "1757e9eb4ebdd9fa991dc3dd7ca4c3445f3cf46cbacf3edba157f12ebc6cd965"
     },
     {
       "path": "expedition/assets/map.json",
@@ -29,7 +29,7 @@
       "license": "LicenseRef-Multica-Proprietary",
       "modificationNote": "Generated from checked-in numeric geometry and palette constants",
       "attributionRequired": false,
-      "sha256": "3a7f4af1bc4698cb757fc75b78fab5ef3a349677468240fa7b8f1c54997b94fd"
+      "sha256": "dbc1b6c522cde3ab9b11c2feb5c651eb393c1d20ba18e6f244d32cc8c7c013ae"
     },
     {
       "path": "expedition/assets/poster.png",
@@ -44,7 +44,7 @@
       "license": "LicenseRef-Multica-Proprietary",
       "modificationNote": "Generated from checked-in numeric geometry and palette constants",
       "attributionRequired": false,
-      "sha256": "70d5ebabffed1d9ced6cd248f840101fec2bc1f4e06517c3eafb59048de96950"
+      "sha256": "3c95ceb3d92fae520d1cafc0916d9191c35087299307234be801d244d824a9c2"
     },
     {
       "path": "studio/assets/atlas.png",
@@ -59,7 +59,7 @@
       "license": "LicenseRef-Multica-Proprietary",
       "modificationNote": "Generated from checked-in numeric geometry and palette constants",
       "attributionRequired": false,
-      "sha256": "d0994c6c981b59b04c3331a597291e2527a5401c1b1738b33070d37903f196fc"
+      "sha256": "a6381cf8585f58006e5c0169f0f1c6be5aa46fbf90503e436cc6bd5b85a55685"
     },
     {
       "path": "studio/assets/map.json",
@@ -74,7 +74,7 @@
       "license": "LicenseRef-Multica-Proprietary",
       "modificationNote": "Generated from checked-in numeric geometry and palette constants",
       "attributionRequired": false,
-      "sha256": "8bf3055fc2810a04c31caaaf61161819d9021bd9f75715d7354d337ef9a972b1"
+      "sha256": "b6a1880bd68b575653c6e03e15e7a47f42802b0c84bdacfd608719c20389b46d"
     },
     {
       "path": "studio/assets/poster.png",
@@ -89,7 +89,7 @@
       "license": "LicenseRef-Multica-Proprietary",
       "modificationNote": "Generated from checked-in numeric geometry and palette constants",
       "attributionRequired": false,
-      "sha256": "b34984a6d91dde16f9bea7b2c2206c08039a68185e376f94037bed124d9e5ddd"
+      "sha256": "7d880117aead4fcaf4133853228ddd5d748b28f31ca8f430f1e75cc25fdd3d77"
     }
   ]
 }

@@ -32,10 +32,18 @@ describe("Office world packs", () => {
         [...REQUIRED_MOTION_CLIPS].sort(),
       );
       for (const clip of Object.values(pack.clips)) {
-        expect(clip.frames.length).toBeGreaterThanOrEqual(2);
+        expect(clip.variants).toHaveLength(4);
+        for (const frames of clip.variants) {
+          expect(frames.length).toBeGreaterThanOrEqual(2);
+        }
         expect(clip.fps).toBeGreaterThanOrEqual(8);
         expect(clip.fps).toBeLessThanOrEqual(16);
       }
+      expect(new Set(pack.palette).size).toBeGreaterThanOrEqual(10);
+      expect(pack.visuals.props.length).toBeGreaterThanOrEqual(6);
+      expect(pack.visuals.decor.length).toBeGreaterThanOrEqual(48);
+      expect(pack.visuals.backdropColor).toBeGreaterThanOrEqual(0);
+      expect(pack.visuals.backdropColor).toBeLessThan(pack.palette.length);
       expect(pack.lighting.light.ambient).not.toBe(
         pack.lighting.dark.ambient,
       );
@@ -61,8 +69,9 @@ describe("Office world packs", () => {
     );
     expect(studio.visuals.props).not.toEqual(expedition.visuals.props);
     expect(studio.palette).not.toEqual(expedition.palette);
-    expect(studio.clips.walk.frames).not.toEqual(
-      expedition.clips.walk.frames,
+    expect(studio.clips.walk.variants).not.toEqual(
+      expedition.clips.walk.variants,
     );
+    expect(studio.visuals.decor).not.toEqual(expedition.visuals.decor);
   });
 });

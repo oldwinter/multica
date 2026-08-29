@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
 
 const expectedWorlds = ["expedition", "studio"];
 const requiredClips = [
@@ -95,6 +96,54 @@ function pngDimensions(path) {
   return { width: file.readUInt32BE(16), height: file.readUInt32BE(20) };
 }
 
+function pngPixels(path) {
+  const file = readFileSync(path);
+  const dimensions = pngDimensions(path);
+  if (file[24] !== 8 || file[25] !== 6) {
+    fail(`${relative(process.cwd(), path)} must be an 8-bit RGBA PNG`);
+  }
+  const chunks = [];
+  let offset = 8;
+  while (offset + 12 <= file.length) {
+    const length = file.readUInt32BE(offset);
+    const type = file.toString("ascii", offset + 4, offset + 8);
+    const start = offset + 8;
+    const end = start + length;
+    if (end + 4 > file.length) fail(`${path} has a truncated PNG chunk`);
+    if (type === "IDAT") chunks.push(file.subarray(start, end));
+    offset = end + 4;
+    if (type === "IEND") break;
+  }
+  const decoded = inflateSync(Buffer.concat(chunks));
+  const stride = dimensions.width * 4;
+  if (decoded.length !== dimensions.height * (stride + 1)) {
+    fail(`${relative(process.cwd(), path)} has an unexpected pixel payload`);
+  }
+  const pixels = Buffer.alloc(dimensions.width * dimensions.height * 4);
+  for (let y = 0; y < dimensions.height; y += 1) {
+    const source = y * (stride + 1);
+    if (decoded[source] !== 0) {
+      fail(`${relative(process.cwd(), path)} must use deterministic PNG filter 0`);
+    }
+    decoded.copy(pixels, y * stride, source + 1, source + stride + 1);
+  }
+  return { ...dimensions, pixels };
+}
+
+function pixelDifferenceRatio(left, right) {
+  if (left.width !== right.width || left.height !== right.height) return 1;
+  let different = 0;
+  for (let offset = 0; offset < left.pixels.length; offset += 4) {
+    const distance =
+      Math.abs(left.pixels[offset] - right.pixels[offset]) +
+      Math.abs(left.pixels[offset + 1] - right.pixels[offset + 1]) +
+      Math.abs(left.pixels[offset + 2] - right.pixels[offset + 2]) +
+      Math.abs(left.pixels[offset + 3] - right.pixels[offset + 3]);
+    if (distance >= 48) different += 1;
+  }
+  return different / (left.pixels.length / 4);
+}
+
 function sameDimensions(actual, expected, path) {
   const input = object(expected, path);
   if (
@@ -104,6 +153,76 @@ function sameDimensions(actual, expected, path) {
     fail(
       `${path} expected ${input.width}x${input.height}, got ${actual.width}x${actual.height}`,
     );
+  }
+}
+
+function validateCoordinatePairs(value, path, bounds) {
+  const points = array(value, path);
+  if (points.length < 4 || points.length % 2 !== 0) {
+    fail(`${path} must contain coordinate pairs`);
+  }
+  for (let index = 0; index < points.length; index += 2) {
+    const x = finiteNumber(points[index], `${path}[${index}]`);
+    const y = finiteNumber(points[index + 1], `${path}[${index + 1}]`);
+    if (x < 0 || y < 0 || x > bounds.width || y > bounds.height) {
+      fail(`${path} contains a point outside map bounds`);
+    }
+  }
+  return points;
+}
+
+function validateDecor(value, paletteSize, bounds, world) {
+  const decor = array(value, `${world}.visuals.decor`);
+  for (const [index, candidate] of decor.entries()) {
+    const path = `${world}.visuals.decor[${index}]`;
+    const element = object(candidate, path);
+    const kind = string(element.kind, `${path}.kind`);
+    const color = finiteNumber(element.color, `${path}.color`);
+    if (!Number.isInteger(color) || color < 0 || color >= paletteSize) {
+      fail(`${path}.color must be a palette index`);
+    }
+    if (kind === "rect") {
+      const x = finiteNumber(element.x, `${path}.x`);
+      const y = finiteNumber(element.y, `${path}.y`);
+      const width = finiteNumber(element.width, `${path}.width`);
+      const height = finiteNumber(element.height, `${path}.height`);
+      if (
+        width <= 0 ||
+        height <= 0 ||
+        x < 0 ||
+        y < 0 ||
+        x + width > bounds.width ||
+        y + height > bounds.height
+      ) {
+        fail(`${path} must be a positive rectangle inside map bounds`);
+      }
+    } else if (kind === "circle") {
+      const x = finiteNumber(element.x, `${path}.x`);
+      const y = finiteNumber(element.y, `${path}.y`);
+      const radius = finiteNumber(element.radius, `${path}.radius`);
+      if (
+        radius <= 0 ||
+        x - radius < 0 ||
+        y - radius < 0 ||
+        x + radius > bounds.width ||
+        y + radius > bounds.height
+      ) {
+        fail(`${path} must be a positive circle inside map bounds`);
+      }
+    } else if (kind === "polygon") {
+      const points = validateCoordinatePairs(element.points, `${path}.points`, bounds);
+      if (points.length < 6) fail(`${path}.points must define a polygon`);
+    } else if (kind === "line") {
+      validateCoordinatePairs(element.points, `${path}.points`, bounds);
+      if (finiteNumber(element.width, `${path}.width`) <= 0) {
+        fail(`${path}.width must be positive`);
+      }
+    } else {
+      fail(`${path}.kind is invalid`);
+    }
+  }
+  if (decor.length < 48) {
+    fail(`${world}.visuals.decor must contain an authored scene composition`);
   }
 }
 
@@ -263,6 +382,34 @@ function validateWorld(worldsRoot, world) {
   sameDimensions(atlasDimensions, assets.atlasSize, `${world}.atlasSize`);
   sameDimensions(posterDimensions, assets.posterSize, `${world}.posterSize`);
 
+  const palette = array(manifest.palette, `${world}.palette`);
+  const distinctColors = new Set(palette);
+  if (
+    palette.length < 10 ||
+    distinctColors.size < 10 ||
+    palette.some((color) => !/^#[0-9a-f]{6}$/i.test(color))
+  ) {
+    fail(`${world} palette must contain at least ten distinct colors`);
+  }
+  const visuals = object(manifest.visuals, `${world}.visuals`);
+  string(visuals.actorSilhouette, `${world}.visuals.actorSilhouette`);
+  string(visuals.stationStyle, `${world}.visuals.stationStyle`);
+  const props = array(visuals.props, `${world}.visuals.props`);
+  if (props.length < 6) fail(`${world}.visuals.props must define at least six props`);
+  props.forEach((prop, index) => string(prop, `${world}.visuals.props[${index}]`));
+  const backdropColor = finiteNumber(
+    visuals.backdropColor,
+    `${world}.visuals.backdropColor`,
+  );
+  if (
+    !Number.isInteger(backdropColor) ||
+    backdropColor < 0 ||
+    backdropColor >= palette.length
+  ) {
+    fail(`${world}.visuals.backdropColor must be a palette index`);
+  }
+  validateDecor(visuals.decor, palette.length, bounds, world);
+
   const frames = object(assets.frames, `${world}.assets.frames`);
   for (const [name, candidate] of Object.entries(frames)) {
     const frame = object(candidate, `${world}.assets.frames.${name}`);
@@ -289,11 +436,22 @@ function validateWorld(worldsRoot, world) {
   }
   for (const name of requiredClips) {
     const clip = object(clips[name], `${world}.clips.${name}`);
-    const clipFrames = array(clip.frames, `${world}.clips.${name}.frames`);
-    if (clipFrames.length < 2) fail(`${world}.${name} needs at least two frames`);
-    for (const frameName of clipFrames) {
-      if (!(string(frameName, `${world}.${name}.frame`) in frames)) {
-        fail(`${world}.${name} references missing frame ${frameName}`);
+    const variants = array(clip.variants, `${world}.clips.${name}.variants`);
+    if (variants.length !== 4) {
+      fail(`${world}.${name} must define exactly four variants`);
+    }
+    for (const [variantIndex, candidate] of variants.entries()) {
+      const clipFrames = array(
+        candidate,
+        `${world}.clips.${name}.variants[${variantIndex}]`,
+      );
+      if (clipFrames.length < 2) {
+        fail(`${world}.${name} variant ${variantIndex} needs at least two frames`);
+      }
+      for (const frameName of clipFrames) {
+        if (!(string(frameName, `${world}.${name}.frame`) in frames)) {
+          fail(`${world}.${name} references missing frame ${frameName}`);
+        }
       }
     }
     const fps = finiteNumber(clip.fps, `${world}.clips.${name}.fps`);
@@ -301,10 +459,6 @@ function validateWorld(worldsRoot, world) {
     if (typeof clip.loop !== "boolean") fail(`${world}.${name}.loop must be boolean`);
   }
 
-  const palette = array(manifest.palette, `${world}.palette`);
-  if (palette.length < 6 || palette.some((color) => !/^#[0-9a-f]{6}$/i.test(color))) {
-    fail(`${world} palette must contain at least six hex colors`);
-  }
   const lighting = object(manifest.lighting, `${world}.lighting`);
   if (!lighting.light || !lighting.dark) fail(`${world} needs light and dark lighting`);
   const hitRegions = array(manifest.hitRegions, `${world}.hitRegions`);
@@ -345,11 +499,26 @@ function assertMaterialDifference(studio, expedition) {
     JSON.stringify(studio.palette) !== JSON.stringify(expedition.palette),
     JSON.stringify(studio.anchors.agentStations) !==
       JSON.stringify(expedition.anchors.agentStations),
-    JSON.stringify(studio.clips.walk.frames) !==
-      JSON.stringify(expedition.clips.walk.frames),
+    JSON.stringify(studio.clips.walk.variants) !==
+      JSON.stringify(expedition.clips.walk.variants),
+    JSON.stringify(studio.visuals.decor) !==
+      JSON.stringify(expedition.visuals.decor),
   ];
   if (checks.some((different) => !different)) {
     fail("Studio and Expedition must differ in geometry, actors, props, stations, palette, and motion");
+  }
+}
+
+function assertPosterPixelDifference(worldsRoot) {
+  const studio = pngPixels(join(worldsRoot, "studio", "assets", "poster.png"));
+  const expedition = pngPixels(
+    join(worldsRoot, "expedition", "assets", "poster.png"),
+  );
+  const ratio = pixelDifferenceRatio(studio, expedition);
+  if (ratio < 0.35) {
+    fail(
+      `Studio and Expedition poster pixels must be materially different (ratio ${ratio.toFixed(3)})`,
+    );
   }
 }
 
@@ -370,6 +539,7 @@ export function validateOfficeAssets(root = process.cwd()) {
     worlds.map((world) => [world, validateWorld(worldsRoot, world)]),
   );
   assertMaterialDifference(results.studio.manifest, results.expedition.manifest);
+  assertPosterPixelDifference(worldsRoot);
   return {
     worlds,
     assets: Object.values(results).reduce((sum, result) => sum + result.assets, 0),

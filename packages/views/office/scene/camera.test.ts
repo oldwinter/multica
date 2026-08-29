@@ -10,12 +10,36 @@ import {
 
 describe("Office scene camera", () => {
   it("fits and centers a world with bounded integer-friendly scale", () => {
-    expect(
-      fitCamera({
-        viewport: { width: 800, height: 600 },
-        world: { width: 1280, height: 768 },
-      }),
-    ).toEqual({ x: 25, y: 75, scale: 0.5859375 });
+    const camera = fitCamera({
+      viewport: { width: 800, height: 600 },
+      world: { width: 1280, height: 768 },
+    });
+
+    expect(camera.x).toBeCloseTo(6);
+    expect(camera.y).toBeCloseTo(63.6);
+    expect(camera.scale).toBeCloseTo(0.615625);
+  });
+
+  it("keeps authored Office worlds dominant at wide and compact desktop sizes", () => {
+    const cases = [
+      {
+        viewport: { width: 876, height: 840 },
+        world: { width: 1152, height: 960 },
+      },
+      {
+        viewport: { width: 769, height: 716 },
+        world: { width: 1248, height: 1024 },
+      },
+    ];
+
+    for (const input of cases) {
+      const camera = fitCamera(input);
+      const widthCoverage = (input.world.width * camera.scale) / input.viewport.width;
+      const heightCoverage = (input.world.height * camera.scale) / input.viewport.height;
+
+      expect(Math.max(widthCoverage, heightCoverage)).toBeCloseTo(0.985);
+      expect(Math.min(widthCoverage, heightCoverage)).toBeGreaterThanOrEqual(0.75);
+    }
   });
 
   it("zooms around the pointer while preserving its world coordinate", () => {
