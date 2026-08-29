@@ -1,6 +1,8 @@
 "use client";
 
-import { ArrowDown, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, Check, CircleX, Copy, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import type { Agent } from "@multica/core/types";
 import type {
   PostRoomMessageInput,
@@ -10,6 +12,7 @@ import type {
 import { useActorName } from "@multica/core/workspace/hooks";
 import { Markdown } from "@multica/ui/markdown";
 import { Button } from "@multica/ui/components/ui/button";
+import { copyText } from "@multica/ui/lib/clipboard";
 import { cn } from "@multica/ui/lib/utils";
 import { useT, useTimeAgo } from "../i18n";
 import { ActorAvatar } from "../common/actor-avatar";
@@ -25,6 +28,74 @@ interface RoomTranscriptProps {
   readonly onPost: (input: PostRoomMessageInput) => void;
   readonly onPromoteEntry: (entryId: string, title: string) => void;
   readonly className?: string;
+}
+
+type CopyStatus = "idle" | "copied" | "failed";
+
+interface RoomEntryCopyButtonProps {
+  readonly entryId: string;
+  readonly body: string;
+  readonly copyLabel: string;
+  readonly copiedLabel: string;
+  readonly failedLabel: string;
+}
+
+function RoomEntryCopyButton({
+  entryId,
+  body,
+  copyLabel,
+  copiedLabel,
+  failedLabel,
+}: RoomEntryCopyButtonProps) {
+  const [status, setStatus] = useState<CopyStatus>("idle");
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
+
+  const copyEntry = async () => {
+    const ok = await copyText(body);
+
+    const nextStatus = ok ? "copied" : "failed";
+    setStatus(nextStatus);
+    if (ok) {
+      toast.success(copiedLabel);
+    } else {
+      toast.error(failedLabel);
+    }
+
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    resetTimer.current = setTimeout(() => setStatus("idle"), 2_000);
+  };
+
+  const statusLabel =
+    status === "copied" ? copiedLabel : status === "failed" ? failedLabel : copyLabel;
+
+  return (
+    <Button
+      type="button"
+      size="icon-xs"
+      variant="ghost"
+      className="size-11 sm:size-6"
+      aria-label={statusLabel}
+      title={statusLabel}
+      data-testid={`room-copy-entry-${entryId}`}
+      data-copy-status={status}
+      onClick={() => void copyEntry()}
+    >
+      {status === "copied" ? (
+        <Check className="text-success" aria-hidden="true" />
+      ) : status === "failed" ? (
+        <CircleX className="text-destructive" aria-hidden="true" />
+      ) : (
+        <Copy aria-hidden="true" />
+      )}
+    </Button>
+  );
 }
 
 export function RoomTranscript({
@@ -129,19 +200,27 @@ export function RoomTranscript({
                         >
                           {timeAgo(entry.created_at)}
                         </time>
-                        {promotable ? (
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="ghost"
-                            className="ml-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                            data-testid={`room-promote-entry-${entry.id}`}
-                            onClick={() => onPromoteEntry(entry.id, detail.room.title)}
-                          >
-                            <Sparkles data-icon="inline-start" aria-hidden="true" />
-                            {t(($) => $.actions.promote)}
-                          </Button>
-                        ) : null}
+                        <span className="ml-auto flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                          <RoomEntryCopyButton
+                            entryId={entry.id}
+                            body={entry.body}
+                            copyLabel={t(($) => $.actions.copy_entry)}
+                            copiedLabel={t(($) => $.toast.entry_copied)}
+                            failedLabel={t(($) => $.toast.copy_entry_failed)}
+                          />
+                          {promotable ? (
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="ghost"
+                              data-testid={`room-promote-entry-${entry.id}`}
+                              onClick={() => onPromoteEntry(entry.id, detail.room.title)}
+                            >
+                              <Sparkles data-icon="inline-start" aria-hidden="true" />
+                              {t(($) => $.actions.promote)}
+                            </Button>
+                          ) : null}
+                        </span>
                       </div>
                       <Markdown mode="minimal" className="mt-0.5 text-body leading-6 text-foreground">
                         {entry.body}
