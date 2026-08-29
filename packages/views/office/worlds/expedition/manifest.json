@@ -1,0 +1,812 @@
+{
+  "id": "expedition",
+  "contractVersion": 1,
+  "layoutVersion": 3,
+  "map": {
+    "asset": "./assets/map.json",
+    "width": 88,
+    "height": 52,
+    "tileSize": 16,
+    "layers": [
+      {
+        "name": "ground",
+        "type": "objectgroup"
+      },
+      {
+        "name": "walk",
+        "type": "objectgroup"
+      },
+      {
+        "name": "collision",
+        "type": "objectgroup"
+      }
+    ]
+  },
+  "assets": {
+    "atlas": "./assets/atlas.png",
+    "poster": "./assets/poster.png",
+    "atlasSize": {
+      "width": 256,
+      "height": 128
+    },
+    "posterSize": {
+      "width": 768,
+      "height": 432
+    },
+    "frames": {
+      "expedition-idle-0": {
+        "x": 0,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-idle-1": {
+        "x": 32,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-wait-0": {
+        "x": 64,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-wait-1": {
+        "x": 96,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-work-0": {
+        "x": 128,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-work-1": {
+        "x": 160,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-walk-0": {
+        "x": 192,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-walk-1": {
+        "x": 224,
+        "y": 0,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-unstable-0": {
+        "x": 0,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-unstable-1": {
+        "x": 32,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-offline-0": {
+        "x": 64,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-offline-1": {
+        "x": 96,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-completion-0": {
+        "x": 128,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-completion-1": {
+        "x": 160,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-failure-0": {
+        "x": 192,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      },
+      "expedition-failure-1": {
+        "x": 224,
+        "y": 32,
+        "width": 32,
+        "height": 32
+      }
+    }
+  },
+  "anchors": {
+    "agentStations": [
+      {
+        "id": "agent-1",
+        "x": 182,
+        "y": 242
+      },
+      {
+        "id": "agent-2",
+        "x": 282,
+        "y": 250
+      },
+      {
+        "id": "agent-3",
+        "x": 382,
+        "y": 258
+      },
+      {
+        "id": "agent-4",
+        "x": 482,
+        "y": 242
+      },
+      {
+        "id": "agent-5",
+        "x": 582,
+        "y": 250
+      },
+      {
+        "id": "agent-6",
+        "x": 682,
+        "y": 258
+      },
+      {
+        "id": "agent-7",
+        "x": 782,
+        "y": 242
+      },
+      {
+        "id": "agent-8",
+        "x": 882,
+        "y": 250
+      },
+      {
+        "id": "agent-9",
+        "x": 982,
+        "y": 258
+      },
+      {
+        "id": "agent-10",
+        "x": 1082,
+        "y": 242
+      },
+      {
+        "id": "agent-11",
+        "x": 230,
+        "y": 368
+      },
+      {
+        "id": "agent-12",
+        "x": 330,
+        "y": 376
+      },
+      {
+        "id": "agent-13",
+        "x": 430,
+        "y": 384
+      },
+      {
+        "id": "agent-14",
+        "x": 530,
+        "y": 368
+      },
+      {
+        "id": "agent-15",
+        "x": 630,
+        "y": 376
+      },
+      {
+        "id": "agent-16",
+        "x": 730,
+        "y": 384
+      },
+      {
+        "id": "agent-17",
+        "x": 830,
+        "y": 368
+      },
+      {
+        "id": "agent-18",
+        "x": 930,
+        "y": 376
+      },
+      {
+        "id": "agent-19",
+        "x": 1030,
+        "y": 384
+      },
+      {
+        "id": "agent-20",
+        "x": 1130,
+        "y": 368
+      },
+      {
+        "id": "agent-21",
+        "x": 182,
+        "y": 494
+      },
+      {
+        "id": "agent-22",
+        "x": 282,
+        "y": 502
+      },
+      {
+        "id": "agent-23",
+        "x": 382,
+        "y": 510
+      },
+      {
+        "id": "agent-24",
+        "x": 482,
+        "y": 494
+      },
+      {
+        "id": "agent-25",
+        "x": 582,
+        "y": 502
+      },
+      {
+        "id": "agent-26",
+        "x": 682,
+        "y": 510
+      },
+      {
+        "id": "agent-27",
+        "x": 782,
+        "y": 494
+      },
+      {
+        "id": "agent-28",
+        "x": 882,
+        "y": 502
+      },
+      {
+        "id": "agent-29",
+        "x": 982,
+        "y": 510
+      },
+      {
+        "id": "agent-30",
+        "x": 1082,
+        "y": 494
+      },
+      {
+        "id": "agent-31",
+        "x": 230,
+        "y": 620
+      },
+      {
+        "id": "agent-32",
+        "x": 330,
+        "y": 628
+      },
+      {
+        "id": "agent-33",
+        "x": 430,
+        "y": 636
+      },
+      {
+        "id": "agent-34",
+        "x": 530,
+        "y": 620
+      },
+      {
+        "id": "agent-35",
+        "x": 630,
+        "y": 628
+      },
+      {
+        "id": "agent-36",
+        "x": 730,
+        "y": 636
+      },
+      {
+        "id": "agent-37",
+        "x": 830,
+        "y": 620
+      },
+      {
+        "id": "agent-38",
+        "x": 930,
+        "y": 628
+      },
+      {
+        "id": "agent-39",
+        "x": 1030,
+        "y": 636
+      },
+      {
+        "id": "agent-40",
+        "x": 1130,
+        "y": 620
+      }
+    ],
+    "squadBoards": [
+      {
+        "id": "squad-1",
+        "x": 112,
+        "y": 94
+      },
+      {
+        "id": "squad-2",
+        "x": 496,
+        "y": 94
+      },
+      {
+        "id": "squad-3",
+        "x": 880,
+        "y": 94
+      },
+      {
+        "id": "squad-4",
+        "x": 1264,
+        "y": 94
+      },
+      {
+        "id": "squad-5",
+        "x": 112,
+        "y": 432
+      },
+      {
+        "id": "squad-6",
+        "x": 496,
+        "y": 432
+      },
+      {
+        "id": "squad-7",
+        "x": 880,
+        "y": 432
+      },
+      {
+        "id": "squad-8",
+        "x": 1264,
+        "y": 432
+      },
+      {
+        "id": "squad-9",
+        "x": 112,
+        "y": 770
+      },
+      {
+        "id": "squad-10",
+        "x": 496,
+        "y": 770
+      },
+      {
+        "id": "squad-11",
+        "x": 880,
+        "y": 770
+      },
+      {
+        "id": "squad-12",
+        "x": 1264,
+        "y": 770
+      }
+    ],
+    "activeIssues": [
+      {
+        "id": "issue-1",
+        "x": 146,
+        "y": 182
+      },
+      {
+        "id": "issue-2",
+        "x": 248,
+        "y": 182
+      },
+      {
+        "id": "issue-3",
+        "x": 350,
+        "y": 182
+      },
+      {
+        "id": "issue-4",
+        "x": 452,
+        "y": 182
+      },
+      {
+        "id": "issue-5",
+        "x": 554,
+        "y": 182
+      },
+      {
+        "id": "issue-6",
+        "x": 656,
+        "y": 182
+      },
+      {
+        "id": "issue-7",
+        "x": 758,
+        "y": 182
+      },
+      {
+        "id": "issue-8",
+        "x": 860,
+        "y": 182
+      },
+      {
+        "id": "issue-9",
+        "x": 962,
+        "y": 182
+      },
+      {
+        "id": "issue-10",
+        "x": 1064,
+        "y": 182
+      },
+      {
+        "id": "issue-11",
+        "x": 1166,
+        "y": 182
+      },
+      {
+        "id": "issue-12",
+        "x": 1268,
+        "y": 182
+      },
+      {
+        "id": "issue-13",
+        "x": 178,
+        "y": 356
+      },
+      {
+        "id": "issue-14",
+        "x": 280,
+        "y": 356
+      },
+      {
+        "id": "issue-15",
+        "x": 382,
+        "y": 356
+      },
+      {
+        "id": "issue-16",
+        "x": 484,
+        "y": 356
+      },
+      {
+        "id": "issue-17",
+        "x": 586,
+        "y": 356
+      },
+      {
+        "id": "issue-18",
+        "x": 688,
+        "y": 356
+      },
+      {
+        "id": "issue-19",
+        "x": 790,
+        "y": 356
+      },
+      {
+        "id": "issue-20",
+        "x": 892,
+        "y": 356
+      },
+      {
+        "id": "issue-21",
+        "x": 994,
+        "y": 356
+      },
+      {
+        "id": "issue-22",
+        "x": 1096,
+        "y": 356
+      },
+      {
+        "id": "issue-23",
+        "x": 1198,
+        "y": 356
+      },
+      {
+        "id": "issue-24",
+        "x": 1300,
+        "y": 356
+      },
+      {
+        "id": "issue-25",
+        "x": 146,
+        "y": 530
+      },
+      {
+        "id": "issue-26",
+        "x": 248,
+        "y": 530
+      },
+      {
+        "id": "issue-27",
+        "x": 350,
+        "y": 530
+      },
+      {
+        "id": "issue-28",
+        "x": 452,
+        "y": 530
+      },
+      {
+        "id": "issue-29",
+        "x": 554,
+        "y": 530
+      },
+      {
+        "id": "issue-30",
+        "x": 656,
+        "y": 530
+      },
+      {
+        "id": "issue-31",
+        "x": 758,
+        "y": 530
+      },
+      {
+        "id": "issue-32",
+        "x": 860,
+        "y": 530
+      },
+      {
+        "id": "issue-33",
+        "x": 962,
+        "y": 530
+      },
+      {
+        "id": "issue-34",
+        "x": 1064,
+        "y": 530
+      },
+      {
+        "id": "issue-35",
+        "x": 1166,
+        "y": 530
+      },
+      {
+        "id": "issue-36",
+        "x": 1268,
+        "y": 530
+      },
+      {
+        "id": "issue-37",
+        "x": 178,
+        "y": 704
+      },
+      {
+        "id": "issue-38",
+        "x": 280,
+        "y": 704
+      },
+      {
+        "id": "issue-39",
+        "x": 382,
+        "y": 704
+      },
+      {
+        "id": "issue-40",
+        "x": 484,
+        "y": 704
+      },
+      {
+        "id": "issue-41",
+        "x": 586,
+        "y": 704
+      },
+      {
+        "id": "issue-42",
+        "x": 688,
+        "y": 704
+      },
+      {
+        "id": "issue-43",
+        "x": 790,
+        "y": 704
+      },
+      {
+        "id": "issue-44",
+        "x": 892,
+        "y": 704
+      },
+      {
+        "id": "issue-45",
+        "x": 994,
+        "y": 704
+      },
+      {
+        "id": "issue-46",
+        "x": 1096,
+        "y": 704
+      },
+      {
+        "id": "issue-47",
+        "x": 1198,
+        "y": 704
+      },
+      {
+        "id": "issue-48",
+        "x": 1300,
+        "y": 704
+      }
+    ],
+    "dispatch": [
+      {
+        "id": "dispatch",
+        "x": 704,
+        "y": 424
+      }
+    ],
+    "overflow": [
+      {
+        "id": "overflow-agents",
+        "x": 640,
+        "y": 760
+      },
+      {
+        "id": "overflow-squads",
+        "x": 704,
+        "y": 760
+      },
+      {
+        "id": "overflow-issues",
+        "x": 768,
+        "y": 760
+      }
+    ],
+    "camera": [
+      {
+        "id": "camera",
+        "x": 704,
+        "y": 416
+      }
+    ]
+  },
+  "clips": {
+    "idle": {
+      "frames": [
+        "expedition-idle-0",
+        "expedition-idle-1"
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "wait": {
+      "frames": [
+        "expedition-wait-0",
+        "expedition-wait-1"
+      ],
+      "fps": 10,
+      "loop": true
+    },
+    "work": {
+      "frames": [
+        "expedition-work-0",
+        "expedition-work-1"
+      ],
+      "fps": 12,
+      "loop": true
+    },
+    "walk": {
+      "frames": [
+        "expedition-walk-0",
+        "expedition-walk-1"
+      ],
+      "fps": 14,
+      "loop": true
+    },
+    "unstable": {
+      "frames": [
+        "expedition-unstable-0",
+        "expedition-unstable-1"
+      ],
+      "fps": 16,
+      "loop": true
+    },
+    "offline": {
+      "frames": [
+        "expedition-offline-0",
+        "expedition-offline-1"
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "completion": {
+      "frames": [
+        "expedition-completion-0",
+        "expedition-completion-1"
+      ],
+      "fps": 10,
+      "loop": false
+    },
+    "failure": {
+      "frames": [
+        "expedition-failure-0",
+        "expedition-failure-1"
+      ],
+      "fps": 12,
+      "loop": false
+    }
+  },
+  "palette": [
+    "#182320",
+    "#526c47",
+    "#264b78",
+    "#eb7868",
+    "#8ea092",
+    "#30353b",
+    "#d7c887",
+    "#0c1318"
+  ],
+  "lighting": {
+    "light": {
+      "ambient": "#d7c887",
+      "overlayAlpha": 0.06
+    },
+    "dark": {
+      "ambient": "#0c1318",
+      "overlayAlpha": 0.34
+    }
+  },
+  "visuals": {
+    "actorSilhouette": "faceted-field-companion",
+    "stationStyle": "radial-stone-workbench",
+    "props": [
+      "route-beacon",
+      "canvas-shelter",
+      "moss-crate",
+      "survey-standard"
+    ]
+  },
+  "hitRegions": [
+    {
+      "role": "agent",
+      "polygon": [
+        -18,
+        -24,
+        18,
+        -24,
+        22,
+        18,
+        -22,
+        18
+      ]
+    },
+    {
+      "role": "squad",
+      "polygon": [
+        -28,
+        -20,
+        28,
+        -20,
+        28,
+        20,
+        -28,
+        20
+      ]
+    },
+    {
+      "role": "issue",
+      "polygon": [
+        -14,
+        -14,
+        14,
+        -14,
+        14,
+        14,
+        -14,
+        14
+      ]
+    }
+  ],
+  "provenance": "../PROVENANCE.json"
+}
