@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const pixi = vi.hoisted(() => ({
   appDestroy: vi.fn(),
+  appInit: vi.fn(),
   load: vi.fn(),
   textureCreate: vi.fn(),
   unload: vi.fn().mockResolvedValue(undefined),
@@ -55,7 +56,9 @@ vi.mock("pixi.js", () => {
     readonly stage = new Container();
     readonly ticker = { add: vi.fn(), maxFPS: 0 };
 
-    async init() {}
+    async init(options: unknown) {
+      pixi.appInit(options);
+    }
 
     start() {}
 
@@ -96,9 +99,28 @@ function deferred<T>() {
 describe("Pixi office scene asset lifecycle", () => {
   beforeEach(() => {
     pixi.appDestroy.mockClear();
+    pixi.appInit.mockClear();
     pixi.load.mockReset();
     pixi.textureCreate.mockClear();
     pixi.unload.mockClear();
+  });
+
+  it("keeps the canvas transparent over semantic CSS backgrounds", async () => {
+    const host = document.createElement("div");
+    const surface = document.createElement("div");
+    surface.style.backgroundColor = "oklch(1 0 0)";
+    surface.append(host);
+    document.body.append(surface);
+
+    const port = await createPixiScenePort({ host, onSelect: () => {} });
+
+    expect(pixi.appInit).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundAlpha: 0 }),
+    );
+    expect(pixi.appInit.mock.calls[0]?.[0]).not.toHaveProperty(
+      "backgroundColor",
+    );
+    port.destroy();
   });
 
   it("abandons and unloads a world whose map asset resolves after destroy", async () => {

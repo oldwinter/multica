@@ -251,10 +251,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       antialias: false,
       autoDensity: true,
       autoStart: false,
-      backgroundAlpha: 1,
-      backgroundColor: getComputedStyle(
-        this.#host.parentElement ?? this.#host,
-      ).backgroundColor,
+      backgroundAlpha: 0,
       height: Math.max(1, Math.round(bounds.height)),
       preference: ["webgl"],
       resolution: Math.min(window.devicePixelRatio || 1, 2),
