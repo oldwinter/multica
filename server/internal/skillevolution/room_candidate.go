@@ -60,14 +60,15 @@ func NewRoomCandidateEngine(outcomes room.AcceptedOutcomeSignals, queries *db.Qu
 }
 
 type roomCandidateEnvelope struct {
-	SchemaVersion   int                 `json:"schema_version"`
-	BaseSkillID     string              `json:"base_skill_id"`
-	BaseHash        string              `json:"base_hash"`
-	Bundle          roomCandidateBundle `json:"bundle"`
-	ObservedPattern string              `json:"observed_pattern"`
-	ExpectedBenefit string              `json:"expected_benefit"`
-	RegressionRisk  string              `json:"regression_risk"`
-	EvidenceDigests []string            `json:"evidence_digests"`
+	SchemaVersion     int                   `json:"schema_version"`
+	BaseSkillID       string                `json:"base_skill_id"`
+	BaseHash          string                `json:"base_hash"`
+	Bundle            roomCandidateBundle   `json:"bundle"`
+	ObservedPattern   string                `json:"observed_pattern"`
+	ExpectedBenefit   string                `json:"expected_benefit"`
+	RegressionRisk    string                `json:"regression_risk"`
+	EvidenceDigests   []string              `json:"evidence_digests"`
+	AuthorizedChanges []ChangeAuthorization `json:"authorized_changes"`
 }
 
 type roomCandidateBundle struct {
@@ -136,14 +137,19 @@ func (source *RoomCandidateSource) acceptedFromEvidence(
 	if err != nil || envelope.BaseSkillID != uuidText(request.SkillID) {
 		return AcceptedImprovementRecommendation{}, ErrRoomCandidateInvalid
 	}
-	resolved, err := source.resolveEvidenceDigests(ctx, request.WorkspaceID, request.SkillID, approvingActorID, candidate.EvidenceDigests)
+	synthesisEvidence, err := source.resolveEvidenceDigests(ctx, request.WorkspaceID, request.SkillID, approvingActorID, candidate.EvidenceDigests)
+	if err != nil {
+		return AcceptedImprovementRecommendation{}, err
+	}
+	replayEvidence, err := source.resolveHeldOutEvidence(ctx, request.WorkspaceID, request.SkillID, approvingActorID, synthesisEvidence)
 	if err != nil {
 		return AcceptedImprovementRecommendation{}, err
 	}
 	return AcceptedImprovementRecommendation{
 		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID,
 		RecommendationID: improvementRecommendationID(ref), ExpectedBaseHash: expectedHash,
-		AcceptedByID: approvingActorID, Candidate: candidate, Evidence: resolved,
+		AcceptedByID: approvingActorID, Candidate: candidate,
+		SynthesisEvidence: synthesisEvidence, ReplayEvidence: replayEvidence,
 	}, nil
 }
 
@@ -445,14 +451,56 @@ func (source *RoomCandidateSource) resolveEvidenceDigests(
 	return resolved, nil
 }
 
+func (source *RoomCandidateSource) resolveHeldOutEvidence(
+	ctx context.Context,
+	workspaceID, skillID, actorID pgtype.UUID,
+	synthesis []ResolvedEvidence,
+) ([]ResolvedEvidence, error) {
+	query := SignalQuery{WorkspaceID: workspaceID, SkillID: skillID, ActorID: actorID, Limit: MaxEvidenceRefs}
+	refs, err := source.signals.discover(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	excludedIdentities := make(map[string]struct{}, len(synthesis))
+	excludedDigests := make(map[Digest]struct{}, len(synthesis))
+	for _, evidence := range synthesis {
+		excludedIdentities[evidenceIdentity(evidence.Ref)] = struct{}{}
+		excludedDigests[evidence.Ref.Digest] = struct{}{}
+	}
+	heldOut := make([]EvidenceRef, 0, min(len(refs), MaxEvidenceRefs-len(synthesis)))
+	for _, ref := range refs {
+		if len(heldOut)+len(synthesis) >= MaxEvidenceRefs {
+			break
+		}
+		// The accepted Room outcome contains the synthesized candidate itself;
+		// it can never be an independent behavioral replay case.
+		if ref.Kind == EvidenceKindRoomOutcome {
+			continue
+		}
+		if _, used := excludedIdentities[evidenceIdentity(ref)]; used {
+			continue
+		}
+		if _, used := excludedDigests[ref.Digest]; used {
+			continue
+		}
+		heldOut = append(heldOut, ref)
+	}
+	return source.signals.resolve(ctx, query, heldOut)
+}
+
+func evidenceIdentity(ref EvidenceRef) string {
+	return string(ref.Kind) + "\x00" + ref.SourceID + "\x00" + ref.SourceRevisionID
+}
+
 func decodeRoomCandidate(raw string) (roomCandidateEnvelope, ImprovementCandidate, Digest, error) {
 	var envelope roomCandidateEnvelope
-	if len(raw) == 0 || len(raw) > skillbundle.MaxBundleBytes+MaxImprovementRationaleBytes*3 ||
+	if len(raw) == 0 || len(raw) > 2*skillbundle.MaxBundleBytes+MaxImprovementRationaleBytes*3 ||
 		!utf8.ValidString(raw) || strings.IndexByte(raw, 0) >= 0 || decodeStrictJSON([]byte(raw), &envelope) != nil ||
 		envelope.SchemaVersion != 1 || envelope.BaseSkillID == "" || envelope.Bundle.ID != envelope.BaseSkillID ||
 		envelope.Bundle.Source != skillbundle.SourceWorkspace || !validRationale(envelope.ObservedPattern) ||
 		!validRationale(envelope.ExpectedBenefit) || !validRationale(envelope.RegressionRisk) ||
-		len(envelope.EvidenceDigests) == 0 || len(envelope.EvidenceDigests) > MaxEvidenceRefs {
+		len(envelope.EvidenceDigests) == 0 || len(envelope.EvidenceDigests) > MaxEvidenceRefs ||
+		len(envelope.AuthorizedChanges) == 0 || len(envelope.AuthorizedChanges) > MaxCandidateChangeAuthorizations {
 		return roomCandidateEnvelope{}, ImprovementCandidate{}, "", ErrRoomCandidateInvalid
 	}
 	baseID, err := uuid.Parse(envelope.BaseSkillID)
@@ -484,9 +532,19 @@ func decodeRoomCandidate(raw string) (roomCandidateEnvelope, ImprovementCandidat
 		seen[digest] = struct{}{}
 		digests[index] = digest
 	}
+	for _, authorization := range envelope.AuthorizedChanges {
+		if authorization.Path == "" || authorization.Operation == "" || len(authorization.EvidenceDigests) == 0 {
+			return roomCandidateEnvelope{}, ImprovementCandidate{}, "", ErrRoomCandidateInvalid
+		}
+		for _, digest := range authorization.EvidenceDigests {
+			if !digest.Valid() {
+				return roomCandidateEnvelope{}, ImprovementCandidate{}, "", ErrRoomCandidateInvalid
+			}
+		}
+	}
 	return envelope, ImprovementCandidate{Bundle: bundle, ObservedPattern: envelope.ObservedPattern,
 		ExpectedBenefit: envelope.ExpectedBenefit, RegressionRisk: envelope.RegressionRisk,
-		EvidenceDigests: digests}, baseHash, nil
+		EvidenceDigests: digests, AuthorizedChanges: cloneChangeAuthorizations(envelope.AuthorizedChanges)}, baseHash, nil
 }
 
 func decodeStrictJSON(raw []byte, target any) error {

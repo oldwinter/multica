@@ -82,6 +82,19 @@ func (e EvidenceEligibility) Valid() bool {
 	return e == EvidenceEligibilityEligible || e == EvidenceEligibilityIneligible
 }
 
+// EvidenceRole records whether a content-free evidence identity authorized the
+// candidate change or was independently selected for held-out replay.
+type EvidenceRole string
+
+const (
+	EvidenceRoleSynthesis     EvidenceRole = "synthesis"
+	EvidenceRoleHeldOutReplay EvidenceRole = "held_out_replay"
+)
+
+func (r EvidenceRole) Valid() bool {
+	return r == EvidenceRoleSynthesis || r == EvidenceRoleHeldOutReplay
+}
+
 // EvidenceRef is deliberately content-free. Source-owned adapters must reload
 // and authorize content using these identities, then revalidate Digest before
 // returning any bounded generation evidence.

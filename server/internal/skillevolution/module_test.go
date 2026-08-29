@@ -41,6 +41,7 @@ type productionRoomsStub struct {
 	roomID   pgtype.UUID
 	creates  int
 	messages int
+	bodies   []string
 }
 
 func (stub *productionRoomsStub) Create(_ context.Context, input room.CreateInput) (room.Detail, error) {
@@ -54,6 +55,7 @@ func (stub *productionRoomsStub) Create(_ context.Context, input room.CreateInpu
 
 func (stub *productionRoomsStub) PostMessage(_ context.Context, input room.MessageInput) (room.MessageResult, error) {
 	stub.messages++
+	stub.bodies = append(stub.bodies, input.Body)
 	entryID, cycleID := publisherUUID(), publisherUUID()
 	stub.fixture.Insert(stub.t, "room_entry", internaltestutil.Cols{
 		"id": entryID, "workspace_id": input.WorkspaceID, "room_id": input.RoomID,
@@ -190,6 +192,10 @@ func TestProductionBehavioralEvaluatorRunsPairedCasesAndKeepsResultContentFree(t
 		{Content: `{"response":"candidate performed the check"}`, PromptTokens: 1, CompletionTokens: 1},
 		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
 		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"base missed the check again"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"candidate performed the check again"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
 	}}
 	evaluator, ok := newProductionBehavioralEvaluator(client).(*ProductionReplayEvaluator)
 	if !ok {
@@ -202,10 +208,13 @@ func TestProductionBehavioralEvaluatorRunsPairedCasesAndKeepsResultContentFree(t
 	candidate.Content = strings.Replace(candidate.Content, "Original.", "Updated with the focused check.", 1)
 	outcome, err := evaluator.Evaluate(context.Background(), ReplayRequest{
 		Base: fixture.base, Candidate: candidate,
-		Evidence: []ResolvedEvidence{{Ref: fixture.signalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"` + secretMarker + `","reason":"bounded"}`)}},
-		Limits:   ReplayLimits{Timeout: time.Second, MaxSamples: 1, MaxCostUSDTicks: 2_000_000, PolicyVersion: "v1"},
+		Evidence: []ResolvedEvidence{
+			{Ref: fixture.signalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"` + secretMarker + `","reason":"bounded"}`)},
+			{Ref: fixture.secondSignalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"independent case","reason":"bounded"}`)},
+		},
+		Limits: ReplayLimits{Timeout: time.Second, MaxSamples: 2, MaxCostUSDTicks: 2_000_000, PolicyVersion: "v1"},
 	})
-	if err != nil || outcome.Result != EvaluationResultPassed || outcome.SampleCount != 1 || outcome.FailureCount != 0 {
+	if err != nil || outcome.Result != EvaluationResultPassed || outcome.SampleCount != 2 || outcome.FailureCount != 0 {
 		t.Fatalf("paired replay = (%+v, %v)", outcome, err)
 	}
 	raw, err := json.Marshal(struct {
@@ -215,7 +224,7 @@ func TestProductionBehavioralEvaluatorRunsPairedCasesAndKeepsResultContentFree(t
 	if err != nil || strings.Contains(string(raw), secretMarker) {
 		t.Fatalf("content-free replay result leaked source payload: %s (err=%v)", raw, err)
 	}
-	if len(client.prompts) != 4 || !strings.Contains(client.prompts[0], secretMarker) {
+	if len(client.prompts) != 8 || !strings.Contains(client.prompts[0], secretMarker) {
 		t.Fatalf("authorized case was not loaded transiently: calls=%d", len(client.prompts))
 	}
 }
@@ -244,7 +253,7 @@ func TestProductionMetricsAdaptersRecordRepresentativeOperations(t *testing.T) {
 	}
 
 	store := &metricsAttributionStore{delegate: newFakeAttributionWorkerStore(), metrics: metrics}
-	if err := store.recordAttributionBatch(context.Background(), []TaskAttributionInput{{}}); err != nil {
+	if _, err := store.recordAttributionBatch(context.Background(), []TaskAttributionInput{{}}); err != nil {
 		t.Fatalf("record attributed batch: %v", err)
 	}
 	if got := promtest.ToFloat64(metrics.ManifestAttributedRuns); got != 1 {
@@ -318,13 +327,16 @@ func TestProductionImprovementRoomQueuerCreatesVisibleRoomAndReplaysWake(t *test
 		ID: skillID, WorkspaceID: workspaceID, CreatorID: actorID, Name: "deploy",
 		Description: "Deploy safely", Content: "---\nname: deploy\ndescription: Deploy safely\n---\n\nVerify the release.", Config: `{}`,
 	})
-	mustExecPublisher(t, pool, `INSERT INTO agent (id, workspace_id) VALUES ($1, $2)`, agentID, workspaceID)
-	mustExecPublisher(t, pool, `INSERT INTO agent_skill (agent_id, skill_id, enabled) VALUES ($1, $2, TRUE)`, agentID, skillID)
-	mustExecPublisher(t, pool, `
-	INSERT INTO skill_evolution_loop (
-	    workspace_id, skill_id, is_enabled, mode, cooldown_seconds, minimum_signals,
-    max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version
-) VALUES ($1, $2, TRUE, 'propose', 60, 1, 5, 1, 0, 'v1')`, workspaceID, skillID)
+	fixture := internaltestutil.New(pool, uuidText(workspaceID), uuidText(actorID))
+	fixture.Insert(t, "agent", internaltestutil.Cols{"id": agentID, "workspace_id": workspaceID})
+	fixture.InsertNoID(t, "agent_skill", internaltestutil.Cols{
+		"agent_id": agentID, "skill_id": skillID, "enabled": true,
+	}, "agent_id = $1 AND skill_id = $2", agentID, skillID)
+	fixture.Insert(t, "skill_evolution_loop", internaltestutil.Cols{
+		"workspace_id": workspaceID, "skill_id": skillID, "is_enabled": true, "mode": "propose",
+		"cooldown_seconds": 60, "minimum_signals": 1, "max_evidence_refs": 5,
+		"max_replay_samples": 1, "max_cost_usd_ticks": 0, "policy_version": "v1",
+	})
 
 	snapshot := mustLoadPublisherSkill(t, NewWorkspaceSkillRepository(db.New(pool)), workspaceID, skillID)
 	ref := lifecycleEvidenceRef(workspaceID, skillID, "production-room")
@@ -340,7 +352,7 @@ func TestProductionImprovementRoomQueuerCreatesVisibleRoomAndReplaysWake(t *test
 	}
 	rooms := &productionRoomsStub{
 		t:       t,
-		fixture: internaltestutil.New(pool, uuidText(workspaceID), uuidText(actorID)),
+		fixture: fixture,
 		roomID:  publisherUUID(),
 	}
 	queuer := &productionImprovementRoomQueuer{
@@ -490,6 +502,26 @@ CREATE UNIQUE INDEX skill_evolution_proposal_workspace_generation_uidx
 CREATE UNIQUE INDEX skill_evolution_proposal_active_uidx
     ON skill_evolution_proposal (workspace_id, skill_id)
     WHERE state IN ('queued', 'running', 'ready', 'publishing');
+CREATE TABLE skill_evolution_release (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    skill_id UUID NOT NULL,
+    proposal_id UUID NULL,
+    source_release_id UUID NULL,
+    revision_id UUID NOT NULL,
+    kind TEXT NOT NULL,
+    expected_base_hash TEXT NOT NULL,
+    pre_hash TEXT NULL,
+    post_hash TEXT NULL,
+    outcome TEXT NOT NULL DEFAULT 'pending',
+    actor_id UUID NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    error_code TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ NULL
+);
+CREATE UNIQUE INDEX skill_evolution_release_workspace_key_uidx
+    ON skill_evolution_release (workspace_id, idempotency_key);
 CREATE TABLE room (
     id UUID PRIMARY KEY,
     workspace_id UUID NOT NULL,

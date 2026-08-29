@@ -2,7 +2,6 @@ package skillevolution
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -13,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	internaltestutil "github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/skillbundle"
 )
@@ -108,7 +108,7 @@ func TestRoomSkillProposalTargetQueuesInsidePromotionAndReplaysIdentity(t *testi
 	}
 }
 
-func TestRoomSkillProposalTargetStalesDriftedActiveProposalUnderSkillLock(t *testing.T) {
+func TestRoomSkillProposalTargetRejectsDriftWithoutTransactionalStaling(t *testing.T) {
 	fixture := newRoomCandidateFixture(t)
 	artifact := fixture.metadata.artifacts[0]
 	artifact.TargetID = pgtype.UUID{}
@@ -124,12 +124,12 @@ func TestRoomSkillProposalTargetStalesDriftedActiveProposalUnderSkillLock(t *tes
 	if _, err := target.createQueuedProposal(context.Background(), queries, artifact); !errors.Is(err, ErrStaleBase) {
 		t.Fatalf("drift error = %v, want stale base", err)
 	}
-	if queries.staled != 1 || queries.existing.State != string(ProposalStateStale) || queries.creates != 0 {
+	if queries.staled != 0 || queries.existing.State != string(ProposalStateReady) || queries.creates != 0 {
 		t.Fatalf("drift cleanup staled=%d state=%q creates=%d", queries.staled, queries.existing.State, queries.creates)
 	}
 }
 
-func TestRoomSkillProposalTargetSerializesDriftCleanupAndNewBaseProposal(t *testing.T) {
+func TestProductionImprovementRoomQueuerCommitsDriftCleanupAndNewBaseSnapshot(t *testing.T) {
 	pool := workspaceSkillPublisherTestPool(t)
 	setupProductionRoomQueueSchema(t, pool)
 	fixture := newRoomCandidateFixture(t)
@@ -178,38 +178,21 @@ func TestRoomSkillProposalTargetSerializesDriftCleanupAndNewBaseProposal(t *test
 	}
 	driftedHash := Digest(driftedManifest.Hash)
 	mustExecPublisher(t, pool, `UPDATE skill SET content = $1 WHERE id = $2`, drifted.Content, fixture.skillID)
-	driftedMetadata, err := revisionMetadataDigest(drifted, driftedHash)
-	if err != nil {
-		t.Fatal(err)
+	dbFixture := internaltestutil.New(pool, uuidText(fixture.workspaceID), uuidText(actorID))
+	facilitatorID := testUUID()
+	dbFixture.Insert(t, "agent", internaltestutil.Cols{
+		"id": facilitatorID, "workspace_id": fixture.workspaceID, "archived_at": nil,
+	})
+	dbFixture.InsertNoID(t, "agent_skill", internaltestutil.Cols{
+		"agent_id": facilitatorID, "skill_id": fixture.skillID, "enabled": true,
+	}, "agent_id = $1 AND skill_id = $2", facilitatorID, fixture.skillID)
+	rooms := &productionRoomsStub{t: t, fixture: dbFixture, roomID: testUUID()}
+	queuer := &productionImprovementRoomQueuer{
+		pool: pool, queries: db.New(pool), rooms: rooms, store: store,
+		skills: NewWorkspaceSkillRepository(db.New(pool)), signals: fixture.source.signals,
 	}
-	if _, err := store.SaveRevision(context.Background(), revisionInput(
-		fixture.workspaceID, fixture.skillID, actorID, "base", OwnershipWorkspace,
-		drifted, driftedHash, driftedMetadata,
-	)); err != nil {
-		t.Fatal(err)
-	}
-	candidate := drifted
-	candidate.Content += "\nRun the newly required check."
-	envelope := roomCandidateEnvelope{
-		SchemaVersion: 1, BaseSkillID: uuidText(fixture.skillID), BaseHash: string(driftedHash),
-		Bundle: roomCandidateBundle{ID: uuidText(fixture.skillID), Source: skillbundle.SourceWorkspace,
-			Name: candidate.Name, Description: candidate.Description, Content: candidate.Content, Files: []roomCandidateFile{}},
-		ObservedPattern: "the check was skipped", ExpectedBenefit: "the check becomes explicit",
-		RegressionRisk: "one additional bounded check", EvidenceDigests: []string{string(fixture.signalRef.Digest)},
-	}
-	body, err := json.Marshal(envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture.outcomes.evidence.Body = string(body)
-	artifact := fixture.metadata.artifacts[0]
-	artifact.Body = string(body)
-	artifact.TargetID = pgtype.UUID{}
-	artifact.SourceDigest = roomArtifactSourceDigest(artifact)
-	fixture.metadata.artifacts[0] = artifact
-	target := NewRoomSkillProposalTarget(&Lifecycle{skills: NewWorkspaceSkillRepository(db.New(pool))}, fixture.source)
 
-	ids := make(chan pgtype.UUID, 2)
+	roomIDs := make(chan pgtype.UUID, 2)
 	errs := make(chan error, 2)
 	var ready sync.WaitGroup
 	start := make(chan struct{})
@@ -218,37 +201,39 @@ func TestRoomSkillProposalTargetSerializesDriftCleanupAndNewBaseProposal(t *test
 		go func() {
 			ready.Done()
 			<-start
-			tx, beginErr := pool.Begin(context.Background())
-			if beginErr != nil {
-				errs <- beginErr
-				return
-			}
-			id, createErr := target.createQueuedProposal(context.Background(), db.New(tx), artifact)
-			if createErr == nil {
-				createErr = tx.Commit(context.Background())
-			} else {
-				_ = tx.Rollback(context.Background())
-			}
-			ids <- id
-			errs <- createErr
+			result, queueErr := queuer.EnsureImprovementRoom(context.Background(), fixture.workspaceID, fixture.skillID, actorID, "drift-cycle")
+			roomIDs <- result.RoomID
+			errs <- queueErr
 		}()
 	}
 	ready.Wait()
 	close(start)
-	firstID, secondID := <-ids, <-ids
+	firstID, secondID := <-roomIDs, <-roomIDs
 	if firstErr, secondErr := <-errs, <-errs; firstErr != nil || secondErr != nil || firstID != secondID || !firstID.Valid {
-		t.Fatalf("concurrent promotion ids=(%v,%v) errors=(%v,%v)", firstID, secondID, firstErr, secondErr)
+		t.Fatalf("concurrent queue room ids=(%v,%v) errors=(%v,%v)", firstID, secondID, firstErr, secondErr)
 	}
 	var oldState string
-	var queuedCount int
+	var newBaseRevisions int
 	if err := pool.QueryRow(context.Background(), `SELECT state FROM skill_evolution_proposal WHERE id = $1`, oldProposal.ID).Scan(&oldState); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM skill_evolution_proposal WHERE workspace_id = $1 AND skill_id = $2 AND state = 'queued' AND base_hash = $3`, fixture.workspaceID, fixture.skillID, driftedHash).Scan(&queuedCount); err != nil {
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM skill_evolution_revision WHERE workspace_id = $1 AND skill_id = $2 AND kind = 'base' AND bundle_hash = $3`, fixture.workspaceID, fixture.skillID, driftedHash).Scan(&newBaseRevisions); err != nil {
 		t.Fatal(err)
 	}
-	if oldState != string(ProposalStateStale) || queuedCount != 1 {
-		t.Fatalf("drift transition old=%q new queued=%d", oldState, queuedCount)
+	if oldState != string(ProposalStateStale) || newBaseRevisions != 1 || rooms.creates != 1 || rooms.messages != 1 {
+		t.Fatalf("drift transition old=%q new base=%d creates=%d messages=%d", oldState, newBaseRevisions, rooms.creates, rooms.messages)
+	}
+	if len(rooms.bodies) != 1 || !strings.Contains(rooms.bodies[0], string(driftedHash)) {
+		t.Fatalf("next Room cycle did not snapshot drifted base %q", driftedHash)
+	}
+	if !strings.Contains(rooms.bodies[0], "add the focused check") || strings.Contains(rooms.bodies[0], "held-out independent check") {
+		t.Fatalf("Room synthesis message did not preserve the held-out boundary: %s", rooms.bodies[0])
+	}
+	if _, err := (&Lifecycle{store: store}).Publish(context.Background(), PublishRequest{
+		WorkspaceID: fixture.workspaceID, ProposalID: oldProposal.ID,
+		Actor: DecisionActor{ID: actorID, Kind: ActorKindHuman}, Reason: "must remain stale", IdempotencyKey: "stale-publish",
+	}); !errors.Is(err, ErrDecisionConflict) {
+		t.Fatalf("publish permanently stale proposal error = %v, want decision conflict", err)
 	}
 }
 

@@ -171,22 +171,25 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 		SourceState: "completed", Digest: testDigest("evidence"),
 		Eligibility: EvidenceEligibilityEligible, ObservedAt: time.Now().UTC(),
 	}
-	evidence, err := store.RecordEvidence(ctx, proposal.ID, ref)
+	evidence, err := store.RecordEvidence(ctx, proposal.ID, EvidenceRoleSynthesis, ref)
 	if err != nil {
 		t.Fatalf("RecordEvidence: %v", err)
 	}
-	replayedEvidence, err := store.RecordEvidence(ctx, proposal.ID, ref)
+	replayedEvidence, err := store.RecordEvidence(ctx, proposal.ID, EvidenceRoleSynthesis, ref)
 	if err != nil || replayedEvidence.ID != evidence.ID {
 		t.Fatalf("idempotent evidence = (%v, %v), want same id", replayedEvidence.ID, err)
 	}
+	if _, err := store.RecordEvidence(ctx, proposal.ID, EvidenceRoleHeldOutReplay, ref); !errors.Is(err, ErrPersistenceConflict) {
+		t.Fatalf("same evidence identity with changed provenance role error = %v, want conflict", err)
+	}
 	changedRef := ref
 	changedRef.Digest = testDigest("changed")
-	if _, err := store.RecordEvidence(ctx, proposal.ID, changedRef); !errors.Is(err, ErrPersistenceConflict) {
+	if _, err := store.RecordEvidence(ctx, proposal.ID, EvidenceRoleSynthesis, changedRef); !errors.Is(err, ErrPersistenceConflict) {
 		t.Fatalf("changed evidence error = %v, want conflict", err)
 	}
 	changedObservedAt := ref
 	changedObservedAt.ObservedAt = changedObservedAt.ObservedAt.Add(time.Second)
-	if _, err := store.RecordEvidence(ctx, proposal.ID, changedObservedAt); !errors.Is(err, ErrPersistenceConflict) {
+	if _, err := store.RecordEvidence(ctx, proposal.ID, EvidenceRoleSynthesis, changedObservedAt); !errors.Is(err, ErrPersistenceConflict) {
 		t.Fatalf("changed evidence observation error = %v, want conflict", err)
 	}
 
@@ -330,20 +333,27 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 		Eligibility: EvidenceEligibilityEligible, Reason: "matched_revision",
 		DispatchSnapshotID: snapshot.Snapshot.ID, TaskDispatchedAt: dispatchedAt,
 	}
-	attribution, err := store.RecordTaskAttribution(ctx, attributionInput)
-	if err != nil {
-		t.Fatalf("RecordTaskAttribution: %v", err)
+	coverageMetrics := NewMetrics()
+	metricsStore := &metricsAttributionStore{delegate: store, metrics: coverageMetrics}
+	batch, err := metricsStore.recordAttributionBatch(ctx, []TaskAttributionInput{attributionInput})
+	if err != nil || !batch.Inserted || batch.Covered {
+		t.Fatalf("first attribution batch = (%+v, %v), want newly inserted without review", batch, err)
 	}
-	replayedAttribution, err := store.RecordTaskAttribution(ctx, attributionInput)
-	if err != nil || replayedAttribution.ID != attribution.ID {
-		t.Fatalf("idempotent attribution = (%v, %v), want same id", replayedAttribution.ID, err)
+	attribution, err := queries.GetSkillEvolutionTaskAttribution(ctx, db.GetSkillEvolutionTaskAttributionParams{
+		WorkspaceID: workspaceA, TaskID: taskID, SkillID: skillA,
+	})
+	if err != nil || !attribution.ID.Valid {
+		t.Fatalf("load durable attribution = (%+v, %v)", attribution, err)
+	}
+	replayedBatch, err := metricsStore.recordAttributionBatch(ctx, []TaskAttributionInput{attributionInput})
+	if err != nil || replayedBatch.Inserted || replayedBatch.Covered {
+		t.Fatalf("idempotent attribution batch = (%+v, %v), want no new coverage", replayedBatch, err)
 	}
 	changedAttribution := attributionInput
 	changedAttribution.Source = skillbundle.SourceBuiltin
 	if _, err := store.RecordTaskAttribution(ctx, changedAttribution); !errors.Is(err, ErrPersistenceConflict) {
 		t.Fatalf("changed attribution source error = %v, want conflict", err)
 	}
-	coverageMetrics := NewMetrics()
 	coverage := &exactFeedbackCoverageRecorder{queries: queries, metrics: coverageMetrics}
 	reviewerB, reviewerC := testUUID(), testUUID()
 	for _, reviewerID := range []pgtype.UUID{reviewerB, reviewerC} {
@@ -352,28 +362,28 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 		}, "workspace_id = $1 AND user_id = $2", workspaceA, reviewerID)
 	}
 	reviewRepository := service.NewDBTaskRunReviewRepository(queries)
-	createCoveredReview := func(reviewerID pgtype.UUID, key string, recorder service.TaskRunReviewCoverageRecorder) {
+	createCoveredReview := func(reviewTaskID, reviewerID pgtype.UUID, key string, recorder service.TaskRunReviewCoverageRecorder) {
 		t.Helper()
 		reviews := service.NewTaskRunReviewService(reviewRepository, persistenceTaskReviewAccess{
 			workspaceID: util.UUIDToString(workspaceA), reviewerID: util.UUIDToString(reviewerID),
-			taskID: util.UUIDToString(taskID), agentID: util.UUIDToString(agentA),
+			taskID: util.UUIDToString(reviewTaskID), agentID: util.UUIDToString(agentA),
 		})
 		reviews.SetCoverageRecorder(recorder)
 		if _, err := reviews.CreateTaskRunReview(ctx, util.UUIDToString(workspaceA), util.UUIDToString(reviewerID), service.CreateTaskRunReviewInput{
-			TaskID: util.UUIDToString(taskID), IdempotencyKey: key,
+			TaskID: util.UUIDToString(reviewTaskID), IdempotencyKey: key,
 			Outcome: service.TaskRunReviewOutcomeHelpful, Target: service.TaskRunReviewTargetKnowledge,
 			Reason: "covered review",
 		}); err != nil {
 			t.Fatalf("create covered review %q: %v", key, err)
 		}
 	}
-	createCoveredReview(userA, "coverage:first-review", coverage)
+	createCoveredReview(taskID, userA, "coverage:first-review", coverage)
 	// An idempotent replay still invokes the post-persistence hook.
-	createCoveredReview(userA, "coverage:first-review", coverage)
-	createCoveredReview(reviewerB, "coverage:second-reviewer", coverage)
+	createCoveredReview(taskID, userA, "coverage:first-review", coverage)
+	createCoveredReview(taskID, reviewerB, "coverage:second-reviewer", coverage)
 	// A fresh recorder models a process restart; a third reviewer and key still
 	// cannot increment the durable task-level coverage marker again.
-	createCoveredReview(reviewerC, "coverage:after-restart", &exactFeedbackCoverageRecorder{queries: db.New(pool), metrics: coverageMetrics})
+	createCoveredReview(taskID, reviewerC, "coverage:after-restart", &exactFeedbackCoverageRecorder{queries: db.New(pool), metrics: coverageMetrics})
 	unattributedTaskID := testTask(t, pool, agentA)
 	if err := coverage.RecordTaskRunReviewCoverage(ctx, util.UUIDToString(workspaceA), util.UUIDToString(unattributedTaskID)); err != nil {
 		t.Fatalf("record unattributed feedback coverage: %v", err)
@@ -387,14 +397,55 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	if err != nil || !coveredAttribution.FeedbackCoveredAt.Valid {
 		t.Fatalf("durable feedback marker = (%+v, %v)", coveredAttribution.FeedbackCoveredAt, err)
 	}
+	if got := promtest.ToFloat64(coverageMetrics.FeedbackEligibleRuns); got != 1 {
+		t.Fatalf("durable feedback eligible runs after repeated completion = %v, want 1", got)
+	}
+
+	reviewFirstTaskID := testUUID()
+	reviewFirstDispatchedAt := dispatchedAt.Add(2 * time.Second)
+	fixture.Insert(t, "agent_task_queue", testutil.Cols{
+		"id": reviewFirstTaskID, "agent_id": agentA, "runtime_id": runtimeA,
+		"status": "dispatched", "dispatched_at": reviewFirstDispatchedAt,
+	})
+	reviewFirstSnapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
+		WorkspaceID: workspaceA, TaskID: reviewFirstTaskID, AgentID: agentA, RuntimeID: runtimeA, TaskDispatchedAt: reviewFirstDispatchedAt,
+		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
+	})
+	if err != nil {
+		t.Fatalf("review-first dispatch snapshot: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, reviewFirstTaskID); err != nil {
+		t.Fatalf("complete review-first task: %v", err)
+	}
+	createCoveredReview(reviewFirstTaskID, userA, "coverage:review-before-attribution", coverage)
+	reviewFirstInput := attributionInput
+	reviewFirstInput.TaskID = reviewFirstTaskID
+	reviewFirstInput.DispatchSnapshotID = reviewFirstSnapshot.Snapshot.ID
+	reviewFirstInput.TaskDispatchedAt = reviewFirstDispatchedAt
+	reviewFirstInput.ManifestDigest = testDigest("review-first-manifest")
+	reconciled, err := metricsStore.recordAttributionBatch(ctx, []TaskAttributionInput{reviewFirstInput})
+	if err != nil || !reconciled.Inserted || !reconciled.Covered {
+		t.Fatalf("review-before-attribution reconciliation = (%+v, %v)", reconciled, err)
+	}
+	if repeated, err := metricsStore.recordAttributionBatch(ctx, []TaskAttributionInput{reviewFirstInput}); err != nil || repeated.Inserted || repeated.Covered {
+		t.Fatalf("repeated review-first attribution = (%+v, %v)", repeated, err)
+	}
+	reconciledAttribution, err := queries.GetSkillEvolutionTaskAttribution(ctx, db.GetSkillEvolutionTaskAttributionParams{
+		WorkspaceID: workspaceA, TaskID: reviewFirstTaskID, SkillID: skillA,
+	})
+	if err != nil || !reconciledAttribution.FeedbackCoveredAt.Valid {
+		t.Fatalf("atomically reconciled feedback marker = (%+v, %v)", reconciledAttribution.FeedbackCoveredAt, err)
+	}
+	if eligible, covered := promtest.ToFloat64(coverageMetrics.FeedbackEligibleRuns), promtest.ToFloat64(coverageMetrics.FeedbackCoveredRuns); eligible != 2 || covered != 2 || covered > eligible {
+		t.Fatalf("coverage metrics eligible=%v covered=%v, want 2/2 and covered <= eligible", eligible, covered)
+	}
 
 	fastTaskID := testUUID()
 	fastDispatchedAt := dispatchedAt.Add(time.Second)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
-id, agent_id, runtime_id, status, dispatched_at, completed_at
-) VALUES ($1, $2, $3, 'completed', $4, $4)`, fastTaskID, agentA, runtimeA, fastDispatchedAt); err != nil {
-		t.Fatalf("seed fast completed task: %v", err)
-	}
+	fixture.Insert(t, "agent_task_queue", testutil.Cols{
+		"id": fastTaskID, "agent_id": agentA, "runtime_id": runtimeA,
+		"status": "completed", "dispatched_at": fastDispatchedAt, "completed_at": fastDispatchedAt,
+	})
 	worker, err := NewAttributionWorker(store, 2, time.Second)
 	if err != nil {
 		t.Fatalf("NewAttributionWorker: %v", err)
@@ -960,7 +1011,7 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	for _, file := range files {
 		name := filepath.Base(file)
 		prefix := strings.SplitN(name, "_", 2)[0]
-		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "525") {
+		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "526") {
 			continue
 		}
 		sql, err := os.ReadFile(file)

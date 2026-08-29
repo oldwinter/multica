@@ -100,7 +100,12 @@ type attributionRevision struct {
 
 type attributionRepository interface {
 	resolveAttributionRevisions(context.Context, attributionRevisionMatch) ([]attributionRevision, error)
-	recordAttributionBatch(context.Context, []TaskAttributionInput) error
+	recordAttributionBatch(context.Context, []TaskAttributionInput) (AttributionBatchResult, error)
+}
+
+type AttributionBatchResult struct {
+	Inserted bool
+	Covered  bool
 }
 
 type AttributionRecorder struct {
@@ -168,7 +173,7 @@ func (r *AttributionRecorder) Record(ctx context.Context, input AttributionInput
 	}
 
 	if len(inputs) > 0 {
-		if err := r.repository.recordAttributionBatch(ctx, inputs); err != nil {
+		if _, err := r.repository.recordAttributionBatch(ctx, inputs); err != nil {
 			reason := AttributionReasonPersistenceUnavailable
 			switch {
 			case errors.Is(err, ErrPersistenceConflict):
@@ -399,21 +404,28 @@ func (s *Store) resolveAttributionRevisions(ctx context.Context, match attributi
 // recordAttributionBatch makes an all-or-nothing eligibility decision durable.
 // It delegates each row to RecordTaskAttribution so the existing server-side
 // task/runtime/workspace/revision joins and idempotency checks stay authoritative.
-func (s *Store) recordAttributionBatch(ctx context.Context, inputs []TaskAttributionInput) error {
+func (s *Store) recordAttributionBatch(ctx context.Context, inputs []TaskAttributionInput) (AttributionBatchResult, error) {
 	if s == nil || s.queries == nil || s.txStarter == nil || len(inputs) == 0 {
-		return ErrPersistenceTransactionsRequired
+		return AttributionBatchResult{}, ErrPersistenceTransactionsRequired
 	}
 	tx, err := s.txStarter.Begin(ctx)
 	if err != nil {
-		return err
+		return AttributionBatchResult{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	txStore := &Store{queries: s.queries.WithTx(tx)}
+	result := AttributionBatchResult{}
 	for _, input := range inputs {
-		if _, err := txStore.RecordTaskAttribution(ctx, input); err != nil {
-			return err
+		row, inserted, err := txStore.recordTaskAttribution(ctx, input)
+		if err != nil {
+			return AttributionBatchResult{}, err
 		}
+		result.Inserted = result.Inserted || inserted
+		result.Covered = result.Covered || (inserted && row.FeedbackCoveredAt.Valid)
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return AttributionBatchResult{}, err
+	}
+	return result, nil
 }

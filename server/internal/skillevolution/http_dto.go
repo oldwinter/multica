@@ -99,6 +99,7 @@ type proposalDetailDTO struct {
 }
 
 type evidenceDTO struct {
+	Role             string    `json:"role"`
 	Kind             string    `json:"kind"`
 	SourceID         string    `json:"source_id"`
 	SourceRevisionID string    `json:"source_revision_id,omitempty"`
@@ -246,7 +247,7 @@ func releaseResponse(value db.SkillEvolutionRelease) releaseDTO {
 }
 
 func evidenceResponse(value db.SkillEvolutionEvidence) evidenceDTO {
-	return evidenceDTO{Kind: value.Kind, SourceID: value.SourceID, SourceRevisionID: value.SourceRevisionID,
+	return evidenceDTO{Role: value.EvidenceRole, Kind: value.Kind, SourceID: value.SourceID, SourceRevisionID: value.SourceRevisionID,
 		SourceState: value.SourceState, Digest: value.Digest, ObservedAt: value.ObservedAt.Time}
 }
 

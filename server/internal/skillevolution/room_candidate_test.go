@@ -1,6 +1,7 @@
 package skillevolution
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -85,8 +86,14 @@ func TestRoomCandidateSourceStrictlyLoadsAcceptedImprovement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if accepted.ExpectedBaseHash != fixture.baseHash || len(accepted.Evidence) != 1 || accepted.Candidate.Bundle.ID != uuidText(fixture.skillID) {
+	if accepted.ExpectedBaseHash != fixture.baseHash || len(accepted.SynthesisEvidence) != 1 || len(accepted.ReplayEvidence) != 2 ||
+		accepted.Candidate.Bundle.ID != uuidText(fixture.skillID) {
 		t.Fatalf("accepted = %+v", accepted)
+	}
+	for _, heldOut := range accepted.ReplayEvidence {
+		if heldOut.Ref.Digest == accepted.SynthesisEvidence[0].Ref.Digest {
+			t.Fatalf("synthesis evidence leaked into held-out replay: %+v", heldOut.Ref)
+		}
 	}
 	fixture.outcomes.evidence.Ref.CycleID = testUUID()
 	if _, err := fixture.source.LoadAcceptedImprovement(context.Background(), request); !errors.Is(err, ErrRoomCandidateSourceDrift) {
@@ -118,7 +125,11 @@ func TestRoomCandidateEngineUsesOnlyBoundEvidenceAndReplayFailsClosed(t *testing
 		RecommendationKind: fixture.outcomes.ref.RecommendationKind, Body: fixture.outcomes.evidence.Body,
 	})
 	candidate, err := fixture.source.Improve(context.Background(), ImprovementRequest{
-		Base: fixture.base, Evidence: []ResolvedEvidence{{Ref: fixture.signalRef, Payload: []byte(`{"reason":"bounded"}`)}, {Ref: roomRef, Payload: payload}},
+		Base: fixture.base, Evidence: []ResolvedEvidence{
+			{Ref: fixture.signalRef, Payload: []byte(`{"reason":"bounded"}`)},
+			{Ref: fixture.secondSignalRef, Payload: []byte(`{"reason":"independent bounded case"}`)},
+			{Ref: roomRef, Payload: payload},
+		},
 		PolicyVersion: "v1", MaxCostUSDTicks: 1, MaxChangedFiles: 2, MaxPrimaryGrowth: 1024,
 	})
 	if err != nil || candidate.Bundle.Content == fixture.base.Content {
@@ -161,6 +172,10 @@ func TestProductionAcceptedCurrentRoomRecommendationBecomesReadyAndPublishable(t
 		{Content: `{"response":"candidate performs the focused check"}`, PromptTokens: 1, CompletionTokens: 1},
 		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
 		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"base missed the independent check"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"response":"candidate performs the independent check"}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
+		{Content: `{"winner":"candidate","base_pass":false,"candidate_pass":true}`, PromptTokens: 1, CompletionTokens: 1},
 	}}
 	lifecycle, err := NewLifecycle(
 		NewStore(db.New(pool), pool), skills, &memoryPublisher{skills: skills},
@@ -173,7 +188,7 @@ func TestProductionAcceptedCurrentRoomRecommendationBecomesReadyAndPublishable(t
 	actor := DecisionActor{ID: actorID, Kind: ActorKindHuman}
 	if _, err := lifecycle.Enable(context.Background(), actor, LoopConfig{
 		WorkspaceID: fixture.workspaceID, SkillID: fixture.skillID, Mode: LoopModePropose,
-		Cooldown: time.Hour, MinimumSignals: 1, MaxEvidenceRefs: 5, MaxReplaySamples: 1,
+		Cooldown: time.Hour, MinimumSignals: 1, MaxEvidenceRefs: 5, MaxReplaySamples: 2,
 		MaxCostUSDTicks: 2_000_000, PolicyVersion: "v1",
 	}); err != nil {
 		t.Fatal(err)
@@ -185,6 +200,23 @@ func TestProductionAcceptedCurrentRoomRecommendationBecomesReadyAndPublishable(t
 	generation, err := lifecycle.CreateProposalFromRoomRecommendation(context.Background(), request)
 	if err != nil || generation.Proposal.State != string(ProposalStateReady) || generation.Replay.Result != string(EvaluationResultPassed) {
 		t.Fatalf("production Room generation = (%+v, %v)", generation, err)
+	}
+	view, err := lifecycle.ReadProposal(context.Background(), fixture.workspaceID, generation.Proposal.ID)
+	if err != nil {
+		t.Fatalf("read production Room proposal: %v", err)
+	}
+	roles := map[string]int{}
+	for _, evidence := range view.Detail.Evidence {
+		roles[evidence.EvidenceRole]++
+	}
+	if roles[string(EvidenceRoleSynthesis)] != 1 || roles[string(EvidenceRoleHeldOutReplay)] != 2 {
+		t.Fatalf("persisted evidence provenance roles = %+v", roles)
+	}
+	response, err := json.Marshal(proposalDetailResponse(view))
+	if err != nil || !bytes.Contains(response, []byte(`"role":"synthesis"`)) ||
+		!bytes.Contains(response, []byte(`"role":"held_out_replay"`)) ||
+		bytes.Contains(response, []byte("add the focused check")) || bytes.Contains(response, []byte("held-out independent check")) {
+		t.Fatalf("content-free proposal response = %s, error=%v", response, err)
 	}
 	publication, err := lifecycle.Publish(context.Background(), PublishRequest{
 		WorkspaceID: fixture.workspaceID, ProposalID: generation.Proposal.ID, Actor: actor,
@@ -235,14 +267,16 @@ func TestRoomProposalRequesterQueuesVisibleRoomBeforeAnArtifactExists(t *testing
 }
 
 type roomCandidateFixture struct {
-	workspaceID pgtype.UUID
-	skillID     pgtype.UUID
-	baseHash    Digest
-	base        skillbundle.Skill
-	signalRef   EvidenceRef
-	outcomes    *acceptedOutcomesStub
-	metadata    *roomMetadataStub
-	source      *RoomCandidateSource
+	workspaceID     pgtype.UUID
+	skillID         pgtype.UUID
+	baseHash        Digest
+	base            skillbundle.Skill
+	signalRef       EvidenceRef
+	secondSignalRef EvidenceRef
+	thirdSignalRef  EvidenceRef
+	outcomes        *acceptedOutcomesStub
+	metadata        *roomMetadataStub
+	source          *RoomCandidateSource
 }
 
 func newRoomCandidateFixture(t *testing.T) roomCandidateFixture {
@@ -258,16 +292,38 @@ func newRoomCandidateFixture(t *testing.T) roomCandidateFixture {
 	signalRef := EvidenceRef{WorkspaceID: uuidText(workspaceID), Kind: EvidenceKindTaskReview, SourceID: uuidText(testUUID()),
 		SourceRevisionID: uuidText(testUUID()), TargetSkillID: uuidText(skillID), SourceState: "needs_correction",
 		Digest: testDigest("candidate-evidence"), Eligibility: EvidenceEligibilityEligible, ObservedAt: time.Now().UTC()}
+	secondSignalRef := signalRef
+	secondSignalRef.SourceID = uuidText(testUUID())
+	secondSignalRef.SourceRevisionID = uuidText(testUUID())
+	secondSignalRef.Digest = testDigest("candidate-evidence-independent")
+	secondSignalRef.ObservedAt = signalRef.ObservedAt.Add(-time.Minute)
+	thirdSignalRef := signalRef
+	thirdSignalRef.SourceID = uuidText(testUUID())
+	thirdSignalRef.SourceRevisionID = uuidText(testUUID())
+	thirdSignalRef.Digest = testDigest("candidate-evidence-independent-two")
+	thirdSignalRef.ObservedAt = signalRef.ObservedAt.Add(-2 * time.Minute)
 	signal := NewSignalAdapter(EvidenceKindTaskReview,
-		func(context.Context, SignalQuery) ([]EvidenceRef, error) { return []EvidenceRef{signalRef}, nil },
-		func(context.Context, SignalQuery, EvidenceRef) (ResolvedEvidence, error) {
-			return ResolvedEvidence{Ref: signalRef, Payload: []byte(`{"outcome":"needs_correction","correction":"add the focused check","reason":"bounded"}`)}, nil
+		func(context.Context, SignalQuery) ([]EvidenceRef, error) {
+			return []EvidenceRef{signalRef, secondSignalRef, thirdSignalRef}, nil
+		},
+		func(_ context.Context, _ SignalQuery, requested EvidenceRef) (ResolvedEvidence, error) {
+			payload := []byte(`{"outcome":"needs_correction","correction":"add the focused check","reason":"bounded"}`)
+			switch requested.Digest {
+			case secondSignalRef.Digest:
+				payload = []byte(`{"outcome":"needs_correction","correction":"held-out independent check one","reason":"independent case one"}`)
+			case thirdSignalRef.Digest:
+				payload = []byte(`{"outcome":"needs_correction","correction":"held-out independent check two","reason":"independent case two"}`)
+			}
+			return ResolvedEvidence{Ref: requested, Payload: payload}, nil
 		})
+	candidate := base
+	candidate.Content = strings.Replace(base.Content, "Original.", "Updated with the focused check.", 1)
 	envelope := roomCandidateEnvelope{SchemaVersion: 1, BaseSkillID: uuidText(skillID), BaseHash: string(baseHash),
 		Bundle: roomCandidateBundle{ID: uuidText(skillID), Source: skillbundle.SourceWorkspace, Name: base.Name, Description: base.Description,
-			Content: strings.Replace(base.Content, "Original.", "Updated with the focused check.", 1), Files: []roomCandidateFile{}},
+			Content: candidate.Content, Files: []roomCandidateFile{}},
 		ObservedPattern: "reviews repeatedly miss the focused check", ExpectedBenefit: "the procedure makes the check explicit",
-		RegressionRisk: "the added check may be too strict", EvidenceDigests: []string{string(signalRef.Digest)}}
+		RegressionRisk: "the added check may be too strict", EvidenceDigests: []string{string(signalRef.Digest)},
+		AuthorizedChanges: BuildChangeAuthorizations(base, candidate, []Digest{signalRef.Digest})}
 	body, err := json.Marshal(envelope)
 	if err != nil {
 		t.Fatal(err)
@@ -294,5 +350,6 @@ func newRoomCandidateFixture(t *testing.T) roomCandidateFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return roomCandidateFixture{workspaceID: workspaceID, skillID: skillID, baseHash: baseHash, base: base, signalRef: signalRef, outcomes: outcomes, metadata: metadata, source: source}
+	return roomCandidateFixture{workspaceID: workspaceID, skillID: skillID, baseHash: baseHash, base: base, signalRef: signalRef,
+		secondSignalRef: secondSignalRef, thirdSignalRef: thirdSignalRef, outcomes: outcomes, metadata: metadata, source: source}
 }

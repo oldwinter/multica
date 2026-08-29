@@ -57,6 +57,13 @@ func (h *TaskRunReviewHTTPHandler) Create(w http.ResponseWriter, r *http.Request
 		return
 	}
 	input.TaskID = util.UUIDToString(taskID)
+	if input.SkillID != "" {
+		skillID, ok := parseUUIDOrBadRequest(w, input.SkillID, "skill id")
+		if !ok {
+			return
+		}
+		input.SkillID = util.UUIDToString(skillID)
+	}
 	evidence, err := h.service.CreateTaskRunReview(r.Context(), workspaceID, reviewerID, input)
 	if err != nil {
 		h.writeError(w, err)

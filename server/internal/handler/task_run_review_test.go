@@ -20,6 +20,7 @@ const (
 	handlerTaskReviewUserID      = "22222222-2222-4222-8222-222222222222"
 	handlerTaskReviewTaskID      = "33333333-3333-4333-8333-333333333333"
 	handlerTaskReviewReviewID    = "44444444-4444-4444-8444-444444444444"
+	handlerTaskReviewSkillID     = "55555555-5555-4555-8555-555555555555"
 )
 
 type fakeTaskRunReviewHTTPService struct {
@@ -173,6 +174,13 @@ func TestTaskRunReviewHTTPCanonicalizesUUIDBoundariesBeforeService(t *testing.T)
 				map[string]string{"taskId": "not-a-uuid"}),
 		},
 		{
+			name: "create skill",
+			call: (*TaskRunReviewHTTPHandler).Create,
+			req: taskRunReviewRequest(http.MethodPost, "/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID,
+				`{"idempotency_key":"uuid-boundary","outcome":"helpful","target":"knowledge","reason":"bounded","skill_id":"not-a-uuid"}`,
+				map[string]string{"taskId": handlerTaskReviewTaskID}),
+		},
+		{
 			name: "review",
 			call: (*TaskRunReviewHTTPHandler).Get,
 			req: taskRunReviewRequest(http.MethodGet, "/api/task-run-reviews/not-a-uuid?workspace_id="+handlerTaskReviewWorkspaceID,
@@ -196,6 +204,20 @@ func TestTaskRunReviewHTTPCanonicalizesUUIDBoundariesBeforeService(t *testing.T)
 				t.Fatalf("service calls=%d body=%s", fake.calls, result.Body.String())
 			}
 		})
+	}
+}
+
+func TestTaskRunReviewHTTPCreateCanonicalizesOptionalSkillUUID(t *testing.T) {
+	fake := &fakeTaskRunReviewHTTPService{err: service.ErrTaskRunReviewNotFound}
+	h := &TaskRunReviewHTTPHandler{root: &Handler{}, service: fake}
+	req := taskRunReviewRequest(http.MethodPost,
+		"/api/task-run-reviews?workspace_id="+handlerTaskReviewWorkspaceID,
+		`{"idempotency_key":"uuid-skill","outcome":"helpful","target":"knowledge","reason":"bounded","skill_id":"`+strings.ToUpper(handlerTaskReviewSkillID)+`"}`,
+		map[string]string{"taskId": handlerTaskReviewTaskID},
+	)
+	result := testutil.Call(t, h.Create, req).Want(http.StatusNotFound)
+	if fake.calls != 1 || fake.createInput.SkillID != handlerTaskReviewSkillID || !strings.Contains(result.Text(), "not found") {
+		t.Fatalf("service calls=%d skill_id=%q body=%s", fake.calls, fake.createInput.SkillID, result.Text())
 	}
 }
 

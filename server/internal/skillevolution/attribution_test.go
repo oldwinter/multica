@@ -376,23 +376,23 @@ func (f *fakeAttributionRepository) resolveAttributionRevisions(_ context.Contex
 	return result, nil
 }
 
-func (f *fakeAttributionRepository) recordAttributionBatch(_ context.Context, inputs []TaskAttributionInput) error {
+func (f *fakeAttributionRepository) recordAttributionBatch(_ context.Context, inputs []TaskAttributionInput) (AttributionBatchResult, error) {
 	f.recordCalls++
 	if f.recordError != nil {
-		return f.recordError
+		return AttributionBatchResult{}, f.recordError
 	}
 	pending := make(map[string]TaskAttributionInput, len(inputs))
 	for _, input := range inputs {
 		key := attributionUUIDString(input.WorkspaceID) + "\x00" + attributionUUIDString(input.TaskID) + "\x00" + attributionUUIDString(input.SkillID)
 		if existing, ok := f.rows[key]; ok && existing != input {
-			return ErrPersistenceConflict
+			return AttributionBatchResult{}, ErrPersistenceConflict
 		}
 		pending[key] = input
 	}
 	for key, input := range pending {
 		f.rows[key] = input
 	}
-	return nil
+	return AttributionBatchResult{Inserted: true}, nil
 }
 
 func validRecorderInput(t *testing.T, repository *fakeAttributionRepository) AttributionInput {

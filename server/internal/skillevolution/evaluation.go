@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	DeterministicValidatorName    = "candidate-policy"
-	DeterministicValidatorVersion = "v1"
-	MaxReplayTimeout              = 5 * time.Minute
+	DeterministicValidatorName       = "candidate-policy"
+	DeterministicValidatorVersion    = "v1"
+	MaxReplayTimeout                 = 5 * time.Minute
+	MinPassingReplaySamples          = 2
+	MaxCandidateChangeAuthorizations = 64
 )
 
 var (
@@ -52,7 +54,6 @@ type ValidationOutcome struct {
 var (
 	secretAssignmentPattern = regexp.MustCompile(`(?i)(api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{12,}`)
 	localPathPattern        = regexp.MustCompile(`(?i)(file://|/home/[^\s]+|/Users/[^\s]+|[A-Z]:\\Users\\[^\s]+)`)
-	capabilityPattern       = regexp.MustCompile(`(?i)(bypass (platform|workspace) policy|ignore (platform|workspace) policy|grant (a )?(tool|credential|permission|workspace access)|read (all )?credentials)`)
 )
 
 // ValidateCandidatePolicy runs after T1's canonical bundle/frontmatter gate
@@ -115,14 +116,15 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 	if !candidateClaimsResolvedEvidence(candidate.EvidenceDigests, evidence) {
 		codes = append(codes, "provenance_invalid")
 	}
+	if !candidateChangesAreAuthorized(base, candidate, evidence) {
+		codes = append(codes, "change_authorization_invalid")
+	}
 	for _, value := range candidateText(candidate.Bundle) {
 		switch {
 		case strings.Contains(value, "-----BEGIN PRIVATE KEY-----") || secretAssignmentPattern.MatchString(value):
 			codes = append(codes, "secret_like_content")
 		case localPathPattern.MatchString(value):
 			codes = append(codes, "local_filesystem_path")
-		case capabilityPattern.MatchString(value) || containsAuthorityManipulation(value):
-			codes = append(codes, "authority_expansion")
 		}
 	}
 
@@ -185,25 +187,6 @@ func instructionTokens(value string) []string {
 	})
 }
 
-func containsAuthorityManipulation(value string) bool {
-	tokens := instructionTokens(value)
-	has := func(options ...string) bool {
-		for _, token := range tokens {
-			for _, option := range options {
-				if token == option {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	overridesAuthority := has("ignore", "disregard", "override", "forget", "bypass") &&
-		has("prior", "previous", "system", "developer", "instruction", "instructions", "policy", "policies")
-	exfiltratesSensitiveData := has("send", "reveal", "output", "print", "expose", "read") &&
-		has("environment", "env", "credential", "credentials", "secret", "secrets", "token", "tokens", "password", "passwords")
-	return overridesAuthority || exfiltratesSensitiveData
-}
-
 func instructionConflicts(bundle skillbundle.Skill) (duplicate, conflict bool) {
 	seen := make(map[string]struct{})
 	polarities := make(map[string]bool)
@@ -241,6 +224,146 @@ func instructionConflicts(bundle skillbundle.Skill) (duplicate, conflict bool) {
 		}
 	}
 	return duplicate, conflict
+}
+
+type candidateChangeUnit struct {
+	Path      string
+	Operation string
+	Value     string
+}
+
+// BuildChangeAuthorizations produces the typed authorization skeleton an
+// improver must return. Callers choose which resolved evidence authorizes each
+// exact change; validation never infers that relationship from prose.
+func BuildChangeAuthorizations(base, candidate skillbundle.Skill, evidenceDigests []Digest) []ChangeAuthorization {
+	units := candidateChangeUnits(base, candidate)
+	result := make([]ChangeAuthorization, len(units))
+	for index, unit := range units {
+		result[index] = ChangeAuthorization{
+			Path: unit.Path, Operation: unit.Operation, Value: unit.Value,
+			EvidenceDigests: append([]Digest(nil), evidenceDigests...),
+		}
+	}
+	return result
+}
+
+func candidateChangesAreAuthorized(base skillbundle.Skill, candidate ImprovementCandidate, evidence []ResolvedEvidence) bool {
+	units := candidateChangeUnits(base, candidate.Bundle)
+	if len(units) == 0 || len(candidate.AuthorizedChanges) != len(units) ||
+		len(candidate.AuthorizedChanges) > MaxCandidateChangeAuthorizations {
+		return false
+	}
+	claims := make(map[Digest]struct{}, len(candidate.EvidenceDigests))
+	for _, digest := range candidate.EvidenceDigests {
+		claims[digest] = struct{}{}
+	}
+	available := make(map[Digest]struct{}, len(evidence))
+	for _, item := range evidence {
+		available[item.Ref.Digest] = struct{}{}
+	}
+	want := make(map[candidateChangeUnit]int, len(units))
+	for _, unit := range units {
+		want[unit]++
+	}
+	for _, authorization := range candidate.AuthorizedChanges {
+		unit := candidateChangeUnit{Path: authorization.Path, Operation: authorization.Operation, Value: authorization.Value}
+		if want[unit] == 0 || len(authorization.EvidenceDigests) == 0 {
+			return false
+		}
+		want[unit]--
+		seen := make(map[Digest]struct{}, len(authorization.EvidenceDigests))
+		for _, digest := range authorization.EvidenceDigests {
+			if !digest.Valid() {
+				return false
+			}
+			if _, duplicate := seen[digest]; duplicate {
+				return false
+			}
+			seen[digest] = struct{}{}
+			if _, ok := claims[digest]; !ok {
+				return false
+			}
+			if _, ok := available[digest]; !ok {
+				return false
+			}
+		}
+	}
+	for _, remaining := range want {
+		if remaining != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func candidateChangeUnits(base, candidate skillbundle.Skill) []candidateChangeUnit {
+	units := make([]candidateChangeUnit, 0)
+	if base.Name != candidate.Name {
+		units = append(units, candidateChangeUnit{Path: "SKILL.md#name", Operation: "update", Value: candidate.Name})
+	}
+	if base.Description != candidate.Description {
+		units = append(units, candidateChangeUnit{Path: "SKILL.md#description", Operation: "update", Value: candidate.Description})
+	}
+	baseStatements := normalizedChangeStatements(skillPrimaryBody(base.Content))
+	candidateStatements := normalizedChangeStatements(skillPrimaryBody(candidate.Content))
+	remainingBase := make(map[string]int, len(baseStatements))
+	for _, statement := range baseStatements {
+		remainingBase[statement]++
+	}
+	for _, statement := range candidateStatements {
+		if remainingBase[statement] > 0 {
+			remainingBase[statement]--
+			continue
+		}
+		units = append(units, candidateChangeUnit{Path: "SKILL.md", Operation: "add", Value: statement})
+	}
+	for _, statement := range baseStatements {
+		if remainingBase[statement] == 0 {
+			continue
+		}
+		remainingBase[statement]--
+		units = append(units, candidateChangeUnit{Path: "SKILL.md", Operation: "delete", Value: statement})
+	}
+	baseFiles := make(map[string]string, len(base.Files))
+	for _, file := range base.Files {
+		baseFiles[file.Path] = file.Content
+	}
+	for _, file := range candidate.Files {
+		prior, found := baseFiles[file.Path]
+		switch {
+		case !found:
+			units = append(units, candidateChangeUnit{Path: file.Path, Operation: "add", Value: file.Content})
+		case prior != file.Content:
+			units = append(units, candidateChangeUnit{Path: file.Path, Operation: "update", Value: file.Content})
+		}
+		delete(baseFiles, file.Path)
+	}
+	for path := range baseFiles {
+		units = append(units, candidateChangeUnit{Path: path, Operation: "delete"})
+	}
+	sort.Slice(units, func(i, j int) bool {
+		if units[i].Path != units[j].Path {
+			return units[i].Path < units[j].Path
+		}
+		if units[i].Operation != units[j].Operation {
+			return units[i].Operation < units[j].Operation
+		}
+		return units[i].Value < units[j].Value
+	})
+	return units
+}
+
+func normalizedChangeStatements(content string) []string {
+	statements := make([]string, 0)
+	for _, raw := range strings.FieldsFunc(content, func(r rune) bool {
+		return r == '\n' || unicode.IsPunct(r)
+	}) {
+		statement := strings.ToLower(strings.Join(strings.Fields(raw), " "))
+		if statement != "" {
+			statements = append(statements, statement)
+		}
+	}
+	return statements
 }
 
 func candidateClaimsResolvedEvidence(claims []Digest, evidence []ResolvedEvidence) bool {
@@ -390,6 +513,9 @@ func (e *ProductionReplayEvaluator) Evaluate(ctx context.Context, request Replay
 	case result.Result == EvaluationResultPassed && result.SampleCount == 0:
 		outcome.Result = EvaluationResultInconclusive
 		outcome.ReasonCode = "no_samples"
+	case result.Result == EvaluationResultPassed && result.SampleCount < MinPassingReplaySamples:
+		outcome.Result = EvaluationResultInconclusive
+		outcome.ReasonCode = "low_sample"
 	case result.Result == EvaluationResultPassed && result.SampleCount < request.Limits.MaxSamples:
 		outcome.Result = EvaluationResultInconclusive
 		outcome.ReasonCode = "low_sample"
@@ -526,6 +652,9 @@ func enforceReplayLimits(outcome ReplayOutcome, limits ReplayLimits) ReplayOutco
 		case outcome.Result == EvaluationResultPassed && outcome.SampleCount == 0:
 			outcome.Result = EvaluationResultInconclusive
 			outcome.ReasonCode = "no_samples"
+		case outcome.Result == EvaluationResultPassed && outcome.SampleCount < MinPassingReplaySamples:
+			outcome.Result = EvaluationResultInconclusive
+			outcome.ReasonCode = "low_sample"
 		case outcome.Result == EvaluationResultPassed && outcome.SampleCount < limits.MaxSamples:
 			outcome.Result = EvaluationResultInconclusive
 			outcome.ReasonCode = "low_sample"
