@@ -186,6 +186,17 @@ function appearanceSyncKey(
   ].join(":");
 }
 
+function appearanceSyncRequestKey(
+  accountId: string,
+  preferences: AppearancePreferences,
+  expectedUpdatedAt?: string,
+): string {
+  return [
+    appearanceSyncKey(accountId, preferences),
+    expectedUpdatedAt ?? "unconditional",
+  ].join(":");
+}
+
 const defaultCapture: AppearanceAnalyticsCapture = (name, properties) => {
   captureEvent(name, properties);
 };
@@ -343,10 +354,11 @@ export function AppearanceSyncBridge({
       }
 
       const accountId = currentUser.id;
-      const requestKey = [
-        appearanceSyncKey(accountId, submitted),
-        options.expectedUpdatedAt ?? "unconditional",
-      ].join(":");
+      const requestKey = appearanceSyncRequestKey(
+        accountId,
+        submitted,
+        options.expectedUpdatedAt,
+      );
       if (syncingRequests.current.has(requestKey)) return "ignored";
 
       syncingRequests.current.add(requestKey);
@@ -532,6 +544,22 @@ export function AppearanceSyncBridge({
 
     let cancelled = false;
     const accountId = user.id;
+    const pendingUndo = pendingUndoRef.current;
+    const current = preferencesRef.current;
+    // The auth store publishes a PATCH result before its promise resolves.
+    // Keep the matching conditional Undo as the only response reconciler.
+    if (
+      pendingUndo?.submittedUpdatedAt === current.updatedAt &&
+      syncingRequests.current.has(
+        appearanceSyncRequestKey(
+          accountId,
+          current,
+          pendingUndo.expectedUpdatedAt,
+        ),
+      )
+    ) {
+      return;
+    }
     void (async () => {
       let raw: unknown | null = preferencesRef.current;
       let storageFailed = false;

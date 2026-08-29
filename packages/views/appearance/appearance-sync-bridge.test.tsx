@@ -1,4 +1,5 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -402,6 +403,82 @@ describe("AppearanceSyncBridge", () => {
       requestedAppearance: "dark",
       syncState: { status: "synced" },
     });
+  });
+
+  it("keeps a stale Undo response when the account store publishes it first", async () => {
+    const harness = createAdapter(null);
+    const capture = vi.fn();
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse("2026-08-23T12:00:00.000Z"));
+    mockUpdateMe.mockImplementation(async (request: UpdateMeRequest) => {
+      if (
+        request.skin === undefined ||
+        request.appearance === undefined ||
+        request.appearanceUpdatedAt === undefined ||
+        request.appearanceTokenVersion === undefined
+      ) {
+        throw new Error("appearance test request is incomplete");
+      }
+      if (request.appearanceExpectedUpdatedAt !== undefined) {
+        return serverUser({
+          skin: "relay",
+          appearance: request.appearance,
+          appearanceUpdatedAt: new Date(
+            Date.parse(request.appearanceExpectedUpdatedAt) + 1,
+          ).toISOString(),
+          appearanceTokenVersion: request.appearanceTokenVersion,
+        });
+      }
+      return serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      });
+    });
+
+    function StoreBackedBridge() {
+      const [account, setAccount] = useState(() => serverUser());
+      const updateAccountAppearance = useCallback(
+        async (request: UpdateMeRequest): Promise<User> => {
+          const updated: User = await mockUpdateMe(request);
+          flushSync(() => setAccount(updated));
+          return updated;
+        },
+        [],
+      );
+      return (
+        <AppearanceSyncBridge
+          adapter={harness.adapter}
+          account={account}
+          updateAccountAppearance={updateAccountAppearance}
+          refreshAccountAppearance={mockGetMe}
+          capture={capture}
+        >
+          <Probe />
+        </AppearanceSyncBridge>
+      );
+    }
+
+    render(<StoreBackedBridge />);
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("undo-outcome")).toHaveTextContent("expired"),
+    );
+    expect(screen.getByTestId("skin")).toHaveTextContent("relay");
+    expect(mockUpdateMe).toHaveBeenCalledTimes(2);
+    now.mockRestore();
   });
 
   it("keeps the Undo compare condition when a failed write is retried", async () => {
