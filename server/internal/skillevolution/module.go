@@ -132,6 +132,7 @@ func newProductionModule(pool *pgxpool.Pool, root *handler.Handler, queries *db.
 	skills := NewWorkspaceSkillRepository(queries)
 	reviewAccess := handler.NewTaskRunReviewTaskAccess(root)
 	reviews := service.NewTaskRunReviewService(service.NewDBTaskRunReviewRepository(queries), reviewAccess)
+	reviews.SetCoverageRecorder(&exactFeedbackCoverageRecorder{queries: queries, metrics: metrics})
 	exact := NewExactSkillTaskIndex(queries)
 	twinFactory := TwinSignalsFactory(func(actorID pgtype.UUID) TwinSignals {
 		if !validUUID(actorID) {
@@ -160,7 +161,7 @@ func newProductionModule(pool *pgxpool.Pool, root *handler.Handler, queries *db.
 		skills,
 		NewWorkspaceSkillPublisher(queries, pool),
 		NewProductionImprover(candidates, DefaultReplayTimeout),
-		newProductionBehavioralEvaluator(candidates),
+		newProductionBehavioralEvaluator(root.LLM),
 		sources...,
 	)
 	if err != nil {
@@ -187,8 +188,8 @@ func newProductionModule(pool *pgxpool.Pool, root *handler.Handler, queries *db.
 	}, nil
 }
 
-func newProductionBehavioralEvaluator(source *RoomCandidateSource) BehavioralEvaluator {
-	return NewProductionReplayEvaluator(source, productionReplayAdapter, productionReplayVersion)
+func newProductionBehavioralEvaluator(client replayJSONClient) BehavioralEvaluator {
+	return NewProductionReplayEvaluator(NewBoundedModelReplay(client), productionReplayAdapter, productionReplayVersion)
 }
 
 func (module *Module) register(router chi.Router, root *handler.Handler) error {
@@ -218,7 +219,7 @@ func (module *Module) register(router chi.Router, root *handler.Handler) error {
 
 	router.Mount("/api/skill-evolution", NewHTTP(module.lifecycle, module.lifecycle.skills, module.requester, module.metrics).Routes())
 	registerTaskReviewRoutes(router, taskReviewRouteHandlers{
-		create: recordSuccessfulTaskReview(module.metrics, module.reviewHTTP.Create),
+		create: module.reviewHTTP.Create,
 		list:   module.reviewHTTP.List, get: module.reviewHTTP.Get,
 		listManualReruns: module.reviewHTTP.ListManualReruns, getManualRerun: module.reviewHTTP.GetManualRerun,
 	})
@@ -296,34 +297,33 @@ func (store *metricsAttributionStore) recordAttributionBatch(ctx context.Context
 	return nil
 }
 
-type evolutionStatusWriter struct {
-	http.ResponseWriter
-	status int
+type exactFeedbackCoverageRecorder struct {
+	queries *db.Queries
+	metrics *Metrics
 }
 
-func (writer *evolutionStatusWriter) WriteHeader(status int) {
-	if writer.status != 0 {
-		return
+func (recorder *exactFeedbackCoverageRecorder) RecordTaskRunReviewCoverage(ctx context.Context, workspaceID, taskID string) error {
+	if recorder == nil || recorder.queries == nil {
+		return ErrProductionModuleUnavailable
 	}
-	writer.status = status
-	writer.ResponseWriter.WriteHeader(status)
-}
-
-func (writer *evolutionStatusWriter) Write(payload []byte) (int, error) {
-	if writer.status == 0 {
-		writer.WriteHeader(http.StatusOK)
+	workspaceUUID, err := parseUUIDText(workspaceID)
+	if err != nil {
+		return err
 	}
-	return writer.ResponseWriter.Write(payload)
-}
-
-func recordSuccessfulTaskReview(metrics *Metrics, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writer := &evolutionStatusWriter{ResponseWriter: w}
-		next(writer, r)
-		if metrics != nil && writer.status >= 200 && writer.status < 300 {
-			metrics.FeedbackCoveredRuns.Inc()
-		}
+	taskUUID, err := parseUUIDText(taskID)
+	if err != nil {
+		return err
 	}
+	covered, err := recorder.queries.MarkExactSkillEvolutionTaskFeedbackCovered(ctx, db.MarkExactSkillEvolutionTaskFeedbackCoveredParams{
+		WorkspaceID: workspaceUUID, TaskID: taskUUID,
+	})
+	if err != nil {
+		return err
+	}
+	if covered && recorder.metrics != nil {
+		recorder.metrics.FeedbackCoveredRuns.Inc()
+	}
+	return nil
 }
 
 func (module *Module) Close() {
@@ -410,7 +410,7 @@ func (queuer *productionImprovementRoomQueuer) ensureLocked(
 	if err != nil {
 		return ImprovementRoomQueueResult{}, err
 	}
-	if !loop.Enabled {
+	if !loop.IsEnabled {
 		return ImprovementRoomQueueResult{}, ErrEvolutionDisabled
 	}
 	if LoopMode(loop.Mode) != LoopModePropose {
@@ -418,6 +418,19 @@ func (queuer *productionImprovementRoomQueuer) ensureLocked(
 	}
 	snapshot, err := queuer.skills.Load(ctx, workspaceID, skillID)
 	if err != nil {
+		return ImprovementRoomQueueResult{}, err
+	}
+	if snapshot.Ownership.Class != OwnershipWorkspace || !snapshot.Ownership.DirectEvolution {
+		return ImprovementRoomQueueResult{}, ErrForkRequired
+	}
+	metadata, err := revisionMetadataDigest(snapshot.Bundle, Digest(snapshot.Manifest.Hash))
+	if err != nil {
+		return ImprovementRoomQueueResult{}, err
+	}
+	if _, err := queuer.store.SaveRevision(ctx, revisionInput(
+		workspaceID, skillID, snapshot.Skill.CreatedBy, "base", OwnershipWorkspace,
+		snapshot.Bundle, Digest(snapshot.Manifest.Hash), metadata,
+	)); err != nil {
 		return ImprovementRoomQueueResult{}, err
 	}
 	if !validUUID(actorID) {

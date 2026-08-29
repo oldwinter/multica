@@ -1496,7 +1496,6 @@ type SkillEvolutionLoop struct {
 	ID               pgtype.UUID        `json:"id"`
 	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
 	SkillID          pgtype.UUID        `json:"skill_id"`
-	Enabled          bool               `json:"enabled"`
 	Mode             string             `json:"mode"`
 	CooldownSeconds  int32              `json:"cooldown_seconds"`
 	MinimumSignals   int32              `json:"minimum_signals"`
@@ -1509,6 +1508,7 @@ type SkillEvolutionLoop struct {
 	NextEligibleAt   pgtype.Timestamptz `json:"next_eligible_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	IsEnabled        bool               `json:"is_enabled"`
 }
 
 type SkillEvolutionProposal struct {
@@ -1611,6 +1611,7 @@ type SkillEvolutionTaskAttribution struct {
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 	DispatchSnapshotID pgtype.UUID        `json:"dispatch_snapshot_id"`
 	TaskDispatchedAt   pgtype.Timestamptz `json:"task_dispatched_at"`
+	FeedbackCoveredAt  pgtype.Timestamptz `json:"feedback_covered_at"`
 }
 
 type SkillEvolutionTaskDispatchSnapshot struct {

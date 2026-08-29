@@ -15,9 +15,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/skillbundle"
@@ -66,6 +68,7 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	runtimeA := testUUID()
 	seedPersistenceFixture(t, pool, workspaceA, userA, skillA, agentA)
 	seedPersistenceFixture(t, pool, workspaceB, testUUID(), skillB, agentB)
+	fixture := testutil.New(pool, util.UUIDToString(workspaceA), util.UUIDToString(userA))
 
 	loop, err := store.ConfigureLoop(ctx, LoopConfig{
 		WorkspaceID: workspaceA, SkillID: skillA, Enabled: true, Mode: LoopModePropose,
@@ -287,13 +290,12 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	}
 
 	taskID := testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_runtime (id, workspace_id) VALUES ($1, $2)`, runtimeA, workspaceA); err != nil {
-		t.Fatalf("seed runtime: %v", err)
-	}
+	fixture.Insert(t, "agent_runtime", testutil.Cols{"id": runtimeA, "workspace_id": workspaceA})
 	dispatchedAt := time.Now().UTC().Truncate(time.Microsecond)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, runtime_id, status, dispatched_at) VALUES ($1, $2, $3, 'dispatched', $4)`, taskID, agentA, runtimeA, dispatchedAt); err != nil {
-		t.Fatalf("seed task: %v", err)
-	}
+	fixture.Insert(t, "agent_task_queue", testutil.Cols{
+		"id": taskID, "agent_id": agentA, "runtime_id": runtimeA,
+		"status": "dispatched", "dispatched_at": dispatchedAt,
+	})
 	snapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
 		WorkspaceID: workspaceA, TaskID: taskID, AgentID: agentA, RuntimeID: runtimeA, TaskDispatchedAt: dispatchedAt,
 		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillA)}},
@@ -340,6 +342,50 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	changedAttribution.Source = skillbundle.SourceBuiltin
 	if _, err := store.RecordTaskAttribution(ctx, changedAttribution); !errors.Is(err, ErrPersistenceConflict) {
 		t.Fatalf("changed attribution source error = %v, want conflict", err)
+	}
+	coverageMetrics := NewMetrics()
+	coverage := &exactFeedbackCoverageRecorder{queries: queries, metrics: coverageMetrics}
+	reviewerB, reviewerC := testUUID(), testUUID()
+	for _, reviewerID := range []pgtype.UUID{reviewerB, reviewerC} {
+		fixture.InsertNoID(t, "member", testutil.Cols{
+			"workspace_id": workspaceA, "user_id": reviewerID,
+		}, "workspace_id = $1 AND user_id = $2", workspaceA, reviewerID)
+	}
+	reviewRepository := service.NewDBTaskRunReviewRepository(queries)
+	createCoveredReview := func(reviewerID pgtype.UUID, key string, recorder service.TaskRunReviewCoverageRecorder) {
+		t.Helper()
+		reviews := service.NewTaskRunReviewService(reviewRepository, persistenceTaskReviewAccess{
+			workspaceID: util.UUIDToString(workspaceA), reviewerID: util.UUIDToString(reviewerID),
+			taskID: util.UUIDToString(taskID), agentID: util.UUIDToString(agentA),
+		})
+		reviews.SetCoverageRecorder(recorder)
+		if _, err := reviews.CreateTaskRunReview(ctx, util.UUIDToString(workspaceA), util.UUIDToString(reviewerID), service.CreateTaskRunReviewInput{
+			TaskID: util.UUIDToString(taskID), IdempotencyKey: key,
+			Outcome: service.TaskRunReviewOutcomeHelpful, Target: service.TaskRunReviewTargetKnowledge,
+			Reason: "covered review",
+		}); err != nil {
+			t.Fatalf("create covered review %q: %v", key, err)
+		}
+	}
+	createCoveredReview(userA, "coverage:first-review", coverage)
+	// An idempotent replay still invokes the post-persistence hook.
+	createCoveredReview(userA, "coverage:first-review", coverage)
+	createCoveredReview(reviewerB, "coverage:second-reviewer", coverage)
+	// A fresh recorder models a process restart; a third reviewer and key still
+	// cannot increment the durable task-level coverage marker again.
+	createCoveredReview(reviewerC, "coverage:after-restart", &exactFeedbackCoverageRecorder{queries: db.New(pool), metrics: coverageMetrics})
+	unattributedTaskID := testTask(t, pool, agentA)
+	if err := coverage.RecordTaskRunReviewCoverage(ctx, util.UUIDToString(workspaceA), util.UUIDToString(unattributedTaskID)); err != nil {
+		t.Fatalf("record unattributed feedback coverage: %v", err)
+	}
+	if got := promtest.ToFloat64(coverageMetrics.FeedbackCoveredRuns); got != 1 {
+		t.Fatalf("durable feedback covered runs = %v, want 1", got)
+	}
+	coveredAttribution, err := queries.GetSkillEvolutionTaskAttribution(ctx, db.GetSkillEvolutionTaskAttributionParams{
+		WorkspaceID: workspaceA, TaskID: taskID, SkillID: skillA,
+	})
+	if err != nil || !coveredAttribution.FeedbackCoveredAt.Valid {
+		t.Fatalf("durable feedback marker = (%+v, %v)", coveredAttribution.FeedbackCoveredAt, err)
 	}
 
 	fastTaskID := testUUID()
@@ -914,7 +960,7 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	for _, file := range files {
 		name := filepath.Base(file)
 		prefix := strings.SplitN(name, "_", 2)[0]
-		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "524") {
+		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "525") {
 			continue
 		}
 		sql, err := os.ReadFile(file)

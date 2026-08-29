@@ -19,18 +19,14 @@ import type { AgentTask } from "@multica/core/types/agent";
 import type { TaskMessagePayload } from "@multica/core/types/events";
 import { useWorkspaceId } from "@multica/core/hooks";
 import {
-  taskRunReviewSkillOptions,
-  useCreateTaskRunReview,
-} from "@multica/core/task-run-reviews";
-import {
   twinTaskContextOptions,
   useCreateTwinDeposition,
   useSubmitTwinTaskFeedback,
 } from "@multica/core/twins";
 import {
   AgentTranscriptDialog,
-  type AgentTranscriptDialogProps,
 } from "./agent-transcript-dialog";
+import { TaskRunReviewSlot } from "../../task-run-reviews";
 import { buildTimeline, type TimelineItem } from "./build-timeline";
 
 interface TranscriptButtonProps {
@@ -99,11 +95,6 @@ export function TranscriptButton({
   const terminal = ["completed", "failed", "cancelled"].includes(task.status);
   const taskRunReviewAvailable =
     !!wsId && terminal && isTaskMessageTaskId(task.id);
-  const taskRunReviewMutation = useCreateTaskRunReview(wsId, task.id);
-  const taskRunReviewSkillsQuery = useQuery({
-    ...taskRunReviewSkillOptions(wsId, task.agent_id),
-    enabled: open && taskRunReviewAvailable && !!task.agent_id,
-  });
   const effectiveTask = useMemo(
     () => contextQuery.data ? { ...task, twin_context: contextQuery.data } : task,
     [contextQuery.data, task],
@@ -114,18 +105,9 @@ export function TranscriptButton({
     twinFeedbackPending: feedbackMutation.isPending,
     twinDepositionPending: depositionMutation.isPending,
   };
-  const taskRunReviewActions = {
-    onTaskRunReview: taskRunReviewAvailable
-      ? taskRunReviewMutation.mutateAsync
-      : undefined,
-    onTaskRunReviewReset: taskRunReviewMutation.reset,
-    taskRunReviewPending: taskRunReviewMutation.isPending,
-    taskRunReviewSubmitted: taskRunReviewMutation.isSuccess,
-    taskRunReviewError: taskRunReviewMutation.isError,
-    taskRunReviewSkills: taskRunReviewSkillsQuery.data ?? [],
-    taskRunReviewSkillsPending: taskRunReviewSkillsQuery.isFetching,
-    taskRunReviewSkillsError: taskRunReviewSkillsQuery.isError,
-  };
+  const taskRunReviewSlot = taskRunReviewAvailable ? (
+    <TaskRunReviewSlot wsId={wsId} task={task} />
+  ) : null;
 
   // Live cache mode: the running task feeds the shared task-messages cache, so
   // we render straight off that cache instead of a one-shot local snapshot.
@@ -227,7 +209,7 @@ export function TranscriptButton({
             onOpenChange={setOpen}
             headerSlot={headerSlot}
             {...twinActions}
-            {...taskRunReviewActions}
+            taskRunReviewSlot={taskRunReviewSlot}
           />
         ) : (
           <AgentTranscriptDialog
@@ -239,7 +221,7 @@ export function TranscriptButton({
             isLive={isLive}
             headerSlot={headerSlot}
             {...twinActions}
-            {...taskRunReviewActions}
+            taskRunReviewSlot={taskRunReviewSlot}
           />
         ))}
     </>
@@ -252,18 +234,11 @@ interface LiveTranscriptDialogProps {
   isLive: boolean;
   onOpenChange: (open: boolean) => void;
   headerSlot?: React.ReactNode;
-  onTwinFeedback: AgentTranscriptDialogProps["onTwinFeedback"];
-  onCreateTwinDeposition: AgentTranscriptDialogProps["onCreateTwinDeposition"];
+  onTwinFeedback: NonNullable<React.ComponentProps<typeof AgentTranscriptDialog>["onTwinFeedback"]>;
+  onCreateTwinDeposition: NonNullable<React.ComponentProps<typeof AgentTranscriptDialog>["onCreateTwinDeposition"]>;
   twinFeedbackPending: boolean;
   twinDepositionPending: boolean;
-  onTaskRunReview: AgentTranscriptDialogProps["onTaskRunReview"];
-  onTaskRunReviewReset: AgentTranscriptDialogProps["onTaskRunReviewReset"];
-  taskRunReviewPending: boolean;
-  taskRunReviewSubmitted: boolean;
-  taskRunReviewError: boolean;
-  taskRunReviewSkills: NonNullable<AgentTranscriptDialogProps["taskRunReviewSkills"]>;
-  taskRunReviewSkillsPending: boolean;
-  taskRunReviewSkillsError: boolean;
+  taskRunReviewSlot?: React.ReactNode;
 }
 
 /**
@@ -287,14 +262,7 @@ function LiveTranscriptDialog({
   onCreateTwinDeposition,
   twinFeedbackPending,
   twinDepositionPending,
-  onTaskRunReview,
-  onTaskRunReviewReset,
-  taskRunReviewPending,
-  taskRunReviewSubmitted,
-  taskRunReviewError,
-  taskRunReviewSkills,
-  taskRunReviewSkillsPending,
-  taskRunReviewSkillsError,
+  taskRunReviewSlot,
 }: LiveTranscriptDialogProps) {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -343,14 +311,7 @@ function LiveTranscriptDialog({
       onCreateTwinDeposition={onCreateTwinDeposition}
       twinFeedbackPending={twinFeedbackPending}
       twinDepositionPending={twinDepositionPending}
-      onTaskRunReview={onTaskRunReview}
-      onTaskRunReviewReset={onTaskRunReviewReset}
-      taskRunReviewPending={taskRunReviewPending}
-      taskRunReviewSubmitted={taskRunReviewSubmitted}
-      taskRunReviewError={taskRunReviewError}
-      taskRunReviewSkills={taskRunReviewSkills}
-      taskRunReviewSkillsPending={taskRunReviewSkillsPending}
-      taskRunReviewSkillsError={taskRunReviewSkillsError}
+      taskRunReviewSlot={taskRunReviewSlot}
     />
   );
 }

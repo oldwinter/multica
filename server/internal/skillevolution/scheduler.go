@@ -274,5 +274,5 @@ func listScheduledEvolutionLoops(
 }
 
 func scheduledLoopRunnable(loop db.SkillEvolutionLoop) bool {
-	return loop.Enabled && (LoopMode(loop.Mode) == LoopModeObserve || LoopMode(loop.Mode) == LoopModePropose)
+	return loop.IsEnabled && (LoopMode(loop.Mode) == LoopModeObserve || LoopMode(loop.Mode) == LoopModePropose)
 }

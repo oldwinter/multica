@@ -735,7 +735,7 @@ func (l *Lifecycle) Publish(ctx context.Context, request PublishRequest) (Public
 	if err != nil {
 		return Publication{}, err
 	}
-	if !loop.Enabled {
+	if !loop.IsEnabled {
 		return Publication{}, ErrEvolutionDisabled
 	}
 	if LoopMode(loop.Mode) == LoopModePaused {
@@ -810,18 +810,17 @@ func (l *Lifecycle) Rollback(ctx context.Context, request RollbackRequest) (Publ
 		return Publication{}, ErrDecisionConflict
 	}
 	preHash := Digest(source.PreHash.String)
-	postHash := Digest(source.PostHash.String)
 	target, err := l.store.getRevisionByHash(ctx, request.WorkspaceID, request.SkillID, preHash)
 	if err != nil {
 		return Publication{}, err
 	}
 	input := ReleaseInput{
 		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID, SourceReleaseID: source.ID,
-		RevisionID: target.Revision.ID, Kind: ReleaseKindRollback, ExpectedBaseHash: postHash,
+		RevisionID: target.Revision.ID, Kind: ReleaseKindRollback,
 		ActorID: request.Actor.ID, IdempotencyKey: request.IdempotencyKey,
 	}
 	if existing, replayErr := l.store.getReleaseByKey(ctx, request.WorkspaceID, request.IdempotencyKey); replayErr == nil {
-		if !releaseMatchesInput(existing, input) {
+		if !rollbackReleaseMatchesRequest(existing, input) {
 			return Publication{}, ErrPersistenceConflict
 		}
 		return Publication{Release: existing}, releaseReplayError(existing)
@@ -832,25 +831,24 @@ func (l *Lifecycle) Rollback(ctx context.Context, request RollbackRequest) (Publ
 	if err != nil {
 		return Publication{}, err
 	}
+	currentHash := Digest(live.Manifest.Hash)
+	input.ExpectedBaseHash = currentHash
 	release, err := l.store.CreateRelease(ctx, input)
 	if err != nil {
 		return Publication{}, err
 	}
-	if Digest(live.Manifest.Hash) != postHash {
-		failed, transitionErr := l.store.TransitionRelease(ctx, ReleaseTransition{
-			WorkspaceID: request.WorkspaceID, ReleaseID: release.ID, ExpectedOutcome: ReleaseOutcomePending,
-			NextOutcome: ReleaseOutcomeFailed, ErrorCode: "stale_base",
-		})
-		if transitionErr != nil {
-			return Publication{Release: release}, transitionErr
-		}
-		return Publication{Release: failed}, &StaleBaseError{Expected: postHash, Current: Digest(live.Manifest.Hash)}
-	}
 	result, publishErr := l.publisher.Publish(ctx, PublishSkillRequest{
-		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID, ExpectedBaseHash: postHash,
+		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID, ExpectedBaseHash: currentHash,
 		Bundle: revisionBundle(target),
 	})
 	return l.finishPublication(ctx, db.SkillEvolutionProposal{}, release, result, publishErr)
+}
+
+func rollbackReleaseMatchesRequest(release db.SkillEvolutionRelease, input ReleaseInput) bool {
+	return release.WorkspaceID == input.WorkspaceID && release.SkillID == input.SkillID &&
+		release.SourceReleaseID == input.SourceReleaseID && release.RevisionID == input.RevisionID &&
+		release.Kind == string(ReleaseKindRollback) && release.ActorID == input.ActorID &&
+		release.IdempotencyKey == input.IdempotencyKey
 }
 
 type ForkRequest struct {
@@ -1007,7 +1005,7 @@ func (l *Lifecycle) discover(ctx context.Context, workspaceID, skillID, actorID 
 	if err != nil {
 		return db.SkillEvolutionLoop{}, nil, err
 	}
-	if !loop.Enabled {
+	if !loop.IsEnabled {
 		return db.SkillEvolutionLoop{}, nil, ErrEvolutionDisabled
 	}
 	mode := LoopMode(loop.Mode)
@@ -1030,7 +1028,7 @@ func (l *Lifecycle) requireGenerationLoop(ctx context.Context, workspaceID, skil
 	if err != nil {
 		return db.SkillEvolutionLoop{}, err
 	}
-	if !loop.Enabled {
+	if !loop.IsEnabled {
 		return db.SkillEvolutionLoop{}, ErrEvolutionDisabled
 	}
 	if LoopMode(loop.Mode) == LoopModePaused {
@@ -1232,7 +1230,7 @@ func loopConfigFromRow(loop db.SkillEvolutionLoop) (LoopConfig, error) {
 		return LoopConfig{}, ErrLifecycleInvalidInput
 	}
 	return LoopConfig{
-		WorkspaceID: loop.WorkspaceID, SkillID: loop.SkillID, Enabled: loop.Enabled, Mode: mode,
+		WorkspaceID: loop.WorkspaceID, SkillID: loop.SkillID, Enabled: loop.IsEnabled, Mode: mode,
 		Cooldown: time.Duration(loop.CooldownSeconds) * time.Second, MinimumSignals: int(loop.MinimumSignals),
 		MaxEvidenceRefs: int(loop.MaxEvidenceRefs), MaxReplaySamples: int(loop.MaxReplaySamples),
 		MaxCostUSDTicks: loop.MaxCostUsdTicks, PolicyVersion: loop.PolicyVersion,

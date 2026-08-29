@@ -83,6 +83,10 @@ func TestUnconfiguredClientMakesZeroUpstreamRequests(t *testing.T) {
 				_, err := c.GenerateJSON(ctx, "", "system JSON", "private chat content", 0.3, 2048)
 				return err
 			}},
+			{"GenerateJSONWithUsage", func() error {
+				_, err := c.GenerateJSONWithUsage(ctx, "", "system JSON", "private replay case", 0.3, 2048)
+				return err
+			}},
 		}
 		for _, call := range calls {
 			if err := call.run(); !errors.Is(err, ErrNotConfigured) {
@@ -125,16 +129,18 @@ var documentedConsumers = map[string]string{
 	"internal/handler/chat_title.go":                  "chat auto-titling: the first user message of a new chat session",
 	"internal/service/chat_quick_actions_generate.go": "chat follow-up questions: the tail of the conversation",
 	"internal/service/twin_model_adapter.go":          "Twin Build: accepted immutable LM Wiki canonical JSON, safe citation keys, and prior signed assertions",
+	"internal/skillevolution/behavioral_replay.go":    "Skill replay: one authorized bounded case with the base and candidate Skill; payload and responses remain transient",
 }
 
 // clientCallSurface is every method on Client that can produce an upstream
 // request. Enabled and DefaultModel are deliberately absent: asking whether the
 // layer is on sends nothing, and consumers are expected to call it.
 var clientCallSurface = map[string]bool{
-	"Chat":         true,
-	"ChatStream":   true,
-	"GenerateText": true,
-	"GenerateJSON": true,
+	"Chat":                  true,
+	"ChatStream":            true,
+	"GenerateText":          true,
+	"GenerateJSON":          true,
+	"GenerateJSONWithUsage": true,
 }
 
 // methodNameCollisions are call sites the scan below flags by name without

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/skillbundle"
 )
@@ -127,13 +128,12 @@ func TestAttributionRecorderUsesStoreRevisionAndIdempotencyQueries(t *testing.T)
 	workspaceID, userID := testUUID(), testUUID()
 	skillID, agentID, runtimeID, taskID := testUUID(), testUUID(), testUUID(), testUUID()
 	seedPersistenceFixture(t, pool, workspaceID, userID, skillID, agentID)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_runtime (id, workspace_id) VALUES ($1, $2)`, runtimeID, workspaceID); err != nil {
-		t.Fatalf("seed runtime: %v", err)
-	}
+	fixture := testutil.New(pool, attributionUUIDString(workspaceID), attributionUUIDString(userID))
+	fixture.Insert(t, "agent_runtime", testutil.Cols{"id": runtimeID, "workspace_id": workspaceID})
 	dispatchedAt := time.Now().UTC().Truncate(time.Microsecond)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, runtime_id, status, dispatched_at) VALUES ($1, $2, $3, 'dispatched', $4)`, taskID, agentID, runtimeID, dispatchedAt); err != nil {
-		t.Fatalf("seed task: %v", err)
-	}
+	fixture.Insert(t, "agent_task_queue", testutil.Cols{
+		"id": taskID, "agent_id": agentID, "runtime_id": runtimeID, "status": "dispatched", "dispatched_at": dispatchedAt,
+	})
 	revisionInput := testRevisionInput(t, workspaceID, skillID, "base", "base content")
 	revisionInput.CreatedByID = userID
 	revision, err := store.SaveRevision(ctx, revisionInput)
@@ -152,9 +152,7 @@ func TestAttributionRecorderUsesStoreRevisionAndIdempotencyQueries(t *testing.T)
 	if err != nil {
 		t.Fatalf("record dispatch snapshot: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, taskID); err != nil {
-		t.Fatalf("complete task: %v", err)
-	}
+	fixture.Exec(t, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, taskID)
 	input := AttributionInput{
 		WorkspaceID: workspaceID, TaskID: taskID, RuntimeID: runtimeID,
 		DispatchSnapshotID: snapshot.Snapshot.ID, TaskDispatchedAt: dispatchedAt, CapabilityProven: true,

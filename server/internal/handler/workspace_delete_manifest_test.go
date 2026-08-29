@@ -160,6 +160,34 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"workspace_share_link":               workspaceDelete,
 }
 
+var skillEvolutionWorkspaceDeletionTables = [...]string{
+	"skill_evolution_evaluation",
+	"skill_evolution_evidence",
+	"skill_evolution_loop",
+	"skill_evolution_proposal",
+	"skill_evolution_release",
+	"skill_evolution_review",
+	"skill_evolution_revision",
+	"skill_evolution_revision_file",
+	"skill_evolution_task_attribution",
+	"skill_evolution_task_dispatch_snapshot",
+	"task_run_review",
+}
+
+func init() {
+	for _, table := range skillEvolutionWorkspaceDeletionTables {
+		workspaceDeletionManifest[table] = workspaceDelete
+	}
+}
+
+func TestSkillEvolutionWorkspaceDeletionManifestClassification(t *testing.T) {
+	for _, table := range skillEvolutionWorkspaceDeletionTables {
+		if action := workspaceDeletionManifest[table]; action != workspaceDelete {
+			t.Errorf("%s action = %q, want delete", table, action)
+		}
+	}
+}
+
 func TestWorkspaceDeletionManifestCoversPublicSchema(t *testing.T) {
 	if testPool == nil {
 		t.Skip("database not available")

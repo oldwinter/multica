@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -28,13 +29,14 @@ var (
 )
 
 type CandidatePolicy struct {
-	MaxChangedFiles  int
-	MaxPrimaryGrowth int
-	MaxCostUSDTicks  int64
+	MaxChangedFiles         int
+	MaxUnrelatedChangeUnits int
+	MaxPrimaryGrowth        int
+	MaxCostUSDTicks         int64
 }
 
 func DefaultCandidatePolicy() CandidatePolicy {
-	return CandidatePolicy{MaxChangedFiles: 8, MaxPrimaryGrowth: 16 * 1024, MaxCostUSDTicks: 1_000_000_000}
+	return CandidatePolicy{MaxChangedFiles: 8, MaxUnrelatedChangeUnits: 3, MaxPrimaryGrowth: 16 * 1024, MaxCostUSDTicks: 1_000_000_000}
 }
 
 type ValidationOutcome struct {
@@ -71,7 +73,7 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 	if err == nil && baseErr == nil && manifest.Hash == baseManifest.Hash {
 		codes = append(codes, "candidate_noop")
 	}
-	if policy.MaxChangedFiles <= 0 || policy.MaxPrimaryGrowth < 0 || policy.MaxCostUSDTicks < 0 ||
+	if policy.MaxChangedFiles <= 0 || policy.MaxUnrelatedChangeUnits <= 0 || policy.MaxPrimaryGrowth < 0 || policy.MaxCostUSDTicks < 0 ||
 		policy.MaxCostUSDTicks > 1_000_000_000 {
 		codes = append(codes, "policy_invalid")
 	}
@@ -90,8 +92,25 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 	if changed > policy.MaxChangedFiles {
 		codes = append(codes, "too_many_changed_files")
 	}
+	changeUnits := changed
+	if candidate.Bundle.Content != base.Content {
+		changeUnits++
+	}
+	if changeUnits > policy.MaxUnrelatedChangeUnits {
+		codes = append(codes, "unrelated_change_budget_exceeded")
+	}
 	if primaryGrowth > policy.MaxPrimaryGrowth {
 		codes = append(codes, "primary_growth_exceeded")
+	}
+	if destructivePrimaryRewrite(base.Content, candidate.Bundle.Content) {
+		codes = append(codes, "primary_rewrite_excessive")
+	}
+	duplicate, conflict := instructionConflicts(candidate.Bundle)
+	if duplicate {
+		codes = append(codes, "duplicate_instruction")
+	}
+	if conflict {
+		codes = append(codes, "conflicting_instruction")
 	}
 	if !candidateClaimsResolvedEvidence(candidate.EvidenceDigests, evidence) {
 		codes = append(codes, "provenance_invalid")
@@ -102,7 +121,7 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 			codes = append(codes, "secret_like_content")
 		case localPathPattern.MatchString(value):
 			codes = append(codes, "local_filesystem_path")
-		case capabilityPattern.MatchString(value):
+		case capabilityPattern.MatchString(value) || containsAuthorityManipulation(value):
 			codes = append(codes, "authority_expansion")
 		}
 	}
@@ -118,6 +137,110 @@ func ValidateCandidatePolicy(base skillbundle.Skill, candidate ImprovementCandid
 	}
 	outcome.Digest = digestSafeValue("candidate-validation-v1", outcome)
 	return outcome
+}
+
+func destructivePrimaryRewrite(base, candidate string) bool {
+	baseBody := skillPrimaryBody(base)
+	if len(baseBody) < 256 || baseBody == candidate {
+		return false
+	}
+	candidateLines := make(map[string]struct{})
+	for _, line := range meaningfulInstructionLines(skillPrimaryBody(candidate)) {
+		candidateLines[line] = struct{}{}
+	}
+	baseLines := meaningfulInstructionLines(baseBody)
+	retained := 0
+	for _, line := range baseLines {
+		if _, ok := candidateLines[line]; ok {
+			retained++
+		}
+	}
+	return len(baseLines) >= 4 && retained*4 < len(baseLines)
+}
+
+func skillPrimaryBody(content string) string {
+	if !strings.HasPrefix(content, "---\n") {
+		return content
+	}
+	if end := strings.Index(content[4:], "\n---"); end >= 0 {
+		return strings.TrimSpace(content[end+8:])
+	}
+	return content
+}
+
+func meaningfulInstructionLines(content string) []string {
+	lines := make([]string, 0)
+	for _, raw := range strings.FieldsFunc(content, func(r rune) bool { return r == '\n' || r == '.' || r == ';' }) {
+		line := strings.Join(instructionTokens(raw), " ")
+		if len(strings.Fields(line)) >= 3 {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func instructionTokens(value string) []string {
+	return strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-'
+	})
+}
+
+func containsAuthorityManipulation(value string) bool {
+	tokens := instructionTokens(value)
+	has := func(options ...string) bool {
+		for _, token := range tokens {
+			for _, option := range options {
+				if token == option {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	overridesAuthority := has("ignore", "disregard", "override", "forget", "bypass") &&
+		has("prior", "previous", "system", "developer", "instruction", "instructions", "policy", "policies")
+	exfiltratesSensitiveData := has("send", "reveal", "output", "print", "expose", "read") &&
+		has("environment", "env", "credential", "credentials", "secret", "secrets", "token", "tokens", "password", "passwords")
+	return overridesAuthority || exfiltratesSensitiveData
+}
+
+func instructionConflicts(bundle skillbundle.Skill) (duplicate, conflict bool) {
+	seen := make(map[string]struct{})
+	polarities := make(map[string]bool)
+	texts := []string{skillPrimaryBody(bundle.Content)}
+	for _, file := range bundle.Files {
+		texts = append(texts, file.Content)
+	}
+	for _, text := range texts {
+		for _, line := range meaningfulInstructionLines(text) {
+			if _, ok := seen[line]; ok {
+				duplicate = true
+			}
+			seen[line] = struct{}{}
+			tokens := strings.Fields(line)
+			negative := false
+			core := make([]string, 0, len(tokens))
+			for _, token := range tokens {
+				switch token {
+				case "never", "not", "don't", "dont", "mustn't", "mustnt":
+					negative = true
+				case "always", "must", "should", "do":
+				default:
+					core = append(core, token)
+				}
+			}
+			if len(core) < 3 {
+				continue
+			}
+			key := strings.Join(core, " ")
+			if prior, ok := polarities[key]; ok && prior != negative {
+				conflict = true
+			} else {
+				polarities[key] = negative
+			}
+		}
+	}
+	return duplicate, conflict
 }
 
 func candidateClaimsResolvedEvidence(claims []Digest, evidence []ResolvedEvidence) bool {

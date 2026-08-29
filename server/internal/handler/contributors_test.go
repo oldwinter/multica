@@ -269,7 +269,7 @@ func TestWorkspaceCleanupContributorPanicFailsClosed(t *testing.T) {
 	}
 }
 
-func TestHandlerAndTaskServiceDoNotImportSkillEvolutionLeaf(t *testing.T) {
+func TestNeutralPackagesAvoidDirectSkillEvolutionImports(t *testing.T) {
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve test source path")

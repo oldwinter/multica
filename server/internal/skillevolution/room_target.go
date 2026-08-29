@@ -17,10 +17,13 @@ import (
 )
 
 type roomProposalQueries interface {
+	LockWorkspaceSkillForEvolution(context.Context, db.LockWorkspaceSkillForEvolutionParams) (db.Skill, error)
+	LockWorkspaceSkillFilesForEvolution(context.Context, db.LockWorkspaceSkillFilesForEvolutionParams) ([]db.SkillFile, error)
 	GetSkillEvolutionLoop(context.Context, db.GetSkillEvolutionLoopParams) (db.SkillEvolutionLoop, error)
 	GetSkillEvolutionRevisionByHash(context.Context, db.GetSkillEvolutionRevisionByHashParams) (db.SkillEvolutionRevision, error)
 	GetSkillEvolutionProposalByGenerationKey(context.Context, db.GetSkillEvolutionProposalByGenerationKeyParams) (db.SkillEvolutionProposal, error)
 	CreateSkillEvolutionProposal(context.Context, db.CreateSkillEvolutionProposalParams) (db.SkillEvolutionProposal, error)
+	StaleDriftedActiveSkillEvolutionProposals(context.Context, db.StaleDriftedActiveSkillEvolutionProposalsParams) ([]db.SkillEvolutionProposal, error)
 }
 
 // RoomSkillProposalTarget registers only executable_procedure. Create queues a
@@ -108,20 +111,38 @@ func (target *RoomSkillProposalTarget) createQueuedProposal(ctx context.Context,
 	if err != nil {
 		return pgtype.UUID{}, err
 	}
-	live, err := target.lifecycle.skills.Load(ctx, request.WorkspaceID, request.SkillID)
+	lockedSkill, err := queries.LockWorkspaceSkillForEvolution(ctx, db.LockWorkspaceSkillForEvolutionParams{
+		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID,
+	})
 	if err != nil {
 		return pgtype.UUID{}, err
 	}
+	lockedFiles, err := queries.LockWorkspaceSkillFilesForEvolution(ctx, db.LockWorkspaceSkillFilesForEvolutionParams{
+		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID,
+	})
+	if err != nil {
+		return pgtype.UUID{}, err
+	}
+	live, err := buildWorkspaceSkillSnapshot(lockedSkill, lockedFiles)
+	if err != nil {
+		return pgtype.UUID{}, err
+	}
+	liveHash := Digest(live.Manifest.Hash)
+	if _, err := queries.StaleDriftedActiveSkillEvolutionProposals(ctx, db.StaleDriftedActiveSkillEvolutionProposalsParams{
+		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID, LiveHash: string(liveHash),
+	}); err != nil {
+		return pgtype.UUID{}, err
+	}
 	if live.Skill.WorkspaceID != request.WorkspaceID || live.Skill.ID != request.SkillID ||
-		Digest(live.Manifest.Hash) != accepted.ExpectedBaseHash || live.Ownership.Class != OwnershipWorkspace ||
+		liveHash != accepted.ExpectedBaseHash || live.Ownership.Class != OwnershipWorkspace ||
 		!live.Ownership.DirectEvolution {
-		return pgtype.UUID{}, &StaleBaseError{Expected: accepted.ExpectedBaseHash, Current: Digest(live.Manifest.Hash)}
+		return pgtype.UUID{}, &StaleBaseError{Expected: accepted.ExpectedBaseHash, Current: liveHash}
 	}
 	loop, err := queries.GetSkillEvolutionLoop(ctx, db.GetSkillEvolutionLoopParams{WorkspaceID: request.WorkspaceID, SkillID: request.SkillID})
 	if err != nil {
 		return pgtype.UUID{}, err
 	}
-	if loop.WorkspaceID != request.WorkspaceID || loop.SkillID != request.SkillID || !loop.Enabled || LoopMode(loop.Mode) != LoopModePropose {
+	if loop.WorkspaceID != request.WorkspaceID || loop.SkillID != request.SkillID || !loop.IsEnabled || LoopMode(loop.Mode) != LoopModePropose {
 		return pgtype.UUID{}, ErrEvolutionObserveOnly
 	}
 	if loop.NextEligibleAt.Valid && time.Now().UTC().Before(loop.NextEligibleAt.Time) {

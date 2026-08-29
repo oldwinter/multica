@@ -1,6 +1,6 @@
 -- name: UpsertSkillEvolutionLoop :one
 INSERT INTO skill_evolution_loop (
-    workspace_id, skill_id, enabled, mode, cooldown_seconds, minimum_signals,
+    workspace_id, skill_id, is_enabled, mode, cooldown_seconds, minimum_signals,
     max_evidence_refs, max_replay_samples, max_cost_usd_ticks, policy_version,
     next_eligible_at
 )
@@ -14,7 +14,7 @@ FROM skill
 WHERE skill.workspace_id = sqlc.arg(workspace_id)
   AND skill.id = sqlc.arg(skill_id)
 ON CONFLICT (workspace_id, skill_id) DO UPDATE SET
-    enabled = EXCLUDED.enabled,
+    is_enabled = EXCLUDED.is_enabled,
     mode = EXCLUDED.mode,
     cooldown_seconds = EXCLUDED.cooldown_seconds,
     minimum_signals = EXCLUDED.minimum_signals,
@@ -33,7 +33,7 @@ WHERE workspace_id = sqlc.arg(workspace_id)
 
 -- name: ListEligibleSkillEvolutionLoops :many
 SELECT * FROM skill_evolution_loop
-WHERE enabled
+WHERE is_enabled
   AND mode = 'propose'
   AND (next_eligible_at IS NULL OR next_eligible_at <= sqlc.arg(eligible_at)::timestamptz)
   AND (sqlc.narg(after_id)::uuid IS NULL OR id > sqlc.narg(after_id)::uuid)
@@ -42,7 +42,7 @@ LIMIT sqlc.arg(page_size);
 
 -- name: ListScheduledSkillEvolutionLoops :many
 SELECT * FROM skill_evolution_loop
-WHERE enabled
+WHERE is_enabled
   AND mode IN ('observe', 'propose')
   AND (next_eligible_at IS NULL OR next_eligible_at <= sqlc.arg(eligible_at)::timestamptz)
   AND (sqlc.narg(after_id)::uuid IS NULL OR id > sqlc.narg(after_id)::uuid)
@@ -155,6 +155,18 @@ SELECT * FROM skill_evolution_proposal
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND skill_id = sqlc.arg(skill_id)
   AND generation_idempotency_key = sqlc.arg(generation_idempotency_key);
+
+-- name: StaleDriftedActiveSkillEvolutionProposals :many
+UPDATE skill_evolution_proposal
+SET state = 'stale',
+    stale_reason = 'base_drift',
+    completed_at = now(),
+    updated_at = now()
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND skill_id = sqlc.arg(skill_id)
+  AND state IN ('queued', 'running', 'ready')
+  AND base_hash <> sqlc.arg(live_hash)
+RETURNING *;
 
 -- name: ListSkillEvolutionProposals :many
 SELECT id, workspace_id, skill_id, loop_id, state, base_revision_id,
@@ -345,7 +357,6 @@ WHERE revision.workspace_id = sqlc.arg(workspace_id)
             AND release.pre_hash IS NOT NULL
             AND release.post_hash IS NOT NULL
             AND revision.bundle_hash = release.pre_hash
-            AND sqlc.arg(expected_base_hash) = release.post_hash
       ))
   )
 ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
@@ -469,6 +480,8 @@ FROM skill_evolution_task_attribution
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND skill_id = sqlc.arg(skill_id)
   AND eligibility = 'eligible'
+  AND dispatch_snapshot_id IS NOT NULL
+  AND task_dispatched_at IS NOT NULL
 GROUP BY task_id
 ORDER BY max(created_at) DESC, task_id DESC
 LIMIT sqlc.arg(page_size);
@@ -481,7 +494,23 @@ SELECT EXISTS (
       AND task_id = sqlc.arg(task_id)
       AND skill_id = sqlc.arg(skill_id)
       AND eligibility = 'eligible'
+      AND dispatch_snapshot_id IS NOT NULL
+      AND task_dispatched_at IS NOT NULL
 );
+
+-- name: MarkExactSkillEvolutionTaskFeedbackCovered :one
+WITH covered AS (
+    UPDATE skill_evolution_task_attribution
+    SET feedback_covered_at = now()
+    WHERE workspace_id = sqlc.arg(workspace_id)
+      AND task_id = sqlc.arg(task_id)
+      AND eligibility = 'eligible'
+      AND dispatch_snapshot_id IS NOT NULL
+      AND task_dispatched_at IS NOT NULL
+      AND feedback_covered_at IS NULL
+    RETURNING task_id
+)
+SELECT EXISTS (SELECT 1 FROM covered) AS newly_covered;
 
 -- name: RecordSkillEvolutionTaskDispatchSnapshot :one
 WITH workspace_guard AS MATERIALIZED (

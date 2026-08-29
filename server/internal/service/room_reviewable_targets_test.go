@@ -108,6 +108,9 @@ func TestRoomWikiProposalTargetCreatesPendingProposalWithoutMutatingPage(t *test
 
 	workspaceID, pageID, revisionID := roomArtifactTestUUID(), roomArtifactTestUUID(), roomArtifactTestUUID()
 	baseDigest := "sha256:" + strings.Repeat("a", 64)
+	// This row must be visible only inside the promotion transaction. The shared
+	// testutil fixture intentionally accepts *pgxpool.Pool, not pgx.Tx, so this
+	// transaction-scoped insert is the narrow exception to fixture builders.
 	if _, err := tx.Exec(ctx, `
 INSERT INTO wiki_page (id, workspace_id, scope, path, title, content, current_revision_number, current_revision_id, content_digest)
 VALUES ($1, $2, 'workspace', 'knowledge.md', 'Current', 'current body', 3, $3, $4)`,
