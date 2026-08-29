@@ -157,7 +157,7 @@ export function OfficeToolbar({
         </span>
       </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 max-md:basis-full max-md:justify-end">
         <Tooltip>
           <TooltipTrigger
             render={

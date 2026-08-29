@@ -728,6 +728,49 @@ describe("OfficePage", () => {
     );
   });
 
+  it("separates the narrow fallback and roster into stable vertical bands", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={SceneProbe} />
+      </NavigationProvider>,
+    );
+
+    const fallback = await screen.findByTestId("office-dom-fallback");
+    const sceneBand = fallback.parentElement;
+    const readyState = sceneBand?.parentElement;
+    const roster = screen.getByTestId("office-roster");
+    const aside = roster.closest("aside");
+    const toolbarControls = screen
+      .getByRole("button", { name: "Fit" })
+      .closest("div.ml-auto");
+
+    expect(readyState).toHaveClass("overflow-y-auto", "md:overflow-hidden");
+    expect(sceneBand).toHaveClass(
+      "flex-none",
+      "min-h-64",
+      "md:min-h-0",
+      "md:flex-1",
+    );
+    expect(aside).toHaveClass(
+      "flex",
+      "min-h-[32rem]",
+      "flex-none",
+      "flex-col",
+      "md:min-h-0",
+    );
+    expect(sceneBand?.compareDocumentPosition(aside ?? document.body)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(toolbarControls).toHaveClass(
+      "max-md:basis-full",
+      "max-md:justify-end",
+    );
+  });
+
   it("moves the roster into a Sheet at medium widths without removing the scene", async () => {
     Object.defineProperty(window, "innerWidth", {
       configurable: true,

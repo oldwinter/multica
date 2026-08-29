@@ -97,8 +97,8 @@ export function OfficeSurface({
         <OfficeQualityNotice quality={model.quality} />
       ) : null}
       {model.kind === "ready" ? (
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+          <div className="flex min-h-64 min-w-0 flex-none flex-col md:min-h-0 md:flex-1">
             {SceneSlot && !isNarrow && !rendererFallback ? (
               <div
                 aria-hidden="true"
@@ -164,8 +164,8 @@ export function OfficeSurface({
             <aside
               aria-label={t(($) => $.roster.title)}
               className={cn(
-                "min-h-0 border-t border-surface-border bg-surface md:w-[300px] md:shrink-0 md:border-l md:border-t-0",
-                railVisible ? "block" : "hidden",
+                "flex min-h-[32rem] flex-none flex-col border-t border-surface-border bg-surface md:min-h-0 md:w-[300px] md:shrink-0 md:border-l md:border-t-0",
+                railVisible ? "flex" : "hidden",
               )}
             >
               <OfficeRail
