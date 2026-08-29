@@ -166,6 +166,31 @@ func (s *Store) SaveRevision(ctx context.Context, input RevisionInput) (Revision
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := s.queries.WithTx(tx)
+	snapshot, err := saveRevisionRows(ctx, queries, input, manifest, sortedFiles)
+	if err != nil {
+		return RevisionSnapshot{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return RevisionSnapshot{}, fmt.Errorf("commit skill evolution revision: %w", err)
+	}
+	return snapshot, nil
+}
+
+func saveRevisionInTransaction(ctx context.Context, queries *db.Queries, input RevisionInput) (RevisionSnapshot, error) {
+	manifest, sortedFiles, err := validateRevisionInput(input)
+	if err != nil || queries == nil {
+		return RevisionSnapshot{}, ErrPersistenceInvalidInput
+	}
+	return saveRevisionRows(ctx, queries, input, manifest, sortedFiles)
+}
+
+func saveRevisionRows(
+	ctx context.Context,
+	queries *db.Queries,
+	input RevisionInput,
+	manifest skillbundle.Manifest,
+	sortedFiles []RevisionFileInput,
+) (RevisionSnapshot, error) {
 	revision, createErr := queries.CreateSkillEvolutionRevision(ctx, db.CreateSkillEvolutionRevisionParams{
 		WorkspaceID: input.WorkspaceID, SkillID: input.SkillID, Kind: input.Kind,
 		OwnershipClass: string(input.Ownership), Source: input.Source, BundleHash: string(input.BundleHash),
@@ -203,9 +228,6 @@ func (s *Store) SaveRevision(ctx context.Context, input RevisionInput) (Revision
 	}
 	if !sameRevisionFiles(files, sortedFiles, manifest) {
 		return RevisionSnapshot{}, ErrPersistenceConflict
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return RevisionSnapshot{}, fmt.Errorf("commit skill evolution revision: %w", err)
 	}
 	return RevisionSnapshot{Revision: revision, Files: files}, nil
 }
@@ -316,8 +338,8 @@ func (s *Store) GetProposal(ctx context.Context, workspaceID, proposalID pgtype.
 	return row, persistenceError(err)
 }
 
-func (s *Store) RecordEvidence(ctx context.Context, proposalID pgtype.UUID, ref EvidenceRef) (db.SkillEvolutionEvidence, error) {
-	if err := ref.Validate(); err != nil || !validUUID(proposalID) {
+func (s *Store) RecordEvidence(ctx context.Context, proposalID pgtype.UUID, role EvidenceRole, ref EvidenceRef) (db.SkillEvolutionEvidence, error) {
+	if err := ref.Validate(); err != nil || !validUUID(proposalID) || !role.Valid() {
 		return db.SkillEvolutionEvidence{}, ErrPersistenceInvalidInput
 	}
 	workspaceID, err := parseUUID(ref.WorkspaceID)
@@ -335,18 +357,20 @@ func (s *Store) RecordEvidence(ctx context.Context, proposalID pgtype.UUID, ref 
 		WorkspaceID: workspaceID, ProposalID: proposalID, Kind: string(ref.Kind), SourceID: ref.SourceID,
 		SourceRevisionID: ref.SourceRevisionID, TargetSkillID: targetSkillID, SourceState: ref.SourceState,
 		Digest: string(ref.Digest), Eligibility: string(ref.Eligibility), ObservedAt: requiredTime(ref.ObservedAt),
+		EvidenceRole: string(role),
 	}
 	row, createErr := s.queries.CreateSkillEvolutionEvidence(ctx, params)
 	if errors.Is(createErr, pgx.ErrNoRows) {
 		row, createErr = s.queries.GetSkillEvolutionEvidenceByIdentity(ctx, db.GetSkillEvolutionEvidenceByIdentityParams{
-			WorkspaceID: workspaceID, ProposalID: proposalID, Kind: string(ref.Kind), SourceID: ref.SourceID, SourceRevisionID: ref.SourceRevisionID,
+			WorkspaceID: workspaceID, ProposalID: proposalID, Kind: string(ref.Kind), SourceID: ref.SourceID,
+			SourceRevisionID: ref.SourceRevisionID,
 		})
 	}
 	if createErr != nil {
 		return db.SkillEvolutionEvidence{}, persistenceError(createErr)
 	}
 	if row.Digest != string(ref.Digest) || row.Eligibility != string(ref.Eligibility) || row.SourceState != ref.SourceState ||
-		row.TargetSkillID != targetSkillID || !sameDatabaseTime(row.ObservedAt, ref.ObservedAt) {
+		row.TargetSkillID != targetSkillID || row.EvidenceRole != string(role) || !sameDatabaseTime(row.ObservedAt, ref.ObservedAt) {
 		return db.SkillEvolutionEvidence{}, ErrPersistenceConflict
 	}
 	return row, nil
@@ -518,8 +542,13 @@ type TaskAttributionInput struct {
 }
 
 func (s *Store) RecordTaskAttribution(ctx context.Context, input TaskAttributionInput) (db.SkillEvolutionTaskAttribution, error) {
+	row, _, err := s.recordTaskAttribution(ctx, input)
+	return row, err
+}
+
+func (s *Store) recordTaskAttribution(ctx context.Context, input TaskAttributionInput) (db.SkillEvolutionTaskAttribution, bool, error) {
 	if !validAttributionInput(input) {
-		return db.SkillEvolutionTaskAttribution{}, ErrPersistenceInvalidInput
+		return db.SkillEvolutionTaskAttribution{}, false, ErrPersistenceInvalidInput
 	}
 	params := db.RecordSkillEvolutionTaskAttributionParams{
 		WorkspaceID: input.WorkspaceID, TaskID: input.TaskID, RuntimeID: input.RuntimeID,
@@ -529,21 +558,22 @@ func (s *Store) RecordTaskAttribution(ctx context.Context, input TaskAttribution
 		TaskDispatchedAt: requiredTime(input.TaskDispatchedAt),
 	}
 	row, err := s.queries.RecordSkillEvolutionTaskAttribution(ctx, params)
+	inserted := err == nil
 	if errors.Is(err, pgx.ErrNoRows) {
 		row, err = s.queries.GetSkillEvolutionTaskAttribution(ctx, db.GetSkillEvolutionTaskAttributionParams{
 			WorkspaceID: input.WorkspaceID, TaskID: input.TaskID, SkillID: input.SkillID,
 		})
 	}
 	if err != nil {
-		return db.SkillEvolutionTaskAttribution{}, persistenceError(err)
+		return db.SkillEvolutionTaskAttribution{}, false, persistenceError(err)
 	}
 	if row.RuntimeID != input.RuntimeID || row.RevisionID != input.RevisionID || row.ManifestVersion != int32(input.ManifestVersion) ||
 		row.Source != input.Source || row.BundleHash != string(input.BundleHash) || row.ManifestDigest != string(input.ManifestDigest) ||
 		row.Eligibility != string(input.Eligibility) || row.Reason != input.Reason || row.DispatchSnapshotID != input.DispatchSnapshotID ||
 		!sameDatabaseTime(row.TaskDispatchedAt, input.TaskDispatchedAt) {
-		return db.SkillEvolutionTaskAttribution{}, ErrPersistenceConflict
+		return db.SkillEvolutionTaskAttribution{}, false, ErrPersistenceConflict
 	}
-	return row, nil
+	return row, inserted, nil
 }
 
 type TaskDispatchSnapshotInput struct {
@@ -684,9 +714,11 @@ func (s *Store) GetProposalDetail(ctx context.Context, workspaceID, proposalID p
 		if !proposal.ObservedPattern.Valid || !proposal.ExpectedBenefit.Valid || !proposal.RegressionRisk.Valid || !proposal.RationaleDigest.Valid {
 			return ProposalDetail{}, ErrPersistenceConflict
 		}
-		evidenceDigests := make([]Digest, len(evidence))
-		for index, item := range evidence {
-			evidenceDigests[index] = Digest(item.Digest)
+		evidenceDigests := make([]Digest, 0, len(evidence))
+		for _, item := range evidence {
+			if item.EvidenceRole == string(EvidenceRoleSynthesis) {
+				evidenceDigests = append(evidenceDigests, Digest(item.Digest))
+			}
 		}
 		candidate := ImprovementCandidate{
 			ObservedPattern: proposal.ObservedPattern.String, ExpectedBenefit: proposal.ExpectedBenefit.String,

@@ -41,6 +41,7 @@ type productionRoomsStub struct {
 	roomID   pgtype.UUID
 	creates  int
 	messages int
+	bodies   []string
 }
 
 func (stub *productionRoomsStub) Create(_ context.Context, input room.CreateInput) (room.Detail, error) {
@@ -54,6 +55,7 @@ func (stub *productionRoomsStub) Create(_ context.Context, input room.CreateInpu
 
 func (stub *productionRoomsStub) PostMessage(_ context.Context, input room.MessageInput) (room.MessageResult, error) {
 	stub.messages++
+	stub.bodies = append(stub.bodies, input.Body)
 	entryID, cycleID := publisherUUID(), publisherUUID()
 	stub.fixture.Insert(stub.t, "room_entry", internaltestutil.Cols{
 		"id": entryID, "workspace_id": input.WorkspaceID, "room_id": input.RoomID,
@@ -251,7 +253,7 @@ func TestProductionMetricsAdaptersRecordRepresentativeOperations(t *testing.T) {
 	}
 
 	store := &metricsAttributionStore{delegate: newFakeAttributionWorkerStore(), metrics: metrics}
-	if err := store.recordAttributionBatch(context.Background(), []TaskAttributionInput{{}}); err != nil {
+	if _, err := store.recordAttributionBatch(context.Background(), []TaskAttributionInput{{}}); err != nil {
 		t.Fatalf("record attributed batch: %v", err)
 	}
 	if got := promtest.ToFloat64(metrics.ManifestAttributedRuns); got != 1 {
@@ -500,6 +502,26 @@ CREATE UNIQUE INDEX skill_evolution_proposal_workspace_generation_uidx
 CREATE UNIQUE INDEX skill_evolution_proposal_active_uidx
     ON skill_evolution_proposal (workspace_id, skill_id)
     WHERE state IN ('queued', 'running', 'ready', 'publishing');
+CREATE TABLE skill_evolution_release (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL,
+    skill_id UUID NOT NULL,
+    proposal_id UUID NULL,
+    source_release_id UUID NULL,
+    revision_id UUID NOT NULL,
+    kind TEXT NOT NULL,
+    expected_base_hash TEXT NOT NULL,
+    pre_hash TEXT NULL,
+    post_hash TEXT NULL,
+    outcome TEXT NOT NULL DEFAULT 'pending',
+    actor_id UUID NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    error_code TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ NULL
+);
+CREATE UNIQUE INDEX skill_evolution_release_workspace_key_uidx
+    ON skill_evolution_release (workspace_id, idempotency_key);
 CREATE TABLE room (
     id UUID PRIMARY KEY,
     workspace_id UUID NOT NULL,

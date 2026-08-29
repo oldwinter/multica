@@ -17,20 +17,21 @@ Use this page when merging `upstream/main`. The short pointer lives in
   implementation base, and the final-fix tree has no unmerged paths or
   conflict markers.
 
-The migration audit preserved every published identity from 482 through 524.
+The migration audit preserved every published identity from 482 through 525.
 Follow-up migration 525 adds the durable exact-feedback marker, makes legacy
 attributions without dispatch proof ineligible, and moves the storage boolean
 from `enabled` to `is_enabled` while keeping the JSON DTO field `enabled`.
-Migration 525 creates no index; all existing indexes remain in their original
+Migration 526 adds the content-free synthesis/held-out evidence provenance
+role without adding an index or changing any published migration identity.
+Migrations 525-526 create no index; all existing indexes remain in their original
 single-statement concurrent migrations. Existing-514 and fresh ledgers both
-advanced through 525, crash-window replay succeeded, a second full `migrate
+advanced through 526, crash-window replay succeeded, a second full `migrate
 up` was a no-op, and PostgreSQL reported no invalid indexes. The fresh ledger
-contained all 629 current identities and retained the published 482, 515, and
-524 entries unchanged.
+retained the published 482, 515, 524, and 525 entries unchanged.
 
 `sqlc` 1.31.1 was generated twice from the migration/query sources. Both runs
 produced the same generated-tree digest,
-`e07e756ee91489c36138467175bb9fd2c043c14793e369908d0200177c74de1c`.
+`284826c729da105f81bd444e1942937dbf2f65f54ad0dbb528b04f16a73127e9`.
 The path audit against the implementation base found changes only in the
 registered Skill Evolution/task-review leaves and the shared exceptions listed
 in `docs/downstream/skill-evolution/ownership.md`; the ownership and workspace

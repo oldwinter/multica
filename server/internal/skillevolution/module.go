@@ -286,15 +286,16 @@ func (store *metricsAttributionStore) resolveAttributionRevisions(ctx context.Co
 	return store.delegate.resolveAttributionRevisions(ctx, match)
 }
 
-func (store *metricsAttributionStore) recordAttributionBatch(ctx context.Context, inputs []TaskAttributionInput) error {
-	if err := store.delegate.recordAttributionBatch(ctx, inputs); err != nil {
-		return err
+func (store *metricsAttributionStore) recordAttributionBatch(ctx context.Context, inputs []TaskAttributionInput) (AttributionBatchResult, error) {
+	result, err := store.delegate.recordAttributionBatch(ctx, inputs)
+	if err != nil {
+		return AttributionBatchResult{}, err
 	}
-	if len(inputs) > 0 && store.metrics != nil {
+	if result.Inserted && store.metrics != nil {
 		store.metrics.ManifestAttributedRuns.Inc()
-		store.metrics.RecordFeedbackCoverage(false)
+		store.metrics.RecordFeedbackCoverage(result.Covered)
 	}
-	return nil
+	return result, nil
 }
 
 type exactFeedbackCoverageRecorder struct {
@@ -398,15 +399,41 @@ func (queuer *productionImprovementRoomQueuer) EnsureImprovementRoom(
 		defer cancel()
 		_, _ = connection.Exec(unlockCtx, "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockKey)
 	}()
-	return queuer.ensureLocked(ctx, workspaceID, skillID, actorID, idempotencyKey)
+	return queuer.ensureLocked(ctx, connection, workspaceID, skillID, actorID, idempotencyKey)
 }
 
 func (queuer *productionImprovementRoomQueuer) ensureLocked(
 	ctx context.Context,
+	connection *pgxpool.Conn,
 	workspaceID, skillID, actorID pgtype.UUID,
 	idempotencyKey string,
 ) (ImprovementRoomQueueResult, error) {
-	loop, err := queuer.store.GetLoop(ctx, workspaceID, skillID)
+	tx, err := connection.Begin(ctx)
+	if err != nil {
+		return ImprovementRoomQueueResult{}, fmt.Errorf("begin Improvement Room base reconciliation: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := queuer.queries.WithTx(tx)
+	lockedSkill, err := queries.LockWorkspaceSkillForEvolution(ctx, db.LockWorkspaceSkillForEvolutionParams{
+		WorkspaceID: workspaceID, SkillID: skillID,
+	})
+	if err != nil {
+		return ImprovementRoomQueueResult{}, err
+	}
+	lockedFiles, err := queries.LockWorkspaceSkillFilesForEvolution(ctx, db.LockWorkspaceSkillFilesForEvolutionParams{
+		WorkspaceID: workspaceID, SkillID: skillID,
+	})
+	if err != nil {
+		return ImprovementRoomQueueResult{}, err
+	}
+	snapshot, err := buildWorkspaceSkillSnapshot(lockedSkill, lockedFiles)
+	if err != nil {
+		return ImprovementRoomQueueResult{}, err
+	}
+	if snapshot.Ownership.Class != OwnershipWorkspace || !snapshot.Ownership.DirectEvolution {
+		return ImprovementRoomQueueResult{}, ErrForkRequired
+	}
+	loop, err := queries.GetSkillEvolutionLoop(ctx, db.GetSkillEvolutionLoopParams{WorkspaceID: workspaceID, SkillID: skillID})
 	if err != nil {
 		return ImprovementRoomQueueResult{}, err
 	}
@@ -416,22 +443,23 @@ func (queuer *productionImprovementRoomQueuer) ensureLocked(
 	if LoopMode(loop.Mode) != LoopModePropose {
 		return ImprovementRoomQueueResult{}, ErrEvolutionObserveOnly
 	}
-	snapshot, err := queuer.skills.Load(ctx, workspaceID, skillID)
-	if err != nil {
-		return ImprovementRoomQueueResult{}, err
-	}
-	if snapshot.Ownership.Class != OwnershipWorkspace || !snapshot.Ownership.DirectEvolution {
-		return ImprovementRoomQueueResult{}, ErrForkRequired
-	}
 	metadata, err := revisionMetadataDigest(snapshot.Bundle, Digest(snapshot.Manifest.Hash))
 	if err != nil {
 		return ImprovementRoomQueueResult{}, err
 	}
-	if _, err := queuer.store.SaveRevision(ctx, revisionInput(
+	if _, err := saveRevisionInTransaction(ctx, queries, revisionInput(
 		workspaceID, skillID, snapshot.Skill.CreatedBy, "base", OwnershipWorkspace,
 		snapshot.Bundle, Digest(snapshot.Manifest.Hash), metadata,
 	)); err != nil {
 		return ImprovementRoomQueueResult{}, err
+	}
+	if _, err := queries.StaleDriftedActiveSkillEvolutionProposals(ctx, db.StaleDriftedActiveSkillEvolutionProposalsParams{
+		WorkspaceID: workspaceID, SkillID: skillID, LiveHash: snapshot.Manifest.Hash,
+	}); err != nil {
+		return ImprovementRoomQueueResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ImprovementRoomQueueResult{}, fmt.Errorf("commit Improvement Room base reconciliation: %w", err)
 	}
 	if !validUUID(actorID) {
 		actorID = snapshot.Skill.CreatedBy
@@ -462,7 +490,8 @@ func (queuer *productionImprovementRoomQueuer) ensureLocked(
 	if len(refs) < int(loop.MinimumSignals) {
 		return ImprovementRoomQueueResult{}, ErrInsufficientSignals
 	}
-	resolved, err := queuer.signals.resolve(ctx, query, refs)
+	synthesisRefs, _ := partitionEvidenceRefs(refs, int(loop.MinimumSignals))
+	resolved, err := queuer.signals.resolve(ctx, query, synthesisRefs)
 	if err != nil {
 		return ImprovementRoomQueueResult{}, err
 	}

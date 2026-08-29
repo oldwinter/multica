@@ -23,6 +23,11 @@ CREATE TABLE skill_evolution_task_attribution (
 CREATE TABLE skill_evolution_proposal (
     id UUID NOT NULL, rationale_digest TEXT NULL
 );
+CREATE TABLE skill_evolution_evidence (
+    id UUID NOT NULL,
+    workspace_id UUID NOT NULL,
+    proposal_id UUID NOT NULL
+);
 CREATE TABLE skill_evolution_loop (
     id UUID NOT NULL DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL,
@@ -107,13 +112,14 @@ VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid
 		"523_task_run_review_idempotency",
 		"524_task_run_review_idempotency_index",
 		"525_skill_evolution_exact_coverage_and_loop_state",
+		"526_skill_evolution_evidence_role",
 	}
 	opts.Files = realMigrationFiles(t, tailVersions, "up")
 	if err := runMigrations(ctx, pool, opts); err != nil {
-		t.Fatalf("upgrade existing 514 ledger through 525: %v", err)
+		t.Fatalf("upgrade existing 514 ledger through 526: %v", err)
 	}
 	var eligibility, reason string
-	var hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled bool
+	var hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled, hasEvidenceRole bool
 	if err := pool.QueryRow(ctx, `SELECT eligibility, reason FROM skill_evolution_task_attribution LIMIT 1`).Scan(&eligibility, &reason); err != nil {
 		t.Fatalf("read downgraded legacy attribution: %v", err)
 	}
@@ -123,13 +129,14 @@ SELECT
     EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'skill_evolution_loop' AND column_name = 'is_enabled'),
     EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'skill_evolution_loop' AND column_name = 'enabled'),
 	EXISTS (SELECT 1 FROM skill_evolution_loop WHERE is_enabled),
-    EXISTS (SELECT 1 FROM task_run_review WHERE idempotency_key LIKE 'legacy:%')
-`).Scan(&hasCoverage, &hasIsEnabled, &hasLegacyEnabled, &enabledValuePreserved, &reviewKeyBackfilled); err != nil {
+    EXISTS (SELECT 1 FROM task_run_review WHERE idempotency_key LIKE 'legacy:%'),
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'skill_evolution_evidence' AND column_name = 'evidence_role')
+`).Scan(&hasCoverage, &hasIsEnabled, &hasLegacyEnabled, &enabledValuePreserved, &reviewKeyBackfilled, &hasEvidenceRole); err != nil {
 		t.Fatalf("inspect follow-up schema: %v", err)
 	}
-	if eligibility != "ineligible" || reason != "dispatch_proof_missing" || !hasCoverage || !hasIsEnabled || hasLegacyEnabled || !enabledValuePreserved || !reviewKeyBackfilled {
-		t.Fatalf("follow-up state eligibility=%q reason=%q coverage=%t is_enabled=%t enabled=%t value_preserved=%t review_key=%t",
-			eligibility, reason, hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled)
+	if eligibility != "ineligible" || reason != "dispatch_proof_missing" || !hasCoverage || !hasIsEnabled || hasLegacyEnabled || !enabledValuePreserved || !reviewKeyBackfilled || !hasEvidenceRole {
+		t.Fatalf("follow-up state eligibility=%q reason=%q coverage=%t is_enabled=%t enabled=%t value_preserved=%t review_key=%t evidence_role=%t",
+			eligibility, reason, hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled, hasEvidenceRole)
 	}
 
 	allVersions := append(append(append([]string{existingVersion}, through521...), validateVersion), tailVersions...)
@@ -139,7 +146,7 @@ SELECT
 
 	// Simulate DDL commit followed by a crash before either ledger write. Both
 	// the PK attach and validation migrations must accept their exact end state.
-	for _, version := range []string{"518_skill_evolution_task_dispatch_snapshot_primary_key", validateVersion, "525_skill_evolution_exact_coverage_and_loop_state"} {
+	for _, version := range []string{"518_skill_evolution_task_dispatch_snapshot_primary_key", validateVersion, "525_skill_evolution_exact_coverage_and_loop_state", "526_skill_evolution_evidence_role"} {
 		if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
 			t.Fatalf("remove %s ledger row: %v", version, err)
 		}
@@ -194,7 +201,7 @@ func TestSkillEvolutionFollowupReplaysAfterFreshMigration(t *testing.T) {
 	if err := runMigrations(ctx, pool, opts); err != nil {
 		t.Fatalf("fresh migrate through skill evolution follow-up: %v", err)
 	}
-	for _, version := range []string{"522_wiki_page_proposal_source_validate", "525_skill_evolution_exact_coverage_and_loop_state"} {
+	for _, version := range []string{"522_wiki_page_proposal_source_validate", "525_skill_evolution_exact_coverage_and_loop_state", "526_skill_evolution_evidence_role"} {
 		if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
 			t.Fatalf("remove fresh ledger row %s: %v", version, err)
 		}

@@ -23,7 +23,6 @@ type roomProposalQueries interface {
 	GetSkillEvolutionRevisionByHash(context.Context, db.GetSkillEvolutionRevisionByHashParams) (db.SkillEvolutionRevision, error)
 	GetSkillEvolutionProposalByGenerationKey(context.Context, db.GetSkillEvolutionProposalByGenerationKeyParams) (db.SkillEvolutionProposal, error)
 	CreateSkillEvolutionProposal(context.Context, db.CreateSkillEvolutionProposalParams) (db.SkillEvolutionProposal, error)
-	StaleDriftedActiveSkillEvolutionProposals(context.Context, db.StaleDriftedActiveSkillEvolutionProposalsParams) ([]db.SkillEvolutionProposal, error)
 }
 
 // RoomSkillProposalTarget registers only executable_procedure. Create queues a
@@ -128,11 +127,6 @@ func (target *RoomSkillProposalTarget) createQueuedProposal(ctx context.Context,
 		return pgtype.UUID{}, err
 	}
 	liveHash := Digest(live.Manifest.Hash)
-	if _, err := queries.StaleDriftedActiveSkillEvolutionProposals(ctx, db.StaleDriftedActiveSkillEvolutionProposalsParams{
-		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID, LiveHash: string(liveHash),
-	}); err != nil {
-		return pgtype.UUID{}, err
-	}
 	if live.Skill.WorkspaceID != request.WorkspaceID || live.Skill.ID != request.SkillID ||
 		liveHash != accepted.ExpectedBaseHash || live.Ownership.Class != OwnershipWorkspace ||
 		!live.Ownership.DirectEvolution {

@@ -250,12 +250,12 @@ func (f *fakeAttributionWorkerStore) resolveAttributionRevisions(_ context.Conte
 	return result, nil
 }
 
-func (f *fakeAttributionWorkerStore) recordAttributionBatch(_ context.Context, inputs []TaskAttributionInput) error {
+func (f *fakeAttributionWorkerStore) recordAttributionBatch(_ context.Context, inputs []TaskAttributionInput) (AttributionBatchResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.recordCalls++
 	f.rows = append(f.rows, inputs...)
-	return nil
+	return AttributionBatchResult{Inserted: true}, nil
 }
 
 func executionManifestJSON(t *testing.T, records ...skillbundle.ExecutionRecord) json.RawMessage {

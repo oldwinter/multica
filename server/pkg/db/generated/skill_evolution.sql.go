@@ -82,15 +82,16 @@ func (q *Queries) CreateSkillEvolutionEvaluation(ctx context.Context, arg Create
 const createSkillEvolutionEvidence = `-- name: CreateSkillEvolutionEvidence :one
 INSERT INTO skill_evolution_evidence (
     workspace_id, proposal_id, kind, source_id, source_revision_id,
-    target_skill_id, source_state, digest, eligibility, observed_at
+    target_skill_id, source_state, digest, eligibility, observed_at, evidence_role
 )
 SELECT
     proposal.workspace_id, proposal.id, $1, $2,
     $3, $4::uuid,
-    $5, $6, $7, $8
+    $5, $6, $7, $8,
+    $9
 FROM skill_evolution_proposal proposal
-WHERE proposal.workspace_id = $9
-  AND proposal.id = $10
+WHERE proposal.workspace_id = $10
+  AND proposal.id = $11
   AND (
       $4::uuid IS NULL
       OR EXISTS (
@@ -101,7 +102,7 @@ WHERE proposal.workspace_id = $9
       )
   )
 ON CONFLICT (workspace_id, proposal_id, kind, source_id, source_revision_id) DO NOTHING
-RETURNING skill_evolution_evidence.id, skill_evolution_evidence.workspace_id, skill_evolution_evidence.proposal_id, skill_evolution_evidence.kind, skill_evolution_evidence.source_id, skill_evolution_evidence.source_revision_id, skill_evolution_evidence.target_skill_id, skill_evolution_evidence.source_state, skill_evolution_evidence.digest, skill_evolution_evidence.eligibility, skill_evolution_evidence.observed_at, skill_evolution_evidence.created_at
+RETURNING skill_evolution_evidence.id, skill_evolution_evidence.workspace_id, skill_evolution_evidence.proposal_id, skill_evolution_evidence.kind, skill_evolution_evidence.source_id, skill_evolution_evidence.source_revision_id, skill_evolution_evidence.target_skill_id, skill_evolution_evidence.source_state, skill_evolution_evidence.digest, skill_evolution_evidence.eligibility, skill_evolution_evidence.observed_at, skill_evolution_evidence.created_at, skill_evolution_evidence.evidence_role
 `
 
 type CreateSkillEvolutionEvidenceParams struct {
@@ -113,6 +114,7 @@ type CreateSkillEvolutionEvidenceParams struct {
 	Digest           string             `json:"digest"`
 	Eligibility      string             `json:"eligibility"`
 	ObservedAt       pgtype.Timestamptz `json:"observed_at"`
+	EvidenceRole     string             `json:"evidence_role"`
 	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
 	ProposalID       pgtype.UUID        `json:"proposal_id"`
 }
@@ -127,6 +129,7 @@ func (q *Queries) CreateSkillEvolutionEvidence(ctx context.Context, arg CreateSk
 		arg.Digest,
 		arg.Eligibility,
 		arg.ObservedAt,
+		arg.EvidenceRole,
 		arg.WorkspaceID,
 		arg.ProposalID,
 	)
@@ -144,6 +147,7 @@ func (q *Queries) CreateSkillEvolutionEvidence(ctx context.Context, arg CreateSk
 		&i.Eligibility,
 		&i.ObservedAt,
 		&i.CreatedAt,
+		&i.EvidenceRole,
 	)
 	return i, err
 }
@@ -567,7 +571,7 @@ func (q *Queries) GetSkillEvolutionEvaluationByIdempotencyKey(ctx context.Contex
 }
 
 const getSkillEvolutionEvidenceByIdentity = `-- name: GetSkillEvolutionEvidenceByIdentity :one
-SELECT id, workspace_id, proposal_id, kind, source_id, source_revision_id, target_skill_id, source_state, digest, eligibility, observed_at, created_at FROM skill_evolution_evidence
+SELECT id, workspace_id, proposal_id, kind, source_id, source_revision_id, target_skill_id, source_state, digest, eligibility, observed_at, created_at, evidence_role FROM skill_evolution_evidence
 WHERE workspace_id = $1
   AND proposal_id = $2
   AND kind = $3
@@ -605,6 +609,7 @@ func (q *Queries) GetSkillEvolutionEvidenceByIdentity(ctx context.Context, arg G
 		&i.Eligibility,
 		&i.ObservedAt,
 		&i.CreatedAt,
+		&i.EvidenceRole,
 	)
 	return i, err
 }
@@ -1195,7 +1200,7 @@ func (q *Queries) ListSkillEvolutionEvaluations(ctx context.Context, arg ListSki
 }
 
 const listSkillEvolutionEvidence = `-- name: ListSkillEvolutionEvidence :many
-SELECT id, workspace_id, proposal_id, kind, source_id, source_revision_id, target_skill_id, source_state, digest, eligibility, observed_at, created_at FROM skill_evolution_evidence
+SELECT id, workspace_id, proposal_id, kind, source_id, source_revision_id, target_skill_id, source_state, digest, eligibility, observed_at, created_at, evidence_role FROM skill_evolution_evidence
 WHERE workspace_id = $1
   AND proposal_id = $2
 ORDER BY observed_at, id
@@ -1228,6 +1233,7 @@ func (q *Queries) ListSkillEvolutionEvidence(ctx context.Context, arg ListSkillE
 			&i.Eligibility,
 			&i.ObservedAt,
 			&i.CreatedAt,
+			&i.EvidenceRole,
 		); err != nil {
 			return nil, err
 		}
@@ -1669,13 +1675,19 @@ WITH workspace_guard AS MATERIALIZED (
 INSERT INTO skill_evolution_task_attribution (
     workspace_id, task_id, runtime_id, skill_id, revision_id, manifest_version,
     source, bundle_hash, manifest_digest, eligibility, reason,
-    dispatch_snapshot_id, task_dispatched_at
+    dispatch_snapshot_id, task_dispatched_at, feedback_covered_at
 )
 SELECT
     workspace_guard.id, task.id, $1, skill.id, revision.id,
     $2, $3, $4,
     $5, $6, $7,
-    snapshot.id, snapshot.task_dispatched_at
+    snapshot.id, snapshot.task_dispatched_at,
+    CASE WHEN EXISTS (
+        SELECT 1
+        FROM task_run_review review
+        WHERE review.workspace_id = workspace_guard.id
+          AND review.task_id = task.id
+    ) THEN now() END
 FROM workspace_guard
 JOIN agent_task_queue task
   ON task.id = $8

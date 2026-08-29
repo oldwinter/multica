@@ -79,7 +79,7 @@ type lifecycleStore interface {
 	CreateProposal(context.Context, ProposalInput) (db.SkillEvolutionProposal, error)
 	TransitionProposal(context.Context, ProposalTransition) (db.SkillEvolutionProposal, error)
 	GetProposal(context.Context, pgtype.UUID, pgtype.UUID) (db.SkillEvolutionProposal, error)
-	RecordEvidence(context.Context, pgtype.UUID, EvidenceRef) (db.SkillEvolutionEvidence, error)
+	RecordEvidence(context.Context, pgtype.UUID, EvidenceRole, EvidenceRef) (db.SkillEvolutionEvidence, error)
 	RecordEvaluation(context.Context, EvaluationInput) (db.SkillEvolutionEvaluation, error)
 	RecordReview(context.Context, ReviewInput) (db.SkillEvolutionReview, error)
 	CreateRelease(context.Context, ReleaseInput) (db.SkillEvolutionRelease, error)
@@ -321,13 +321,14 @@ type RoomRecommendationRequest struct {
 }
 
 type AcceptedImprovementRecommendation struct {
-	WorkspaceID      pgtype.UUID
-	SkillID          pgtype.UUID
-	RecommendationID string
-	ExpectedBaseHash Digest
-	AcceptedByID     pgtype.UUID
-	Candidate        ImprovementCandidate
-	Evidence         []ResolvedEvidence
+	WorkspaceID       pgtype.UUID
+	SkillID           pgtype.UUID
+	RecommendationID  string
+	ExpectedBaseHash  Digest
+	AcceptedByID      pgtype.UUID
+	Candidate         ImprovementCandidate
+	SynthesisEvidence []ResolvedEvidence
+	ReplayEvidence    []ResolvedEvidence
 }
 
 // ImprovementRecommendationSource loads only a human-accepted Improvement
@@ -415,8 +416,9 @@ func (l *Lifecycle) Generate(ctx context.Context, request GenerateRequest) (Gene
 	}
 
 	query := SignalQuery{WorkspaceID: request.WorkspaceID, SkillID: request.SkillID, ActorID: request.RequestedByID, Limit: int(loop.MaxEvidenceRefs)}
-	resolved, err := l.signals.resolve(ctx, query, refs)
-	if err != nil || len(resolved) < int(loop.MinimumSignals) {
+	synthesisRefs, replayRefs := partitionEvidenceRefs(refs, int(loop.MinimumSignals))
+	synthesisEvidence, err := l.signals.resolve(ctx, query, synthesisRefs)
+	if err != nil || len(synthesisEvidence) < int(loop.MinimumSignals) {
 		failed, transitionErr := l.failProposal(ctx, proposal, "evidence_revalidation_failed")
 		if transitionErr != nil {
 			return Generation{}, transitionErr
@@ -426,8 +428,8 @@ func (l *Lifecycle) Generate(ctx context.Context, request GenerateRequest) (Gene
 		}
 		return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err)
 	}
-	for _, evidence := range resolved {
-		if _, err := l.store.RecordEvidence(ctx, proposal.ID, evidence.Ref); err != nil {
+	for _, evidence := range synthesisEvidence {
+		if _, err := l.store.RecordEvidence(ctx, proposal.ID, EvidenceRoleSynthesis, evidence.Ref); err != nil {
 			failed, transitionErr := l.failProposal(ctx, proposal, "evidence_persistence_failed")
 			if transitionErr != nil {
 				return Generation{}, transitionErr
@@ -437,7 +439,7 @@ func (l *Lifecycle) Generate(ctx context.Context, request GenerateRequest) (Gene
 	}
 
 	candidate, err := l.improver.Improve(ctx, ImprovementRequest{
-		Base: live.Bundle, Evidence: resolved, PolicyVersion: loop.PolicyVersion,
+		Base: live.Bundle, Evidence: synthesisEvidence, PolicyVersion: loop.PolicyVersion,
 		MaxCostUSDTicks: loop.MaxCostUsdTicks, MaxChangedFiles: l.policy.MaxChangedFiles,
 		MaxPrimaryGrowth: l.policy.MaxPrimaryGrowth,
 	})
@@ -448,7 +450,34 @@ func (l *Lifecycle) Generate(ctx context.Context, request GenerateRequest) (Gene
 		}
 		return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err)
 	}
-	return l.completeCandidate(ctx, request.WorkspaceID, request.GenerationKey, loop, proposal, live, resolved, candidate)
+	replayEvidence, err := l.signals.resolve(ctx, query, replayRefs)
+	if err != nil {
+		failed, transitionErr := l.failProposal(ctx, proposal, "held_out_evidence_revalidation_failed")
+		if transitionErr != nil {
+			return Generation{}, transitionErr
+		}
+		return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err)
+	}
+	for _, evidence := range replayEvidence {
+		if _, err := l.store.RecordEvidence(ctx, proposal.ID, EvidenceRoleHeldOutReplay, evidence.Ref); err != nil {
+			failed, transitionErr := l.failProposal(ctx, proposal, "held_out_evidence_persistence_failed")
+			if transitionErr != nil {
+				return Generation{}, transitionErr
+			}
+			return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err)
+		}
+	}
+	return l.completeCandidate(ctx, request.WorkspaceID, request.GenerationKey, loop, proposal, live, synthesisEvidence, replayEvidence, candidate)
+}
+
+func partitionEvidenceRefs(refs []EvidenceRef, synthesisCount int) ([]EvidenceRef, []EvidenceRef) {
+	if synthesisCount < 0 {
+		synthesisCount = 0
+	}
+	if synthesisCount > len(refs) {
+		synthesisCount = len(refs)
+	}
+	return refs[:synthesisCount], refs[synthesisCount:]
 }
 
 func (l *Lifecycle) completeCandidate(
@@ -458,7 +487,8 @@ func (l *Lifecycle) completeCandidate(
 	loop db.SkillEvolutionLoop,
 	proposal db.SkillEvolutionProposal,
 	live WorkspaceSkillSnapshot,
-	resolved []ResolvedEvidence,
+	synthesisEvidence []ResolvedEvidence,
+	replayEvidence []ResolvedEvidence,
 	candidate ImprovementCandidate,
 ) (Generation, error) {
 	rationaleDigest, err := improvementRationaleDigest(candidate)
@@ -471,7 +501,7 @@ func (l *Lifecycle) completeCandidate(
 	}
 	validationPolicy := l.policy
 	validationPolicy.MaxCostUSDTicks = loop.MaxCostUsdTicks
-	validation := ValidateCandidatePolicy(live.Bundle, candidate, resolved, validationPolicy)
+	validation := ValidateCandidatePolicy(live.Bundle, candidate, synthesisEvidence, validationPolicy)
 	validationRow, err := l.store.RecordEvaluation(ctx, EvaluationInput{
 		WorkspaceID: workspaceID, ProposalID: proposal.ID, Kind: "deterministic_validation",
 		Result: validation.Result, Adapter: DeterministicValidatorName, AdapterVersion: DeterministicValidatorVersion,
@@ -502,19 +532,26 @@ func (l *Lifecycle) completeCandidate(
 		return Generation{Proposal: failed, Validation: validationRow}, errors.Join(ErrGenerationFailed, err)
 	}
 	remainingCost := loop.MaxCostUsdTicks - candidate.CostUSDTicks
-	replay, err := l.evaluator.Evaluate(ctx, ReplayRequest{
-		Base: live.Bundle, Candidate: candidate.Bundle, Evidence: resolved,
-		Limits: ReplayLimits{Timeout: l.replayTime, MaxSamples: int(loop.MaxReplaySamples), MaxCostUSDTicks: remainingCost, PolicyVersion: loop.PolicyVersion},
-	})
-	if err != nil {
+	replayLimits := ReplayLimits{Timeout: l.replayTime, MaxSamples: int(loop.MaxReplaySamples), MaxCostUSDTicks: remainingCost, PolicyVersion: loop.PolicyVersion}
+	var replay ReplayOutcome
+	if min(len(replayEvidence), replayLimits.MaxSamples) < MinPassingReplaySamples {
 		replay = finalizeReplayOutcome(ReplayOutcome{
-			ReplayResult: ReplayResult{Result: EvaluationResultUnknown, ReasonCode: "adapter_unavailable"},
+			ReplayResult: ReplayResult{Result: EvaluationResultInconclusive, SampleCount: min(len(replayEvidence), replayLimits.MaxSamples), ReasonCode: "insufficient_held_out_samples"},
 			Adapter:      "behavioral-replay", AdapterVersion: "v1",
 		})
+	} else {
+		var evaluateErr error
+		replay, evaluateErr = l.evaluator.Evaluate(ctx, ReplayRequest{
+			Base: live.Bundle, Candidate: candidate.Bundle, Evidence: replayEvidence, Limits: replayLimits,
+		})
+		if evaluateErr != nil {
+			replay = finalizeReplayOutcome(ReplayOutcome{
+				ReplayResult: ReplayResult{Result: EvaluationResultUnknown, ReasonCode: "adapter_unavailable"},
+				Adapter:      "behavioral-replay", AdapterVersion: "v1",
+			})
+		}
 	}
-	replay = enforceReplayLimits(replay, ReplayLimits{
-		Timeout: l.replayTime, MaxSamples: int(loop.MaxReplaySamples), MaxCostUSDTicks: remainingCost, PolicyVersion: loop.PolicyVersion,
-	})
+	replay = enforceReplayLimits(replay, replayLimits)
 	replayRow, recordErr := l.store.RecordEvaluation(ctx, EvaluationInput{
 		WorkspaceID: workspaceID, ProposalID: proposal.ID, Kind: "behavioral_replay",
 		Result: replay.Result, Adapter: replay.Adapter, AdapterVersion: replay.AdapterVersion,
@@ -625,13 +662,19 @@ func (l *Lifecycle) CreateProposalFromRoomRecommendation(ctx context.Context, re
 		failed, cleanupErr := l.failProposal(ctx, proposal, "cooldown_persistence_failed")
 		return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err, cleanupErr)
 	}
-	for _, evidence := range accepted.Evidence {
-		if _, err := l.store.RecordEvidence(ctx, proposal.ID, evidence.Ref); err != nil {
+	for _, evidence := range accepted.SynthesisEvidence {
+		if _, err := l.store.RecordEvidence(ctx, proposal.ID, EvidenceRoleSynthesis, evidence.Ref); err != nil {
 			failed, cleanupErr := l.failProposal(ctx, proposal, "evidence_persistence_failed")
 			return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err, cleanupErr)
 		}
 	}
-	return l.completeCandidate(ctx, request.WorkspaceID, generationKey, loop, proposal, live, accepted.Evidence, accepted.Candidate)
+	for _, evidence := range accepted.ReplayEvidence {
+		if _, err := l.store.RecordEvidence(ctx, proposal.ID, EvidenceRoleHeldOutReplay, evidence.Ref); err != nil {
+			failed, cleanupErr := l.failProposal(ctx, proposal, "held_out_evidence_persistence_failed")
+			return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err, cleanupErr)
+		}
+	}
+	return l.completeCandidate(ctx, request.WorkspaceID, generationKey, loop, proposal, live, accepted.SynthesisEvidence, accepted.ReplayEvidence, accepted.Candidate)
 }
 
 type RejectRequest struct {
@@ -1044,14 +1087,16 @@ func (l *Lifecycle) requireGenerationLoop(ctx context.Context, workspaceID, skil
 }
 
 func validateAcceptedImprovement(request RoomRecommendationRequest, accepted AcceptedImprovementRecommendation, minimum, maximum int) error {
-	if len(accepted.Evidence) < minimum || len(accepted.Evidence) > maximum || len(accepted.Evidence) > MaxEvidenceRefs {
+	if len(accepted.SynthesisEvidence) < minimum || len(accepted.SynthesisEvidence) > maximum ||
+		len(accepted.SynthesisEvidence)+len(accepted.ReplayEvidence) > MaxEvidenceRefs {
 		return ErrInsufficientSignals
 	}
 	workspaceID := uuid.UUID(request.WorkspaceID.Bytes).String()
 	skillID := uuid.UUID(request.SkillID.Bytes).String()
-	seen := make(map[string]struct{}, len(accepted.Evidence))
+	seen := make(map[string]EvidenceRole, len(accepted.SynthesisEvidence)+len(accepted.ReplayEvidence))
+	seenDigests := make(map[Digest]EvidenceRole, len(seen))
 	totalBytes := 0
-	for _, evidence := range accepted.Evidence {
+	validateEvidence := func(role EvidenceRole, evidence ResolvedEvidence) error {
 		ref := evidence.Ref
 		identity := string(ref.Kind) + "\x00" + ref.SourceID + "\x00" + ref.SourceRevisionID
 		if ref.Validate() != nil || ref.WorkspaceID != workspaceID || ref.Eligibility != EvidenceEligibilityEligible ||
@@ -1061,13 +1106,28 @@ func validateAcceptedImprovement(request RoomRecommendationRequest, accepted Acc
 		if _, duplicate := seen[identity]; duplicate {
 			return ErrSignalSourceInvalid
 		}
-		seen[identity] = struct{}{}
+		if _, duplicate := seenDigests[ref.Digest]; duplicate {
+			return ErrSignalSourceInvalid
+		}
+		seen[identity] = role
+		seenDigests[ref.Digest] = role
 		totalBytes += len(evidence.Payload)
 		if totalBytes > MaxResolvedEvidenceBytes {
 			return ErrSignalSourceInvalid
 		}
+		return nil
 	}
-	if !candidateClaimsResolvedEvidence(accepted.Candidate.EvidenceDigests, accepted.Evidence) {
+	for _, evidence := range accepted.SynthesisEvidence {
+		if err := validateEvidence(EvidenceRoleSynthesis, evidence); err != nil {
+			return err
+		}
+	}
+	for _, evidence := range accepted.ReplayEvidence {
+		if err := validateEvidence(EvidenceRoleHeldOutReplay, evidence); err != nil {
+			return err
+		}
+	}
+	if !candidateClaimsResolvedEvidence(accepted.Candidate.EvidenceDigests, accepted.SynthesisEvidence) {
 		return ErrImproverOutput
 	}
 	return nil

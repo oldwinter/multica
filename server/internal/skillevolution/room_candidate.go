@@ -137,14 +137,19 @@ func (source *RoomCandidateSource) acceptedFromEvidence(
 	if err != nil || envelope.BaseSkillID != uuidText(request.SkillID) {
 		return AcceptedImprovementRecommendation{}, ErrRoomCandidateInvalid
 	}
-	resolved, err := source.resolveEvidenceDigests(ctx, request.WorkspaceID, request.SkillID, approvingActorID, candidate.EvidenceDigests)
+	synthesisEvidence, err := source.resolveEvidenceDigests(ctx, request.WorkspaceID, request.SkillID, approvingActorID, candidate.EvidenceDigests)
+	if err != nil {
+		return AcceptedImprovementRecommendation{}, err
+	}
+	replayEvidence, err := source.resolveHeldOutEvidence(ctx, request.WorkspaceID, request.SkillID, approvingActorID, synthesisEvidence)
 	if err != nil {
 		return AcceptedImprovementRecommendation{}, err
 	}
 	return AcceptedImprovementRecommendation{
 		WorkspaceID: request.WorkspaceID, SkillID: request.SkillID,
 		RecommendationID: improvementRecommendationID(ref), ExpectedBaseHash: expectedHash,
-		AcceptedByID: approvingActorID, Candidate: candidate, Evidence: resolved,
+		AcceptedByID: approvingActorID, Candidate: candidate,
+		SynthesisEvidence: synthesisEvidence, ReplayEvidence: replayEvidence,
 	}, nil
 }
 
@@ -444,6 +449,47 @@ func (source *RoomCandidateSource) resolveEvidenceDigests(
 		resolved = append(resolved, evidence)
 	}
 	return resolved, nil
+}
+
+func (source *RoomCandidateSource) resolveHeldOutEvidence(
+	ctx context.Context,
+	workspaceID, skillID, actorID pgtype.UUID,
+	synthesis []ResolvedEvidence,
+) ([]ResolvedEvidence, error) {
+	query := SignalQuery{WorkspaceID: workspaceID, SkillID: skillID, ActorID: actorID, Limit: MaxEvidenceRefs}
+	refs, err := source.signals.discover(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	excludedIdentities := make(map[string]struct{}, len(synthesis))
+	excludedDigests := make(map[Digest]struct{}, len(synthesis))
+	for _, evidence := range synthesis {
+		excludedIdentities[evidenceIdentity(evidence.Ref)] = struct{}{}
+		excludedDigests[evidence.Ref.Digest] = struct{}{}
+	}
+	heldOut := make([]EvidenceRef, 0, min(len(refs), MaxEvidenceRefs-len(synthesis)))
+	for _, ref := range refs {
+		if len(heldOut)+len(synthesis) >= MaxEvidenceRefs {
+			break
+		}
+		// The accepted Room outcome contains the synthesized candidate itself;
+		// it can never be an independent behavioral replay case.
+		if ref.Kind == EvidenceKindRoomOutcome {
+			continue
+		}
+		if _, used := excludedIdentities[evidenceIdentity(ref)]; used {
+			continue
+		}
+		if _, used := excludedDigests[ref.Digest]; used {
+			continue
+		}
+		heldOut = append(heldOut, ref)
+	}
+	return source.signals.resolve(ctx, query, heldOut)
+}
+
+func evidenceIdentity(ref EvidenceRef) string {
+	return string(ref.Kind) + "\x00" + ref.SourceID + "\x00" + ref.SourceRevisionID
 }
 
 func decodeRoomCandidate(raw string) (roomCandidateEnvelope, ImprovementCandidate, Digest, error) {

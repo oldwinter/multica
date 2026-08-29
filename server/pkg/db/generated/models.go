@@ -1490,6 +1490,7 @@ type SkillEvolutionEvidence struct {
 	Eligibility      string             `json:"eligibility"`
 	ObservedAt       pgtype.Timestamptz `json:"observed_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	EvidenceRole     string             `json:"evidence_role"`
 }
 
 type SkillEvolutionLoop struct {
