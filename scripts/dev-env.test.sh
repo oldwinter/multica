@@ -189,17 +189,48 @@ if bash -c 'source "$1"; api_started_after '\''{"status":"ok"}'\'' 1' _ "$root_d
   fail "legacy /health without started_at was accepted as current"
 fi
 
-# Linux lsof can miss a live Next listener that ss reports with its PID. The
-# listener lookup must retain lsof for macOS and fall back to the kernel socket
-# table on Linux instead of treating an answering port as ownerless.
+# System lsof can repeatedly miss a stable Linux Next listener that ss reports.
+# Keep lsof as the primary and macOS lookup; use the exact ss LISTEN query only
+# after an empty lsof result on Linux.
 bash -c '
   set -euo pipefail
   source "$1"
-  lsof() { return 1; }
-  ss() { printf "%s\n" '\''LISTEN 0 511 *:13999 *:* users:(("next-server",pid=4242,fd=22))'\''; }
-  [ "$(port_listener_pid 13999)" = 4242 ]
-' _ "$root_dir/scripts/dev-env.sh" \
-  || fail "listener lookup must fall back to ss when lsof misses Next"
+  trace="$2/listener-lookup.trace"
+
+  uname() { [ "$1" = -s ] && printf "Linux\n"; }
+  lsof() {
+    printf "lsof:%s:<%s>:<%s>:<%s>:<%s>\n" "$#" "$1" "$2" "$3" "$4" >> "$trace"
+    printf "31337\n"
+  }
+  ss() {
+    printf "ss:%s:<%s>:<%s>:<%s>\n" "$#" "$1" "$2" "$3" >> "$trace"
+    printf "%s\n" "LISTEN 0 511 *:13999 *:* users:((\"listener\",pid=4242,fd=22))"
+  }
+  : > "$trace"
+  result="$(port_listener_pid 13999)"
+  [ "$result" = 31337 ] || { echo "lsof PID was not preferred: $result"; exit 1; }
+  [ "$(cat "$trace")" = "lsof:4:<-nP>:<-iTCP:13999>:<-sTCP:LISTEN>:<-t>" ] \
+    || { echo "listener lookup bypassed lsof: $(cat "$trace")"; exit 1; }
+
+  lsof() {
+    printf "lsof:%s:<%s>:<%s>:<%s>:<%s>\n" "$#" "$1" "$2" "$3" "$4" >> "$trace"
+    return 1
+  }
+  : > "$trace"
+  result="$(port_listener_pid 13999)"
+  [ "$result" = 4242 ] || { echo "Linux ss fallback PID = $result"; exit 1; }
+  expected="$(printf "lsof:4:<-nP>:<-iTCP:13999>:<-sTCP:LISTEN>:<-t>\nss:3:<-H>:<-ltnp>:<sport = :13999>")"
+  [ "$(cat "$trace")" = "$expected" ] \
+    || { echo "Linux fallback query/order changed: $(cat "$trace")"; exit 1; }
+
+  uname() { [ "$1" = -s ] && printf "Darwin\n"; }
+  : > "$trace"
+  result="$(port_listener_pid 13999)"
+  [ -z "$result" ] || { echo "Darwin used Linux fallback: $result"; exit 1; }
+  [ "$(cat "$trace")" = "lsof:4:<-nP>:<-iTCP:13999>:<-sTCP:LISTEN>:<-t>" ] \
+    || { echo "Darwin listener lookup changed: $(cat "$trace")"; exit 1; }
+' _ "$root_dir/scripts/dev-env.sh" "$tmp_dir" \
+  || fail "listener lookup must be lsof-first with a Linux-only ss fallback"
 
 # Next.js sits in a turbo/pnpm process group that is not the make launcher.
 # Ownership must follow PPID, not only PGID, or `make up` kills a healthy web.

@@ -196,18 +196,17 @@ EOF
 
 # ------------------------------------------------------------------- ports ---
 
-# Linux ss sees Next listeners that lsof can miss; lsof remains the portable
-# fallback. Both queries select LISTEN sockets only, because the daemon also
-# holds a client connection to the backend port (#6573). A missing listener is
-# a successful empty result so command substitution remains safe on bash 3.2.
+# Keep lsof as the portable primary lookup. On Linux it can miss a stable Next
+# listener, so an empty result falls back to the exact ss LISTEN query. Neither
+# lookup includes client connections such as the daemon's backend connection
+# (#6573). A missing listener remains a successful empty result on bash 3.2.
 port_listener_pid() {
   local pid=""
-  if command -v ss >/dev/null 2>&1; then
+  pid="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  if [ -z "$pid" ] && [ "$(uname -s 2>/dev/null || true)" = Linux ] \
+    && command -v ss >/dev/null 2>&1; then
     pid="$(ss -H -ltnp "sport = :$1" 2>/dev/null \
       | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1 || true)"
-  fi
-  if [ -z "$pid" ]; then
-    pid="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
   fi
   printf '%s' "$pid"
 }
