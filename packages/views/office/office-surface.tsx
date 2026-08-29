@@ -33,6 +33,8 @@ export interface OfficeSurfaceProps {
   readonly selected: OfficeSubjectRef | null;
   readonly onSelect: (subject: OfficeSubjectRef | null) => void;
   readonly onWorldChange: (world: OfficeWorldId) => void;
+  readonly onWorldReady: (world: OfficeWorldId) => void;
+  readonly onWorldSwitchFailure: (retainedWorld: OfficeWorldId) => void;
   readonly SceneSlot?: OfficeSceneSlot;
 }
 
@@ -42,6 +44,8 @@ export function OfficeSurface({
   selected,
   onSelect,
   onWorldChange,
+  onWorldReady,
+  onWorldSwitchFailure,
   SceneSlot,
 }: OfficeSurfaceProps) {
   const { t } = useT("office");
@@ -62,6 +66,14 @@ export function OfficeSurface({
   }, [selected]);
 
   const snapshot = model.kind === "ready" ? model.snapshot : null;
+  const selectedSquadAgentIds =
+    model.kind === "ready" &&
+    model.inspector.kind === "squad" &&
+    model.inspector.members.kind === "ready"
+      ? model.inspector.members.members.flatMap((member) =>
+          member.kind === "agent" ? [member.id] : [],
+        )
+      : [];
 
   return (
     <main
@@ -94,10 +106,10 @@ export function OfficeSurface({
                 data-testid="office-scene-slot"
               >
                 <SceneSlot
-                  key={world}
                   snapshot={model.snapshot}
                   world={world}
                   selected={selected}
+                  selectedSquadAgentIds={selectedSquadAgentIds}
                   reducedMotion={reducedMotion}
                   motionFrozen={model.quality.kind !== "current"}
                   onSelect={(subject) => onSelect(subject)}
@@ -106,6 +118,8 @@ export function OfficeSurface({
                     setCameraControls(null);
                     setRendererFallback(true);
                   }}
+                  onWorldReady={onWorldReady}
+                  onWorldSwitchFailure={onWorldSwitchFailure}
                 />
               </div>
             ) : (

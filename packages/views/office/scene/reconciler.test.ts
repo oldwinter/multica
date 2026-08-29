@@ -8,6 +8,7 @@ import type {
   OfficeSquad,
 } from "@multica/core/office";
 import type {
+  OfficeRendererStatus,
   OfficeSceneCommit,
   OfficeScenePlan,
   OfficeScenePort,
@@ -112,6 +113,12 @@ class RecordingPort implements OfficeScenePort {
   pause() {}
 
   resume() {}
+
+  fit() {}
+
+  zoomIn() {}
+
+  zoomOut() {}
 
   async rebuild() {}
 
@@ -221,10 +228,10 @@ describe("Office scene reconciliation", () => {
 
   it("loads a new pack before switching, keeps the old pack on failure, and disposes once", async () => {
     const port = new RecordingPort();
-    const statuses = [] as string[];
+    const statuses = [] as OfficeRendererStatus[];
     const controller = new OfficeSceneController({
       port,
-      onStatus: (status) => statuses.push(status.kind),
+      onStatus: (status) => statuses.push(status),
     });
     controller.reconcile(commit());
     await controller.whenIdle();
@@ -238,7 +245,12 @@ describe("Office scene reconciliation", () => {
     expect(port.installed).toEqual(["studio", "expedition"]);
     expect(port.plans.at(-1)).toBe(expeditionPlan);
     expect(controller.currentWorld).toBe("expedition");
-    expect(statuses.at(-1)).toBe("ready");
+    expect(statuses.at(-2)).toEqual({ kind: "ready", world: "expedition" });
+    expect(statuses.at(-1)).toEqual({
+      kind: "world-switch-failed",
+      attemptedWorld: "studio",
+      retainedWorld: "expedition",
+    });
 
     controller.destroy();
     controller.destroy();

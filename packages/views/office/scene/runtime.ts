@@ -124,6 +124,18 @@ export class OfficeSceneRuntime implements OfficeSceneHandle {
     );
   }
 
+  fit(): void {
+    this.#port.fit();
+  }
+
+  zoomIn(): void {
+    this.#port.zoomIn();
+  }
+
+  zoomOut(): void {
+    this.#port.zoomOut();
+  }
+
   async whenIdle(): Promise<void> {
     await this.#recovery;
     await this.#controller.whenIdle();

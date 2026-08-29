@@ -242,6 +242,30 @@ export class PixiOfficeScenePort implements OfficeScenePort {
     this.#applyCamera();
   }
 
+  fit(): void {
+    this.#fit();
+  }
+
+  zoomIn(): void {
+    this.#zoomBy(1.2);
+  }
+
+  zoomOut(): void {
+    this.#zoomBy(1 / 1.2);
+  }
+
+  #zoomBy(factor: number) {
+    const app = this.#app;
+    if (!app) return;
+    this.#camera = zoomCameraAt(
+      this.#camera,
+      { x: app.screen.width / 2, y: app.screen.height / 2 },
+      this.#camera.scale * factor,
+    );
+    this.#targetCamera = this.#camera;
+    this.#applyCamera();
+  }
+
   #applyCamera() {
     const root = this.#worldRoot;
     if (!root) return;

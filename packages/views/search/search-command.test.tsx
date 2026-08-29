@@ -186,6 +186,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     inbox: () => "/ws-test/inbox",
     chat: () => "/ws-test/chat",
     rooms: () => "/ws-test/rooms",
+    office: () => "/ws-test/office",
     myIssues: () => "/ws-test/my-issues",
     issues: () => "/ws-test/issues",
     projects: () => "/ws-test/projects",
@@ -402,6 +403,19 @@ describe("SearchCommand", () => {
         ),
       ).toBeInTheDocument();
     }
+  });
+
+  it("finds Office through English and Chinese synonyms", async () => {
+    const user = userEvent.setup();
+    renderSearch();
+    const input = screen.getByPlaceholderText("Type a command or search...");
+
+    await user.type(input, "workplace");
+    expect(await screen.findByText("Office")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "办公室");
+    expect(await screen.findByText("Office")).toBeInTheDocument();
   });
 
   it("does not surface a page on an incidental substring of a hidden keyword", async () => {

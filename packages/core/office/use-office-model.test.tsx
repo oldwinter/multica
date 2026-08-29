@@ -17,6 +17,7 @@ import type {
 } from "../types";
 import type { OfficeSubjectRef } from "./types";
 import { useOfficeModel } from "./use-office-model";
+import { useOfficeTaskCache } from "./use-office-task-cache";
 
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -202,11 +203,16 @@ describe("useOfficeModel", () => {
     });
 
     const { result } = renderHook(
-      () => useOfficeModel({ wsId: "ws-1", selected: null }),
+      () => ({
+        model: useOfficeModel({ wsId: "ws-1", selected: null }),
+        sceneTasks: useOfficeTaskCache("ws-1"),
+      }),
       { wrapper: wrapper(queryClient) },
     );
 
-    await waitFor(() => expect(result.current.kind).toBe("ready"));
+    await waitFor(() => expect(result.current.model.kind).toBe("ready"));
+    expect(result.current.sceneTasks.tasks).toEqual([makeTask()]);
+    expect(result.current.sceneTasks.isFetching).toBe(false);
     expect(spies.agents).toHaveBeenCalledTimes(1);
     expect(spies.runtimes).toHaveBeenCalledTimes(1);
     expect(spies.tasks).toHaveBeenCalledTimes(1);

@@ -1,4 +1,5 @@
 import type { OfficeSubjectRef } from "@multica/core/office";
+import type {} from "./pixi-unsafe-eval-types";
 import type {
   OfficeRendererStatus,
   OfficeSceneHandle,
@@ -8,6 +9,9 @@ import { OfficeSceneRuntime } from "./runtime";
 function fallbackHandle(): OfficeSceneHandle {
   return {
     reconcile: () => {},
+    fit: () => {},
+    zoomIn: () => {},
+    zoomOut: () => {},
     destroy: () => {},
   };
 }
@@ -36,6 +40,9 @@ export async function createOfficeScene(input: {
     });
     return {
       reconcile: (commit) => runtime.reconcile(commit),
+      fit: () => runtime.fit(),
+      zoomIn: () => runtime.zoomIn(),
+      zoomOut: () => runtime.zoomOut(),
       destroy: () => runtime.destroy(),
     };
   } catch {

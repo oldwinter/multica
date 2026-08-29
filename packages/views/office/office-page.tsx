@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { ReactElement } from "react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import {
   useOfficeModel,
@@ -9,16 +10,34 @@ import {
   type OfficeWorldId,
 } from "@multica/core/office";
 import { OfficeSurface } from "./office-surface";
+import { OfficeSceneBridge } from "./office-scene-bridge";
 import type { OfficeSceneSlot } from "./scene-slot";
 
-export function OfficePage({ SceneSlot }: { readonly SceneSlot?: OfficeSceneSlot }) {
+interface OfficePageProps {
+  readonly SceneSlot?: OfficeSceneSlot;
+}
+
+export function OfficePage(props: OfficePageProps): ReactElement;
+export function OfficePage(): ReactElement;
+export function OfficePage({ SceneSlot }: OfficePageProps = {}) {
   const wsId = useWorkspaceId();
   const [selected, setSelected] = useState<OfficeSubjectRef | null>(null);
   const model = useOfficeModel({ wsId, selected });
-  const world = useOfficeViewStore((state) => state.world);
+  const persistedWorld = useOfficeViewStore((state) => state.world);
+  const [world, setWorld] = useState(persistedWorld);
+  useEffect(() => setWorld(persistedWorld), [persistedWorld, wsId]);
   const handleWorldChange = useCallback((nextWorld: OfficeWorldId) => {
-    useOfficeViewStore.getState().setWorld(nextWorld);
+    setWorld(nextWorld);
   }, []);
+  const handleWorldReady = useCallback((readyWorld: OfficeWorldId) => {
+    setWorld(readyWorld);
+    const state = useOfficeViewStore.getState();
+    if (state.world !== readyWorld) state.setWorld(readyWorld);
+  }, []);
+  const handleWorldSwitchFailure = useCallback(
+    (retainedWorld: OfficeWorldId) => setWorld(retainedWorld),
+    [],
+  );
 
   return (
     <OfficeSurface
@@ -27,7 +46,9 @@ export function OfficePage({ SceneSlot }: { readonly SceneSlot?: OfficeSceneSlot
       selected={selected}
       onSelect={setSelected}
       onWorldChange={handleWorldChange}
-      SceneSlot={SceneSlot}
+      onWorldReady={handleWorldReady}
+      onWorldSwitchFailure={handleWorldSwitchFailure}
+      SceneSlot={SceneSlot ?? OfficeSceneBridge}
     />
   );
 }

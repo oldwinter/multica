@@ -122,10 +122,18 @@ export class OfficeSceneController {
         this.#port.playEffects(commit.effects.slice(0, 16));
       }
       this.#appliedFingerprint = fingerprint;
-      this.#onStatus({ kind: "ready" });
+      this.#onStatus({ kind: "ready", world: pack.id });
     } catch {
       this.#lastRequestedFingerprint = this.#appliedFingerprint;
-      if (!this.#pack) this.#onStatus({ kind: "fallback", reason: "asset" });
+      if (this.#pack) {
+        this.#onStatus({
+          kind: "world-switch-failed",
+          attemptedWorld: commit.world,
+          retainedWorld: this.#pack.id,
+        });
+      } else {
+        this.#onStatus({ kind: "fallback", reason: "asset" });
+      }
     }
   }
 

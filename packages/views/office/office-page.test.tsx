@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   OfficeAgent,
@@ -41,6 +41,11 @@ vi.mock("@multica/core/office", () => ({
       getState: () => ({ setWorld: mocks.setWorld }),
     },
   ),
+  useOfficeTaskCache: () => [],
+}));
+
+vi.mock("./office-scene-bridge", () => ({
+  OfficeSceneBridge: () => <div data-testid="default-office-scene" />,
 }));
 
 vi.mock("@multica/core/paths", () => ({
@@ -141,6 +146,7 @@ function renderOffice() {
 const fitCamera = vi.fn();
 
 function SceneProbe({
+  selectedSquadAgentIds,
   reducedMotion,
   motionFrozen,
   onCameraControlsChange,
@@ -160,11 +166,19 @@ function SceneProbe({
       data-testid="scene-probe"
       data-reduced-motion={reducedMotion}
       data-motion-frozen={motionFrozen}
+      data-selected-squad-agent-ids={selectedSquadAgentIds?.join(",") ?? ""}
       onClick={onRendererFallback}
     >
       Scene probe
     </button>
   );
+}
+
+let controlledSceneProps: OfficeSceneSlotProps | null = null;
+
+function ControlledScene(props: OfficeSceneSlotProps) {
+  controlledSceneProps = props;
+  return <div data-testid="controlled-office-scene" />;
 }
 
 describe("OfficePage", () => {
@@ -176,14 +190,14 @@ describe("OfficePage", () => {
     mocks.resolveModel.mockReset();
     mocks.resolveModel.mockImplementation(() => mocks.model);
     fitCamera.mockReset();
+    controlledSceneProps = null;
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1024,
     });
   });
 
-  it("renders the read-only shell and persists world presentation changes", async () => {
-    const user = userEvent.setup();
+  it("renders the read-only shell with the real scene bridge by default", () => {
     renderOffice();
 
     expect(mocks.useOfficeModel).toHaveBeenCalledWith({
@@ -191,16 +205,12 @@ describe("OfficePage", () => {
       selected: null,
     });
     expect(screen.getByRole("heading", { name: "Office" })).toBeInTheDocument();
-    expect(screen.getByTestId("office-dom-fallback")).toHaveAttribute(
-      "data-world",
-      "studio",
-    );
+    expect(screen.getByTestId("office-scene-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("default-office-scene")).toBeInTheDocument();
+    expect(screen.queryByTestId("office-dom-fallback")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fit" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Zoom out" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
-
-    await user.click(screen.getByRole("radio", { name: "Expedition" }));
-    expect(mocks.setWorld).toHaveBeenCalledWith("expedition");
 
     for (const forbidden of [
       "Create",
@@ -214,6 +224,91 @@ describe("OfficePage", () => {
         screen.queryByRole("button", { name: new RegExp(forbidden, "i") }),
       ).not.toBeInTheDocument();
     }
+  });
+
+  it("persists a world only after the scene confirms installation", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={ControlledScene} />
+      </NavigationProvider>,
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Expedition" }));
+    expect(screen.getByRole("radio", { name: "Expedition" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(mocks.setWorld).not.toHaveBeenCalled();
+
+    act(() => controlledSceneProps?.onWorldReady("expedition"));
+    expect(mocks.setWorld).toHaveBeenCalledWith("expedition");
+  });
+
+  it("reverts a failed world switch without changing the preference", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={ControlledScene} />
+      </NavigationProvider>,
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Expedition" }));
+    act(() => controlledSceneProps?.onWorldSwitchFailure("studio"));
+
+    expect(screen.getByRole("radio", { name: "Studio" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(mocks.setWorld).not.toHaveBeenCalled();
+  });
+
+  it("passes exact selected-Squad Agent IDs to the scene", async () => {
+    const user = userEvent.setup();
+    mocks.resolveModel.mockImplementation(
+      (input: { selected: OfficeSubjectRef | null }) =>
+        input.selected?.kind === "squad"
+          ? ({
+              ...readyModel,
+              inspector: {
+                kind: "squad",
+                squad: releaseSquad,
+                members: {
+                  kind: "ready",
+                  members: [
+                    {
+                      kind: "agent",
+                      id: "agent-1",
+                      name: "Ada",
+                      activeIssueIds: ["issue-1"],
+                    },
+                    {
+                      kind: "member",
+                      id: "member-1",
+                      name: "Mina",
+                      activeIssueIds: [],
+                    },
+                  ],
+                },
+              },
+            } satisfies OfficeModel)
+          : readyModel,
+    );
+    renderWithI18n(
+      <NavigationProvider value={navigation}>
+        <OfficePage SceneSlot={SceneProbe} />
+      </NavigationProvider>,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /Squads/ }));
+    await user.click(
+      screen.getByRole("button", { name: "Select squad Release Team" }),
+    );
+
+    expect(screen.getByTestId("scene-probe")).toHaveAttribute(
+      "data-selected-squad-agent-ids",
+      "agent-1",
+    );
   });
 
   it("uses roving roster focus and restores the exact tab and row", async () => {
@@ -476,6 +571,10 @@ describe("OfficePage", () => {
         overflow: { agents: 0, squads: 0, activeIssues: 0 },
       },
     };
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+    });
     renderOffice();
     expect(
       screen.getByRole("heading", { name: "The office is quiet" }),

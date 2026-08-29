@@ -18,4 +18,9 @@ export {
 } from "./types";
 export { buildOfficeSnapshot } from "./model";
 export { useOfficeModel } from "./use-office-model";
+export { useOfficeTaskCache } from "./use-office-task-cache";
 export { useOfficeViewStore } from "./view-store";
+export {
+  advanceOfficeContinuity,
+  createOfficeContinuityState,
+} from "./continuity";

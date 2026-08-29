@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type {
+  OfficeAgent,
   OfficeSnapshot,
   OfficeSubjectRef,
   OfficeWorldId,
@@ -15,6 +16,7 @@ export interface OfficeSceneSlotProps {
   readonly snapshot: OfficeSnapshot;
   readonly world: OfficeWorldId;
   readonly selected: OfficeSubjectRef | null;
+  readonly selectedSquadAgentIds: readonly OfficeAgent["id"][];
   readonly reducedMotion: boolean;
   readonly motionFrozen: boolean;
   readonly onSelect: (subject: OfficeSubjectRef) => void;
@@ -22,6 +24,8 @@ export interface OfficeSceneSlotProps {
     controls: OfficeCameraControls | null,
   ) => void;
   readonly onRendererFallback: () => void;
+  readonly onWorldReady: (world: OfficeWorldId) => void;
+  readonly onWorldSwitchFailure: (retainedWorld: OfficeWorldId) => void;
 }
 
 export type OfficeSceneSlot = ComponentType<OfficeSceneSlotProps>;

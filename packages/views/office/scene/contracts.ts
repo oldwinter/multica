@@ -43,8 +43,13 @@ export interface OfficeSceneCommit {
 }
 
 export type OfficeRendererStatus =
-  | { readonly kind: "ready" }
+  | { readonly kind: "ready"; readonly world: OfficeWorldId }
   | { readonly kind: "recovering" }
+  | {
+      readonly kind: "world-switch-failed";
+      readonly attemptedWorld: OfficeWorldId;
+      readonly retainedWorld: OfficeWorldId;
+    }
   | {
       readonly kind: "fallback";
       readonly reason: "unsupported" | "asset" | "context";
@@ -120,6 +125,9 @@ export interface OfficeScenePort {
   playEffects(effects: readonly OfficeEffect[]): void;
   pause(): void;
   resume(): void;
+  fit(): void;
+  zoomIn(): void;
+  zoomOut(): void;
   rebuild(): Promise<void>;
   onContextLoss(handler: () => void): () => void;
   destroy(): void;
@@ -127,5 +135,8 @@ export interface OfficeScenePort {
 
 export interface OfficeSceneHandle {
   reconcile(commit: OfficeSceneCommit): void;
+  fit(): void;
+  zoomIn(): void;
+  zoomOut(): void;
   destroy(): void;
 }

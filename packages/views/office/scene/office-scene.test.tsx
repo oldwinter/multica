@@ -33,7 +33,12 @@ describe("OfficeScene", () => {
 
   it("does not initialize the renderer during SSR", () => {
     const html = renderToString(
-      <OfficeScene commit={commit()} onSelect={() => {}} onStatus={() => {}} />,
+      <OfficeScene
+        commit={commit()}
+        onSelect={() => {}}
+        onStatus={() => {}}
+        onCameraControlsChange={() => {}}
+      />,
     );
 
     expect(html).toContain("data-office-scene");
@@ -43,30 +48,49 @@ describe("OfficeScene", () => {
   it("reconciles the latest commit and destroys the private handle on unmount", async () => {
     const handle: OfficeSceneHandle = {
       reconcile: vi.fn(),
+      fit: vi.fn(),
+      zoomIn: vi.fn(),
+      zoomOut: vi.fn(),
       destroy: vi.fn(),
     };
     createOfficeScene.mockResolvedValue(handle);
     const onSelect = vi.fn();
     const onStatus = vi.fn();
+    const onCameraControlsChange = vi.fn();
     const view = render(
       <OfficeScene
         commit={commit()}
         onSelect={onSelect}
         onStatus={onStatus}
+        onCameraControlsChange={onCameraControlsChange}
       />,
     );
     await waitFor(() => expect(createOfficeScene).toHaveBeenCalledOnce());
     await waitFor(() => expect(handle.reconcile).toHaveBeenCalledWith(commit()));
+    const controls = onCameraControlsChange.mock.calls.at(-1)?.[0];
+    expect(controls).toEqual({
+      fit: expect.any(Function),
+      zoomIn: expect.any(Function),
+      zoomOut: expect.any(Function),
+    });
+    controls?.fit();
+    controls?.zoomIn();
+    controls?.zoomOut();
+    expect(handle.fit).toHaveBeenCalledOnce();
+    expect(handle.zoomIn).toHaveBeenCalledOnce();
+    expect(handle.zoomOut).toHaveBeenCalledOnce();
 
     view.rerender(
       <OfficeScene
         commit={commit("expedition")}
         onSelect={onSelect}
         onStatus={onStatus}
+        onCameraControlsChange={onCameraControlsChange}
       />,
     );
     expect(handle.reconcile).toHaveBeenLastCalledWith(commit("expedition"));
     view.unmount();
+    expect(onCameraControlsChange).toHaveBeenLastCalledWith(null);
     expect(handle.destroy).toHaveBeenCalledOnce();
   });
 
@@ -79,6 +103,7 @@ describe("OfficeScene", () => {
           commit={commit()}
           onSelect={() => {}}
           onStatus={onStatus}
+          onCameraControlsChange={() => {}}
         />,
       );
     });

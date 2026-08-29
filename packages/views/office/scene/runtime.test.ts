@@ -28,6 +28,9 @@ class RuntimePort {
   rebuilds = 0;
   cancels = 0;
   destroys = 0;
+  fits = 0;
+  zoomIns = 0;
+  zoomOuts = 0;
   rejectInstall = false;
   rejectRebuild = false;
   contextLossHandler = () => {};
@@ -54,6 +57,18 @@ class RuntimePort {
 
   resume() {
     this.resumes += 1;
+  }
+
+  fit() {
+    this.fits += 1;
+  }
+
+  zoomIn() {
+    this.zoomIns += 1;
+  }
+
+  zoomOut() {
+    this.zoomOuts += 1;
   }
 
   async rebuild() {
@@ -114,6 +129,26 @@ function setDocumentHidden(hidden: boolean) {
 }
 
 describe("Office scene browser lifecycle", () => {
+  it("forwards camera controls to the renderer port", () => {
+    setDocumentHidden(false);
+    const port = new RuntimePort();
+    const runtime = new OfficeSceneRuntime({
+      host: document.createElement("div"),
+      port,
+      onStatus: () => {},
+      createIntersectionObserver: null,
+    });
+
+    runtime.fit();
+    runtime.zoomIn();
+    runtime.zoomOut();
+
+    expect(port.fits).toBe(1);
+    expect(port.zoomIns).toBe(1);
+    expect(port.zoomOuts).toBe(1);
+    runtime.destroy();
+  });
+
   it("pauses while hidden or offscreen and resumes from the latest replace state", async () => {
     setDocumentHidden(false);
     const port = new RuntimePort();
