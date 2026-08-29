@@ -413,6 +413,15 @@ func (s *Store) recordAttributionBatch(ctx context.Context, inputs []TaskAttribu
 		return AttributionBatchResult{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	workspaceID, taskID := inputs[0].WorkspaceID, inputs[0].TaskID
+	for _, input := range inputs {
+		if input.WorkspaceID != workspaceID || input.TaskID != taskID {
+			return AttributionBatchResult{}, ErrPersistenceInvalidInput
+		}
+	}
+	if err := acquireFeedbackCoverageLock(ctx, tx, workspaceID, taskID); err != nil {
+		return AttributionBatchResult{}, err
+	}
 
 	txStore := &Store{queries: s.queries.WithTx(tx)}
 	result := AttributionBatchResult{}
@@ -423,6 +432,9 @@ func (s *Store) recordAttributionBatch(ctx context.Context, inputs []TaskAttribu
 		}
 		result.Inserted = result.Inserted || inserted
 		result.Covered = result.Covered || (inserted && row.FeedbackCoveredAt.Valid)
+	}
+	if s.attributionBatchBeforeCommit != nil {
+		s.attributionBatchBeforeCommit()
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return AttributionBatchResult{}, err

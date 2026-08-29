@@ -11,7 +11,7 @@ import (
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-func TestAcceptedRoomRecommendationCannotReplayItsSynthesisCorrection(t *testing.T) {
+func TestAcceptedRoomRecommendationCannotReplayThreeReviewsOfItsSynthesisTask(t *testing.T) {
 	pool := skillEvolutionTestPool(t)
 	workspaceID, userID, skillID := testUUID(), testUUID(), testUUID()
 	seedPersistenceFixture(t, pool, workspaceID, userID, skillID, testUUID())
@@ -19,12 +19,22 @@ func TestAcceptedRoomRecommendationCannotReplayItsSynthesisCorrection(t *testing
 	snapshot := lifecycleSnapshot(t, workspaceID, userID, skillID, base)
 	skills := &memorySkillLoader{current: snapshot}
 	synthesis := lifecycleEvidenceRef(workspaceID, skillID, "same-correction")
+	secondReview := lifecycleEvidenceRef(workspaceID, skillID, "same-task-second-review")
+	thirdReview := lifecycleEvidenceRef(workspaceID, skillID, "same-task-third-review")
+	secondReview.SourceRevisionID = synthesis.SourceRevisionID
+	thirdReview.SourceRevisionID = synthesis.SourceRevisionID
+	heldOutRefs, err := selectHeldOutEvidenceRefs(
+		[]EvidenceRef{synthesis, secondReview, thirdReview}, []ResolvedEvidence{{Ref: synthesis}}, MaxEvidenceRefs,
+	)
+	if err != nil || len(heldOutRefs) != 0 {
+		t.Fatalf("same-task held-out refs = (%+v, %v), want none", heldOutRefs, err)
+	}
 	candidate := ImprovementCandidate{
 		Bundle: lifecycleBundle(skillID, "updated"), ObservedPattern: "repeated correction",
 		ExpectedBenefit: "bounded improvement", RegressionRisk: "bounded risk",
 		EvidenceDigests: []Digest{synthesis.Digest}, CostUSDTicks: 1,
 	}
-	candidate.AuthorizedChanges = BuildChangeAuthorizations(base, candidate.Bundle, candidate.EvidenceDigests)
+	authorization := testChangeAuthorization(t, "held-out-overfit-plan", base, candidate.Bundle, candidate.EvidenceDigests)
 	replay := &DeterministicReplayEvaluator{Outcome: ReplayOutcome{ReplayResult: ReplayResult{
 		Result: EvaluationResultPassed, SampleCount: MinPassingReplaySamples,
 	}}}
@@ -42,6 +52,7 @@ func TestAcceptedRoomRecommendationCannotReplayItsSynthesisCorrection(t *testing
 		return AcceptedImprovementRecommendation{
 			WorkspaceID: workspaceID, SkillID: skillID, RecommendationID: request.RecommendationID,
 			ExpectedBaseHash: Digest(snapshot.Manifest.Hash), AcceptedByID: userID, Candidate: candidate,
+			Authorization:     authorization,
 			SynthesisEvidence: []ResolvedEvidence{{Ref: synthesis, Payload: []byte(`{"outcome":"needs_correction","correction":"same correction","reason":"bounded"}`)}},
 			// The only available case is the synthesis correction, so it is not
 			// eligible to appear again as held-out replay evidence.

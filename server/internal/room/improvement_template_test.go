@@ -51,20 +51,14 @@ func TestImprovementSynthesisPromptCarriesParseableVersionedSkillCandidate(t *te
 		Files       []file `json:"files"`
 	}
 	type body struct {
-		SchemaVersion     int      `json:"schema_version"`
-		BaseSkillID       string   `json:"base_skill_id"`
-		BaseHash          string   `json:"base_hash"`
-		Bundle            bundle   `json:"bundle"`
-		ObservedPattern   string   `json:"observed_pattern"`
-		ExpectedBenefit   string   `json:"expected_benefit"`
-		RegressionRisk    string   `json:"regression_risk"`
-		EvidenceDigests   []string `json:"evidence_digests"`
-		AuthorizedChanges []struct {
-			Path            string   `json:"path"`
-			Operation       string   `json:"operation"`
-			Value           string   `json:"value"`
-			EvidenceDigests []string `json:"evidence_digests"`
-		} `json:"authorized_changes"`
+		SchemaVersion   int      `json:"schema_version"`
+		BaseSkillID     string   `json:"base_skill_id"`
+		BaseHash        string   `json:"base_hash"`
+		Bundle          bundle   `json:"bundle"`
+		ObservedPattern string   `json:"observed_pattern"`
+		ExpectedBenefit string   `json:"expected_benefit"`
+		RegressionRisk  string   `json:"regression_risk"`
+		EvidenceDigests []string `json:"evidence_digests"`
 	}
 
 	decoder := json.NewDecoder(strings.NewReader(skillImprovementRecommendationBodyExample))
@@ -78,9 +72,7 @@ func TestImprovementSynthesisPromptCarriesParseableVersionedSkillCandidate(t *te
 		candidate.Bundle.ID != candidate.BaseSkillID || candidate.Bundle.Source != "workspace" ||
 		candidate.Bundle.Name == "" || candidate.Bundle.Content == "" || len(candidate.Bundle.Files) == 0 ||
 		candidate.ObservedPattern == "" || candidate.ExpectedBenefit == "" || candidate.RegressionRisk == "" ||
-		len(candidate.EvidenceDigests) == 0 || !digest.MatchString(candidate.EvidenceDigests[0]) ||
-		len(candidate.AuthorizedChanges) == 0 || candidate.AuthorizedChanges[0].Path == "" ||
-		len(candidate.AuthorizedChanges[0].EvidenceDigests) == 0 {
+		len(candidate.EvidenceDigests) == 0 || !digest.MatchString(candidate.EvidenceDigests[0]) {
 		t.Fatalf("incomplete executable_procedure body fixture: %+v", candidate)
 	}
 
@@ -90,7 +82,7 @@ func TestImprovementSynthesisPromptCarriesParseableVersionedSkillCandidate(t *te
 		"base_skill_id",
 		"base_hash",
 		"evidence_digests",
-		"authorized_changes",
+		"human promotes this recommendation",
 		"use kind unsupported",
 		skillImprovementRecommendationBodyExample,
 	} {

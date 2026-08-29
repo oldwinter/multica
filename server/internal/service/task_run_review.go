@@ -176,13 +176,6 @@ type TaskRunReviewRepository interface {
 	LoadManualRerun(context.Context, string, string) (ManualRerunRecord, error)
 }
 
-// TaskRunReviewCoverageRecorder is an optional content-free post-persistence
-// hook. Its implementation may mark a terminal task as covered only when a
-// source-owned exact execution attribution exists.
-type TaskRunReviewCoverageRecorder interface {
-	RecordTaskRunReviewCoverage(context.Context, string, string) error
-}
-
 // TaskRunReviewTaskAccess is implemented at the HTTP/task boundary so it can
 // reuse the same private-Agent visibility decision as task transcripts.
 type TaskRunReviewTaskAccess interface {
@@ -194,15 +187,8 @@ type TaskRunReviewTaskAccess interface {
 type TaskRunReviewService struct {
 	repository TaskRunReviewRepository
 	access     TaskRunReviewTaskAccess
-	coverage   TaskRunReviewCoverageRecorder
 	newID      func() string
 	now        func() time.Time
-}
-
-func (s *TaskRunReviewService) SetCoverageRecorder(recorder TaskRunReviewCoverageRecorder) {
-	if s != nil {
-		s.coverage = recorder
-	}
 }
 
 func NewTaskRunReviewService(repository TaskRunReviewRepository, access TaskRunReviewTaskAccess) *TaskRunReviewService {
@@ -280,11 +266,6 @@ func (s *TaskRunReviewService) CreateTaskRunReview(ctx context.Context, workspac
 	expected.Digest, err = canonicalTaskRunReviewDigest(expected)
 	if err != nil || !sameTaskRunReviewRecord(stored, expected) {
 		return TaskRunReviewEvidence{}, ErrTaskRunReviewSourceChanged
-	}
-	if s.coverage != nil {
-		if err := s.coverage.RecordTaskRunReviewCoverage(ctx, workspaceID, input.TaskID); err != nil {
-			return TaskRunReviewEvidence{}, ErrTaskRunReviewUnavailable
-		}
 	}
 	return TaskRunReviewEvidence{TaskRunReviewRecord: stored}, nil
 }

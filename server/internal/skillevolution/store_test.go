@@ -354,21 +354,19 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	if _, err := store.RecordTaskAttribution(ctx, changedAttribution); !errors.Is(err, ErrPersistenceConflict) {
 		t.Fatalf("changed attribution source error = %v, want conflict", err)
 	}
-	coverage := &exactFeedbackCoverageRecorder{queries: queries, metrics: coverageMetrics}
 	reviewerB, reviewerC := testUUID(), testUUID()
 	for _, reviewerID := range []pgtype.UUID{reviewerB, reviewerC} {
 		fixture.InsertNoID(t, "member", testutil.Cols{
 			"workspace_id": workspaceA, "user_id": reviewerID,
 		}, "workspace_id = $1 AND user_id = $2", workspaceA, reviewerID)
 	}
-	reviewRepository := service.NewDBTaskRunReviewRepository(queries)
-	createCoveredReview := func(reviewTaskID, reviewerID pgtype.UUID, key string, recorder service.TaskRunReviewCoverageRecorder) {
+	reviewRepository := newExactCoverageTaskReviewRepository(pool, queries, coverageMetrics)
+	createCoveredReview := func(reviewTaskID, reviewerID pgtype.UUID, key string) {
 		t.Helper()
 		reviews := service.NewTaskRunReviewService(reviewRepository, persistenceTaskReviewAccess{
 			workspaceID: util.UUIDToString(workspaceA), reviewerID: util.UUIDToString(reviewerID),
 			taskID: util.UUIDToString(reviewTaskID), agentID: util.UUIDToString(agentA),
 		})
-		reviews.SetCoverageRecorder(recorder)
 		if _, err := reviews.CreateTaskRunReview(ctx, util.UUIDToString(workspaceA), util.UUIDToString(reviewerID), service.CreateTaskRunReviewInput{
 			TaskID: util.UUIDToString(reviewTaskID), IdempotencyKey: key,
 			Outcome: service.TaskRunReviewOutcomeHelpful, Target: service.TaskRunReviewTargetKnowledge,
@@ -377,17 +375,14 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 			t.Fatalf("create covered review %q: %v", key, err)
 		}
 	}
-	createCoveredReview(taskID, userA, "coverage:first-review", coverage)
-	// An idempotent replay still invokes the post-persistence hook.
-	createCoveredReview(taskID, userA, "coverage:first-review", coverage)
-	createCoveredReview(taskID, reviewerB, "coverage:second-reviewer", coverage)
-	// A fresh recorder models a process restart; a third reviewer and key still
-	// cannot increment the durable task-level coverage marker again.
-	createCoveredReview(taskID, reviewerC, "coverage:after-restart", &exactFeedbackCoverageRecorder{queries: db.New(pool), metrics: coverageMetrics})
+	createCoveredReview(taskID, userA, "coverage:first-review")
+	createCoveredReview(taskID, userA, "coverage:first-review")
+	createCoveredReview(taskID, reviewerB, "coverage:second-reviewer")
+	// A third reviewer and key still cannot increment the durable task-level
+	// coverage marker again.
+	createCoveredReview(taskID, reviewerC, "coverage:after-restart")
 	unattributedTaskID := testTask(t, pool, agentA)
-	if err := coverage.RecordTaskRunReviewCoverage(ctx, util.UUIDToString(workspaceA), util.UUIDToString(unattributedTaskID)); err != nil {
-		t.Fatalf("record unattributed feedback coverage: %v", err)
-	}
+	createCoveredReview(unattributedTaskID, userA, "coverage:unattributed")
 	if got := promtest.ToFloat64(coverageMetrics.FeedbackCoveredRuns); got != 1 {
 		t.Fatalf("durable feedback covered runs = %v, want 1", got)
 	}
@@ -417,7 +412,7 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET status = 'completed', completed_at = now() WHERE id = $1`, reviewFirstTaskID); err != nil {
 		t.Fatalf("complete review-first task: %v", err)
 	}
-	createCoveredReview(reviewFirstTaskID, userA, "coverage:review-before-attribution", coverage)
+	createCoveredReview(reviewFirstTaskID, userA, "coverage:review-before-attribution")
 	reviewFirstInput := attributionInput
 	reviewFirstInput.TaskID = reviewFirstTaskID
 	reviewFirstInput.DispatchSnapshotID = reviewFirstSnapshot.Snapshot.ID
@@ -487,11 +482,10 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 	}
 	for _, terminalStatus := range []string{"failed", "cancelled"} {
 		lateTaskID := testUUID()
-		if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
-id, agent_id, runtime_id, status, dispatched_at, completed_at
-) VALUES ($1, $2, $3, $4, $5, $5)`, lateTaskID, agentA, runtimeA, terminalStatus, fastDispatchedAt); err != nil {
-			t.Fatalf("seed late %s task: %v", terminalStatus, err)
-		}
+		fixture.Task(t, util.UUIDToString(agentA), testutil.Cols{
+			"id": lateTaskID, "runtime_id": runtimeA, "status": terminalStatus,
+			"dispatched_at": fastDispatchedAt, "completed_at": fastDispatchedAt,
+		})
 		if _, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
 			WorkspaceID: workspaceA, TaskID: lateTaskID, AgentID: agentA, RuntimeID: runtimeA,
 			TaskDispatchedAt: fastDispatchedAt,
@@ -501,11 +495,9 @@ id, agent_id, runtime_id, status, dispatched_at, completed_at
 		}
 
 		terminalTaskID := testUUID()
-		if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
-id, agent_id, runtime_id, status, dispatched_at
-) VALUES ($1, $2, $3, 'dispatched', $4)`, terminalTaskID, agentA, runtimeA, fastDispatchedAt); err != nil {
-			t.Fatalf("seed pre-terminal %s task: %v", terminalStatus, err)
-		}
+		fixture.Task(t, util.UUIDToString(agentA), testutil.Cols{
+			"id": terminalTaskID, "runtime_id": runtimeA, "status": "dispatched", "dispatched_at": fastDispatchedAt,
+		})
 		terminalSnapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
 			WorkspaceID: workspaceA, TaskID: terminalTaskID, AgentID: agentA, RuntimeID: runtimeA,
 			TaskDispatchedAt: fastDispatchedAt,
@@ -550,10 +542,13 @@ id, agent_id, runtime_id, status, dispatched_at
 	}); err != nil {
 		t.Fatalf("configure other workspace loop: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO sys_cron_executions (job_name, scope_kind, scope_id) VALUES
-('skill_evolution', 'workspace', $1), ('other_job', 'workspace', $1), ('skill_evolution', 'workspace', $2)`,
-		uuid.UUID(workspaceA.Bytes).String(), uuid.UUID(workspaceB.Bytes).String()); err != nil {
-		t.Fatalf("seed scheduler cleanup rows: %v", err)
+	for _, row := range []testutil.Cols{
+		{"job_name": "skill_evolution", "scope_kind": "workspace", "scope_id": util.UUIDToString(workspaceA)},
+		{"job_name": "other_job", "scope_kind": "workspace", "scope_id": util.UUIDToString(workspaceA)},
+		{"job_name": "skill_evolution", "scope_kind": "workspace", "scope_id": util.UUIDToString(workspaceB)},
+	} {
+		fixture.InsertNoID(t, "sys_cron_executions", row,
+			"job_name = $1 AND scope_kind = $2 AND scope_id = $3", row["job_name"], row["scope_kind"], row["scope_id"])
 	}
 	if err := queries.DeleteWorkspaceSkillEvolutionData(ctx, workspaceA); err != nil {
 		t.Fatalf("DeleteWorkspaceSkillEvolutionData: %v", err)
@@ -585,42 +580,39 @@ func TestTaskReviewAndManualRerunQueriesHideCrossWorkspaceRows(t *testing.T) {
 	userA, userB := testUUID(), testUUID()
 	skillA, skillB := testUUID(), testUUID()
 	agentA, agentB := testUUID(), testUUID()
-	seedPersistenceFixture(t, pool, workspaceA, userA, skillA, agentA)
+	fixtureA := seedPersistenceFixture(t, pool, workspaceA, userA, skillA, agentA)
 	seedPersistenceFixture(t, pool, workspaceB, userB, skillB, agentB)
 
 	sourceA, rerunA := testUUID(), testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, completed_at) VALUES ($1, $2, 'completed', now())`, sourceA, agentA); err != nil {
-		t.Fatalf("seed manual rerun source: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, completed_at, rerun_of_task_id, originator_user_id, originator_source) VALUES ($1, $2, 'completed', now(), $3, $4, 'direct_human')`, rerunA, agentA, sourceA, userA); err != nil {
-		t.Fatalf("seed manual rerun: %v", err)
-	}
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{"id": sourceA, "status": "completed", "completed_at": testutil.Raw("now()")})
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{
+		"id": rerunA, "status": "completed", "completed_at": testutil.Raw("now()"), "rerun_of_task_id": sourceA,
+		"originator_user_id": userA, "originator_source": "direct_human",
+	})
 	automatedRerun := testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, completed_at, rerun_of_task_id, originator_user_id, originator_source) VALUES ($1, $2, 'completed', now(), $3, $4, 'automation')`, automatedRerun, agentA, sourceA, userA); err != nil {
-		t.Fatalf("seed automated rerun: %v", err)
-	}
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{
+		"id": automatedRerun, "status": "completed", "completed_at": testutil.Raw("now()"), "rerun_of_task_id": sourceA,
+		"originator_user_id": userA, "originator_source": "automation",
+	})
 	agentC := testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent (id, workspace_id) VALUES ($1, $2)`, agentC, workspaceA); err != nil {
-		t.Fatalf("seed second same-workspace agent: %v", err)
-	}
+	fixtureA.Insert(t, "agent", testutil.Cols{"id": agentC, "workspace_id": workspaceA})
 	otherAgentSource, otherAgentRerun := testUUID(), testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, completed_at) VALUES ($1, $2, 'completed', now())`, otherAgentSource, agentC); err != nil {
-		t.Fatalf("seed other-agent source: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, completed_at, rerun_of_task_id, originator_user_id, originator_source) VALUES ($1, $2, 'completed', now(), $3, $4, 'direct_human')`, otherAgentRerun, agentA, otherAgentSource, userA); err != nil {
-		t.Fatalf("seed mismatched-agent rerun: %v", err)
-	}
+	fixtureA.Task(t, util.UUIDToString(agentC), testutil.Cols{"id": otherAgentSource, "status": "completed", "completed_at": testutil.Raw("now()")})
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{
+		"id": otherAgentRerun, "status": "completed", "completed_at": testutil.Raw("now()"), "rerun_of_task_id": otherAgentSource,
+		"originator_user_id": userA, "originator_source": "direct_human",
+	})
 	scopeMismatchRerun := testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, issue_id, status, completed_at, rerun_of_task_id, originator_user_id, originator_source) VALUES ($1, $2, $3, 'completed', now(), $4, $5, 'direct_human')`, scopeMismatchRerun, agentA, testUUID(), sourceA, userA); err != nil {
-		t.Fatalf("seed mismatched-scope rerun: %v", err)
-	}
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{
+		"id": scopeMismatchRerun, "issue_id": testUUID(), "status": "completed", "completed_at": testutil.Raw("now()"),
+		"rerun_of_task_id": sourceA, "originator_user_id": userA, "originator_source": "direct_human",
+	})
 	nonterminalSource, nonterminalRerun := testUUID(), testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status) VALUES ($1, $2, 'running')`, nonterminalSource, agentA); err != nil {
-		t.Fatalf("seed nonterminal source: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, rerun_of_task_id, originator_user_id, originator_source) VALUES ($1, $2, 'running', $3, $4, 'direct_human')`, nonterminalRerun, agentA, nonterminalSource, userA); err != nil {
-		t.Fatalf("seed nonterminal-source rerun: %v", err)
-	}
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{"id": nonterminalSource, "status": "running"})
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{
+		"id": nonterminalRerun, "status": "running", "rerun_of_task_id": nonterminalSource,
+		"originator_user_id": userA, "originator_source": "direct_human",
+	})
 	rows, err := queries.ListManualReruns(ctx, db.ListManualRerunsParams{WorkspaceID: workspaceA, PageSize: 10})
 	if err != nil || len(rows) != 1 || rows[0].SourceWorkspaceID != workspaceA {
 		t.Fatalf("ListManualReruns = (%+v, %v), want one same-workspace row", rows, err)
@@ -635,9 +627,10 @@ func TestTaskReviewAndManualRerunQueriesHideCrossWorkspaceRows(t *testing.T) {
 	}
 
 	crossWorkspaceRerun := testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (id, agent_id, status, completed_at, rerun_of_task_id, originator_user_id, originator_source) VALUES ($1, $2, 'completed', now(), $3, $4, 'direct_human')`, crossWorkspaceRerun, agentA, sourceA, userA); err != nil {
-		t.Fatalf("seed cross-workspace child: %v", err)
-	}
+	fixtureA.Task(t, util.UUIDToString(agentA), testutil.Cols{
+		"id": crossWorkspaceRerun, "status": "completed", "completed_at": testutil.Raw("now()"), "rerun_of_task_id": sourceA,
+		"originator_user_id": userA, "originator_source": "direct_human",
+	})
 	if _, err := pool.Exec(ctx, `UPDATE agent_task_queue SET rerun_of_task_id = $1 WHERE id = $2`, testTask(t, pool, agentB), crossWorkspaceRerun); err != nil {
 		t.Fatalf("point rerun across workspaces: %v", err)
 	}
@@ -707,12 +700,11 @@ func TestWikiRoomProposalSourceIdentityPreservesAgentIdempotency(t *testing.T) {
 	ctx := context.Background()
 	queries := db.New(pool)
 	workspaceID, pageID, agentID, roomID := testUUID(), testUUID(), testUUID(), testUUID()
-	if _, err := pool.Exec(ctx, `INSERT INTO workspace (id) VALUES ($1)`, workspaceID); err != nil {
-		t.Fatalf("seed Wiki proposal workspace: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO wiki_page (id, workspace_id, scope, current_revision_number) VALUES ($1, $2, 'workspace', 1)`, pageID, workspaceID); err != nil {
-		t.Fatalf("seed Wiki proposal page: %v", err)
-	}
+	fixture := testutil.New(pool, util.UUIDToString(workspaceID), "")
+	fixture.Insert(t, "workspace", testutil.Cols{"id": workspaceID})
+	fixture.Insert(t, "wiki_page", testutil.Cols{
+		"id": pageID, "workspace_id": workspaceID, "scope": "workspace", "current_revision_number": 1,
+	})
 
 	agentParams := db.CreateWikiPageEditProposalParams{
 		WorkspaceID: workspaceID, AgentID: agentID, IdempotencyKey: "agent-proposal", BaseRevisionNumber: 1,
@@ -747,6 +739,8 @@ func TestWikiRoomProposalSourceIdentityPreservesAgentIdempotency(t *testing.T) {
 	if err != nil || loaded.ID != roomFirst.ID {
 		t.Fatalf("GetRoomWikiPageEditProposalByIdempotencyKey = (%v, %v), want %v", loaded.ID, err, roomFirst.ID)
 	}
+	// This raw insert is the malformed row under test; a fixture would turn the
+	// source-identity constraint violation into setup behavior.
 	if _, err := pool.Exec(ctx, `INSERT INTO wiki_page_edit_proposal (
 workspace_id, page_id, base_revision_number, proposed_path, proposed_title, proposed_content,
 content_digest, rationale, evidence_refs, agent_id, idempotency_key, source_kind, source_ref_id
@@ -763,10 +757,9 @@ func TestListScheduledLoopsIncludesOnlyEnabledDueObserveAndProposeModes(t *testi
 	workspaceID, userID, agentID := testUUID(), testUUID(), testUUID()
 	skillIDs := []pgtype.UUID{testUUID(), testUUID(), testUUID(), testUUID()}
 	seedPersistenceFixture(t, pool, workspaceID, userID, skillIDs[0], agentID)
+	fixture := testutil.New(pool, util.UUIDToString(workspaceID), util.UUIDToString(userID))
 	for _, skillID := range skillIDs[1:] {
-		if _, err := pool.Exec(ctx, `INSERT INTO skill (id, workspace_id, created_by) VALUES ($1, $2, $3)`, skillID, workspaceID, userID); err != nil {
-			t.Fatalf("seed scheduled Skill: %v", err)
-		}
+		fixture.Insert(t, "skill", testutil.Cols{"id": skillID, "workspace_id": workspaceID, "created_by": userID})
 	}
 	configs := []LoopConfig{
 		{WorkspaceID: workspaceID, SkillID: skillIDs[0], Enabled: true, Mode: LoopModeObserve},
@@ -802,10 +795,8 @@ func TestTaskAttributionWorkspaceGuardSerializesWorkspaceCleanup(t *testing.T) {
 	ctx := context.Background()
 	workspaceID, userID, skillID, agentID, runtimeID, taskID :=
 		testUUID(), testUUID(), testUUID(), testUUID(), testUUID(), testUUID()
-	seedPersistenceFixture(t, pool, workspaceID, userID, skillID, agentID)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_runtime (id, workspace_id) VALUES ($1, $2)`, runtimeID, workspaceID); err != nil {
-		t.Fatalf("seed attribution runtime: %v", err)
-	}
+	fixture := seedPersistenceFixture(t, pool, workspaceID, userID, skillID, agentID)
+	fixture.Insert(t, "agent_runtime", testutil.Cols{"id": runtimeID, "workspace_id": workspaceID})
 	store := NewStore(db.New(pool), pool)
 	revisionInput := testRevisionInput(t, workspaceID, skillID, "candidate", "guarded candidate")
 	revisionInput.CreatedByID = userID
@@ -814,11 +805,10 @@ func TestTaskAttributionWorkspaceGuardSerializesWorkspaceCleanup(t *testing.T) {
 		t.Fatalf("save guarded revision: %v", err)
 	}
 	dispatchedAt := time.Now().UTC().Truncate(time.Microsecond)
-	if _, err := pool.Exec(ctx, `INSERT INTO agent_task_queue (
-id, agent_id, runtime_id, status, dispatched_at, completed_at
-) VALUES ($1, $2, $3, 'completed', $4, $4)`, taskID, agentID, runtimeID, dispatchedAt); err != nil {
-		t.Fatalf("seed guarded task: %v", err)
-	}
+	fixture.Task(t, util.UUIDToString(agentID), testutil.Cols{
+		"id": taskID, "runtime_id": runtimeID, "status": "completed",
+		"dispatched_at": dispatchedAt, "completed_at": dispatchedAt,
+	})
 	snapshot, err := store.RecordTaskDispatchSnapshot(ctx, TaskDispatchSnapshotInput{
 		WorkspaceID: workspaceID, TaskID: taskID, AgentID: agentID, RuntimeID: runtimeID, TaskDispatchedAt: dispatchedAt,
 		Skills: []DispatchSkillIdentity{{Source: skillbundle.SourceWorkspace, SkillID: util.UUIDToString(skillID)}},
@@ -971,7 +961,8 @@ CREATE TABLE agent_runtime (id UUID NOT NULL, workspace_id UUID NOT NULL);
 CREATE TABLE agent_task_queue (
     id UUID NOT NULL, agent_id UUID NOT NULL, runtime_id UUID NULL,
     issue_id UUID NULL, chat_session_id UUID NULL,
-    status TEXT NOT NULL, dispatched_at TIMESTAMPTZ NULL, completed_at TIMESTAMPTZ NULL,
+    status TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0,
+    dispatched_at TIMESTAMPTZ NULL, completed_at TIMESTAMPTZ NULL,
     rerun_of_task_id UUID NULL, retry_of_task_id UUID NULL,
     originator_user_id UUID NULL, originator_source TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -1024,20 +1015,27 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
-func seedPersistenceFixture(t *testing.T, pool *pgxpool.Pool, workspaceID, userID, skillID, agentID pgtype.UUID) {
+func seedPersistenceFixture(t *testing.T, pool *pgxpool.Pool, workspaceID, userID, skillID, agentID pgtype.UUID) *testutil.Fixture {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `INSERT INTO workspace (id) VALUES ($1) ON CONFLICT DO NOTHING`, workspaceID); err != nil {
-		t.Fatalf("seed persistence workspace: %v", err)
+	fixture := testutil.New(pool, util.UUIDToString(workspaceID), util.UUIDToString(userID))
+	var workspaceExists bool
+	if err := pool.QueryRow(context.Background(), "SELECT EXISTS (SELECT 1 FROM workspace WHERE id = $1)", workspaceID).Scan(&workspaceExists); err != nil {
+		t.Fatalf("check persistence workspace fixture: %v", err)
 	}
-	if _, err := pool.Exec(context.Background(), `INSERT INTO skill (id, workspace_id, created_by) VALUES ($1, $2, $3)`, skillID, workspaceID, userID); err != nil {
-		t.Fatalf("seed persistence Skill: %v", err)
+	if !workspaceExists {
+		fixture.Insert(t, "workspace", testutil.Cols{"id": workspaceID})
 	}
-	if _, err := pool.Exec(context.Background(), `INSERT INTO member (workspace_id, user_id) VALUES ($1, $2)`, workspaceID, userID); err != nil {
-		t.Fatalf("seed persistence member: %v", err)
+	fixture.Insert(t, "skill", testutil.Cols{"id": skillID, "workspace_id": workspaceID, "created_by": userID})
+	var memberExists bool
+	if err := pool.QueryRow(context.Background(), "SELECT EXISTS (SELECT 1 FROM member WHERE workspace_id = $1 AND user_id = $2)", workspaceID, userID).Scan(&memberExists); err != nil {
+		t.Fatalf("check persistence member fixture: %v", err)
 	}
-	if _, err := pool.Exec(context.Background(), `INSERT INTO agent (id, workspace_id) VALUES ($1, $2)`, agentID, workspaceID); err != nil {
-		t.Fatalf("seed persistence fixture: %v", err)
+	if !memberExists {
+		fixture.InsertNoID(t, "member", testutil.Cols{"workspace_id": workspaceID, "user_id": userID},
+			"workspace_id = $1 AND user_id = $2", workspaceID, userID)
 	}
+	fixture.Insert(t, "agent", testutil.Cols{"id": agentID, "workspace_id": workspaceID})
+	return fixture
 }
 
 func testRevisionInput(t *testing.T, workspaceID, skillID pgtype.UUID, kind, content string) RevisionInput {
@@ -1062,9 +1060,9 @@ func testRevisionInput(t *testing.T, workspaceID, skillID pgtype.UUID, kind, con
 func testTask(t *testing.T, pool *pgxpool.Pool, agentID pgtype.UUID) pgtype.UUID {
 	t.Helper()
 	id := testUUID()
-	if _, err := pool.Exec(context.Background(), `INSERT INTO agent_task_queue (id, agent_id, status, completed_at) VALUES ($1, $2, 'completed', now())`, id, agentID); err != nil {
-		t.Fatal(err)
-	}
+	testutil.New(pool, "", "").Task(t, util.UUIDToString(agentID), testutil.Cols{
+		"id": id, "status": "completed", "completed_at": testutil.Raw("now()"),
+	})
 	return id
 }
 

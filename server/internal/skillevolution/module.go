@@ -131,8 +131,8 @@ func newProductionModule(pool *pgxpool.Pool, root *handler.Handler, queries *db.
 	store := NewStore(queries, pool)
 	skills := NewWorkspaceSkillRepository(queries)
 	reviewAccess := handler.NewTaskRunReviewTaskAccess(root)
-	reviews := service.NewTaskRunReviewService(service.NewDBTaskRunReviewRepository(queries), reviewAccess)
-	reviews.SetCoverageRecorder(&exactFeedbackCoverageRecorder{queries: queries, metrics: metrics})
+	reviewRepository := newExactCoverageTaskReviewRepository(pool, queries, metrics)
+	reviews := service.NewTaskRunReviewService(reviewRepository, reviewAccess)
 	exact := NewExactSkillTaskIndex(queries)
 	twinFactory := TwinSignalsFactory(func(actorID pgtype.UUID) TwinSignals {
 		if !validUUID(actorID) {
@@ -298,33 +298,100 @@ func (store *metricsAttributionStore) recordAttributionBatch(ctx context.Context
 	return result, nil
 }
 
-type exactFeedbackCoverageRecorder struct {
-	queries *db.Queries
-	metrics *Metrics
+type exactCoverageTaskReviewRepository struct {
+	pool               *pgxpool.Pool
+	delegate           service.TaskRunReviewRepository
+	metrics            *Metrics
+	reviewBeforeCommit func()
 }
 
-func (recorder *exactFeedbackCoverageRecorder) RecordTaskRunReviewCoverage(ctx context.Context, workspaceID, taskID string) error {
-	if recorder == nil || recorder.queries == nil {
-		return ErrProductionModuleUnavailable
+func newExactCoverageTaskReviewRepository(
+	pool *pgxpool.Pool,
+	queries *db.Queries,
+	metrics *Metrics,
+) *exactCoverageTaskReviewRepository {
+	return &exactCoverageTaskReviewRepository{
+		pool: pool, delegate: service.NewDBTaskRunReviewRepository(queries), metrics: metrics,
 	}
-	workspaceUUID, err := parseUUIDText(workspaceID)
+}
+
+func (repository *exactCoverageTaskReviewRepository) CreateTaskRunReview(
+	ctx context.Context,
+	record service.TaskRunReviewRecord,
+) (service.TaskRunReviewRecord, error) {
+	if repository == nil || repository.pool == nil {
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewUnavailable
+	}
+	workspaceID, err := parseUUIDText(record.WorkspaceID)
 	if err != nil {
-		return err
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewInvalid
 	}
-	taskUUID, err := parseUUIDText(taskID)
+	taskID, err := parseUUIDText(record.TaskID)
 	if err != nil {
-		return err
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewInvalid
 	}
-	covered, err := recorder.queries.MarkExactSkillEvolutionTaskFeedbackCovered(ctx, db.MarkExactSkillEvolutionTaskFeedbackCoveredParams{
-		WorkspaceID: workspaceUUID, TaskID: taskUUID,
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewUnavailable
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := acquireFeedbackCoverageLock(ctx, tx, workspaceID, taskID); err != nil {
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewUnavailable
+	}
+	queries := db.New(tx)
+	stored, err := service.NewDBTaskRunReviewRepository(queries).CreateTaskRunReview(ctx, record)
+	if err != nil {
+		return service.TaskRunReviewRecord{}, err
+	}
+	covered, err := queries.MarkExactSkillEvolutionTaskFeedbackCovered(ctx, db.MarkExactSkillEvolutionTaskFeedbackCoveredParams{
+		WorkspaceID: workspaceID, TaskID: taskID,
 	})
 	if err != nil {
-		return err
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewUnavailable
 	}
-	if covered && recorder.metrics != nil {
-		recorder.metrics.FeedbackCoveredRuns.Inc()
+	if repository.reviewBeforeCommit != nil {
+		repository.reviewBeforeCommit()
 	}
-	return nil
+	if err := tx.Commit(ctx); err != nil {
+		return service.TaskRunReviewRecord{}, service.ErrTaskRunReviewUnavailable
+	}
+	if covered && repository.metrics != nil {
+		repository.metrics.FeedbackCoveredRuns.Inc()
+	}
+	return stored, nil
+}
+
+func (repository *exactCoverageTaskReviewRepository) ListTaskRunReviewRefs(
+	ctx context.Context, workspaceID, cursor string, limit int,
+) (service.TaskRunReviewRefPage, error) {
+	return repository.delegate.ListTaskRunReviewRefs(ctx, workspaceID, cursor, limit)
+}
+
+func (repository *exactCoverageTaskReviewRepository) LoadTaskRunReview(
+	ctx context.Context, workspaceID, reviewID string,
+) (service.TaskRunReviewRecord, error) {
+	return repository.delegate.LoadTaskRunReview(ctx, workspaceID, reviewID)
+}
+
+func (repository *exactCoverageTaskReviewRepository) ListManualReruns(
+	ctx context.Context, workspaceID, cursor string, limit int,
+) ([]service.ManualRerunRecord, string, error) {
+	return repository.delegate.ListManualReruns(ctx, workspaceID, cursor, limit)
+}
+
+func (repository *exactCoverageTaskReviewRepository) LoadManualRerun(
+	ctx context.Context, workspaceID, taskID string,
+) (service.ManualRerunRecord, error) {
+	return repository.delegate.LoadManualRerun(ctx, workspaceID, taskID)
+}
+
+func acquireFeedbackCoverageLock(ctx context.Context, tx pgx.Tx, workspaceID, taskID pgtype.UUID) error {
+	if !validUUID(workspaceID) || !validUUID(taskID) {
+		return ErrPersistenceInvalidInput
+	}
+	key := "skill-evolution-feedback:" + uuidText(workspaceID) + ":" + uuidText(taskID)
+	_, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", key)
+	return err
 }
 
 func (module *Module) Close() {

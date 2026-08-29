@@ -303,6 +303,7 @@ type GenerateRequest struct {
 	SkillID       pgtype.UUID
 	RequestedByID pgtype.UUID
 	GenerationKey string
+	Authorization ChangeAuthorizationArtifact
 }
 
 type Generation struct {
@@ -327,6 +328,7 @@ type AcceptedImprovementRecommendation struct {
 	ExpectedBaseHash  Digest
 	AcceptedByID      pgtype.UUID
 	Candidate         ImprovementCandidate
+	Authorization     ChangeAuthorizationArtifact
 	SynthesisEvidence []ResolvedEvidence
 	ReplayEvidence    []ResolvedEvidence
 }
@@ -467,17 +469,32 @@ func (l *Lifecycle) Generate(ctx context.Context, request GenerateRequest) (Gene
 			return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err)
 		}
 	}
-	return l.completeCandidate(ctx, request.WorkspaceID, request.GenerationKey, loop, proposal, live, synthesisEvidence, replayEvidence, candidate)
+	return l.completeCandidate(ctx, request.WorkspaceID, request.GenerationKey, loop, proposal, live, synthesisEvidence, replayEvidence, candidate, request.Authorization)
 }
 
 func partitionEvidenceRefs(refs []EvidenceRef, synthesisCount int) ([]EvidenceRef, []EvidenceRef) {
 	if synthesisCount < 0 {
 		synthesisCount = 0
 	}
-	if synthesisCount > len(refs) {
-		synthesisCount = len(refs)
+	synthesis := make([]EvidenceRef, 0, min(synthesisCount, len(refs)))
+	replay := make([]EvidenceRef, 0, len(refs))
+	seen := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		lineage, ok := evidenceCaseLineageKey(ref)
+		if !ok {
+			continue
+		}
+		if _, duplicate := seen[lineage]; duplicate {
+			continue
+		}
+		seen[lineage] = struct{}{}
+		if len(synthesis) < synthesisCount {
+			synthesis = append(synthesis, ref)
+		} else {
+			replay = append(replay, ref)
+		}
 	}
-	return refs[:synthesisCount], refs[synthesisCount:]
+	return synthesis, replay
 }
 
 func (l *Lifecycle) completeCandidate(
@@ -490,6 +507,7 @@ func (l *Lifecycle) completeCandidate(
 	synthesisEvidence []ResolvedEvidence,
 	replayEvidence []ResolvedEvidence,
 	candidate ImprovementCandidate,
+	authorization ChangeAuthorizationArtifact,
 ) (Generation, error) {
 	rationaleDigest, err := improvementRationaleDigest(candidate)
 	if err != nil {
@@ -501,7 +519,7 @@ func (l *Lifecycle) completeCandidate(
 	}
 	validationPolicy := l.policy
 	validationPolicy.MaxCostUSDTicks = loop.MaxCostUsdTicks
-	validation := ValidateCandidatePolicy(live.Bundle, candidate, synthesisEvidence, validationPolicy)
+	validation := ValidateCandidatePolicy(live.Bundle, candidate, synthesisEvidence, authorization, validationPolicy)
 	validationRow, err := l.store.RecordEvaluation(ctx, EvaluationInput{
 		WorkspaceID: workspaceID, ProposalID: proposal.ID, Kind: "deterministic_validation",
 		Result: validation.Result, Adapter: DeterministicValidatorName, AdapterVersion: DeterministicValidatorVersion,
@@ -674,7 +692,7 @@ func (l *Lifecycle) CreateProposalFromRoomRecommendation(ctx context.Context, re
 			return Generation{Proposal: failed}, errors.Join(ErrGenerationFailed, err, cleanupErr)
 		}
 	}
-	return l.completeCandidate(ctx, request.WorkspaceID, generationKey, loop, proposal, live, accepted.SynthesisEvidence, accepted.ReplayEvidence, accepted.Candidate)
+	return l.completeCandidate(ctx, request.WorkspaceID, generationKey, loop, proposal, live, accepted.SynthesisEvidence, accepted.ReplayEvidence, accepted.Candidate, accepted.Authorization)
 }
 
 type RejectRequest struct {
@@ -1098,18 +1116,18 @@ func validateAcceptedImprovement(request RoomRecommendationRequest, accepted Acc
 	totalBytes := 0
 	validateEvidence := func(role EvidenceRole, evidence ResolvedEvidence) error {
 		ref := evidence.Ref
-		identity := string(ref.Kind) + "\x00" + ref.SourceID + "\x00" + ref.SourceRevisionID
+		lineage, hasLineage := evidenceCaseLineageKey(ref)
 		if ref.Validate() != nil || ref.WorkspaceID != workspaceID || ref.Eligibility != EvidenceEligibilityEligible ||
-			(ref.TargetSkillID != "" && ref.TargetSkillID != skillID) || len(evidence.Payload) > MaxResolvedEvidenceBytes {
+			(ref.TargetSkillID != "" && ref.TargetSkillID != skillID) || len(evidence.Payload) > MaxResolvedEvidenceBytes || !hasLineage {
 			return ErrSignalSourceInvalid
 		}
-		if _, duplicate := seen[identity]; duplicate {
+		if _, duplicate := seen[lineage]; duplicate {
 			return ErrSignalSourceInvalid
 		}
 		if _, duplicate := seenDigests[ref.Digest]; duplicate {
 			return ErrSignalSourceInvalid
 		}
-		seen[identity] = role
+		seen[lineage] = role
 		seenDigests[ref.Digest] = role
 		totalBytes += len(evidence.Payload)
 		if totalBytes > MaxResolvedEvidenceBytes {

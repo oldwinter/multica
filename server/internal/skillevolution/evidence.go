@@ -152,6 +152,37 @@ func ValidateEvidenceRefsForWorkspace(workspaceID string, refs []EvidenceRef, li
 	return nil
 }
 
+// evidenceCaseLineageKey identifies one behavioral case independently of how
+// many reviews or projections the source emits for it. Task-owned projections
+// share the task lineage; Wiki proposals and Room recommendations retain their
+// source-owned artifact identity.
+func evidenceCaseLineageKey(ref EvidenceRef) (string, bool) {
+	switch ref.Kind {
+	case EvidenceKindTaskReview, EvidenceKindTwinRunFeedback, EvidenceKindTwinDeposition:
+		if ref.SourceRevisionID == "" {
+			return "", false
+		}
+		return "task\x00" + ref.SourceRevisionID, true
+	case EvidenceKindManualRerun:
+		if ref.SourceRevisionID == "" {
+			return "", false
+		}
+		return "task\x00" + ref.SourceRevisionID, true
+	case EvidenceKindWikiProposal:
+		if ref.SourceID == "" {
+			return "", false
+		}
+		return "wiki_proposal\x00" + ref.SourceID, true
+	case EvidenceKindRoomOutcome:
+		if ref.SourceID == "" || ref.SourceRevisionID == "" {
+			return "", false
+		}
+		return "room_recommendation\x00" + ref.SourceRevisionID + "\x00" + ref.SourceID, true
+	default:
+		return "", false
+	}
+}
+
 type DigestPart struct {
 	Key   string
 	Value string

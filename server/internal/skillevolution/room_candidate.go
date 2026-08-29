@@ -60,15 +60,14 @@ func NewRoomCandidateEngine(outcomes room.AcceptedOutcomeSignals, queries *db.Qu
 }
 
 type roomCandidateEnvelope struct {
-	SchemaVersion     int                   `json:"schema_version"`
-	BaseSkillID       string                `json:"base_skill_id"`
-	BaseHash          string                `json:"base_hash"`
-	Bundle            roomCandidateBundle   `json:"bundle"`
-	ObservedPattern   string                `json:"observed_pattern"`
-	ExpectedBenefit   string                `json:"expected_benefit"`
-	RegressionRisk    string                `json:"regression_risk"`
-	EvidenceDigests   []string              `json:"evidence_digests"`
-	AuthorizedChanges []ChangeAuthorization `json:"authorized_changes"`
+	SchemaVersion   int                 `json:"schema_version"`
+	BaseSkillID     string              `json:"base_skill_id"`
+	BaseHash        string              `json:"base_hash"`
+	Bundle          roomCandidateBundle `json:"bundle"`
+	ObservedPattern string              `json:"observed_pattern"`
+	ExpectedBenefit string              `json:"expected_benefit"`
+	RegressionRisk  string              `json:"regression_risk"`
+	EvidenceDigests []string            `json:"evidence_digests"`
 }
 
 type roomCandidateBundle struct {
@@ -106,7 +105,14 @@ func (source *RoomCandidateSource) LoadAcceptedImprovement(ctx context.Context, 
 	if err != nil || artifactBaseHash != accepted.ExpectedBaseHash || !reflect.DeepEqual(artifactCandidate, accepted.Candidate) {
 		return AcceptedImprovementRecommendation{}, ErrRoomCandidateSourceDrift
 	}
+	authorization, err := newChangeAuthorizationArtifact(
+		uuidText(artifact.ID), artifactBaseHash, artifactCandidate.Bundle, artifactCandidate.EvidenceDigests,
+	)
+	if err != nil {
+		return AcceptedImprovementRecommendation{}, ErrRoomCandidateInvalid
+	}
 	accepted.AcceptedByID = review.ReviewedByUserID
+	accepted.Authorization = authorization
 	return accepted, nil
 }
 
@@ -461,15 +467,31 @@ func (source *RoomCandidateSource) resolveHeldOutEvidence(
 	if err != nil {
 		return nil, err
 	}
-	excludedIdentities := make(map[string]struct{}, len(synthesis))
+	heldOut, err := selectHeldOutEvidenceRefs(refs, synthesis, MaxEvidenceRefs)
+	if err != nil {
+		return nil, err
+	}
+	return source.signals.resolve(ctx, query, heldOut)
+}
+
+func selectHeldOutEvidenceRefs(refs []EvidenceRef, synthesis []ResolvedEvidence, limit int) ([]EvidenceRef, error) {
+	if limit < len(synthesis) || limit > MaxEvidenceRefs {
+		return nil, ErrRoomCandidateInvalid
+	}
+	excludedLineages := make(map[string]struct{}, len(synthesis))
 	excludedDigests := make(map[Digest]struct{}, len(synthesis))
 	for _, evidence := range synthesis {
-		excludedIdentities[evidenceIdentity(evidence.Ref)] = struct{}{}
+		lineage, ok := evidenceCaseLineageKey(evidence.Ref)
+		if !ok {
+			return nil, ErrRoomCandidateInvalid
+		}
+		excludedLineages[lineage] = struct{}{}
 		excludedDigests[evidence.Ref.Digest] = struct{}{}
 	}
-	heldOut := make([]EvidenceRef, 0, min(len(refs), MaxEvidenceRefs-len(synthesis)))
+	selectedLineages := make(map[string]struct{}, len(refs))
+	heldOut := make([]EvidenceRef, 0, min(len(refs), limit-len(synthesis)))
 	for _, ref := range refs {
-		if len(heldOut)+len(synthesis) >= MaxEvidenceRefs {
+		if len(heldOut)+len(synthesis) >= limit {
 			break
 		}
 		// The accepted Room outcome contains the synthesized candidate itself;
@@ -477,19 +499,23 @@ func (source *RoomCandidateSource) resolveHeldOutEvidence(
 		if ref.Kind == EvidenceKindRoomOutcome {
 			continue
 		}
-		if _, used := excludedIdentities[evidenceIdentity(ref)]; used {
+		lineage, ok := evidenceCaseLineageKey(ref)
+		if !ok {
+			continue
+		}
+		if _, used := excludedLineages[lineage]; used {
+			continue
+		}
+		if _, duplicate := selectedLineages[lineage]; duplicate {
 			continue
 		}
 		if _, used := excludedDigests[ref.Digest]; used {
 			continue
 		}
+		selectedLineages[lineage] = struct{}{}
 		heldOut = append(heldOut, ref)
 	}
-	return source.signals.resolve(ctx, query, heldOut)
-}
-
-func evidenceIdentity(ref EvidenceRef) string {
-	return string(ref.Kind) + "\x00" + ref.SourceID + "\x00" + ref.SourceRevisionID
+	return heldOut, nil
 }
 
 func decodeRoomCandidate(raw string) (roomCandidateEnvelope, ImprovementCandidate, Digest, error) {
@@ -499,8 +525,7 @@ func decodeRoomCandidate(raw string) (roomCandidateEnvelope, ImprovementCandidat
 		envelope.SchemaVersion != 1 || envelope.BaseSkillID == "" || envelope.Bundle.ID != envelope.BaseSkillID ||
 		envelope.Bundle.Source != skillbundle.SourceWorkspace || !validRationale(envelope.ObservedPattern) ||
 		!validRationale(envelope.ExpectedBenefit) || !validRationale(envelope.RegressionRisk) ||
-		len(envelope.EvidenceDigests) == 0 || len(envelope.EvidenceDigests) > MaxEvidenceRefs ||
-		len(envelope.AuthorizedChanges) == 0 || len(envelope.AuthorizedChanges) > MaxCandidateChangeAuthorizations {
+		len(envelope.EvidenceDigests) == 0 || len(envelope.EvidenceDigests) > MaxEvidenceRefs {
 		return roomCandidateEnvelope{}, ImprovementCandidate{}, "", ErrRoomCandidateInvalid
 	}
 	baseID, err := uuid.Parse(envelope.BaseSkillID)
@@ -532,19 +557,9 @@ func decodeRoomCandidate(raw string) (roomCandidateEnvelope, ImprovementCandidat
 		seen[digest] = struct{}{}
 		digests[index] = digest
 	}
-	for _, authorization := range envelope.AuthorizedChanges {
-		if authorization.Path == "" || authorization.Operation == "" || len(authorization.EvidenceDigests) == 0 {
-			return roomCandidateEnvelope{}, ImprovementCandidate{}, "", ErrRoomCandidateInvalid
-		}
-		for _, digest := range authorization.EvidenceDigests {
-			if !digest.Valid() {
-				return roomCandidateEnvelope{}, ImprovementCandidate{}, "", ErrRoomCandidateInvalid
-			}
-		}
-	}
 	return envelope, ImprovementCandidate{Bundle: bundle, ObservedPattern: envelope.ObservedPattern,
 		ExpectedBenefit: envelope.ExpectedBenefit, RegressionRisk: envelope.RegressionRisk,
-		EvidenceDigests: digests, AuthorizedChanges: cloneChangeAuthorizations(envelope.AuthorizedChanges)}, baseHash, nil
+		EvidenceDigests: digests}, baseHash, nil
 }
 
 func decodeStrictJSON(raw []byte, target any) error {

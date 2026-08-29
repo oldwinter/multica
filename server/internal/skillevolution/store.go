@@ -44,8 +44,9 @@ type TxStarter interface {
 // Pass the pool as starter when constructing the production store; only the
 // immutable multi-row revision operation requires it.
 type Store struct {
-	queries   *db.Queries
-	txStarter TxStarter
+	queries                      *db.Queries
+	txStarter                    TxStarter
+	attributionBatchBeforeCommit func()
 }
 
 func NewStore(queries *db.Queries, starter ...TxStarter) *Store {
