@@ -84,7 +84,10 @@ export function buildOfficeScenePlan(input: {
       id: agent.id,
       anchor,
       highlighted: highlightedAgentIds.has(agent.id),
-      state: mapAgentSceneState(agent, commit.reducedMotion),
+      state: mapAgentSceneState(
+        agent,
+        commit.reducedMotion || commit.motionFrozen,
+      ),
       visualVariant: agentVisualVariant(agent.id),
     });
   }
@@ -148,28 +151,11 @@ export function buildOfficeScenePlan(input: {
 
   const visibleKeys = new Set(entities.map((entity) => entity.key));
   const links: OfficeSceneLink[] = [];
-  const linkedIssues = commit.snapshot.activeIssues.filter((issue) => {
-    if (commit.selected?.kind === "issue") return issue.id === commit.selected.id;
-    return (
-      commit.selected?.kind === "squad" &&
-      resolvedIssue(issue) &&
-      issue.assignedSquadId === commit.selected.id
-    );
-  });
-  for (const issue of linkedIssues) {
-    const issueKey = `issue:${issue.id}`;
-    if (!visibleKeys.has(issueKey)) continue;
-    for (const agentId of [...issue.executingAgentIds].sort()) {
-      const agentKey = `agent:${agentId}`;
-      if (visibleKeys.has(agentKey)) {
-        links.push({ from: issueKey, to: agentKey, kind: "execution" });
-      }
-    }
-    if (resolvedIssue(issue) && issue.assignedSquadId) {
-      const squadKey = `squad:${issue.assignedSquadId}`;
-      if (visibleKeys.has(squadKey)) {
-        links.push({ from: issueKey, to: squadKey, kind: "assignment" });
-      }
+  if (selectedIssue && resolvedIssue(selectedIssue) && selectedIssue.assignedSquadId) {
+    const issueKey = `issue:${selectedIssue.id}`;
+    const squadKey = `squad:${selectedIssue.assignedSquadId}`;
+    if (visibleKeys.has(issueKey) && visibleKeys.has(squadKey)) {
+      links.push({ from: issueKey, to: squadKey, kind: "assignment" });
     }
   }
 
@@ -179,6 +165,7 @@ export function buildOfficeScenePlan(input: {
     width: pack.map.width * pack.map.tileSize,
     height: pack.map.height * pack.map.tileSize,
     reducedMotion: commit.reducedMotion,
+    motionFrozen: commit.motionFrozen,
     entities,
     links,
   };

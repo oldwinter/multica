@@ -56,7 +56,7 @@ function sameContinuityInput(
     previous.reconnectEpoch === current.reconnectEpoch &&
     previous.recoveryEpoch === current.recoveryEpoch &&
     previous.reducedMotion === current.reducedMotion &&
-    previous.tasks === current.tasks
+    previous.observations === current.observations
   );
 }
 
@@ -94,6 +94,7 @@ function sceneCommit(
     mode: motion.mode,
     effects: motion.effects,
     reducedMotion: input.reducedMotion,
+    motionFrozen: input.motionFrozen,
   };
 }
 
@@ -189,6 +190,7 @@ export function OfficeSceneBridge(props: OfficeSceneSlotProps) {
   const input = useMemo<SceneInput>(
     () => ({
       ...props,
+      motionFrozen: props.motionFrozen || reconnecting,
       continuity: {
         workspaceId: wsId,
         world: props.world,
@@ -197,7 +199,7 @@ export function OfficeSceneBridge(props: OfficeSceneSlotProps) {
         reconnectEpoch,
         recoveryEpoch,
         reducedMotion: props.reducedMotion,
-        tasks: taskCache.tasks,
+        observations: taskCache.observations,
       },
     }),
     [
@@ -206,7 +208,7 @@ export function OfficeSceneBridge(props: OfficeSceneSlotProps) {
       reconnectEpoch,
       reconnecting,
       recoveryEpoch,
-      taskCache.tasks,
+      taskCache.observations,
       wsId,
     ],
   );

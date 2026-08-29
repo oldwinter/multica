@@ -1,39 +1,33 @@
-import type { Agent, AgentTask, Issue } from "../types";
+import type { Agent, Issue } from "../types";
 import type { OfficeWorldId } from "./types";
+
+export interface OfficeTaskObservation {
+  readonly taskId: string;
+  readonly agentId: Agent["id"];
+  readonly issueId: Issue["id"] | null;
+  readonly status: "queued-like" | "running" | "completed" | "failed";
+}
 
 type OfficeEffect =
   | {
       readonly kind: "task-queued";
-      readonly taskId: AgentTask["id"];
+      readonly taskId: OfficeTaskObservation["taskId"];
       readonly agentId: Agent["id"];
       readonly issueId: Issue["id"] | null;
     }
   | {
       readonly kind: "task-started";
-      readonly taskId: AgentTask["id"];
+      readonly taskId: OfficeTaskObservation["taskId"];
       readonly agentId: Agent["id"];
       readonly issueId: Issue["id"] | null;
     }
   | {
       readonly kind: "task-finished";
-      readonly taskId: AgentTask["id"];
+      readonly taskId: OfficeTaskObservation["taskId"];
       readonly agentId: Agent["id"];
       readonly issueId: Issue["id"] | null;
       readonly outcome: "completed" | "failed";
     };
-
-type ObservedTaskStatus =
-  | "queued-like"
-  | "running"
-  | "completed"
-  | "failed";
-
-interface ObservedTask {
-  readonly taskId: AgentTask["id"];
-  readonly agentId: Agent["id"];
-  readonly issueId: Issue["id"] | null;
-  readonly status: ObservedTaskStatus;
-}
 
 interface OfficeContinuityContext {
   readonly workspaceId: string;
@@ -46,13 +40,16 @@ interface OfficeContinuityContext {
 }
 
 export interface OfficeContinuityInput extends OfficeContinuityContext {
-  readonly tasks: readonly AgentTask[];
+  readonly observations: readonly OfficeTaskObservation[];
 }
 
 export interface OfficeContinuityState {
   readonly phase: "cold" | "rebasing" | "observing";
   readonly context: OfficeContinuityContext | null;
-  readonly tasksById: ReadonlyMap<AgentTask["id"], ObservedTask>;
+  readonly tasksById: ReadonlyMap<
+    OfficeTaskObservation["taskId"],
+    OfficeTaskObservation
+  >;
 }
 
 export interface OfficeContinuityResult {
@@ -71,38 +68,15 @@ export function createOfficeContinuityState(): OfficeContinuityState {
   };
 }
 
-function observeTask(task: AgentTask): ObservedTask | null {
-  let status: ObservedTaskStatus;
-  if (
-    task.status === "queued" ||
-    task.status === "dispatched" ||
-    task.status === "waiting_local_directory"
-  ) {
-    status = "queued-like";
-  } else if (
-    task.status === "running" ||
-    task.status === "completed" ||
-    task.status === "failed"
-  ) {
-    status = task.status;
-  } else {
-    return null;
-  }
-  return {
-    taskId: task.id,
-    agentId: task.agent_id,
-    issueId: task.issue_id === "" ? null : task.issue_id,
-    status,
-  };
-}
-
 function indexTasks(
-  tasks: readonly AgentTask[],
-): Map<AgentTask["id"], ObservedTask> {
-  const tasksById = new Map<AgentTask["id"], ObservedTask>();
-  for (const task of tasks) {
-    const observed = observeTask(task);
-    if (observed) tasksById.set(observed.taskId, observed);
+  observations: readonly OfficeTaskObservation[],
+): Map<OfficeTaskObservation["taskId"], OfficeTaskObservation> {
+  const tasksById = new Map<
+    OfficeTaskObservation["taskId"],
+    OfficeTaskObservation
+  >();
+  for (const observed of observations) {
+    tasksById.set(observed.taskId, observed);
   }
   return tasksById;
 }
@@ -135,8 +109,8 @@ function contextChanged(
 }
 
 function effectForTransition(
-  previous: ObservedTask | undefined,
-  current: ObservedTask,
+  previous: OfficeTaskObservation | undefined,
+  current: OfficeTaskObservation,
 ): OfficeEffect | null {
   if (!previous && current.status === "queued-like") {
     return {
@@ -175,7 +149,7 @@ export function advanceOfficeContinuity(
   input: OfficeContinuityInput,
 ): OfficeContinuityResult {
   const context = contextOf(input);
-  const tasksById = indexTasks(input.tasks);
+  const tasksById = indexTasks(input.observations);
   const rebase =
     state.phase !== "observing" ||
     state.context === null ||

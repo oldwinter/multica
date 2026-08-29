@@ -40,6 +40,7 @@ export interface OfficeSceneCommit {
   readonly mode: "replace" | "transition";
   readonly effects: readonly OfficeEffect[];
   readonly reducedMotion: boolean;
+  readonly motionFrozen: boolean;
 }
 
 export type OfficeRendererStatus =
@@ -112,7 +113,7 @@ export type OfficeSceneEntity =
 export interface OfficeSceneLink {
   readonly from: string;
   readonly to: string;
-  readonly kind: "execution" | "assignment";
+  readonly kind: "assignment";
 }
 
 export interface OfficeScenePlan {
@@ -121,6 +122,7 @@ export interface OfficeScenePlan {
   readonly width: number;
   readonly height: number;
   readonly reducedMotion: boolean;
+  readonly motionFrozen: boolean;
   readonly entities: readonly OfficeSceneEntity[];
   readonly links: readonly OfficeSceneLink[];
 }

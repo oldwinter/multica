@@ -23,4 +23,5 @@ export { useOfficeViewStore } from "./view-store";
 export {
   advanceOfficeContinuity,
   createOfficeContinuityState,
+  type OfficeTaskObservation,
 } from "./continuity";

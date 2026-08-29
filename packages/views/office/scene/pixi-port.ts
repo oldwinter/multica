@@ -20,15 +20,24 @@ import {
 } from "./camera";
 import type {
   OfficeEffect,
+  OfficeAgentSceneState,
   OfficeSceneEntity,
   OfficeScenePlan,
   OfficeScenePort,
 } from "./contracts";
+import { OFFICE_ACTOR_HOME, sampleOfficeAgentMotion } from "./motion";
+
+interface AgentMotion {
+  readonly entityKey: string;
+  readonly state: OfficeAgentSceneState;
+  readonly staticAlpha: number;
+}
 
 interface EntityNode {
   readonly container: Container;
   readonly graphics: Graphics;
   readonly actor: AnimatedSprite | null;
+  agentMotion: AgentMotion | null;
 }
 
 interface RunningEffect {
@@ -145,15 +154,15 @@ function drawDecorElement(
   }
 }
 
-function drawSegmentedLine(
+function drawSegmentedAxis(
   graphics: Graphics,
   from: { readonly x: number; readonly y: number },
   to: { readonly x: number; readonly y: number },
 ) {
-  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  const distance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
   if (distance === 0) return;
-  const dash = 18;
-  const gap = 10;
+  const dash = 12;
+  const gap = 8;
   for (let offset = 0; offset < distance; offset += dash + gap) {
     const start = offset / distance;
     const end = Math.min(distance, offset + dash) / distance;
@@ -167,6 +176,29 @@ function drawSegmentedLine(
         from.y + (to.y - from.y) * end,
       );
   }
+}
+
+function drawSegmentedGridLine(
+  graphics: Graphics,
+  from: { readonly x: number; readonly y: number },
+  to: { readonly x: number; readonly y: number },
+) {
+  const start = { x: Math.round(from.x), y: Math.round(from.y) };
+  const end = { x: Math.round(to.x), y: Math.round(to.y) };
+  const middleX = Math.round((start.x + end.x) / 16) * 8;
+  const firstCorner = { x: middleX, y: start.y };
+  const secondCorner = { x: middleX, y: end.y };
+  drawSegmentedAxis(graphics, start, firstCorner);
+  drawSegmentedAxis(graphics, firstCorner, secondCorner);
+  drawSegmentedAxis(graphics, secondCorner, end);
+}
+
+function worldAssetUrls(pack: OfficeWorldPack): readonly string[] {
+  return [pack.assets.atlas, pack.map.asset];
+}
+
+function motionDisabled(plan: OfficeScenePlan): boolean {
+  return plan.reducedMotion || plan.motionFrozen;
 }
 
 export class PixiOfficeScenePort implements OfficeScenePort {
@@ -192,6 +224,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
   #themeObserver: MutationObserver | null = null;
   #running = false;
   #destroyed = false;
+  #motionElapsedMs = 0;
   #dragPointer: { readonly x: number; readonly y: number } | null = null;
 
   private constructor(input: {
@@ -391,28 +424,55 @@ export class PixiOfficeScenePort implements OfficeScenePort {
   }
 
   async installWorld(pack: OfficeWorldPack): Promise<void> {
-    const atlas = await Assets.load<Texture>(pack.assets.atlas);
-    await Assets.load(pack.map.asset);
-    atlas.source.scaleMode = "nearest";
     const nextFrames = new Map<string, Texture>();
-    for (const [name, frame] of Object.entries(pack.assets.frames)) {
-      nextFrames.set(
-        name,
-        new Texture({
-          source: atlas.source,
-          frame: new Rectangle(frame.x, frame.y, frame.width, frame.height),
-        }),
-      );
+    const loadedAssets: string[] = [];
+    try {
+      this.#throwIfDestroyed();
+      const atlas = await Assets.load<Texture>(pack.assets.atlas);
+      loadedAssets.push(pack.assets.atlas);
+      this.#throwIfDestroyed();
+      await Assets.load(pack.map.asset);
+      loadedAssets.push(pack.map.asset);
+      this.#throwIfDestroyed();
+      atlas.source.scaleMode = "nearest";
+      for (const [name, frame] of Object.entries(pack.assets.frames)) {
+        nextFrames.set(
+          name,
+          new Texture({
+            source: atlas.source,
+            frame: new Rectangle(frame.x, frame.y, frame.width, frame.height),
+          }),
+        );
+      }
+    } catch (error) {
+      for (const texture of nextFrames.values()) texture.destroy(false);
+      await this.#unloadAssets(loadedAssets);
+      throw error;
     }
 
     const previousPack = this.#pack;
     this.#clearWorld();
     this.#pack = pack;
+    this.#plan = null;
+    this.#motionElapsedMs = 0;
     for (const [name, texture] of nextFrames) this.#frameTextures.set(name, texture);
     this.#cameraInitialized = false;
     this.#drawWorld();
     if (previousPack && previousPack.id !== pack.id) {
-      void Assets.unload([previousPack.assets.atlas, previousPack.map.asset]);
+      await this.#unloadAssets(worldAssetUrls(previousPack));
+    }
+  }
+
+  #throwIfDestroyed() {
+    if (this.#destroyed) throw new Error("Office renderer is disposed");
+  }
+
+  async #unloadAssets(assets: readonly string[]) {
+    if (assets.length === 0) return;
+    try {
+      await Assets.unload([...assets]);
+    } catch {
+      // A failed unload must not turn a committed pack switch into a failure.
     }
   }
 
@@ -479,7 +539,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
         this.#entityNodes.set(entity.key, node);
         layer.addChild(node.container);
       }
-      this.#updateEntityNode(node, entity, pack, plan.reducedMotion);
+      this.#updateEntityNode(node, entity, pack, motionDisabled(plan));
     }
     this.#drawLinks(plan);
     if (!this.#cameraInitialized) this.#fit();
@@ -499,7 +559,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
         [];
       actor = this.#animatedSprite(idleFrames);
       actor.anchor.set(0.5, 1);
-      actor.position.set(0, 13);
+      actor.position.set(OFFICE_ACTOR_HOME.x, OFFICE_ACTOR_HOME.y);
       actor.scale.set(1.08);
       container.addChild(actor);
     }
@@ -511,7 +571,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       container.hitArea = new Polygon([...region.polygon]);
       container.on("pointertap", () => this.#onSelect(subject));
     }
-    return { container, graphics, actor };
+    return { container, graphics, actor, agentMotion: null };
   }
 
   #animatedSprite(frameNames: readonly string[]) {
@@ -532,7 +592,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
     node: EntityNode,
     entity: OfficeSceneEntity,
     pack: OfficeWorldPack,
-    reducedMotion: boolean,
+    disableMotion: boolean,
   ) {
     node.container.position.set(entity.anchor.x, entity.anchor.y);
     const graphics = node.graphics.clear();
@@ -629,15 +689,21 @@ export class PixiOfficeScenePort implements OfficeScenePort {
         if (textures.length > 0) actor.textures = textures;
         actor.animationSpeed = clip.fps / 60;
         actor.loop = clip.loop;
-        actor.alpha = entity.state.availability === "offline" ? 0.55 : 1;
-        if (reducedMotion) {
+        node.agentMotion = {
+          entityKey: entity.key,
+          state: entity.state,
+          staticAlpha: entity.state.availability === "offline" ? 0.55 : 1,
+        };
+        if (disableMotion) {
           actor.stop();
           actor.gotoAndStop(0);
         } else {
           actor.play();
         }
+        this.#applyAgentMotion(node, disableMotion);
       }
     } else if (entity.kind === "squad") {
+      node.agentMotion = null;
       if (pack.id === "studio") {
         graphics.rect(-31, -22, 62, 44).fill(colorAt(pack, 0));
         graphics.rect(-26, -17, 52, 24).fill(colorAt(pack, 8));
@@ -656,6 +722,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
         graphics.rect(-11 + index * 10, 16, 5, 5).fill(signalColor(pack, "assignment"));
       }
     } else if (entity.kind === "issue") {
+      node.agentMotion = null;
       const fill = entity.resolved
         ? signalColor(pack, "assignment")
         : signalColor(pack, "offline");
@@ -670,12 +737,28 @@ export class PixiOfficeScenePort implements OfficeScenePort {
         graphics.rect(-2, -9, 4, 6).fill(colorAt(pack, 10));
       }
     } else {
+      node.agentMotion = null;
       graphics.rect(-20, -13, 40, 26).fill(colorAt(pack, 0));
       const bars = Math.min(8, Math.max(1, entity.count));
       for (let index = 0; index < bars; index += 1) {
         graphics.rect(-15 + index * 4, -7, 2, 14).fill(colorAt(pack, 4));
       }
     }
+  }
+
+  #applyAgentMotion(node: EntityNode, disableMotion: boolean) {
+    const actor = node.actor;
+    const motion = node.agentMotion;
+    if (!actor || !motion) return;
+    const sample = sampleOfficeAgentMotion({
+      entityKey: motion.entityKey,
+      elapsedMs: this.#motionElapsedMs,
+      motionDisabled: disableMotion,
+      state: motion.state,
+    });
+    actor.position.set(sample.x, sample.y);
+    actor.scale.set(sample.scale);
+    actor.alpha = motion.staticAlpha * sample.alphaMultiplier;
   }
 
   #drawLinks(plan: OfficeScenePlan) {
@@ -689,20 +772,12 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       const from = anchors.get(link.from);
       const to = anchors.get(link.to);
       if (!from || !to) continue;
-      if (link.kind === "assignment") {
-        drawSegmentedLine(graphics, from, to);
-        graphics.stroke({
-          alpha: 0.94,
-          color: signalColor(pack, "assignment"),
-          width: 3,
-        });
-      } else {
-        graphics.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({
-          alpha: 0.82,
-          color: signalColor(pack, "execution"),
-          width: 2,
-        });
-      }
+      drawSegmentedGridLine(graphics, from, to);
+      graphics.stroke({
+        alpha: 0.42,
+        color: signalColor(pack, "assignment"),
+        width: 2,
+      });
     }
     layer.addChild(graphics);
   }
@@ -723,7 +798,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       y: app.screen.height / 2 - center.y * this.#camera.scale,
       scale: this.#camera.scale,
     };
-    if (plan.reducedMotion) {
+    if (motionDisabled(plan)) {
       this.#camera = this.#targetCamera;
       this.#applyCamera();
     }
@@ -732,7 +807,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
   playEffects(effects: readonly OfficeEffect[]): void {
     const pack = this.#pack;
     const layer = this.#effectLayer;
-    if (!pack || !layer || this.#plan?.reducedMotion) return;
+    if (!pack || !layer || !this.#plan || motionDisabled(this.#plan)) return;
     for (const effect of effects) {
       if (this.#effects.length >= 16) break;
       const target = this.#entityNodes.get(`agent:${effect.agentId}`)?.container.position;
@@ -782,8 +857,12 @@ export class PixiOfficeScenePort implements OfficeScenePort {
 
   readonly #tick = (ticker: Ticker) => {
     if (!this.#running) return;
-    if (!this.#plan?.reducedMotion) {
-      for (const node of this.#entityNodes.values()) node.actor?.update(ticker);
+    if (this.#plan && !motionDisabled(this.#plan)) {
+      this.#motionElapsedMs += ticker.deltaMS;
+      for (const node of this.#entityNodes.values()) {
+        node.actor?.update(ticker);
+        this.#applyAgentMotion(node, false);
+      }
       this.#advanceEffects(ticker.deltaMS);
       const distance =
         Math.abs(this.#targetCamera.x - this.#camera.x) +
@@ -879,7 +958,7 @@ export class PixiOfficeScenePort implements OfficeScenePort {
     this.#themeObserver = null;
     const pack = this.#pack;
     this.#destroyApplication();
-    if (pack) void Assets.unload([pack.assets.atlas, pack.map.asset]);
+    if (pack) void this.#unloadAssets(worldAssetUrls(pack));
     this.#pack = null;
     this.#contextLossHandlers.clear();
   }

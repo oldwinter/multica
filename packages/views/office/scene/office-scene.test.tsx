@@ -23,6 +23,7 @@ function commit(world: "studio" | "expedition" = "studio"): OfficeSceneCommit {
     mode: "replace",
     effects: [],
     reducedMotion: false,
+    motionFrozen: false,
   };
 }
 

@@ -211,7 +211,14 @@ describe("useOfficeModel", () => {
     );
 
     await waitFor(() => expect(result.current.model.kind).toBe("ready"));
-    expect(result.current.sceneTasks.tasks).toEqual([makeTask()]);
+    expect(result.current.sceneTasks.observations).toEqual([
+      {
+        taskId: "task-1",
+        agentId: "agent-1",
+        issueId: "issue-1",
+        status: "running",
+      },
+    ]);
     expect(result.current.sceneTasks.isFetching).toBe(false);
     expect(spies.agents).toHaveBeenCalledTimes(1);
     expect(spies.runtimes).toHaveBeenCalledTimes(1);

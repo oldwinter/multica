@@ -16,6 +16,7 @@ function commit(overrides: Partial<OfficeSceneCommit> = {}): OfficeSceneCommit {
     mode: "replace",
     effects: [],
     reducedMotion: false,
+    motionFrozen: false,
     ...overrides,
   };
 }

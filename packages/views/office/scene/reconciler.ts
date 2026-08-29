@@ -54,6 +54,7 @@ function commitFingerprint(commit: OfficeSceneCommit): string {
       .sort((left, right) => left.taskId.localeCompare(right.taskId))
       .map((effect) => ({ ...effect })),
     reducedMotion: commit.reducedMotion,
+    motionFrozen: commit.motionFrozen,
   });
 }
 
@@ -88,7 +89,9 @@ export class OfficeSceneController {
     this.#lastRequestedFingerprint = fingerprint;
     this.#latestCommit = commit;
     const generation = ++this.#generation;
-    this.#pending = this.#apply(commit, fingerprint, generation);
+    this.#pending = this.#pending.then(() =>
+      this.#apply(commit, fingerprint, generation),
+    );
   }
 
   async #apply(
@@ -97,17 +100,20 @@ export class OfficeSceneController {
     generation: number,
   ): Promise<void> {
     try {
+      if (this.#destroyed || generation !== this.#generation) return;
       const worldChanged = this.#pack?.id !== commit.world;
       if (worldChanged) {
         const target = await loadOfficeWorldPack(commit.world);
         if (this.#destroyed || generation !== this.#generation) return;
         await this.#port.installWorld(target);
-        if (this.#destroyed || generation !== this.#generation) return;
+        if (this.#destroyed) return;
         this.#pack = target;
         this.#placements = new PlacementRegistry({
           world: target.id,
           layoutVersion: target.layoutVersion,
         });
+        this.#appliedFingerprint = null;
+        if (generation !== this.#generation) return;
       }
       const pack = this.#pack;
       const placements = this.#placements;
@@ -115,7 +121,10 @@ export class OfficeSceneController {
 
       const plan = buildOfficeScenePlan({ commit, pack, placements });
       const replace =
-        worldChanged || commit.mode === "replace" || commit.reducedMotion;
+        worldChanged ||
+        commit.mode === "replace" ||
+        commit.reducedMotion ||
+        commit.motionFrozen;
       if (replace) this.#port.cancelEffects();
       this.#port.apply(plan);
       if (!replace && commit.effects.length > 0) {
@@ -124,6 +133,7 @@ export class OfficeSceneController {
       this.#appliedFingerprint = fingerprint;
       this.#onStatus({ kind: "ready", world: pack.id });
     } catch {
+      if (this.#destroyed || generation !== this.#generation) return;
       this.#lastRequestedFingerprint = this.#appliedFingerprint;
       if (this.#pack) {
         this.#onStatus({

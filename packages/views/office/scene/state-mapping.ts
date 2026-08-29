@@ -3,7 +3,7 @@ import type { OfficeAgentSceneState } from "./contracts";
 
 export function mapAgentSceneState(
   agent: OfficeAgent,
-  reducedMotion: boolean,
+  motionDisabled: boolean,
 ): OfficeAgentSceneState {
   const availability =
     agent.availability.kind === "known"
@@ -35,8 +35,8 @@ export function mapAgentSceneState(
     clip,
     stationLit: workload === "working",
     ambientMotion:
-      !reducedMotion && availability === "online" && workload === "idle",
-    pulse: !reducedMotion && availability === "unstable",
-    flicker: !reducedMotion && availability === "unstable",
+      !motionDisabled && availability === "online" && workload === "idle",
+    pulse: !motionDisabled && availability === "unstable",
+    flicker: !motionDisabled && availability === "unstable",
   };
 }

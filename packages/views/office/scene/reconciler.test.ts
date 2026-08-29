@@ -83,6 +83,7 @@ function commit(
     mode: "replace",
     effects: [],
     reducedMotion: false,
+    motionFrozen: false,
     ...overrides,
   };
 }
@@ -130,6 +131,32 @@ class RecordingPort implements OfficeScenePort {
 
   destroy() {
     this.destroyCount += 1;
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+class DeferredWorldPort extends RecordingPort {
+  readonly expedition = deferred<void>();
+  readonly expeditionStarted = deferred<void>();
+  readonly expeditionCommitted = deferred<void>();
+  currentWorld: string | null = null;
+
+  override async installWorld(pack: { readonly id: string }) {
+    if (pack.id === "expedition") {
+      this.expeditionStarted.resolve();
+      await this.expedition.promise;
+    }
+    if (pack.id === this.failWorld) throw new Error("asset load failed");
+    this.currentWorld = pack.id;
+    this.installed.push(pack.id);
+    if (pack.id === "expedition") this.expeditionCommitted.resolve();
   }
 }
 
@@ -183,6 +210,48 @@ describe("Office scene reconciliation", () => {
     expect(port.cancelCount).toBe(2);
   });
 
+  it("freezes renderer motion without changing static selection or counts", async () => {
+    const port = new RecordingPort();
+    const controller = new OfficeSceneController({ port, onStatus: () => {} });
+    controller.reconcile(commit());
+    await controller.whenIdle();
+
+    const frozen = {
+      ...commit({
+        mode: "transition",
+        selected: { kind: "agent" as const, id: "agent-a" },
+        effects: [
+          {
+            kind: "task-queued" as const,
+            taskId: "task-frozen",
+            agentId: "agent-a",
+            issueId: null,
+          },
+        ],
+      }),
+      motionFrozen: true,
+    };
+    controller.reconcile(frozen);
+    await controller.whenIdle();
+
+    const plan = port.plans.at(-1);
+    const selectedAgent = plan?.entities.find(
+      (entity) => entity.kind === "agent" && entity.id === "agent-a",
+    );
+    expect(plan).toMatchObject({ reducedMotion: false, motionFrozen: true });
+    expect(plan?.entities).toHaveLength(7);
+    expect(selectedAgent).toMatchObject({
+      highlighted: true,
+      state: {
+        ambientMotion: false,
+        pulse: false,
+        flicker: false,
+      },
+    });
+    expect(port.effects).toEqual([]);
+    expect(port.cancelCount).toBe(2);
+  });
+
   it("highlights exact selected Squad members without moving stations", async () => {
     const port = new RecordingPort();
     const controller = new OfficeSceneController({ port, onStatus: () => {} });
@@ -208,7 +277,7 @@ describe("Office scene reconciliation", () => {
     );
   });
 
-  it("models one Issue with Agent links and its authoritative Squad assignment", async () => {
+  it("highlights Issue executors and its assigned Squad with one authoritative link", async () => {
     const port = new RecordingPort();
     const controller = new OfficeSceneController({ port, onStatus: () => {} });
     controller.reconcile(
@@ -218,14 +287,43 @@ describe("Office scene reconciliation", () => {
     const plan = port.plans.at(-1);
 
     expect(plan?.entities.filter((entity) => entity.kind === "issue")).toHaveLength(1);
-    expect(plan?.links).toEqual(
-      expect.arrayContaining([
-        { from: "issue:issue-a", to: "agent:agent-a", kind: "execution" },
-        { from: "issue:issue-a", to: "agent:agent-b", kind: "execution" },
-        { from: "issue:issue-a", to: "squad:squad-a", kind: "assignment" },
-      ]),
-    );
+    expect(
+      plan?.entities
+        .filter((entity) => entity.highlighted)
+        .map((entity) => entity.key)
+        .sort(),
+    ).toEqual([
+      "agent:agent-a",
+      "agent:agent-b",
+      "issue:issue-a",
+      "squad:squad-a",
+    ]);
+    expect(plan?.links).toEqual([
+      { from: "issue:issue-a", to: "squad:squad-a", kind: "assignment" },
+    ]);
+    expect(JSON.stringify(plan)).not.toContain('"kind":"execution"');
     expect(JSON.stringify(plan)).not.toContain("private-");
+  });
+
+  it("uses station highlights without relationship lines for Squad selection", async () => {
+    const port = new RecordingPort();
+    const controller = new OfficeSceneController({ port, onStatus: () => {} });
+    controller.reconcile(
+      commit({
+        selected: { kind: "squad", id: "squad-a" },
+        selectedSquadAgentIds: ["agent-a", "agent-b"],
+      }),
+    );
+    await controller.whenIdle();
+    const plan = port.plans.at(-1);
+
+    expect(
+      plan?.entities
+        .filter((entity) => entity.kind === "agent" && entity.highlighted)
+        .map((entity) => entity.id)
+        .sort(),
+    ).toEqual(["agent-a", "agent-b"]);
+    expect(plan?.links).toEqual([]);
   });
 
   it("suppresses the relationship graph until an Issue selection reveals its exact links", async () => {
@@ -254,8 +352,6 @@ describe("Office scene reconciliation", () => {
     await controller.whenIdle();
 
     expect(port.plans.at(-1)?.links).toEqual([
-      { from: "issue:issue-a", to: "agent:agent-a", kind: "execution" },
-      { from: "issue:issue-a", to: "agent:agent-b", kind: "execution" },
       { from: "issue:issue-a", to: "squad:squad-a", kind: "assignment" },
     ]);
 
@@ -266,11 +362,22 @@ describe("Office scene reconciliation", () => {
       }),
     );
     await controller.whenIdle();
-    expect(port.plans.at(-1)?.links).toEqual([
-      { from: "issue:issue-a", to: "agent:agent-a", kind: "execution" },
-      { from: "issue:issue-a", to: "agent:agent-b", kind: "execution" },
-      { from: "issue:issue-a", to: "squad:squad-a", kind: "assignment" },
-    ]);
+    expect(port.plans.at(-1)?.links).toEqual([]);
+
+    controller.reconcile(
+      commit({
+        snapshot: multiIssueSnapshot,
+        selected: { kind: "issue", id: "issue-b" },
+      }),
+    );
+    await controller.whenIdle();
+    expect(port.plans.at(-1)?.links).toEqual([]);
+    expect(
+      port.plans
+        .at(-1)
+        ?.entities.find((entity) => entity.key === "agent:agent-b")
+        ?.highlighted,
+    ).toBe(true);
   });
 
   it("derives stable, non-content Agent visual variants from entity IDs", async () => {
@@ -324,5 +431,55 @@ describe("Office scene reconciliation", () => {
     controller.destroy();
     controller.destroy();
     expect(port.destroyCount).toBe(1);
+  });
+
+  it("serializes a superseded Studio to Expedition to Studio install", async () => {
+    const port = new DeferredWorldPort();
+    const statuses = [] as OfficeRendererStatus[];
+    const controller = new OfficeSceneController({
+      port,
+      onStatus: (status) => statuses.push(status),
+    });
+    controller.reconcile(commit());
+    await controller.whenIdle();
+
+    controller.reconcile(commit({ world: "expedition", mode: "transition" }));
+    await port.expeditionStarted.promise;
+    controller.reconcile(commit({ world: "studio", mode: "transition" }));
+    port.expedition.resolve();
+    await port.expeditionCommitted.promise;
+    await controller.whenIdle();
+
+    expect(port.currentWorld).toBe("studio");
+    expect(controller.currentWorld).toBe("studio");
+    expect(port.installed).toEqual(["studio", "expedition", "studio"]);
+    expect(statuses.at(-1)).toEqual({ kind: "ready", world: "studio" });
+  });
+
+  it("retains the installed pack consistently when the latest superseding switch fails", async () => {
+    const port = new DeferredWorldPort();
+    const statuses = [] as OfficeRendererStatus[];
+    const controller = new OfficeSceneController({
+      port,
+      onStatus: (status) => statuses.push(status),
+    });
+    controller.reconcile(commit());
+    await controller.whenIdle();
+
+    controller.reconcile(commit({ world: "expedition", mode: "transition" }));
+    await port.expeditionStarted.promise;
+    port.failWorld = "studio";
+    controller.reconcile(commit({ world: "studio", mode: "transition" }));
+    port.expedition.resolve();
+    await port.expeditionCommitted.promise;
+    await controller.whenIdle();
+
+    expect(port.currentWorld).toBe("expedition");
+    expect(controller.currentWorld).toBe("expedition");
+    expect(statuses.at(-1)).toEqual({
+      kind: "world-switch-failed",
+      attemptedWorld: "studio",
+      retainedWorld: "expedition",
+    });
   });
 });

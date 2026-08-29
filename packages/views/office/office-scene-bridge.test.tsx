@@ -1,12 +1,14 @@
 import { act, render, screen } from "@testing-library/react";
-import type { AgentTask } from "@multica/core/types";
-import type { OfficeSnapshot } from "@multica/core/office";
+import type {
+  OfficeSnapshot,
+  OfficeTaskObservation,
+} from "@multica/core/office";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OfficeSceneCommit } from "./scene";
 import type { OfficeSceneSlotProps } from "./scene-slot";
 
 const mocks = vi.hoisted(() => ({
-  tasks: [] as AgentTask[],
+  tasks: [] as OfficeTaskObservation[],
   taskFetching: false,
   taskUpdatedAt: 0,
   wsId: "workspace-1",
@@ -25,7 +27,7 @@ vi.mock("@multica/core/hooks", () => ({
 vi.mock("@multica/core/office", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@multica/core/office")>()),
   useOfficeTaskCache: () => ({
-    tasks: mocks.tasks,
+    observations: mocks.tasks,
     isFetching: mocks.taskFetching,
     dataUpdatedAt: mocks.taskUpdatedAt,
   }),
@@ -53,20 +55,14 @@ const snapshot: OfficeSnapshot = {
   overflow: { agents: 0, squads: 0, activeIssues: 0 },
 };
 
-function task(overrides: Partial<AgentTask> = {}): AgentTask {
+function task(
+  overrides: Partial<OfficeTaskObservation> = {},
+): OfficeTaskObservation {
   return {
-    id: "task-1",
-    agent_id: "agent-1",
-    runtime_id: "runtime-1",
-    issue_id: "issue-1",
-    status: "queued",
-    priority: 0,
-    dispatched_at: null,
-    started_at: null,
-    completed_at: null,
-    result: null,
-    error: null,
-    created_at: "2026-08-30T00:00:00Z",
+    taskId: "task-1",
+    agentId: "agent-1",
+    issueId: "issue-1",
+    status: "queued-like",
     ...overrides,
   };
 }
@@ -126,6 +122,7 @@ describe("OfficeSceneBridge", () => {
       mode: "replace",
       effects: [],
       reducedMotion: false,
+      motionFrozen: false,
     });
     expect("tasks" in latestSceneProps().commit.snapshot).toBe(false);
   });
@@ -174,22 +171,38 @@ describe("OfficeSceneBridge", () => {
     mocks.taskFetching = true;
     act(() => mocks.reconnect?.());
     view.rerender(<OfficeSceneBridge {...initial} />);
-    expect(latestSceneProps().commit).toMatchObject({ mode: "replace", effects: [] });
+    expect(latestSceneProps().commit).toMatchObject({
+      mode: "replace",
+      effects: [],
+      motionFrozen: true,
+    });
 
-    mocks.tasks = [task({ status: "running" }), task({ id: "task-2" })];
+    mocks.tasks = [
+      task({ status: "running" }),
+      task({ taskId: "task-2" }),
+    ];
     mocks.taskFetching = false;
     mocks.taskUpdatedAt += 1;
     view.rerender(<OfficeSceneBridge {...initial} />);
-    expect(latestSceneProps().commit).toMatchObject({ mode: "replace", effects: [] });
+    expect(latestSceneProps().commit).toMatchObject({
+      mode: "replace",
+      effects: [],
+      motionFrozen: false,
+    });
 
     view.rerender(<OfficeSceneBridge {...initial} world="expedition" />);
     expect(latestSceneProps().commit).toMatchObject({ mode: "replace", effects: [] });
 
-    mocks.tasks = [task(), task({ id: "task-2" })];
+    mocks.tasks = [task(), task({ taskId: "task-2" })];
     view.rerender(
       <OfficeSceneBridge {...initial} world="expedition" motionFrozen />,
     );
-    expect(latestSceneProps().commit).toMatchObject({ mode: "replace", effects: [] });
+    expect(latestSceneProps().commit).toMatchObject({
+      mode: "replace",
+      effects: [],
+      motionFrozen: true,
+      reducedMotion: false,
+    });
 
     Object.defineProperty(document, "hidden", {
       configurable: true,
@@ -215,6 +228,7 @@ describe("OfficeSceneBridge", () => {
       mode: "replace",
       effects: [],
       reducedMotion: true,
+      motionFrozen: false,
     });
   });
 
