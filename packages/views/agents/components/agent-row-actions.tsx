@@ -14,13 +14,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Agent } from "@multica/core/types";
-import {
-  isAgentRuntimeBound,
-  type AgentPresenceDetail,
-} from "@multica/core/agents";
+import type { AgentPresenceDetail } from "@multica/core/agents";
 import { api } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useModalStore } from "@multica/core/modals";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import {
@@ -43,6 +39,7 @@ import {
 import { useT } from "../../i18n";
 import { AppLink, useIntentNavigate } from "../../navigation";
 import { AgentMentionMenuItem } from "./agent-mention-menu-item";
+import { useAssignWorkToAgent } from "./use-assign-work-to-agent";
 
 interface AgentRowActionsProps {
   agent: Agent;
@@ -86,6 +83,7 @@ export function AgentRowActions({
   const intentNavigate = useIntentNavigate();
   const wsId = useWorkspaceId();
   const qc = useQueryClient();
+  const assignWorkToAgent = useAssignWorkToAgent();
 
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -146,16 +144,6 @@ export function AgentRowActions({
     }
   };
 
-  const handleAssign = () => {
-    if (!isAgentRuntimeBound(agent)) {
-      toast.error(t(($) => $.detail.runtime_required_toast));
-      return;
-    }
-    useModalStore
-      .getState()
-      .open("quick-create-issue", { agent_id: agent.id });
-  };
-
   return (
     <>
       <DropdownMenu>
@@ -172,7 +160,7 @@ export function AgentRowActions({
         />
         <DropdownMenuContent align="end" className="w-auto">
           {showAssign && (
-            <DropdownMenuItem onClick={handleAssign}>
+            <DropdownMenuItem onClick={() => assignWorkToAgent(agent)}>
               <Plus className="h-3.5 w-3.5" />
               {t(($) => $.detail.assign_work)}
             </DropdownMenuItem>

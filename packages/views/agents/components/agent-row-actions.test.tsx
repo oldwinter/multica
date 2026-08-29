@@ -2,7 +2,8 @@
 
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Agent } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enAgents from "../../locales/en/agents.json";
@@ -10,7 +11,7 @@ import enCommon from "../../locales/en/common.json";
 
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
-  modalOpen: vi.fn(),
+  openQuickCreateForAgent: vi.fn(),
   toastError: vi.fn(),
 }));
 
@@ -36,9 +37,7 @@ vi.mock("@multica/core/hooks", () => ({
 }));
 
 vi.mock("@multica/core/modals", () => ({
-  useModalStore: {
-    getState: () => ({ open: mocks.modalOpen }),
-  },
+  openQuickCreateForAgent: mocks.openQuickCreateForAgent,
 }));
 
 vi.mock("@multica/core/paths", () => ({
@@ -59,41 +58,14 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("../../navigation", () => ({
-  AppLink: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  AppLink: ({ children, href, ...props }: React.ComponentProps<"a">) => (
+    <a href={href} {...props}>{children}</a>
   ),
   useIntentNavigate: () => vi.fn(),
 }));
 
 vi.mock("./agent-mention-menu-item", () => ({
-  AgentMentionMenuItem: () => <button type="button">Copy mention</button>,
-}));
-
-vi.mock("@multica/ui/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  DropdownMenuTrigger: ({ render }: { render: React.ReactNode }) => <>{render}</>,
-  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuItem: ({
-    children,
-    onClick,
-    render,
-  }: {
-    children: React.ReactNode;
-    onClick?: () => void;
-    render?: React.ReactNode;
-  }) => render ?? <button type="button" onClick={onClick}>{children}</button>,
-  DropdownMenuSeparator: () => <hr />,
-}));
-
-vi.mock("@multica/ui/components/ui/alert-dialog", () => ({
-  AlertDialog: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  AlertDialogAction: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
-  AlertDialogCancel: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
-  AlertDialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  AlertDialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-  AlertDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  AlertDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  AlertDialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  AgentMentionMenuItem: () => null,
 }));
 
 import { AgentRowActions } from "./agent-row-actions";
@@ -148,41 +120,55 @@ beforeEach(() => {
 });
 
 describe("AgentRowActions assign work", () => {
-  it("opens quick create with the selected agent", () => {
+  it("opens quick create with the selected agent from the keyboard-accessible menu", async () => {
+    const user = userEvent.setup();
     renderActions();
 
-    fireEvent.click(screen.getByRole("button", { name: "Assign work" }));
+    const trigger = screen.getByRole("button", { name: "Row actions" });
+    trigger.focus();
+    await user.keyboard("{Enter}");
 
-    expect(mocks.modalOpen).toHaveBeenCalledWith("quick-create-issue", {
-      agent_id: "agent-1",
+    const assignItem = await screen.findByRole("menuitem", { name: "Assign work" });
+    expect(assignItem).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(mocks.openQuickCreateForAgent).toHaveBeenCalledWith({
+      agentId: "agent-1",
     });
     expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(trigger).toHaveFocus();
   });
 
-  it("explains when the agent needs a runtime", () => {
+  it("explains when the agent needs a runtime", async () => {
+    const user = userEvent.setup();
     renderActions({ ...AGENT, runtime_id: "" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Assign work" }));
+    await user.click(screen.getByRole("button", { name: "Row actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Assign work" }));
 
-    expect(mocks.modalOpen).not.toHaveBeenCalled();
+    expect(mocks.openQuickCreateForAgent).not.toHaveBeenCalled();
     expect(mocks.toastError).toHaveBeenCalledWith(
       "Bind a runtime before running this agent.",
     );
   });
 
-  it("hides the action without invocation permission", () => {
+  it("hides the action without invocation permission", async () => {
+    const user = userEvent.setup();
     renderActions(AGENT, false);
 
+    await user.click(screen.getByRole("button", { name: "Row actions" }));
     expect(
-      screen.queryByRole("button", { name: "Assign work" }),
+      screen.queryByRole("menuitem", { name: "Assign work" }),
     ).not.toBeInTheDocument();
   });
 
-  it("hides the action for archived agents", () => {
+  it("hides the action for archived agents", async () => {
+    const user = userEvent.setup();
     renderActions({ ...AGENT, archived_at: "2026-08-29T00:00:00Z" });
 
+    await user.click(screen.getByRole("button", { name: "Row actions" }));
     expect(
-      screen.queryByRole("button", { name: "Assign work" }),
+      screen.queryByRole("menuitem", { name: "Assign work" }),
     ).not.toBeInTheDocument();
   });
 });

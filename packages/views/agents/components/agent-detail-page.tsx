@@ -28,7 +28,6 @@ import {
 import { api, ApiError } from "@multica/core/api";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useModalStore } from "@multica/core/modals";
 import { useWorkspacePaths } from "@multica/core/paths";
 import {
   agentDetailOptions,
@@ -66,6 +65,7 @@ import { AgentOverviewPane, type DetailTab } from "./agent-overview-pane";
 import { ExpandableDescription } from "../../common/expandable-description";
 import { useT, useTimeAgo } from "../../i18n";
 import { AgentMentionMenuItem } from "./agent-mention-menu-item";
+import { useAssignWorkToAgent } from "./use-assign-work-to-agent";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -78,6 +78,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
   const navigation = useNavigation();
   const qc = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
+  const assignWorkToAgent = useAssignWorkToAgent();
 
   const {
     data: agents = [],
@@ -330,16 +331,6 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
       toast.error(t(($) => $.detail.runtime_required_toast));
     }
   };
-  const handleAssign = () => {
-    if (!runtimeBound) {
-      toast.error(t(($) => $.detail.runtime_required_toast));
-      return;
-    }
-    useModalStore
-      .getState()
-      .open("quick-create-issue", { agent_id: agent.id });
-  };
-
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       <DetailHeader
@@ -351,7 +342,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
         dmPending={permissionsLoading}
         dmHref={`${paths.chat()}?agent=${agent.id}`}
         onDm={handleDm}
-        onAssign={handleAssign}
+        onAssign={() => assignWorkToAgent(agent)}
         onArchive={
           agent.system_key ? undefined : () => setConfirmArchive(true)
         }
