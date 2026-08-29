@@ -7,6 +7,43 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-08-29 Skill Evolution Final-Fix Audit
+
+- Audited upstream tip: `64ec7f54163d918d5d7fd4dcae857f241b7842d0`.
+- Implementation base: `07d32c6b78c3ef9fb9edd1d5f24c9f1b6096917d`.
+- Audited implementation commit: `5af50d15e1e04c908e964b1f4c51be112271bd75`.
+- Audited implementation tree: `9fa37a8a23fbadb9f4d0ef22d10dc69059945406`.
+- Textual conflicts: 0. The audited upstream tip is an ancestor of the
+  implementation base, and the final-fix tree has no unmerged paths or
+  conflict markers.
+
+The migration audit preserved every published identity from 482 through 524.
+Follow-up migration 525 adds the durable exact-feedback marker, makes legacy
+attributions without dispatch proof ineligible, and moves the storage boolean
+from `enabled` to `is_enabled` while keeping the JSON DTO field `enabled`.
+Migration 525 creates no index; all existing indexes remain in their original
+single-statement concurrent migrations. Existing-514 and fresh ledgers both
+advanced through 525, crash-window replay succeeded, a second full `migrate
+up` was a no-op, and PostgreSQL reported no invalid indexes. The fresh ledger
+contained all 629 current identities and retained the published 482, 515, and
+524 entries unchanged.
+
+`sqlc` 1.31.1 was generated twice from the migration/query sources. Both runs
+produced the same generated-tree digest,
+`e07e756ee91489c36138467175bb9fd2c043c14793e369908d0200177c74de1c`.
+The path audit against the implementation base found changes only in the
+registered Skill Evolution/task-review leaves and the shared exceptions listed
+in `docs/downstream/skill-evolution/ownership.md`; the ownership and workspace
+deletion gates passed.
+
+The shared-transcript blocker is resolved in this tree. Task-review form,
+state, validation, query, and mutation composition now live under
+`packages/views/task-run-reviews/`. The shared transcript dialog exposes only
+an opaque slot, and the transcript button contains only the leaf import and
+slot registration. A source-based gate rejects task-review policy symbols in
+the dialog/button and rejects any unregistered shared view path, without using
+a brittle total-line-count threshold.
+
 ## 2026-08-28 v0.4.36 Sync
 
 - Downstream start: `d3d9359d3`.
