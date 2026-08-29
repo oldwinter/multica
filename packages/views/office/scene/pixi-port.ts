@@ -52,7 +52,9 @@ function regionFor(pack: OfficeWorldPack, entity: OfficeSceneEntity) {
 }
 
 function colorAt(pack: OfficeWorldPack, index: number) {
-  return pack.palette[index % pack.palette.length] ?? "#ffffff";
+  return (
+    pack.palette[index % pack.palette.length] ?? pack.lighting.light.ambient
+  );
 }
 
 type SignalColor =
@@ -217,7 +219,9 @@ export class PixiOfficeScenePort implements OfficeScenePort {
       autoDensity: true,
       autoStart: false,
       backgroundAlpha: 1,
-      backgroundColor: "#111519",
+      backgroundColor: getComputedStyle(
+        this.#host.parentElement ?? this.#host,
+      ).backgroundColor,
       height: Math.max(1, Math.round(bounds.height)),
       preference: ["webgl"],
       resolution: Math.min(window.devicePixelRatio || 1, 2),
