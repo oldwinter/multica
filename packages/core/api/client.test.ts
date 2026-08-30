@@ -178,8 +178,12 @@ describe("ApiClient Agent task snapshot boundary", () => {
       new ApiClient("https://api.example.test").getAgentTaskSnapshot(),
     ).resolves.toEqual([]);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("GET /api/agent-task-snapshot"),
-      expect.objectContaining({ received: null }),
+      "API response failed schema validation: GET /api/agent-task-snapshot",
+      expect.objectContaining({
+        endpoint: "GET /api/agent-task-snapshot",
+        issueCount: 1,
+        issues: [{ code: "invalid_type", path: [] }],
+      }),
     );
   });
 });
