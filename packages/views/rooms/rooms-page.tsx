@@ -451,11 +451,12 @@ function reportRoomFailure(fallback: string, error: Error | null, t: RoomsT): vo
   }
 }
 
-function roomMessageWasPersisted(error: unknown): boolean {
+export function roomMessageWasPersisted(error: unknown): boolean {
   switch (errorCode(error)) {
     case "room_paused":
     case "room_archived":
     case "budget_exhausted":
+    case "spend_limit_unsupported":
     case "active_cycle":
     case "agent_unavailable":
       return true;
