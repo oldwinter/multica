@@ -129,6 +129,7 @@ export function WikiPageView({
     () => projectOptions.map((project) => ({ value: project.id, label: project.title || project.id })),
     [projectOptions],
   );
+  const personalWikiPagePath = (id: string) => `${personalWikiPath.replace(/\/$/, "")}/${encodeURIComponent(id)}`;
   const groupedSearchResults = useMemo(() => {
     const groups: Record<WikiScope, WikiPageSummary[]> = { workspace: [], project: [], user: [] };
     for (const page of searchResults) groups[page.scope].push(page);
@@ -211,8 +212,8 @@ export function WikiPageView({
   };
 
   return (
-    <main className="pe-chat-launcher min-h-0 flex-1 overflow-hidden bg-page-canvas" data-testid="wiki-page">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
+    <main className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden" data-testid="wiki-page">
+      <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-caption text-muted-foreground">
@@ -285,7 +286,13 @@ export function WikiPageView({
             {normalizedSearch.length === 1 ? (
               <p className="px-1 py-4 text-body text-muted-foreground">{t(($) => $.search.minimum)}</p>
             ) : isSearching ? (
-              <WikiSearchResults groups={groupedSearchResults} isLoading={searchQuery.isPending} isError={searchQuery.isError} activePageId={pageId} onSelect={(id) => nav.push(paths.wikiPage(id))} />
+              <WikiSearchResults
+                groups={groupedSearchResults}
+                isLoading={searchQuery.isPending}
+                isError={searchQuery.isError}
+                activePageId={pageId}
+                onSelect={(page) => nav.push(page.scope === "user" ? personalWikiPagePath(page.id) : paths.wikiPage(page.id))}
+              />
             ) : listQuery.isLoading ? (
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.states.loading)}</p>
             ) : listQuery.isError ? (
@@ -297,7 +304,7 @@ export function WikiPageView({
                 <p className="text-body font-medium text-foreground">{t(($) => $.empty.title)}</p>
                 <p className="text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
               </div>
-            ) : <WikiPageList pages={pages} activePageId={pageId} onSelect={(id) => nav.push(paths.wikiPage(id))} />}
+            ) : <WikiPageList pages={pages} activePageId={pageId} onSelect={(page) => nav.push(paths.wikiPage(page.id))} />}
           </aside>
 
           <section className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
@@ -477,7 +484,7 @@ export function WikiPageView({
   );
 }
 
-function WikiSearchResults({ groups, isLoading, isError, activePageId, onSelect }: { groups: Record<WikiScope, WikiPageSummary[]>; isLoading: boolean; isError: boolean; activePageId?: string; onSelect: (id: string) => void }) {
+function WikiSearchResults({ groups, isLoading, isError, activePageId, onSelect }: { groups: Record<WikiScope, WikiPageSummary[]>; isLoading: boolean; isError: boolean; activePageId?: string; onSelect: (page: WikiPageSummary) => void }) {
   const { t } = useT("wiki");
   if (isLoading) return <p className="text-body text-muted-foreground" role="status">{t(($) => $.search.loading)}</p>;
   if (isError) return <p className="text-body text-destructive" role="alert">{t(($) => $.search.error)}</p>;

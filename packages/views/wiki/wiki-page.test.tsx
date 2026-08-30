@@ -149,9 +149,9 @@ describe("WikiPageView", () => {
       isPending: false,
       isError: false,
       data: [
-        { ...page, id: "workspace-page" },
-        { ...page, id: "project-page", scope: "project", projectId: "project-1" },
-        { ...page, id: "personal-page", workspaceId: null, scope: "user", ownerUserId: "member-1" },
+        { ...page, id: "workspace-page", title: "Workspace guide" },
+        { ...page, id: "project-page", title: "Project guide", scope: "project", projectId: "project-1" },
+        { ...page, id: "personal-page", title: "Personal guide", workspaceId: null, scope: "user", ownerUserId: "member-1" },
       ],
     };
     renderWiki();
@@ -159,8 +159,13 @@ describe("WikiPageView", () => {
     expect(screen.getByRole("heading", { name: "Workspace" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Project" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Personal" })).toBeInTheDocument();
-    fireEvent.click(screen.getAllByText("Guide")[1]!);
+
+    fireEvent.click(screen.getByText("Workspace guide"));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki/workspace-page");
+    fireEvent.click(screen.getByText("Project guide"));
     expect(harness.push).toHaveBeenCalledWith("/acme/wiki/project-page");
+    fireEvent.click(screen.getByText("Personal guide"));
+    expect(harness.push).toHaveBeenCalledWith("/personal-wiki/personal-page");
   });
 
   it("aligns a project deep link with its scope and project picker", async () => {
@@ -175,6 +180,33 @@ describe("WikiPageView", () => {
     fireEvent.click(screen.getByRole("button", { name: "New page" }));
     expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("keeps workspace Wiki creation disabled until the title and content are meaningful", () => {
+    renderWiki();
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    const create = screen.getByRole("button", { name: "Create" });
+    const title = screen.getByLabelText("Title");
+    const content = screen.getByLabelText("Content");
+
+    expect(create).toBeDisabled();
+    fireEvent.change(title, { target: { value: "  " } });
+    fireEvent.change(content, { target: { value: "A useful guide" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(title, { target: { value: "Guide" } });
+    expect(create).toBeEnabled();
+
+    fireEvent.change(content, { target: { value: " \n\t" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "# " } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "# Guide\n\nA useful guide" } });
+    expect(create).toBeEnabled();
+  });
+
+  it("lets the short mobile Wiki shell scroll to detail actions", () => {
+    renderWiki();
+    expect(screen.getByTestId("wiki-page")).toHaveClass("overflow-y-auto", "lg:overflow-hidden");
   });
 
   it("sends expectedRevisionNumber with direct edits", () => {
