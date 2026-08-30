@@ -11,7 +11,11 @@
     "error_title": "Review workspace unavailable",
     "error_description": "The latest lifecycle data could not be loaded.",
     "stale_title": "Showing the last known review workspace",
-    "stale_description": "The latest lifecycle data could not be refreshed. Existing history remains available; try again to check for updates."
+    "stale_description": "The latest lifecycle data could not be refreshed. Existing history remains available; try again to check for updates.",
+    "detail_error_title": "Selection unavailable",
+    "detail_error_description": "This selection could not be loaded. Try again.",
+    "detail_stale_title": "Showing the last known selection",
+    "detail_stale_description": "The latest selection could not be refreshed. Existing content remains visible."
   },
   "permissions": {
     "read_only": "Read-only access",

@@ -119,6 +119,35 @@ describe("TwinsPage", () => {
     await waitFor(() => expect(screen.queryByText("Showing the last known review workspace")).not.toBeInTheDocument());
   });
 
+  it("keeps detail failures local and retries the selected Wiki revision", async () => {
+    const fixture = lifecycleFixture();
+    let detailAttempts = 0;
+    const getWikiRevision = vi.spyOn(client, "getLMWikiRevision").mockImplementation(async () => {
+      detailAttempts += 1;
+      if (detailAttempts === 1) throw new Error("offline");
+      return fixture.wikiDetail;
+    });
+    vi.spyOn(client, "getLMWiki").mockResolvedValue(fixture.wiki);
+    vi.spyOn(client, "getTwins").mockResolvedValue(fixture.twin);
+    vi.spyOn(client, "getTwinOverview").mockResolvedValue({ twin: null });
+    vi.spyOn(client, "getTwinProposal").mockResolvedValue(fixture.proposalDetail);
+    vi.spyOn(client, "getTwinVersion").mockResolvedValue(fixture.versionDetail);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <I18nProvider locale="en" resources={resources}>
+        <WorkspaceSlugProvider slug="acme">
+          <QueryClientProvider client={queryClient}><TwinsPage /></QueryClientProvider>
+        </WorkspaceSlugProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("Selection unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't save the decision. Try again.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(getWikiRevision).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("heading", { name: "Revision r2" })).toBeInTheDocument();
+  });
+
   it("renders review-step states from the Twin Profile overview query", async () => {
     const fixture = lifecycleFixture();
     vi.spyOn(client, "getLMWiki").mockResolvedValue(fixture.wiki);

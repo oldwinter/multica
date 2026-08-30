@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, LoaderCircle, LockKeyhole } from "lucide-react";
+import { AlertTriangle, LoaderCircle, LockKeyhole, RefreshCw } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../../i18n";
+import type { TwinDetailState } from "./twin-workspace-types";
 
 export function WorkspaceState({ state, onRetry }: { state: "loading" | "error"; onRetry: () => void }) {
   const { t } = useT("twins");
@@ -26,6 +27,35 @@ export function WorkspaceState({ state, onRetry }: { state: "loading" | "error";
         {!loading ? <Button variant="outline" onClick={onRetry}>{t(($) => $.actions.try_again)}</Button> : null}
       </div>
     </section>
+  );
+}
+
+export function DetailStateNotice({ state, onRetry }: { state: TwinDetailState; onRetry: () => void }) {
+  const { t } = useT("twins");
+  if (state.kind !== "error" && state.kind !== "stale") return null;
+  const stale = state.kind === "stale";
+  return (
+    <div
+      className={stale
+        ? "flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3"
+        : "flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3"}
+      data-testid={`twin-detail-${state.kind}`}
+      role={stale ? "status" : "alert"}
+    >
+      <AlertTriangle className={stale ? "mt-0.5 size-4 shrink-0 text-warning" : "mt-0.5 size-4 shrink-0 text-destructive"} aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-label font-medium text-foreground">
+          {stale ? t(($) => $.states.detail_stale_title) : t(($) => $.states.detail_error_title)}
+        </p>
+        <p className="mt-1 text-body text-muted-foreground">
+          {stale ? t(($) => $.states.detail_stale_description) : t(($) => $.states.detail_error_description)}
+        </p>
+      </div>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RefreshCw data-icon="inline-start" aria-hidden="true" />
+        {t(($) => $.actions.try_again)}
+      </Button>
+    </div>
   );
 }
 

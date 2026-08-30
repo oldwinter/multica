@@ -16,7 +16,7 @@ function isWorkspaceTab(value: unknown): value is TwinWorkspaceTab {
   return value === "wiki" || value === "twin" || value === "use";
 }
 
-export type { TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
+export type { TwinDetailState, TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
 
 export function TwinWorkspaceView(props: TwinWorkspaceProps) {
   const { t } = useT("twins");

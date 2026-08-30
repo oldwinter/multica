@@ -11,7 +11,11 @@
     "error_title": "审阅工作台不可用",
     "error_description": "无法加载最新生命周期数据。",
     "stale_title": "正在显示上次获取的审阅工作台",
-    "stale_description": "无法刷新最新生命周期数据。现有历史仍可查看；请重试以检查更新。"
+    "stale_description": "无法刷新最新生命周期数据。现有历史仍可查看；请重试以检查更新。",
+    "detail_error_title": "所选内容不可用",
+    "detail_error_description": "无法加载所选内容，请重试。",
+    "detail_stale_title": "正在显示上次获取的所选内容",
+    "detail_stale_description": "无法刷新最新所选内容。现有内容仍会显示。"
   },
   "permissions": {
     "read_only": "只读访问",

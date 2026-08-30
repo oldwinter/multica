@@ -24,7 +24,7 @@ import {
   type LifecycleContent,
   type TwinOverview,
 } from "@multica/core/twins";
-import { TwinWorkspaceView, type TwinViewState } from "./components/twin-workspace-view";
+import { TwinWorkspaceView, type TwinDetailState, type TwinViewState } from "./components/twin-workspace-view";
 import { LMWikiSourcePolicyContainer } from "../wiki/lm-wiki-source-policy-container";
 import { useT } from "../i18n";
 
@@ -62,6 +62,13 @@ function isStaleConflict(error: unknown): boolean {
   return error instanceof ApiError && error.status === 409;
 }
 
+function detailQueryState(selectedId: string, query: { isPending: boolean; isError: boolean; data: unknown }): TwinDetailState {
+  if (!selectedId) return { kind: "none" };
+  if (query.isPending) return { kind: "loading" };
+  if (query.isError) return query.data === undefined ? { kind: "error" } : { kind: "stale" };
+  return { kind: "ready" };
+}
+
 export type { TwinViewState } from "./components/twin-workspace-view";
 export { TwinWorkspaceView } from "./components/twin-workspace-view";
 
@@ -85,6 +92,9 @@ export function TwinsPage() {
   const wikiDetailQuery = useQuery(wikiRevisionOptions(wsId, selectedRevisionId));
   const proposalDetailQuery = useQuery(twinProposalOptions(wsId, selectedProposalId));
   const versionDetailQuery = useQuery(twinVersionOptions(wsId, selectedVersionId));
+  const wikiDetailState = detailQueryState(selectedRevisionId, wikiDetailQuery);
+  const proposalDetailState = detailQueryState(selectedProposalId, proposalDetailQuery);
+  const versionDetailState = detailQueryState(selectedVersionId, versionDetailQuery);
 
   const wikiPermissions = useWikiTwinPermissions(wsId, wiki.can_manage === true);
   const twinPermissions = useWikiTwinPermissions(wsId, twin.can_manage === true);
@@ -128,12 +138,7 @@ export function TwinsPage() {
     || correctTwin.isPending
     || editDeposition.isPending;
   const actionError = messageFrom(
-    [
-      actionFailure?.error,
-      wikiDetailQuery.error,
-      proposalDetailQuery.error,
-      versionDetailQuery.error,
-    ],
+    [actionFailure?.error],
     t(($) => $.errors.request_timed_out),
     t(($) => $.errors.stale_review),
     t(($) => $.errors.request_failed),
@@ -146,9 +151,12 @@ export function TwinsPage() {
       overviewStale={overviewStale}
       wiki={wiki}
       wikiDetail={wikiDetailQuery.data ?? null}
+      wikiDetailState={wikiDetailState}
       twin={twin}
       proposalDetail={proposalDetailQuery.data ?? null}
+      proposalDetailState={proposalDetailState}
       versionDetail={versionDetailQuery.data ?? null}
+      versionDetailState={versionDetailState}
       reviewSteps={twinProfileQuery.data?.reviewSteps ?? []}
       selectedRevisionId={selectedRevisionId}
       selectedProposalId={selectedProposalId}
@@ -167,6 +175,9 @@ export function TwinsPage() {
       onSelectRevision={setRevisionId}
       onSelectProposal={setProposalId}
       onSelectVersion={setVersionId}
+      onRetryWikiDetail={() => { void wikiDetailQuery.refetch(); }}
+      onRetryProposalDetail={() => { void proposalDetailQuery.refetch(); }}
+      onRetryVersionDetail={() => { void versionDetailQuery.refetch(); }}
       onRefreshWiki={() => {
         const attempt = beginLifecycleAction();
         refreshWiki.mutate(undefined, {

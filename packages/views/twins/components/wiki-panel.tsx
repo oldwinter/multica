@@ -11,6 +11,7 @@ import { AssertionDiff, CitationList, ContentList } from "./lifecycle-detail";
 import { WikiRevisionSelector } from "./lifecycle-selectors";
 import { ReviewDialog } from "./review-dialog";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
+import { DetailStateNotice } from "./workspace-state";
 
 function reviewState(decision: string | undefined): "accepted" | "rejected" | "pending" {
   if (decision === "accepted") return "accepted";
@@ -63,6 +64,8 @@ export function WikiPanel(props: TwinWorkspaceProps) {
             : t(($) => $.wiki.first_run_member)}
         </p>
       )}
+
+      <DetailStateNotice state={props.wikiDetailState} onRetry={props.onRetryWikiDetail} />
 
       {revision ? (
         <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">

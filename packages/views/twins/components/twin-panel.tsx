@@ -14,6 +14,7 @@ import { ReviewDialog } from "./review-dialog";
 import { TwinReviewSpine } from "./twin-review-spine";
 import { TwinTopics } from "./twin-topics";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
+import { DetailStateNotice } from "./workspace-state";
 
 export function TwinPanel(props: TwinWorkspaceProps) {
   const { t } = useT("twins");
@@ -71,6 +72,8 @@ export function TwinPanel(props: TwinWorkspaceProps) {
         onVersionChange={props.onSelectVersion}
         disabled={props.detailLoading}
       />
+
+      <DetailStateNotice state={props.proposalDetailState} onRetry={props.onRetryProposalDetail} />
 
       {proposal ? (
         <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
@@ -136,14 +139,15 @@ export function TwinPanel(props: TwinWorkspaceProps) {
             </>
           ) : null}
         </section>
-      ) : (
+      ) : props.proposalDetailState.kind === "none" || props.proposalDetailState.kind === "ready" ? (
         <p className="text-body text-muted-foreground">
           {acceptedWikiId
             ? t(($) => $.twin.no_proposal)
             : t(($) => $.twin.awaiting_wiki)}
         </p>
-      )}
+      ) : null}
 
+      <DetailStateNotice state={props.versionDetailState} onRetry={props.onRetryVersionDetail} />
       {selectedVersion ? (
         <section className="space-y-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
           <div className="flex items-center gap-2">

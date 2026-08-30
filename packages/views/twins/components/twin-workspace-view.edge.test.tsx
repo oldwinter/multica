@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { SidebarProvider } from "@multica/ui/components/ui/sidebar";
@@ -135,5 +135,59 @@ describe("TwinWorkspaceView edge states", () => {
     expect(screen.getByRole("heading", { name: "Current Twin v2" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Version v2" })).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Historical version unavailable");
+  });
+
+  it("offers a local retry when the selected Wiki revision is unavailable", () => {
+    const onRetryWikiDetail = vi.fn();
+    renderView({
+      wikiDetail: null,
+      wikiDetailState: { kind: "error" },
+      onRetryWikiDetail,
+    });
+
+    expect(screen.getByTestId("twin-detail-error")).toHaveTextContent("Selection unavailable");
+    expect(screen.queryByText("Couldn't save the decision. Try again.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(onRetryWikiDetail).toHaveBeenCalledOnce();
+  });
+
+  it("offers local retries for unavailable Twin proposal and version details", () => {
+    const onRetryProposalDetail = vi.fn();
+    const onRetryVersionDetail = vi.fn();
+    renderView({
+      proposalDetail: null,
+      proposalDetailState: { kind: "error" },
+      versionDetail: null,
+      versionDetailState: { kind: "error" },
+      onRetryProposalDetail,
+      onRetryVersionDetail,
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    const detailErrors = screen.getAllByTestId("twin-detail-error");
+    expect(detailErrors).toHaveLength(2);
+    expect(screen.queryByText("No Twin proposal is available for the accepted Wiki revision.")).not.toBeInTheDocument();
+    for (const detailError of detailErrors) {
+      fireEvent.click(within(detailError).getByRole("button", { name: "Try again" }));
+    }
+
+    expect(onRetryProposalDetail).toHaveBeenCalledOnce();
+    expect(onRetryVersionDetail).toHaveBeenCalledOnce();
+  });
+
+  it("keeps cached Twin detail visible while offering a stale retry", () => {
+    const onRetryProposalDetail = vi.fn();
+    renderView({
+      proposalDetailState: { kind: "stale" },
+      onRetryProposalDetail,
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    expect(screen.getByText("Prefer explicit review decisions.")).toBeInTheDocument();
+    expect(screen.getByTestId("twin-detail-stale")).toHaveTextContent("Showing the last known selection");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(onRetryProposalDetail).toHaveBeenCalledOnce();
   });
 });
