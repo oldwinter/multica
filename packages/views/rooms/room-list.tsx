@@ -7,7 +7,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { cn } from "@multica/ui/lib/utils";
-import { useT, useTimeAgo } from "../i18n";
+import { useT, useTimeAgo, useTimeUntil } from "../i18n";
 import { roomStatusDotClass } from "./room-display";
 
 interface RoomListProps {
@@ -29,6 +29,7 @@ export function RoomList({
 }: RoomListProps) {
   const { t } = useT("rooms");
   const timeAgo = useTimeAgo();
+  const timeUntil = useTimeUntil();
   const [query, setQuery] = useState("");
   const filteredRooms = useMemo(() => filterRooms(rooms, query), [rooms, query]);
   const valueReviewRooms = useMemo(
@@ -92,6 +93,7 @@ export function RoomList({
               <li key={room.id}>
                 <button
                   type="button"
+                  aria-current={room.id === selectedId ? "true" : undefined}
                   className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => onSelect(room.id)}
                 >
@@ -143,6 +145,7 @@ export function RoomList({
                 <li key={room.id}>
                   <button
                     type="button"
+                    aria-current={room.id === selectedId ? "true" : undefined}
                     data-testid={`room-list-item-${room.id}`}
                     className={cn(
                       "w-full rounded-md px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
@@ -164,7 +167,7 @@ export function RoomList({
                         aria-label={t(($) => $.status[room.status])}
                       />
                     </span>
-                    <RoomValueLine room={room} timeAgo={timeAgo} />
+                    <RoomValueLine room={room} timeAgo={timeAgo} timeUntil={timeUntil} />
                   </button>
                 </li>
               );
@@ -179,9 +182,11 @@ export function RoomList({
 function RoomValueLine({
   room,
   timeAgo,
+  timeUntil,
 }: {
   readonly room: Room;
   readonly timeAgo: (value: string) => string;
+  readonly timeUntil: (value: string) => string;
 }) {
   const { t } = useT("rooms");
   const value = room.value;
@@ -189,6 +194,7 @@ function RoomValueLine({
     value?.last_run_phase === "failed" || value?.last_run_phase === "refused"
       ? value.last_run_phase
       : null;
+  const showNextScheduled = room.status === "active" && room.next_wake_at !== null;
 
   return (
     <span className="mt-1 block space-y-0.5 text-caption">
@@ -204,14 +210,14 @@ function RoomValueLine({
           {value?.last_run_at ? timeAgo(value.last_run_at) : timeAgo(room.updated_at)}
         </span>
       </span>
-      {value?.last_run_at || room.next_wake_at ? (
+      {value?.last_run_at || showNextScheduled ? (
         <span className="flex items-center justify-between gap-2 text-micro text-muted-foreground">
           <span>
             {t(($) => $.list.last_cost, { count: value?.last_run_cost_ticks ?? 0 })}
           </span>
-          {room.next_wake_at ? (
+          {showNextScheduled ? (
             <span className="truncate">
-              {t(($) => $.list.next_scheduled, { time: timeAgo(room.next_wake_at) })}
+              {t(($) => $.list.next_scheduled, { time: timeUntil(room.next_wake_at) })}
             </span>
           ) : null}
         </span>

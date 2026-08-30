@@ -40,7 +40,11 @@
     "just_now": "방금 전",
     "minutes_ago": "{{count}}분 전",
     "hours_ago": "{{count}}시간 전",
-    "days_ago": "{{count}}일 전"
+    "days_ago": "{{count}}일 전",
+    "soon": "곧",
+    "minutes_until": "{{count}}분 후",
+    "hours_until": "{{count}}시간 후",
+    "days_until": "{{count}}일 후"
   },
   "lark_bind": {
     "page_title": "Lark 계정 연결",

@@ -21,7 +21,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Progress } from "@multica/ui/components/ui/progress";
 import { cn } from "@multica/ui/lib/utils";
 import { useActorName } from "@multica/core/workspace/hooks";
-import { useT, useTimeAgo } from "../i18n";
+import { useT, useTimeAgo, useTimeUntil } from "../i18n";
 import { AppLink } from "../navigation";
 import { ActorAvatar } from "../common/actor-avatar";
 import { selectRecentRoomCycles } from "./room-controller";
@@ -50,7 +50,7 @@ export function RoomInspector({
 }: RoomInspectorProps) {
   const { t } = useT("rooms");
   const paths = useWorkspacePaths();
-  const timeAgo = useTimeAgo();
+  const timeUntil = useTimeUntil();
   const { getActorName } = useActorName();
   const usedTurns = countTodayTurns(detail, new Date());
   const dailyLimit = detail.room.daily_turn_limit;
@@ -119,8 +119,8 @@ export function RoomInspector({
           </div>
           {dailyLimit ? <Progress value={budgetPercent} aria-label={t(($) => $.detail.budget)} /> : null}
           <p className="text-caption text-muted-foreground">
-            {detail.room.next_wake_at
-              ? t(($) => $.detail.next_wake, { time: timeAgo(detail.room.next_wake_at) })
+            {detail.room.status === "active" && detail.room.next_wake_at
+              ? t(($) => $.detail.next_wake, { time: timeUntil(detail.room.next_wake_at) })
               : t(($) => $.detail.disabled)}
           </p>
         </div>
