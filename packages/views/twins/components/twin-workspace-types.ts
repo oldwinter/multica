@@ -14,6 +14,7 @@ export type TwinViewState = "ready" | "loading" | "error";
 export interface TwinWorkspaceProps {
   wsId: string;
   state: TwinViewState;
+  overviewStale: boolean;
   wiki: LMWikiOverview;
   wikiDetail: LMWikiDetail | null;
   twin: TwinOverview;

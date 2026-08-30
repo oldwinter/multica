@@ -29,6 +29,26 @@ export function WorkspaceState({ state, onRetry }: { state: "loading" | "error";
   );
 }
 
+export function WorkspaceStaleState({ onRetry }: { onRetry: () => void }) {
+  const { t } = useT("twins");
+  return (
+    <section
+      className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3"
+      role="alert"
+      data-testid="twin-overview-stale"
+    >
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <h2 className="text-label font-medium text-foreground">{t(($) => $.states.stale_title)}</h2>
+        <p className="mt-1 text-body text-muted-foreground">{t(($) => $.states.stale_description)}</p>
+      </div>
+      <Button variant="outline" onClick={onRetry}>
+        {t(($) => $.actions.try_again)}
+      </Button>
+    </section>
+  );
+}
+
 export function ReadOnlyNotice() {
   const { t } = useT("twins");
   return (

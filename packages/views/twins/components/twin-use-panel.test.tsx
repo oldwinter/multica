@@ -224,6 +224,21 @@ describe("TwinUsePanel", () => {
     expect(screen.queryByText("agent-1")).not.toBeInTheDocument();
   });
 
+  it("marks a compiled preview out of date when the run request changes", async () => {
+    renderPanel(qc);
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compile preview" }));
+
+    expect(await screen.findByText("Keep the review decision explicit.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth and document the result" } });
+
+    expect(screen.queryByText("Keep the review decision explicit.")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This preview is out of date. Compile it again to inspect the current inputs.",
+    );
+  });
+
   it("pauses every future scope only after confirmation and keeps history copy visible", async () => {
     const active = [{
       id: "binding-1",

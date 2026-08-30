@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { ApiClient, ApiError } from "@multica/core/api/client";
 import { setApiInstance } from "@multica/core/api";
-import type { LMWikiRevision } from "@multica/core/twins";
+import { wikiKeys, type LMWikiRevision } from "@multica/core/twins";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import enCommon from "../locales/en/common.json";
 import enTwins from "../locales/en/twins.json";
@@ -25,6 +25,9 @@ vi.mock("../navigation", () => ({
     <a href={href} {...props}>{children}</a>
   ),
   useNavigation: () => ({ push: vi.fn() }),
+}));
+vi.mock("./components/twin-activation-readiness", () => ({
+  TwinActivationReadiness: () => null,
 }));
 
 const resources = { en: { common: enCommon, twins: enTwins } };
@@ -80,6 +83,40 @@ describe("TwinsPage", () => {
     expect(refresh).not.toHaveBeenCalled();
     fireEvent.click(button);
     await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  });
+
+  it("keeps cached review data visible with a retryable stale state after a background refetch fails", async () => {
+    const fixture = lifecycleFixture();
+    let wikiAttempts = 0;
+    const getWiki = vi.spyOn(client, "getLMWiki").mockImplementation(async () => {
+      wikiAttempts += 1;
+      if (wikiAttempts === 2) throw new Error("offline");
+      return fixture.wiki;
+    });
+    vi.spyOn(client, "getTwins").mockResolvedValue(fixture.twin);
+    vi.spyOn(client, "getTwinOverview").mockResolvedValue({ twin: null });
+    vi.spyOn(client, "getLMWikiRevision").mockResolvedValue(fixture.wikiDetail);
+    vi.spyOn(client, "getTwinProposal").mockResolvedValue(fixture.proposalDetail);
+    vi.spyOn(client, "getTwinVersion").mockResolvedValue(fixture.versionDetail);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <I18nProvider locale="en" resources={resources}>
+        <WorkspaceSlugProvider slug="acme">
+          <QueryClientProvider client={queryClient}><TwinsPage /></QueryClientProvider>
+        </WorkspaceSlugProvider>
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Revision r2" })).toBeInTheDocument();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: wikiKeys.overview("workspace-1") });
+    });
+
+    expect(await screen.findByText("Showing the last known review workspace")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Revision r2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(getWiki).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.queryByText("Showing the last known review workspace")).not.toBeInTheDocument());
   });
 
   it("renders review-step states from the Twin Profile overview query", async () => {

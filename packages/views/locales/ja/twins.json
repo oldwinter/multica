@@ -9,7 +9,9 @@
     "loading": "LM Wiki と Twin を読み込み中",
     "loading_description": "最新のレビュー履歴を取得しています。",
     "error_title": "レビューワークスペースを利用できません",
-    "error_description": "最新のライフサイクルデータを読み込めませんでした。"
+    "error_description": "最新のライフサイクルデータを読み込めませんでした。",
+    "stale_title": "最後に確認したレビューワークスペースを表示中",
+    "stale_description": "最新のライフサイクルデータを更新できませんでした。既存の履歴は引き続き利用できます。更新を確認するには再試行してください。"
   },
   "permissions": {
     "read_only": "読み取り専用アクセス",
@@ -48,7 +50,7 @@
     "save_binding": "バインディングを保存", "saving_binding": "バインディングを保存中", "configured_title": "設定済みバインディング", "configured_empty": "明示的なバインディングはありません。Twin 実行は既定でオフです。", "delete_binding": "バインディングを削除",
     "preview_title": "Briefing プレビュー", "preview_description": "有効化する前に優先順位を解決し、正確な制限付き briefing をコンパイルします。", "agent_id": "エージェント ID", "project_id": "プロジェクト ID（任意）", "issue_id": "タスク ID（任意）", "run_id": "1 回限りの実行 ID（任意）", "request": "実行リクエスト", "request_placeholder": "この実行で行う作業を記述", "tags": "タグ（カンマ区切り）", "preview_action": "プレビューをコンパイル", "previewing": "プレビューをコンパイル中",
     "effective_policy": "有効なポリシー", "effective_source": "有効なソース", "no_effective_source": "明示的なバインディングなし", "exclusions": "除外理由", "exact_briefing": "正確な briefing", "empty_briefing": "このポリシーでは briefing のバイトを注入しません。", "compiler": "コンパイラー", "budget": "{{bytes}} バイト · {{tokens}} トークン",
-    "metrics_title": "実行フィードバック", "attributed_runs": "帰属済み実行", "helpfulness": "有用率", "feedback": "フィードバック", "depositions": "Deposition", "bindings": "バインディング", "feedback_summary": "合計 {{total}} · 役立った {{helped}}", "deposition_summary": "合計 {{total}} · 保留 {{pending}}", "not_available": "フィードバックがまだ不足しています", "mutation_failed": "ポリシー変更を保存できませんでした。再試行してください。", "preview_failed": "briefing プレビューをコンパイルできませんでした。選択したコンテキストを確認してください。",
+    "metrics_title": "実行フィードバック", "attributed_runs": "帰属済み実行", "helpfulness": "有用率", "feedback": "フィードバック", "depositions": "Deposition", "bindings": "バインディング", "feedback_summary": "合計 {{total}} · 役立った {{helped}}", "deposition_summary": "合計 {{total}} · 保留 {{pending}}", "not_available": "フィードバックがまだ不足しています", "mutation_failed": "ポリシー変更を保存できませんでした。再試行してください。", "preview_failed": "briefing プレビューをコンパイルできませんでした。選択したコンテキストを確認してください。", "preview_stale": "このプレビューは最新ではありません。現在の入力を確認するには、もう一度コンパイルしてください。",
     "activation_loading": "アクティベーション準備状況を読み込み中", "activation_unavailable": "アクティベーション準備状況を読み込めませんでした。", "activation_retry": "再試行", "next_action_title": "次の安全なアクション", "activation_ready": "準備完了", "activation_in_progress": "進行中", "activation_stages": "アクティベーション段階", "inspection_links": "アクティベーション証拠を確認", "inspect_evidence": "証拠履歴", "inspect_twin": "Twin 履歴", "inspect_execution": "実行エビデンス",
     "action_inspect_disabled": "停止中の実行を確認", "action_configure_source": "ソースを設定", "action_review_evidence": "エビデンスをレビュー", "action_refresh_evidence": "エビデンスを更新", "action_review_twin": "Twin をレビュー", "action_generate_twin": "Twin を構築", "action_compile_preview": "プレビューをコンパイル", "action_configure_binding": "バインディングを設定", "action_run_with_twin": "Twin で実行", "action_review_run": "実行をレビュー", "action_review_deposition": "Deposition をレビュー", "action_monitor_effectiveness": "効果を表示",
     "reason_inspect_disabled": "オペレーターが Twin 実行を無効化しました。履歴は引き続き確認できます。", "reason_configure_source": "エビデンスに使用できるワークスペースソースを選択します。", "reason_review_evidence": "生成されたエビデンスリビジョンが人によるレビューを待っています。", "reason_refresh_evidence": "設定済みソースからレビュー可能なエビデンスを生成します。", "reason_review_twin": "Twin 提案が明示的な承認を待っています。", "reason_generate_twin": "最新の承認済みエビデンスから提案を構築します。", "reason_compile_preview": "有効化前に実際の実行コンテキストで署名済み Twin をコンパイルします。", "reason_configure_binding": "プレビュー済み Twin を使用できる範囲を選択します。", "reason_run_with_twin": "設定したポリシーで明示的に帰属する実行を完了します。", "reason_review_run": "Twin コンテキストが有用、無関係、不一致のいずれかを記録します。", "reason_review_deposition": "将来の Twin に反映する前に保留中の実行エビデンスをレビューします。", "reason_monitor_effectiveness": "ガイド付きループが完了しました。継続前に定義済みコホートを比較します。",

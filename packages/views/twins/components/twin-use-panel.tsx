@@ -10,7 +10,7 @@ import {
   twinActivationReadinessOptions, twinBindingsOptions, twinExecutionMetricsOptions,
   useDeleteTwinBinding, usePauseTwinExecution, usePreviewTwinBriefing, useUpsertTwinBinding,
   type TwinBinding, type TwinBindingScope, type TwinBindingState, type TwinEffectivenessCohort,
-  type TwinEffectivenessMetrics, type TwinMaintenanceItem, type TwinVersion,
+  type TwinBriefingPreviewInput, type TwinEffectivenessMetrics, type TwinMaintenanceItem, type TwinVersion,
 } from "@multica/core/twins";
 import { Alert, AlertDescription, AlertTitle } from "@multica/ui/components/ui/alert";
 import { Badge } from "@multica/ui/components/ui/badge";
@@ -30,6 +30,27 @@ import type { TwinWorkspaceTab } from "./twin-activation-readiness";
 
 const LONG_LIVED_SCOPES: readonly TwinBindingScope[] = ["workspace", "agent", "project", "issue"];
 const BINDING_STATES: readonly TwinBindingState[] = ["off", "preview", "enabled"];
+
+type PreviewKeyInput = {
+  workspaceId: string;
+  scopeType: TwinBindingScope;
+  scopeAgentId: string;
+  scopeProjectId: string;
+  scopeIssueId: string;
+  state: TwinBindingState;
+  versionId: string;
+  currentVersionId: string;
+  agentId: string;
+  projectId: string;
+  issueId: string;
+  runId: string;
+  request: string;
+  tags: string;
+};
+
+function previewKey(input: PreviewKeyInput): string {
+  return JSON.stringify(input);
+}
 
 function metric(value: number): string { return new Intl.NumberFormat().format(value); }
 function percentage(value: number): string {
@@ -66,6 +87,23 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
   const [request, setRequest] = useState("");
   const [tags, setTags] = useState("");
   const [confirmPause, setConfirmPause] = useState(false);
+  const currentPreviewKey = previewKey({
+    workspaceId: wsId,
+    scopeType,
+    scopeAgentId: scopeAgent?.id ?? "",
+    scopeProjectId: scopeProject?.id ?? "",
+    scopeIssueId: scopeIssue?.id ?? "",
+    state,
+    versionId,
+    currentVersionId,
+    agentId: previewAgent?.id ?? "",
+    projectId: previewProject?.id ?? "",
+    issueId: previewIssue?.id ?? "",
+    runId,
+    request,
+    tags,
+  });
+  const [submittedPreviewKey, setSubmittedPreviewKey] = useState<string | null>(null);
 
   const bindings = useMemo(() => bindingsQuery.data?.bindings ?? [], [bindingsQuery.data?.bindings]);
   const issueBindingIds = useMemo(
@@ -105,7 +143,11 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
   const loading = bindingsQuery.isPending || metricsQuery.isPending || activationQuery.isPending;
   const failed = (bindingsQuery.isError && !bindingsQuery.data) || (metricsQuery.isError && !metricsQuery.data) || (activationQuery.isError && !activationQuery.data);
   const mutationError = upsertBinding.isError || deleteBinding.isError || pauseExecution.isError;
-  const preview = previewBriefing.data;
+  const previewIsCurrent = submittedPreviewKey === currentPreviewKey
+    && previewBriefing.isSuccess
+    && !previewBriefing.isPending;
+  const preview = previewIsCurrent ? previewBriefing.data : undefined;
+  const previewIsOutOfDate = Boolean(previewBriefing.data) && submittedPreviewKey !== currentPreviewKey;
   const entityLabel = (binding: TwinBinding): string => {
     if (binding.scopeType === "workspace") return t(($) => $.use.workspace_default);
     if (binding.scopeType === "agent") return agentsById.get(binding.scopeId) ?? `${t(($) => $.use.unavailable_agent)} (${binding.scopeId})`;
@@ -144,8 +186,20 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
         <div className="grid gap-3 md:grid-cols-2"><SelectorField label={t(($) => $.use.agent)}><TwinAgentSelector wsId={wsId} value={previewAgent} onChange={setPreviewAgent} ariaLabel={t(($) => $.use.agent)} /></SelectorField><SelectorField label={t(($) => $.use.project_optional)}><TwinProjectSelector wsId={wsId} value={previewProject} optional onChange={(project) => { setPreviewProject(project); if (previewIssue && project?.id !== previewIssue.project_id) setPreviewIssue(null); }} ariaLabel={t(($) => $.use.project_optional)} /></SelectorField><SelectorField label={t(($) => $.use.issue_optional)}><TwinIssueSelector wsId={wsId} value={previewIssue} optional onChange={(issue) => { setPreviewIssue(issue); if (issue?.project_id) { const project = (projectsQuery.data ?? []).find((candidate) => candidate.id === issue.project_id); if (project) setPreviewProject({ id: project.id, title: project.title, status: project.status, icon: project.icon }); } }} ariaLabel={t(($) => $.use.issue_optional)} /></SelectorField></div>
         <label className="grid gap-2 text-label font-medium">{t(($) => $.use.request)}<Textarea value={request} maxLength={4000} rows={3} placeholder={t(($) => $.use.request_placeholder)} onChange={(event) => setRequest(event.target.value)} /></label>
         <details className="group text-body"><summary className="cursor-pointer text-label font-medium text-muted-foreground">{t(($) => $.use.advanced_context)}</summary><div className="mt-3 grid gap-3 md:grid-cols-2"><LabeledInput label={t(($) => $.use.run_id)} value={runId} onChange={setRunId} /><LabeledInput label={t(($) => $.use.tags)} value={tags} onChange={setTags} /></div></details>
-        {previewBriefing.isError ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_failed)}</p> : null}
-        <Button variant="outline" disabled={!previewAgent || !request.trim() || previewBriefing.isPending} onClick={() => previewAgent && previewBriefing.mutate({ agentId: previewAgent.id, projectId: previewProject?.id, issueId: previewIssue?.id, runId: runId.trim() || undefined, request: request.trim(), tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean) })}><Braces data-icon="inline-start" />{previewBriefing.isPending ? t(($) => $.use.previewing) : t(($) => $.use.preview_action)}</Button>
+        {previewBriefing.isError ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_failed)}</p> : previewIsOutOfDate ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_stale)}</p> : null}
+        <Button variant="outline" disabled={!previewAgent || !request.trim() || previewBriefing.isPending} onClick={() => {
+          if (!previewAgent) return;
+          const input: TwinBriefingPreviewInput = {
+            agentId: previewAgent.id,
+            projectId: previewProject?.id,
+            issueId: previewIssue?.id,
+            runId: runId.trim() || undefined,
+            request: request.trim(),
+            tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+          };
+          setSubmittedPreviewKey(currentPreviewKey);
+          previewBriefing.mutate(input);
+        }}><Braces data-icon="inline-start" />{previewBriefing.isPending ? t(($) => $.use.previewing) : t(($) => $.use.preview_action)}</Button>
         {preview ? <div className="space-y-4 rounded-lg bg-muted/35 p-4" aria-live="polite"><div className="flex flex-wrap items-center gap-2"><Badge variant={preview.policy.state === "enabled" ? "default" : "secondary"}>{stateLabel(preview.policy.state)}</Badge><span className="text-body text-muted-foreground">{t(($) => $.use.effective_source)}:</span><span className="truncate text-body text-foreground">{previewSourceLabel(preview.policy.scopeType, preview.policy.scopeId, { workspace: t(($) => $.use.workspace_default), agent: previewAgent, project: previewProject, issue: previewIssue, unavailable: t(($) => $.use.unavailable_target), none: t(($) => $.use.no_effective_source) })}</span></div><dl className="grid gap-3 text-caption sm:grid-cols-2"><div><dt className="text-muted-foreground">{t(($) => $.use.compiler)}</dt><dd className="break-all font-mono text-foreground">{preview.compilerVersion || "-"}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.use.version)}</dt><dd className="text-foreground">{preview.twinVersion ? `v${preview.twinVersion.versionNumber}` : "-"}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.use.effective_policy)}</dt><dd className="text-foreground">{preview.policy.reason}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.use.exclusions)}</dt><dd className="break-words text-foreground">{[...preview.exclusionReasons, ...preview.policy.exclusions.map((item) => item.code)].join(", ") || "-"}</dd></div></dl><div className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-label font-medium">{t(($) => $.use.exact_briefing)}</span><span className="text-caption text-muted-foreground">{t(($) => $.use.budget, { bytes: preview.byteCount, tokens: preview.tokenCount })}</span></div>{preview.briefing ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 font-mono text-caption text-foreground">{preview.briefing}</pre> : <p className="text-body text-muted-foreground">{t(($) => $.use.empty_briefing)}</p>}</div></div> : null}
       </section>
 

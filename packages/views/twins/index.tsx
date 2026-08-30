@@ -113,9 +113,16 @@ export function TwinsPage() {
 
   const overviewLoading = wikiQuery.isPending || twinQuery.isPending || twinProfileQuery.isPending
     || wikiPermissions.isLoading || twinPermissions.isLoading;
+  const overviewMissing = (wikiQuery.isError && wikiQuery.data === undefined)
+    || (twinQuery.isError && twinQuery.data === undefined)
+    || (twinProfileQuery.isError && twinProfileQuery.data === undefined);
+  const overviewStale = !overviewMissing
+    && ((wikiQuery.isError && wikiQuery.data !== undefined)
+      || (twinQuery.isError && twinQuery.data !== undefined)
+      || (twinProfileQuery.isError && twinProfileQuery.data !== undefined));
   const state: TwinViewState = overviewLoading
     ? "loading"
-    : wikiQuery.isError || twinQuery.isError || twinProfileQuery.isError ? "error" : "ready";
+    : overviewMissing ? "error" : "ready";
   const wikiMutationPending = refreshWiki.isPending || acceptWiki.isPending || rejectWiki.isPending;
   const twinMutationPending = ensureTwin.isPending || acceptTwin.isPending || rejectTwin.isPending
     || correctTwin.isPending
@@ -136,6 +143,7 @@ export function TwinsPage() {
     <TwinWorkspaceView
       wsId={wsId}
       state={state}
+      overviewStale={overviewStale}
       wiki={wiki}
       wikiDetail={wikiDetailQuery.data ?? null}
       twin={twin}

@@ -10,7 +10,7 @@ import { TwinActivationReadiness, type TwinWorkspaceTab } from "./twin-activatio
 import { TwinUsePanel } from "./twin-use-panel";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import { WikiPanel } from "./wiki-panel";
-import { ReadOnlyNotice, WorkspaceState } from "./workspace-state";
+import { ReadOnlyNotice, WorkspaceStaleState, WorkspaceState } from "./workspace-state";
 
 function isWorkspaceTab(value: unknown): value is TwinWorkspaceTab {
   return value === "wiki" || value === "twin" || value === "use";
@@ -41,6 +41,7 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
 
         {props.actionError ? <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-body text-destructive">{props.actionError}</div> : null}
         {!props.canManageWiki || !props.canManageTwin ? <ReadOnlyNotice /> : null}
+        {props.state === "ready" && props.overviewStale ? <WorkspaceStaleState onRetry={props.onRetry} /> : null}
 
         {props.state === "ready" ? (
           <>
