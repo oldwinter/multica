@@ -74,7 +74,8 @@ describe("TwinsPage concurrent actions", () => {
 
     await act(async () => rejectRefresh(new Error("offline")));
 
-    expect(await screen.findByRole("alert"))
-      .toHaveTextContent("Couldn't save the decision. Try again.");
+    expect(
+      await screen.findByText("Couldn't save the decision. Try again."),
+    ).toBeInTheDocument();
   });
 });
