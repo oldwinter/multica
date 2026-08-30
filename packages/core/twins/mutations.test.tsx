@@ -15,6 +15,7 @@ import {
   useRejectTwinProposal,
 } from "./mutations";
 import { twinKeys, twinProfileKeys, wikiKeys } from "./queries";
+import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
 
 const WORKSPACE_A = "workspace-a";
 const WORKSPACE_B = "workspace-b";
@@ -91,9 +92,11 @@ describe("Wiki and Twin mutations", () => {
 
     const keys = invalidateQueries.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toContainEqual(wikiKeys.all(WORKSPACE_A));
+    expect(keys).toContainEqual(workspaceWikiKeys.all(WORKSPACE_A));
     expect(keys).toContainEqual(twinKeys.all(WORKSPACE_A));
     expect(keys).toContainEqual(twinProfileKeys.all(WORKSPACE_A));
     expect(keys).not.toContainEqual(wikiKeys.all(WORKSPACE_B));
+    expect(keys).not.toContainEqual(workspaceWikiKeys.all(WORKSPACE_B));
     expect(keys).not.toContainEqual(twinKeys.all(WORKSPACE_B));
     expect(keys).not.toContainEqual(twinProfileKeys.all(WORKSPACE_B));
     expect(setQueryData).not.toHaveBeenCalled();
@@ -113,6 +116,7 @@ describe("Wiki and Twin mutations", () => {
     });
 
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: wikiKeys.all(WORKSPACE_A) });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceWikiKeys.all(WORKSPACE_A) });
     expect(setQueryData).not.toHaveBeenCalled();
   });
 
@@ -131,7 +135,7 @@ describe("Wiki and Twin mutations", () => {
     const mutation = result.current.mutateAsync("revision-1").then(() => {
       settled = true;
     });
-    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(3));
     expect(settled).toBe(false);
     releaseInvalidation();
     await act(async () => mutation);

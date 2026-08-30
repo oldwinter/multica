@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
 import { twinKeys, twinProfileKeys, wikiKeys } from "./queries";
 import type { LifecycleContent } from "./types";
 
@@ -41,6 +42,7 @@ export function useRefreshLMWiki(wsId: string) {
     mutationFn: () => withLifecycleWriteTimeout((signal) => api.refreshLMWiki(signal)),
     onSettled: () => settleLifecycleQueries([
       queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+      queryClient.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) }),
     ]),
   });
 }
@@ -53,6 +55,7 @@ export function useAcceptLMWikiRevision(wsId: string) {
     ),
     onSettled: () => settleLifecycleQueries([
       queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+      queryClient.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) }),
       queryClient.invalidateQueries({ queryKey: twinKeys.all(wsId) }),
     ]),
   });
@@ -66,6 +69,7 @@ export function useRejectLMWikiRevision(wsId: string) {
     ),
     onSettled: () => settleLifecycleQueries([
       queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+      queryClient.invalidateQueries({ queryKey: workspaceWikiKeys.all(wsId) }),
     ]),
   });
 }
