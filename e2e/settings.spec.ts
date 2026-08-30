@@ -62,10 +62,10 @@ test.describe("Settings", () => {
         await page.context().setOffline(true);
         await page.getByRole("radio", { name: /Field/ }).click();
         await expect(page.locator("html")).toHaveAttribute("data-skin", "field");
-        await expect(page.getByText("Sync failed")).toBeVisible();
+        await expect(page.getByText("Applied here and waiting to sync")).toBeVisible();
 
         // The second device writes later, so its server tuple must win when the
-        // first device reconnects. The offline local choice remains visible
+        // first device reconnects. The offline local choice remains pending
         // until that reconciliation completes.
         await secondPage.waitForTimeout(20);
         await secondPage.getByRole("radio", { name: /Tension/ }).click();
