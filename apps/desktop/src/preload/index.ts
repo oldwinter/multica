@@ -167,6 +167,7 @@ const desktopAPI = {
     slug: string;
     itemId: string;
     issueKey: string;
+		targetPath?: string;
     title: string;
     body: string;
   }) => ipcRenderer.send("notification:show", payload),
@@ -187,6 +188,7 @@ const desktopAPI = {
       slug: string;
       itemId: string;
       issueKey: string;
+			targetPath?: string;
     }) => void,
   ) => subscribeToMainRendererChannel("inbox:open", callback),
   /** Listen for native macOS back/forward swipe gestures. */

@@ -14,6 +14,9 @@ vi.mock("../navigation", () => ({
     <a href={href} {...props}>{children}</a>
   ),
 }));
+vi.mock("./components/twin-activation-readiness", () => ({
+  TwinActivationReadiness: () => null,
+}));
 
 describe("Twin review profile integration", () => {
   it("does not synthesize a review spine without persisted profile steps", () => {

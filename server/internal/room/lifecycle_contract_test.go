@@ -271,6 +271,81 @@ func TestPreflightFailsClosedForCapabilitiesAndReservesV2Synthesis(t *testing.T)
 	}
 }
 
+func TestRunAgainUsesFreshCapabilityPreflight(t *testing.T) {
+	fixture := newServiceFixture(t)
+	ctx := context.Background()
+	created := createSingleOutcomeRoom(t, fixture, "Fresh preflight Room", 0)
+	first, err := fixture.service.Wake(ctx, WakeInput{
+		WorkspaceID: fixture.workspaceID, RoomID: created.Room.ID,
+		ActorUserID: fixture.userID, Source: "manual", WakeKey: "manual:first-run",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Cycle.Status != "queued" || len(first.Tasks) != 1 {
+		t.Fatalf("first run = %+v", first)
+	}
+	clearActiveCycle(t, fixture, created.Room.ID, first.Cycle.ID)
+
+	if _, err := fixture.pool.Exec(ctx, `UPDATE agent_runtime SET metadata = '{}'::jsonb WHERE workspace_id = $1`, fixture.workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	currentPreflight, err := fixture.service.Preflight(
+		ctx,
+		roomTestPreflightInput(fixture, created.Room.ID, "manual"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if currentPreflight.Allowed || currentPreflight.RefusalReason != "agent_unavailable" || currentPreflight.CapabilityReady {
+		t.Fatalf("current run-again preflight = %+v", currentPreflight)
+	}
+	blocked, err := fixture.service.Wake(ctx, WakeInput{
+		WorkspaceID: fixture.workspaceID, RoomID: created.Room.ID,
+		ActorUserID: fixture.userID, Source: "manual", WakeKey: "manual:run-again-blocked",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked.Cycle.Status != "refused" || blocked.Cycle.RefusalReason.String != "no_targets" || len(blocked.Tasks) != 0 {
+		t.Fatalf("run again reused stale readiness: %+v", blocked)
+	}
+	var activeBlocked int
+	if err := fixture.pool.QueryRow(ctx, `
+		SELECT count(*) FROM inbox_item
+		WHERE workspace_id = $1 AND room_id = $2
+		  AND type = 'room_cycle_blocked' AND archived = false
+	`, fixture.workspaceID, created.Room.ID).Scan(&activeBlocked); err != nil {
+		t.Fatal(err)
+	}
+	if activeBlocked != 1 {
+		t.Fatalf("active blocked attention = %d, want 1", activeBlocked)
+	}
+
+	setRoomOutcomeRuntimeReady(t, fixture)
+	ready, err := fixture.service.Wake(ctx, WakeInput{
+		WorkspaceID: fixture.workspaceID, RoomID: created.Room.ID,
+		ActorUserID: fixture.userID, Source: "manual", WakeKey: "manual:run-again-ready",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ready.Cycle.Status != "queued" || ready.Cycle.Sequence != 3 || len(ready.Tasks) != 1 {
+		t.Fatalf("fresh run again = %+v", ready)
+	}
+	var activeSuperseded int
+	if err := fixture.pool.QueryRow(ctx, `
+		SELECT count(*) FROM inbox_item
+		WHERE workspace_id = $1 AND room_id = $2
+		  AND type IN ('room_cycle_blocked', 'room_cycle_failed') AND archived = false
+	`, fixture.workspaceID, created.Room.ID).Scan(&activeSuperseded); err != nil {
+		t.Fatal(err)
+	}
+	if activeSuperseded != 0 {
+		t.Fatalf("superseded run attention still active = %d", activeSuperseded)
+	}
+}
+
 func TestPreflightAndUsageEnforceCostAndUncostedBudgets(t *testing.T) {
 	t.Run("cost limit fails closed without execution capability", func(t *testing.T) {
 		fixture := newServiceFixture(t)
@@ -373,6 +448,77 @@ func TestPreflightAndUsageEnforceCostAndUncostedBudgets(t *testing.T) {
 			t.Fatalf("uncosted budget preflight = %+v", preflight)
 		}
 	})
+}
+
+func TestRoomValueSignalsTrackOutcomeReuseReviewPromotionAndCost(t *testing.T) {
+	fixture := setupPendingOutcome(t)
+	ctx := context.Background()
+	accepted, err := fixture.service.Review(ctx, ReviewInput{
+		WorkspaceID: fixture.workspaceID, RoomID: fixture.detail.Room.ID,
+		CycleID: fixture.detail.Cycles[0].ID, ActorUserID: fixture.userID,
+		Action: "accept", ExpectedMemoryVersion: fixture.detail.Room.MemoryVersion,
+		IdempotencyKey: "value:accept",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.MemoryRevision.ReviewStatus != "accepted" {
+		t.Fatalf("accepted revision = %+v", accepted.MemoryRevision)
+	}
+	if promoted, err := fixture.service.Promote(ctx, recommendationPromotion(fixture, "value:promote")); err != nil || !promoted.Created {
+		t.Fatalf("promote accepted recommendation = %+v, %v", promoted, err)
+	}
+
+	participantTask := latestTaskForKind(t, fixture.serviceFixture, fixture.detail.Room.ID, "participant")
+	if err := db.New(fixture.pool).UpsertTaskUsage(ctx, db.UpsertTaskUsageParams{
+		TaskID: participantTask.ID, Provider: "test", Model: "value",
+		InputTokens: 10, OutputTokens: 5,
+		CostUsdTicks: pgtype.Int8{Int64: 100, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `UPDATE room SET daily_turn_limit = 1 WHERE id = $1`, fixture.detail.Room.ID); err != nil {
+		t.Fatal(err)
+	}
+	refused, err := fixture.service.Wake(ctx, WakeInput{
+		WorkspaceID: fixture.workspaceID, RoomID: fixture.detail.Room.ID,
+		ActorUserID: fixture.userID, Source: "manual", WakeKey: "value:repeat-refused",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refused.Cycle.Status != "refused" || refused.Cycle.RefusalReason.String != "budget_exhausted" {
+		t.Fatalf("repeat refusal = %+v", refused.Cycle)
+	}
+
+	signals, err := fixture.service.ListValueSignals(ctx, fixture.workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(signals) != 1 {
+		t.Fatalf("value signals = %+v", signals)
+	}
+	signal := signals[0]
+	if signal.RoomID != fixture.detail.Room.ID || signal.LastAcceptedRevisionID != accepted.MemoryRevision.ID ||
+		signal.LastRunStatus != "refused" || signal.LastRunReason.String != "budget_exhausted" ||
+		signal.RepeatRunCount != 1 || signal.AcceptedOutcomes != 1 || signal.ActiveWeeks != 1 ||
+		signal.AcceptedOutcomesPerActiveWeek != 1 || signal.PromotionRate != 1 ||
+		signal.FailedCycles != 0 || signal.RefusedCycles != 1 ||
+		!signal.LastAcceptedAt.Valid || !signal.LastRunAt.Valid || signal.MedianReviewLatencySeconds < 0 {
+		t.Fatalf("Room value signal = %+v", signal)
+	}
+
+	usage, err := fixture.service.Usage(ctx, fixture.workspaceID, fixture.detail.Room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.AcceptedSyntheses != 1 || usage.PromotedArtifacts != 1 ||
+		usage.RepeatRunCount != 1 || usage.ActiveWeeks != 1 || usage.RefusedCycles != 1 ||
+		usage.AcceptedOutcomesPerActiveWeek != 1 || usage.PromotionRate != 1 ||
+		usage.CostTicks != 100 || usage.CostTicksPerAcceptedOutcome != 100 ||
+		usage.MedianReviewLatencySeconds < 0 {
+		t.Fatalf("Room usage value summary = %+v", usage)
+	}
 }
 
 func TestSingleParticipantDirectSynthesisAndMalformedFallback(t *testing.T) {

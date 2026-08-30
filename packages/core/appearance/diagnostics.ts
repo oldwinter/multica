@@ -49,3 +49,9 @@ export function createAppearanceDiagnostics(
     recoveredFields: context.recoveredFields ?? [],
   };
 }
+
+export function serializeAppearanceDiagnostics(
+  snapshot: AppearanceDiagnosticsSnapshot,
+): string {
+  return JSON.stringify(snapshot, null, 2);
+}

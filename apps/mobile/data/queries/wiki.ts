@@ -29,6 +29,8 @@ export const wikiKeys = {
     [...wikiKeys.detail(wsId, id), "revisions"] as const,
   proposals: (wsId: string | null, id: string) =>
     [...wikiKeys.detail(wsId, id), "proposals"] as const,
+  readiness: (wsId: string | null) =>
+    [...wikiKeys.all(wsId), "knowledge-readiness"] as const,
 };
 
 export const wikiPageListOptions = (
@@ -64,6 +66,13 @@ export const wikiPageDetailOptions = (wsId: string | null, id: string) =>
     queryKey: wikiKeys.detail(wsId, id),
     queryFn: ({ signal }) => api.getWikiPage(id, { signal }),
     enabled: !!wsId && !!id,
+  });
+
+export const wikiKnowledgeReadinessOptions = (wsId: string | null) =>
+  queryOptions({
+    queryKey: wikiKeys.readiness(wsId),
+    queryFn: ({ signal }) => api.getWikiKnowledgeReadiness({ signal }),
+    enabled: !!wsId,
   });
 
 export const wikiPageRevisionsOptions = (wsId: string | null, id: string) =>

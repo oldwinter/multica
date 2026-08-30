@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  twinActivationReadinessOptions,
   twinBindingsOptions,
   twinExecutionKeys,
   twinExecutionMetricsOptions,
@@ -12,6 +13,9 @@ describe("Twin execution query keys", () => {
   it("isolates every server-state surface by workspace", () => {
     expect(twinBindingsOptions("workspace-a").queryKey).toEqual([
       "workspaces", "workspace-a", "twin-execution", "bindings",
+    ]);
+    expect(twinActivationReadinessOptions("workspace-a").queryKey).toEqual([
+      "workspaces", "workspace-a", "twin-execution", "activation",
     ]);
     expect(twinExecutionMetricsOptions("workspace-b").queryKey).toEqual([
       "workspaces", "workspace-b", "twin-execution", "metrics",

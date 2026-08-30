@@ -1,3 +1,4 @@
+import { configStore } from "../config";
 import type {
   Issue,
   IssuePriority,
@@ -205,8 +206,8 @@ import type {
   CreateBillingCheckoutSessionResponse,
   BillingCheckoutSessionStatus,
   CreateBillingPortalSessionResponse,
-  WorkspaceSubscriptionEntitlements,
   WorkspaceSubscriptionSummary,
+  IssueLimitUsage,
   WorkspaceSubscriptionPrices,
   CreateWorkspaceSubscriptionCheckoutRequest,
   CreateWorkspaceSubscriptionCheckoutResponse,
@@ -216,6 +217,10 @@ import type {
   PurchaseWorkspaceSeatsRequest,
   PurchaseWorkspaceSeatsResponse,
   CreateWorkspaceSubscriptionPortalResponse,
+  SourceContextPreview,
+  CreateCommentSubIssueManualRequest,
+  CreateCommentSubIssueAgentRequest,
+  CreateCommentSubIssueRequest,
 } from "../types";
 import type { TwinOverviewResponse } from "../twins";
 import type {
@@ -224,6 +229,7 @@ import type {
   CreateWikiProposalInput,
   AcceptWikiProposalInput,
   LMWikiSourcePolicy,
+  PinWikiRevisionAsLMWikiEvidenceInput,
   ListWikiPagesParams,
   RejectWikiProposalInput,
   SearchWikiPagesParams,
@@ -234,6 +240,7 @@ import type {
   WikiPageSummary,
   WikiProposal,
   WikiRevision,
+  WikiKnowledgeReadiness,
 } from "../wiki";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import type {
@@ -254,6 +261,7 @@ import type {
 } from "../twins/types";
 import type {
   CreateTwinDepositionInput,
+  TwinActivationReadiness,
   TwinBinding,
   TwinBindingsResponse,
   TwinBriefingPreview,
@@ -266,10 +274,12 @@ import type {
   UpsertTwinBindingInput,
 } from "../twins/execution-types";
 import {
+  EMPTY_TWIN_ACTIVATION_READINESS,
   EMPTY_TWIN_BINDINGS_RESPONSE,
   EMPTY_TWIN_BRIEFING_PREVIEW,
   EMPTY_TWIN_DEPOSITION_RESPONSE,
   EMPTY_TWIN_EXECUTION_METRICS,
+  TwinActivationReadinessSchema,
   TwinBindingWireSchema,
   TwinBindingsResponseSchema,
   TwinBriefingPreviewSchema,
@@ -277,6 +287,7 @@ import {
   TwinExecutionMetricsSchema,
   TwinFeedbackResponseSchema,
   TwinTaskContextWireSchema,
+  TwinPauseResponseSchema,
 } from "../twins/execution-schemas";
 import type {
   CloudRuntimeNode,
@@ -306,6 +317,40 @@ import type {
   UpdateRoomBudgetInput,
   WakeRoomInput,
 } from "../rooms/types";
+import type {
+  ConfigureSkillEvolutionInput,
+  DecideSkillEvolutionProposalInput,
+  ForkSkillForEvolutionInput,
+  SkillEvolutionIdempotencyInput,
+  SkillEvolutionLoop,
+  SkillEvolutionOverview,
+  SkillEvolutionProposalDetail,
+  SkillEvolutionProposalRequest,
+  SkillEvolutionProposalSummary,
+  SkillEvolutionPublication,
+  SkillEvolutionSkillIdentity,
+} from "../skill-evolution/types";
+import {
+  EMPTY_SKILL_EVOLUTION_IDENTITY,
+  EMPTY_SKILL_EVOLUTION_LOOP,
+  EMPTY_SKILL_EVOLUTION_OVERVIEW,
+  EMPTY_SKILL_EVOLUTION_PROPOSAL_DETAIL,
+  EMPTY_SKILL_EVOLUTION_PROPOSAL_REQUEST,
+  EMPTY_SKILL_EVOLUTION_PROPOSAL_SUMMARY,
+  EMPTY_SKILL_EVOLUTION_PUBLICATION,
+  SkillEvolutionLoopSchema,
+  SkillEvolutionOverviewSchema,
+  SkillEvolutionProposalDetailSchema,
+  SkillEvolutionProposalRequestSchema,
+  SkillEvolutionProposalSummarySchema,
+  SkillEvolutionPublicationSchema,
+  SkillEvolutionSkillIdentitySchema,
+} from "../skill-evolution/schemas";
+import type {
+  CreateTaskRunReviewInput,
+  TaskRunReview,
+} from "../task-run-reviews/types";
+import { TaskRunReviewSchema } from "../task-run-reviews/schemas";
 import { type Logger, noopLogger } from "../logger";
 import { createRequestId, createSafeId } from "../utils";
 import { getCurrentSlug } from "../platform/workspace-storage";
@@ -349,7 +394,9 @@ import {
   WikiRevisionListSchema,
   WikiRevisionSchema,
   EMPTY_LM_WIKI_SOURCE_POLICY,
+  EMPTY_WIKI_KNOWLEDGE_READINESS,
   LMWikiSourcePolicySchema,
+  WikiKnowledgeReadinessSchema,
 } from "../wiki/schemas";
 import {
   AgentTaskListSchema,
@@ -359,6 +406,8 @@ import {
   ChatMessageListSchema,
   ChatMessagesPageSchema,
   ChatPendingTaskSchema,
+  ChatSessionListSchema,
+  ChatSessionSchema,
   PrioritizeQueuedChatTaskResponseSchema,
   SendChatMessageResponseSchema,
   StartMikaOnboardingResponseSchema,
@@ -384,6 +433,8 @@ import {
   EMPTY_ATTACHMENT,
   EMPTY_CHAT_MESSAGE_LIST,
   EMPTY_CHAT_PENDING_TASK,
+  EMPTY_CHAT_SESSION,
+  EMPTY_CHAT_SESSION_LIST,
   EMPTY_PRIORITIZE_QUEUED_CHAT_TASK_RESPONSE,
   EMPTY_CLOUD_RUNTIME_NODE,
   EMPTY_CLOUD_RUNTIME_NODE_LIST,
@@ -419,6 +470,9 @@ import {
   ListIssuesResponseSchema,
   CreateIssueResponseSchema,
   IssueSchema,
+  AgentTaskSchema,
+  SourceContextPreviewSchema,
+  CommentSubIssueTaskResponseSchema,
   ListWebhookDeliveriesResponseSchema,
   RuntimeHourlyActivityListSchema,
   RuntimeUsageByAgentListSchema,
@@ -442,8 +496,8 @@ import {
   CreateBillingCheckoutSessionResponseSchema,
   BillingCheckoutSessionStatusSchema,
   CreateBillingPortalSessionResponseSchema,
-  WorkspaceSubscriptionEntitlementsSchema,
   WorkspaceSubscriptionSummarySchema,
+  IssueLimitUsageSchema,
   WorkspaceSubscriptionPricesSchema,
   CreateWorkspaceSubscriptionCheckoutResponseSchema,
   WorkspaceSubscriptionSeatReconcileResultSchema,
@@ -533,6 +587,8 @@ import {
   TwinVersionResultSchema,
   SkillSchema,
   EMPTY_SKILL,
+  SkillImportResultSchema,
+  EMPTY_SKILL_IMPORT_RESULT,
   IssueViewSchema,
   IssueViewListSchema,
   IssueViewPreferenceSchema,
@@ -623,6 +679,19 @@ export class ApiError extends Error {
   }
 }
 
+function assertAgentConversationStartersWriteSupported(data: {
+  conversation_starters?: unknown;
+}): void {
+  if (
+    Object.prototype.hasOwnProperty.call(data, "conversation_starters") &&
+    !configStore.getState().agentConversationStartersSupported
+  ) {
+    throw new Error(
+      "This server version does not support agent conversation starters. Update the server before saving them.",
+    );
+  }
+}
+
 // errorCode extracts the stable `code` a handler attaches to a failure
 // (writeErrorCode), so a caller can render its own localized sentence instead
 // of toasting the server's English one. Returns undefined for a non-ApiError,
@@ -684,6 +753,37 @@ export class PreviewUnsupportedError extends Error {
     super("attachment type not supported for inline preview");
     this.name = "PreviewUnsupportedError";
   }
+}
+
+function remapSkillImportError(err: unknown): unknown {
+  if (!(err instanceof ApiError) || !err.body || typeof err.body !== "object") {
+    return err;
+  }
+  const body = err.body as { reason?: unknown; error?: unknown };
+  const reason = typeof body.reason === "string" && body.reason ? body.reason : "";
+  const error = typeof body.error === "string" && body.error ? body.error : "";
+  const message = reason || error;
+  if (!message || message === err.message) return err;
+  return new ApiError(message, err.status, err.statusText, err.body);
+}
+
+function skillFromImportResult(raw: unknown, endpoint: string): Skill {
+  const result = parseWithFallback(
+    raw,
+    SkillImportResultSchema,
+    EMPTY_SKILL_IMPORT_RESULT,
+    { endpoint },
+  );
+  if (
+    (result.status === "created" || result.status === "updated") &&
+    result.skill
+  ) {
+    const skill = parseWithFallback(result.skill, SkillSchema, EMPTY_SKILL, {
+      endpoint,
+    });
+    if (skill.id) return skill;
+  }
+  throw new Error(result.reason || "Import failed");
 }
 
 /**
@@ -937,7 +1037,12 @@ export class ApiClient {
   }
 
   async updateMe(data: UpdateMeRequest): Promise<User> {
-    const { appearanceUpdatedAt, appearanceTokenVersion, ...fields } = data;
+    const {
+      appearanceUpdatedAt,
+      appearanceTokenVersion,
+      appearanceExpectedUpdatedAt,
+      ...fields
+    } = data;
     const raw = await this.fetch<unknown>("/api/me", {
       method: "PATCH",
       body: JSON.stringify({
@@ -948,6 +1053,9 @@ export class ApiClient {
         ...(appearanceTokenVersion === undefined
           ? {}
           : { appearance_token_version: appearanceTokenVersion }),
+        ...(appearanceExpectedUpdatedAt === undefined
+          ? {}
+          : { appearance_expected_updated_at: appearanceExpectedUpdatedAt }),
       }),
     });
     return parseWithFallback(raw, UserSchema, EMPTY_USER, {
@@ -1200,6 +1308,63 @@ export class ApiClient {
     });
   }
 
+  async getCommentSubIssuePreview(anchorCommentId: string): Promise<SourceContextPreview> {
+    const raw = await this.fetch<unknown>(`/api/comments/${anchorCommentId}/sub-issue-preview`);
+    const preview = parseWithFallback<SourceContextPreview | null>(
+      raw,
+      SourceContextPreviewSchema,
+      null,
+      { endpoint: "GET /api/comments/:id/sub-issue-preview" },
+    );
+    if (!preview) throw new Error("Invalid source context preview response");
+    return preview;
+  }
+
+  async createCommentSubIssue(
+    anchorCommentId: string,
+    data: CreateCommentSubIssueManualRequest,
+  ): Promise<Issue>;
+  async createCommentSubIssue(
+    anchorCommentId: string,
+    data: CreateCommentSubIssueAgentRequest,
+  ): Promise<{ task_id: string }>;
+  async createCommentSubIssue(
+    anchorCommentId: string,
+    data: CreateCommentSubIssueRequest,
+  ): Promise<Issue | { task_id: string }> {
+    try {
+      const raw = await this.fetch<unknown>(`/api/comments/${anchorCommentId}/sub-issues`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (data.mode === "manual") {
+        const issue = parseWithFallback<Issue | null>(raw, CreateIssueResponseSchema, null, {
+          endpoint: "POST /api/comments/:id/sub-issues (manual)",
+        });
+        if (!issue) throw new Error("Invalid sub-issue response");
+        return issue;
+      }
+      const task = parseWithFallback<{ task_id: string } | null>(
+        raw,
+        CommentSubIssueTaskResponseSchema,
+        null,
+        { endpoint: "POST /api/comments/:id/sub-issues (agent)" },
+      );
+      if (!task) throw new Error("Invalid quick-create response");
+      return task;
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+        throw new ApiError(
+          "Source-context sub-issues require a newer server",
+          error.status,
+          error.statusText,
+          { code: "source_context_server_unsupported" },
+        );
+      }
+      throw error;
+    }
+  }
+
   async createFeedback(data: {
     message: string;
     url?: string;
@@ -1258,19 +1423,26 @@ export class ApiClient {
   }
 
   async getChildIssueProgress(): Promise<{
-    progress: {
-      parent_issue_id: string;
-      total: number;
-      done: number;
-      visible_total?: number;
-      visible_done?: number;
-      hidden_total?: number;
-    }[];
+    progress: { parent_issue_id: string; total: number; done: number }[];
   }> {
     const raw = await this.fetch<unknown>("/api/issues/child-progress");
-    return parseWithFallback(raw, ChildIssueProgressResponseSchema, { progress: [] }, {
-      endpoint: "GET /api/issues/child-progress",
-    });
+    return parseWithFallback(
+      raw,
+      ChildIssueProgressResponseSchema,
+      { progress: [] },
+      { endpoint: "GET /api/issues/child-progress" },
+    );
+  }
+
+  async getIssueLimitUsage(): Promise<IssueLimitUsage | null> {
+    const raw = await this.fetch<unknown>("/api/issues/limit-usage");
+    if (raw == null) return null;
+    return parseWithFallback<IssueLimitUsage | null>(
+      raw,
+      IssueLimitUsageSchema,
+      null,
+      { endpoint: "GET /api/issues/limit-usage" },
+    );
   }
 
   async deleteIssue(id: string): Promise<void> {
@@ -1484,6 +1656,7 @@ export class ApiClient {
   }
 
   async createAgent(data: CreateAgentRequest): Promise<Agent> {
+    assertAgentConversationStartersWriteSupported(data);
     return this.fetch("/api/agents", {
       method: "POST",
       body: JSON.stringify(data),
@@ -1599,6 +1772,7 @@ export class ApiClient {
   }
 
   async updateAgent(id: string, data: UpdateAgentRequest): Promise<Agent> {
+    assertAgentConversationStartersWriteSupported(data);
     return this.fetch(`/api/agents/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -1845,18 +2019,6 @@ export class ApiClient {
   //   - a 2xx body that does not match the contract returns null here.
   // ---------------------------------------------------------------------
 
-  async getWorkspaceSubscriptionEntitlements(): Promise<WorkspaceSubscriptionEntitlements | null> {
-    const raw = await this.fetch<unknown>(
-      "/api/cloud-subscriptions/entitlements",
-    );
-    return parseWithFallback<WorkspaceSubscriptionEntitlements | null>(
-      raw,
-      WorkspaceSubscriptionEntitlementsSchema,
-      null,
-      { endpoint: "GET /api/cloud-subscriptions/entitlements" },
-    );
-  }
-
   async getWorkspaceSubscriptionSummary(): Promise<WorkspaceSubscriptionSummary | null> {
     const raw = await this.fetch<unknown>("/api/cloud-subscriptions/summary");
     return parseWithFallback<WorkspaceSubscriptionSummary | null>(
@@ -1887,9 +2049,6 @@ export class ApiClient {
         body: JSON.stringify({
           interval: data.interval,
           idempotency_key: data.idempotencyKey,
-          ...(data.customerEmail
-            ? { customer_email: data.customerEmail }
-            : {}),
         }),
         extraHeaders: {
           "Content-Type": "application/json",
@@ -2425,6 +2584,34 @@ export class ApiClient {
     return this.fetch(`/api/tasks/${taskId}/messages`);
   }
 
+  async createTaskRunReview(
+    taskId: string,
+    input: CreateTaskRunReviewInput,
+  ): Promise<TaskRunReview> {
+    const raw = await this.fetch<unknown>(
+      `/api/tasks/${encodeURIComponent(taskId)}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          outcome: input.outcome,
+          target: input.target,
+          ...(input.skillId ? { skill_id: input.skillId } : {}),
+          ...(input.correction ? { correction: input.correction } : {}),
+          reason: input.reason,
+          idempotency_key: input.idempotencyKey,
+        }),
+      },
+    );
+    const review = parseWithFallback<TaskRunReview | null>(
+      raw,
+      TaskRunReviewSchema,
+      null,
+      { endpoint: "POST /api/tasks/{taskId}/review" },
+    );
+    if (!review) throw new Error("Invalid task run review response");
+    return review;
+  }
+
   async listTasksByIssue(issueId: string): Promise<AgentTask[]> {
     const raw = await this.fetch<unknown>(`/api/issues/${issueId}/task-runs`);
     return parseWithFallback<AgentTask[]>(raw, AgentTaskListSchema, [], {
@@ -2449,9 +2636,23 @@ export class ApiClient {
     });
   }
 
+  async retrySourceContextQuickCreate(taskId: string): Promise<AgentTask> {
+    const raw = await this.fetch<unknown>(`/api/tasks/${taskId}/retry-source-context`, {
+      method: "POST",
+    });
+    const task = parseWithFallback<AgentTask | null>(raw, AgentTaskSchema, null, {
+      endpoint: "POST /api/tasks/:id/retry-source-context",
+    });
+    if (!task) throw new Error("Invalid source-context retry response");
+    return task;
+  }
+
   // Inbox
   async listInbox(): Promise<InboxItem[]> {
-    return this.fetch("/api/inbox");
+    const raw = await this.fetch<unknown>("/api/inbox");
+    return parseWithFallback(raw, InboxItemListSchema, EMPTY_INBOX_ITEMS, {
+      endpoint: "GET /api/inbox",
+    });
   }
 
   async markInboxRead(id: string): Promise<InboxItem> {
@@ -3052,11 +3253,204 @@ export class ApiClient {
     await this.fetch(`/api/skills/${id}`, { method: "DELETE" });
   }
 
+  async getSkillEvolutionOverview(
+    skillId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SkillEvolutionOverview> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}`,
+      { signal: options?.signal },
+    );
+    return parseWithFallback(raw, SkillEvolutionOverviewSchema, EMPTY_SKILL_EVOLUTION_OVERVIEW, {
+      endpoint: "GET /api/skill-evolution/skills/:skillId",
+    });
+  }
+
+  async configureSkillEvolution(
+    skillId: string,
+    input: ConfigureSkillEvolutionInput,
+  ): Promise<SkillEvolutionLoop> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/loop`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: input.enabled,
+          mode: input.mode,
+          cooldown_seconds: input.cooldownSeconds,
+          minimum_signals: input.minimumSignals,
+          max_evidence_refs: input.maxEvidenceRefs,
+          max_replay_samples: input.maxReplaySamples,
+          max_cost_usd_ticks: input.maxCostUsdTicks,
+          policy_version: input.policyVersion,
+        }),
+      },
+    );
+    return parseWithFallback(raw, SkillEvolutionLoopSchema, EMPTY_SKILL_EVOLUTION_LOOP, {
+      endpoint: "PUT /api/skill-evolution/skills/:skillId/loop",
+    });
+  }
+
+  async pauseSkillEvolution(
+    skillId: string,
+    input: SkillEvolutionIdempotencyInput,
+  ): Promise<SkillEvolutionLoop> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/pause`,
+      { method: "POST", body: JSON.stringify({ idempotency_key: input.idempotencyKey }) },
+    );
+    return parseWithFallback(raw, SkillEvolutionLoopSchema, EMPTY_SKILL_EVOLUTION_LOOP, {
+      endpoint: "POST /api/skill-evolution/skills/:skillId/pause",
+    });
+  }
+
+  async requestSkillEvolutionProposal(
+    skillId: string,
+    input: SkillEvolutionIdempotencyInput,
+  ): Promise<SkillEvolutionProposalRequest> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/proposals`,
+      { method: "POST", body: JSON.stringify({ idempotency_key: input.idempotencyKey }) },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionProposalRequestSchema,
+      EMPTY_SKILL_EVOLUTION_PROPOSAL_REQUEST,
+      { endpoint: "POST /api/skill-evolution/skills/:skillId/proposals" },
+    );
+  }
+
+  async getSkillEvolutionProposal(
+    proposalId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SkillEvolutionProposalDetail> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/proposals/${encodeURIComponent(proposalId)}`,
+      { signal: options?.signal },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionProposalDetailSchema,
+      EMPTY_SKILL_EVOLUTION_PROPOSAL_DETAIL,
+      { endpoint: "GET /api/skill-evolution/proposals/:proposalId" },
+    );
+  }
+
+  async rejectSkillEvolutionProposal(
+    proposalId: string,
+    input: DecideSkillEvolutionProposalInput,
+  ): Promise<SkillEvolutionProposalSummary> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/proposals/${encodeURIComponent(proposalId)}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+          idempotency_key: input.idempotencyKey,
+        }),
+      },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionProposalSummarySchema,
+      EMPTY_SKILL_EVOLUTION_PROPOSAL_SUMMARY,
+      { endpoint: "POST /api/skill-evolution/proposals/:proposalId/reject" },
+    );
+  }
+
+  async publishSkillEvolutionProposal(
+    proposalId: string,
+    input: DecideSkillEvolutionProposalInput,
+  ): Promise<SkillEvolutionPublication> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/proposals/${encodeURIComponent(proposalId)}/publish`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+          idempotency_key: input.idempotencyKey,
+        }),
+      },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionPublicationSchema,
+      EMPTY_SKILL_EVOLUTION_PUBLICATION,
+      { endpoint: "POST /api/skill-evolution/proposals/:proposalId/publish" },
+    );
+  }
+
+  async rollbackSkillEvolutionRelease(
+    skillId: string,
+    releaseId: string,
+    input: SkillEvolutionIdempotencyInput,
+  ): Promise<SkillEvolutionPublication> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(skillId)}/releases/${encodeURIComponent(releaseId)}/rollback`,
+      { method: "POST", body: JSON.stringify({ idempotency_key: input.idempotencyKey }) },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionPublicationSchema,
+      EMPTY_SKILL_EVOLUTION_PUBLICATION,
+      { endpoint: "POST /api/skill-evolution/skills/:skillId/releases/:releaseId/rollback" },
+    );
+  }
+
+  async forkSkillForEvolution(
+    sourceSkillId: string,
+    input: ForkSkillForEvolutionInput,
+  ): Promise<SkillEvolutionSkillIdentity> {
+    const raw = await this.fetch<unknown>(
+      `/api/skill-evolution/skills/${encodeURIComponent(sourceSkillId)}/fork`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: input.name, idempotency_key: input.idempotencyKey }),
+      },
+    );
+    return parseWithFallback(
+      raw,
+      SkillEvolutionSkillIdentitySchema,
+      EMPTY_SKILL_EVOLUTION_IDENTITY,
+      { endpoint: "POST /api/skill-evolution/skills/:skillId/fork" },
+    );
+  }
+
   async importSkill(data: { url: string }): Promise<Skill> {
     return this.fetch("/api/skills/import", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  /**
+   * Imports a skill from a local .skill / .zip archive. Not routed through
+   * `this.fetch`: the browser has to set the multipart boundary itself.
+   *
+   * The archive path always returns a structured `{ status, skill, reason }`
+   * body. Created/updated responses yield the skill; anything else throws
+   * with the server's reason (or `error`) so the dialog can show it.
+   */
+  async importSkillArchive(
+    file: File,
+    onConflict?: "fail" | "overwrite" | "rename" | "skip",
+  ): Promise<Skill> {
+    const formData = new FormData();
+    formData.append("file", file, file.name || "skill.zip");
+    if (onConflict) formData.append("on_conflict", onConflict);
+
+    let res: Response;
+    try {
+      res = await this.fetchRaw("/api/skills/import", {
+        method: "POST",
+        body: formData,
+      });
+    } catch (err) {
+      throw remapSkillImportError(err);
+    }
+
+    const raw = (await res.json()) as unknown;
+    return skillFromImportResult(raw, "POST /api/skills/import");
   }
 
   // Re-downloads the skill from its stored config.origin source, replacing
@@ -3179,13 +3573,19 @@ export class ApiClient {
     workspaceSlug?: string,
   ): Promise<ChatSession[]> {
     const query = params?.status ? `?status=${params.status}` : "";
-    return this.fetch(`/api/chat/sessions${query}`, {
+    const raw: unknown = await this.fetch(`/api/chat/sessions${query}`, {
       headers: workspaceHeader(workspaceSlug),
+    });
+    return parseWithFallback(raw, ChatSessionListSchema, EMPTY_CHAT_SESSION_LIST, {
+      endpoint: "GET /api/chat/sessions",
     });
   }
 
   async getChatSession(id: string): Promise<ChatSession> {
-    return this.fetch(`/api/chat/sessions/${id}`);
+    const raw: unknown = await this.fetch(`/api/chat/sessions/${id}`);
+    return parseWithFallback(raw, ChatSessionSchema, EMPTY_CHAT_SESSION, {
+      endpoint: "GET /api/chat/sessions/:id",
+    });
   }
 
   async createChatSession(
@@ -3662,6 +4062,8 @@ export class ApiClient {
       rationale: data.rationale ?? "",
       evidenceRefs: data.evidenceRefs ?? [],
       agentId: data.agentId,
+      sourceKind: "agent",
+      sourceRefId: null,
       idempotencyKey: data.idempotencyKey,
       status: "unknown",
       reviewedById: null,
@@ -3708,7 +4110,9 @@ export class ApiClient {
       contentDigest: "",
       rationale: "",
       evidenceRefs: [],
-      agentId: "",
+      agentId: null,
+      sourceKind: "unknown",
+      sourceRefId: null,
       idempotencyKey: "",
       status: "unknown",
       reviewedById: null,
@@ -3726,6 +4130,16 @@ export class ApiClient {
     });
   }
 
+  async getWikiKnowledgeReadiness(): Promise<WikiKnowledgeReadiness> {
+    const raw = await this.fetch<unknown>("/api/wiki/knowledge-readiness");
+    return parseWithFallback(
+      raw,
+      WikiKnowledgeReadinessSchema,
+      EMPTY_WIKI_KNOWLEDGE_READINESS,
+      { endpoint: "GET /api/wiki/knowledge-readiness" },
+    );
+  }
+
   async updateLMWikiSourcePolicy(data: UpdateLMWikiSourcePolicyInput): Promise<LMWikiSourcePolicy> {
     const raw = await this.fetch<unknown>("/api/lm-wiki/source-policy", {
       method: "PUT",
@@ -3736,10 +4150,30 @@ export class ApiClient {
           revision_number: page.revisionNumber,
         })),
         remote_generation_enabled: data.remoteGenerationEnabled,
+        expected_policy_version: data.expectedPolicyVersion,
+        expected_policy_digest: data.expectedPolicyDigest,
       }),
     });
     return parseWithFallback(raw, LMWikiSourcePolicySchema, EMPTY_LM_WIKI_SOURCE_POLICY, {
       endpoint: "PUT /api/lm-wiki/source-policy",
+    });
+  }
+
+  async pinWikiRevisionAsLMWikiEvidence(
+    data: PinWikiRevisionAsLMWikiEvidenceInput,
+  ): Promise<LMWikiSourcePolicy> {
+    const raw = await this.fetch<unknown>(
+      `/api/lm-wiki/source-policy/wiki-pages/${encodeURIComponent(data.pageId)}/revisions/${encodeURIComponent(data.revisionId)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          expected_policy_version: data.expectedPolicyVersion,
+          expected_policy_digest: data.expectedPolicyDigest,
+        }),
+      },
+    );
+    return parseWithFallback(raw, LMWikiSourcePolicySchema, EMPTY_LM_WIKI_SOURCE_POLICY, {
+      endpoint: "PUT /api/lm-wiki/source-policy/wiki-pages/:pageId/revisions/:revisionId",
     });
   }
 
@@ -4662,6 +5096,13 @@ export class ApiClient {
     });
   }
 
+  async getTwinActivationReadiness(): Promise<TwinActivationReadiness> {
+    const raw = await this.fetch<unknown>("/api/twins/activation");
+    return parseWithFallback(raw, TwinActivationReadinessSchema, EMPTY_TWIN_ACTIVATION_READINESS, {
+      endpoint: "GET /api/twins/activation",
+    });
+  }
+
   async upsertTwinBinding(input: UpsertTwinBindingInput): Promise<TwinBinding | null> {
     const raw = await this.fetch<unknown>("/api/twins/bindings", {
       method: "POST",
@@ -4679,6 +5120,13 @@ export class ApiClient {
 
   async deleteTwinBinding(bindingId: string): Promise<void> {
     await this.fetch(`/api/twins/bindings/${bindingId}`, { method: "DELETE" });
+  }
+
+  async pauseTwinExecution(): Promise<TwinBinding | null> {
+    const raw = await this.fetch<unknown>("/api/twins/pause", { method: "POST" });
+    return parseWithFallback(raw, TwinPauseResponseSchema, null, {
+      endpoint: "POST /api/twins/pause",
+    });
   }
 
   async previewTwinBriefing(input: TwinBriefingPreviewInput): Promise<TwinBriefingPreview> {
@@ -4807,7 +5255,9 @@ export class ApiClient {
         action: "off",
         used: null,
         reserved: null,
+        total: null,
         limit: null,
+        reached: null,
         period_start: null,
         period_end: null,
         reset_at: null,

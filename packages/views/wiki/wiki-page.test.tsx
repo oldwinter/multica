@@ -17,6 +17,7 @@ const harness = vi.hoisted(() => ({
   revisions: { isPending: false, isError: false, data: [] as unknown[], refetch: vi.fn() },
   proposals: { isPending: false, isError: false, data: [] as unknown[], refetch: vi.fn() },
   search: { isPending: false, isError: false, data: [] as unknown[] },
+  readiness: { isPending: false, isError: false, data: undefined as unknown, refetch: vi.fn() },
   projects: { isLoading: false, data: [{ id: "project-1", title: "Roadmap" }] },
   push: vi.fn(),
   create: { mutate: vi.fn(), isPending: false },
@@ -25,6 +26,7 @@ const harness = vi.hoisted(() => ({
   restore: { mutate: vi.fn(), isPending: false },
   accept: { mutate: vi.fn(), isPending: false },
   reject: { mutate: vi.fn(), isPending: false },
+  pin: { mutate: vi.fn(), isPending: false, isError: false },
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
@@ -37,6 +39,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       if (key.includes("revisions")) return harness.revisions;
       if (key.includes("proposals")) return harness.proposals;
       if (key.includes("search")) return harness.search;
+      if (key.includes("knowledge-readiness")) return harness.readiness;
       if (key.includes("detail")) return harness.detail;
       return harness.list;
     },
@@ -69,6 +72,7 @@ vi.mock("@multica/core/wiki", async (importOriginal) => {
     useRestoreWikiRevision: () => harness.restore,
     useAcceptWikiProposal: () => harness.accept,
     useRejectWikiProposal: () => harness.reject,
+    usePinWikiRevisionAsLMWikiEvidence: () => harness.pin,
   };
 });
 
@@ -109,8 +113,9 @@ describe("WikiPageView", () => {
     harness.revisions = { isPending: false, isError: false, data: [], refetch: vi.fn() };
     harness.proposals = { isPending: false, isError: false, data: [], refetch: vi.fn() };
     harness.search = { isPending: false, isError: false, data: [] };
+    harness.readiness = { isPending: false, isError: false, data: undefined, refetch: vi.fn() };
     harness.push.mockClear();
-    for (const mutation of [harness.create, harness.update, harness.remove, harness.restore, harness.accept, harness.reject]) {
+    for (const mutation of [harness.create, harness.update, harness.remove, harness.restore, harness.accept, harness.reject, harness.pin]) {
       mutation.mutate.mockReset();
       mutation.isPending = false;
     }

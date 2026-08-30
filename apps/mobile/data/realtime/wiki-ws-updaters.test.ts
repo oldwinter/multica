@@ -20,18 +20,20 @@ vi.mock("@/data/queries/wiki", () => ({
       pageId,
       "proposals",
     ],
+    readiness: (wsId: string) => ["wiki", wsId, "knowledge-readiness"],
   },
 }));
 
 import {
   invalidateWikiCollections,
+  invalidateWikiKnowledgeReadiness,
   invalidateWikiPage,
   invalidateWikiTreeForUnknownEvent,
   wikiProposalReviewTargets,
 } from "./wiki-ws-updaters";
 
 describe("Wiki realtime payload boundary", () => {
-  it("invalidates only list and search projections in the active workspace", () => {
+  it("invalidates collections and readiness in the active workspace", () => {
     const invalidateQueries = vi.fn();
     invalidateWikiCollections(
       { invalidateQueries } as never,
@@ -41,8 +43,17 @@ describe("Wiki realtime payload boundary", () => {
     const { predicate } = invalidateQueries.mock.calls[0][0];
     expect(predicate({ queryKey: ["wiki", "ws-1", "list"] })).toBe(true);
     expect(predicate({ queryKey: ["wiki", "ws-1", "search"] })).toBe(true);
+    expect(predicate({ queryKey: ["wiki", "ws-1", "knowledge-readiness"] })).toBe(true);
     expect(predicate({ queryKey: ["wiki", "ws-1", "detail", "page-1"] })).toBe(false);
     expect(predicate({ queryKey: ["wiki", "ws-2", "list"] })).toBe(false);
+  });
+
+  it("invalidates only readiness for LM Wiki lifecycle events", () => {
+    const invalidateQueries = vi.fn();
+    invalidateWikiKnowledgeReadiness({ invalidateQueries } as never, "ws-1");
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["wiki", "ws-1", "knowledge-readiness"],
+    });
   });
 
   it("invalidates only the selected page projections with exact keys", () => {

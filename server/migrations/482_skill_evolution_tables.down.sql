@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS task_run_review;
+DROP TABLE IF EXISTS skill_evolution_task_attribution;
+DROP TABLE IF EXISTS skill_evolution_release;
+DROP TABLE IF EXISTS skill_evolution_review;
+DROP TABLE IF EXISTS skill_evolution_evaluation;
+DROP TABLE IF EXISTS skill_evolution_evidence;
+DROP TABLE IF EXISTS skill_evolution_proposal;
+DROP TABLE IF EXISTS skill_evolution_revision_file;
+DROP TABLE IF EXISTS skill_evolution_revision;
+DROP TABLE IF EXISTS skill_evolution_loop;

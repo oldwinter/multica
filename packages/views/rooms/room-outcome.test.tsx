@@ -208,4 +208,50 @@ describe("RoomOutcome", () => {
       synthesis.recommendations[0],
     );
   });
+
+  it("opens the exact revision and recommendation from an attention deep link", () => {
+    const view = renderOutcome("accepted");
+    const olderRevision = {
+      ...view.props.detail.memory_revisions[0]!,
+      id: "revision-2",
+      cycle_id: "cycle-2",
+      version: 2,
+      synthesis: {
+        ...synthesis,
+        summary: "This is the requested historical outcome.",
+      },
+    };
+    const olderCycle = {
+      ...view.props.detail.cycles[0]!,
+      id: "cycle-2",
+      sequence: 2,
+      memory_revision_id: "revision-2",
+    };
+    const detail = {
+      ...view.props.detail,
+      cycles: [...view.props.detail.cycles, olderCycle],
+      memory_revisions: [...view.props.detail.memory_revisions, olderRevision],
+    };
+
+    view.rerender(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <RoomOutcome
+          {...view.props}
+          detail={detail}
+          state={deriveRoomOutcomeState(detail)}
+          attentionTarget={{
+            focus: "recommendation_review",
+            cycleId: "cycle-2",
+            memoryRevisionId: "revision-2",
+            recommendationKey: "recommendation-1",
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(view.getByText("This is the requested historical outcome.")).toBeTruthy();
+    expect(document.activeElement?.id).toBe(
+      "room-outcome-recommendation-recommendation-1",
+    );
+  });
 });

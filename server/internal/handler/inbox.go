@@ -3,80 +3,89 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/multica-ai/multica/server/internal/entitlement"
 	"github.com/multica-ai/multica/server/internal/logger"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 type InboxItemResponse struct {
-	ID            string          `json:"id"`
-	WorkspaceID   string          `json:"workspace_id"`
-	RecipientType string          `json:"recipient_type"`
-	RecipientID   string          `json:"recipient_id"`
-	Type          string          `json:"type"`
-	Severity      string          `json:"severity"`
-	IssueID       *string         `json:"issue_id"`
-	Title         string          `json:"title"`
-	Body          *string         `json:"body"`
-	Read          bool            `json:"read"`
-	Archived      bool            `json:"archived"`
-	CreatedAt     string          `json:"created_at"`
-	IssueStatus   *string         `json:"issue_status"`
-	ActorType     *string         `json:"actor_type"`
-	ActorID       *string         `json:"actor_id"`
-	Details       json.RawMessage `json:"details"`
+	ID                 string          `json:"id"`
+	WorkspaceID        string          `json:"workspace_id"`
+	RecipientType      string          `json:"recipient_type"`
+	RecipientID        string          `json:"recipient_id"`
+	Type               string          `json:"type"`
+	Severity           string          `json:"severity"`
+	IssueID            *string         `json:"issue_id"`
+	RoomID             *string         `json:"room_id"`
+	RoomCycleID        *string         `json:"room_cycle_id"`
+	RoomReviewIdentity *string         `json:"room_review_identity"`
+	Title              string          `json:"title"`
+	Body               *string         `json:"body"`
+	Read               bool            `json:"read"`
+	Archived           bool            `json:"archived"`
+	CreatedAt          string          `json:"created_at"`
+	IssueStatus        *string         `json:"issue_status"`
+	IssuePriority      *string         `json:"issue_priority"`
+	ActorType          *string         `json:"actor_type"`
+	ActorID            *string         `json:"actor_id"`
+	Details            json.RawMessage `json:"details"`
 }
 
 func inboxToResponse(i db.InboxItem) InboxItemResponse {
 	return InboxItemResponse{
-		ID:            uuidToString(i.ID),
-		WorkspaceID:   uuidToString(i.WorkspaceID),
-		RecipientType: i.RecipientType,
-		RecipientID:   uuidToString(i.RecipientID),
-		Type:          i.Type,
-		Severity:      i.Severity,
-		IssueID:       uuidToPtr(i.IssueID),
-		Title:         i.Title,
-		Body:          textToPtr(i.Body),
-		Read:          i.Read,
-		Archived:      i.Archived,
-		CreatedAt:     timestampToString(i.CreatedAt),
-		ActorType:     textToPtr(i.ActorType),
-		ActorID:       uuidToPtr(i.ActorID),
-		Details:       json.RawMessage(i.Details),
+		ID:                 uuidToString(i.ID),
+		WorkspaceID:        uuidToString(i.WorkspaceID),
+		RecipientType:      i.RecipientType,
+		RecipientID:        uuidToString(i.RecipientID),
+		Type:               i.Type,
+		Severity:           i.Severity,
+		IssueID:            uuidToPtr(i.IssueID),
+		RoomID:             uuidToPtr(i.RoomID),
+		RoomCycleID:        uuidToPtr(i.RoomCycleID),
+		RoomReviewIdentity: textToPtr(i.RoomReviewIdentity),
+		Title:              i.Title,
+		Body:               textToPtr(i.Body),
+		Read:               i.Read,
+		Archived:           i.Archived,
+		CreatedAt:          timestampToString(i.CreatedAt),
+		ActorType:          textToPtr(i.ActorType),
+		ActorID:            uuidToPtr(i.ActorID),
+		Details:            json.RawMessage(i.Details),
 	}
 }
 
 func inboxRowToResponse(r db.ListInboxItemsRow) InboxItemResponse {
 	return InboxItemResponse{
-		ID:            uuidToString(r.ID),
-		WorkspaceID:   uuidToString(r.WorkspaceID),
-		RecipientType: r.RecipientType,
-		RecipientID:   uuidToString(r.RecipientID),
-		Type:          r.Type,
-		Severity:      r.Severity,
-		IssueID:       uuidToPtr(r.IssueID),
-		Title:         r.Title,
-		Body:          textToPtr(r.Body),
-		Read:          r.Read,
-		Archived:      r.Archived,
-		CreatedAt:     timestampToString(r.CreatedAt),
-		IssueStatus:   textToPtr(r.IssueStatus),
-		ActorType:     textToPtr(r.ActorType),
-		ActorID:       uuidToPtr(r.ActorID),
-		Details:       json.RawMessage(r.Details),
+		ID:                 uuidToString(r.ID),
+		WorkspaceID:        uuidToString(r.WorkspaceID),
+		RecipientType:      r.RecipientType,
+		RecipientID:        uuidToString(r.RecipientID),
+		Type:               r.Type,
+		Severity:           r.Severity,
+		IssueID:            uuidToPtr(r.IssueID),
+		RoomID:             uuidToPtr(r.RoomID),
+		RoomCycleID:        uuidToPtr(r.RoomCycleID),
+		RoomReviewIdentity: textToPtr(r.RoomReviewIdentity),
+		Title:              r.Title,
+		Body:               textToPtr(r.Body),
+		Read:               r.Read,
+		Archived:           r.Archived,
+		CreatedAt:          timestampToString(r.CreatedAt),
+		IssueStatus:        textToPtr(r.IssueStatus),
+		IssuePriority:      textToPtr(r.IssuePriority),
+		ActorType:          textToPtr(r.ActorType),
+		ActorID:            uuidToPtr(r.ActorID),
+		Details:            json.RawMessage(r.Details),
 	}
 }
 
 // ListArchivedInboxItemsRow carries the same columns as ListInboxItemsRow (both
-// queries select `inbox_item.*` plus the joined issue status), so the archived
+// queries select `inbox_item.*` plus the joined issue projections), so the archived
 // row converts to the active one and reuses its mapper. If either query's
 // column list drifts, this conversion stops compiling — which is the point.
 func archivedInboxRowToResponse(r db.ListArchivedInboxItemsRow) InboxItemResponse {
@@ -91,6 +100,8 @@ func (h *Handler) enrichInboxResponse(ctx context.Context, resp InboxItemRespons
 	if err == nil {
 		s := issue.Status
 		resp.IssueStatus = &s
+		p := issue.Priority
+		resp.IssuePriority = &p
 	}
 	return resp
 }
@@ -116,31 +127,9 @@ func (h *Handler) ListInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	policy, windowEnabled := h.issueWindowPolicy(r.Context(), wsUUID)
-	issueIDs := make([]pgtype.UUID, 0, len(items))
-	for _, item := range items {
-		if item.IssueID.Valid {
-			issueIDs = append(issueIDs, item.IssueID)
-		}
-	}
-	var visible map[pgtype.UUID]struct{}
-	if windowEnabled && policy.action == entitlement.ActionEnforce {
-		visible, err = h.visibleIssueIDSet(r.Context(), wsUUID, policy, issueIDs)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to list inbox")
-			return
-		}
-	} else if windowEnabled {
-		h.observeIssueWindow(r.Context(), wsUUID, policy, issueIDs, "inbox")
-	}
-	resp := make([]InboxItemResponse, 0, len(items))
-	for _, item := range items {
-		if visible != nil && item.IssueID.Valid {
-			if _, ok := visible[item.IssueID]; !ok {
-				continue
-			}
-		}
-		resp = append(resp, inboxRowToResponse(item))
+	resp := make([]InboxItemResponse, len(items))
+	for i, item := range items {
+		resp[i] = inboxRowToResponse(item)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -176,31 +165,9 @@ func (h *Handler) ListArchivedInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	policy, windowEnabled := h.issueWindowPolicy(r.Context(), wsUUID)
-	issueIDs := make([]pgtype.UUID, 0, len(items))
-	for _, item := range items {
-		if item.IssueID.Valid {
-			issueIDs = append(issueIDs, item.IssueID)
-		}
-	}
-	var visible map[pgtype.UUID]struct{}
-	if windowEnabled && policy.action == entitlement.ActionEnforce {
-		visible, err = h.visibleIssueIDSet(r.Context(), wsUUID, policy, issueIDs)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to list archived inbox")
-			return
-		}
-	} else if windowEnabled {
-		h.observeIssueWindow(r.Context(), wsUUID, policy, issueIDs, "inbox")
-	}
-	resp := make([]InboxItemResponse, 0, len(items))
-	for _, item := range items {
-		if visible != nil && item.IssueID.Valid {
-			if _, ok := visible[item.IssueID]; !ok {
-				continue
-			}
-		}
-		resp = append(resp, archivedInboxRowToResponse(item))
+	resp := make([]InboxItemResponse, len(items))
+	for i, item := range items {
+		resp[i] = archivedInboxRowToResponse(item)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -345,32 +312,14 @@ func (h *Handler) CountUnreadInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var count int64
-	var err error
-	policy, windowEnabled := h.issueWindowPolicy(r.Context(), wsUUID)
-	if windowEnabled && policy.action == entitlement.ActionEnforce {
-		count, err = h.countUnreadInboxWithinWindow(r.Context(), wsUUID, parseUUID(userID), policy)
-	} else {
-		count, err = h.Queries.CountUnreadInbox(r.Context(), db.CountUnreadInboxParams{
-			WorkspaceID:   wsUUID,
-			RecipientType: "member",
-			RecipientID:   parseUUID(userID),
-		})
-	}
+	count, err := h.Queries.CountUnreadInbox(r.Context(), db.CountUnreadInboxParams{
+		WorkspaceID:   wsUUID,
+		RecipientType: "member",
+		RecipientID:   parseUUID(userID),
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to count unread inbox")
 		return
-	}
-	if windowEnabled && policy.action == entitlement.ActionObserve {
-		windowed, observeErr := h.countUnreadInboxWithinWindow(r.Context(), wsUUID, parseUUID(userID), policy)
-		if observeErr != nil {
-			slog.Warn("observe unread inbox window failed", "error", observeErr)
-			h.recordIssueWindow(policy.action, "inbox_count", "error")
-		} else if windowed == count {
-			h.recordIssueWindow(policy.action, "inbox_count", "allowed")
-		} else {
-			h.recordIssueWindow(policy.action, "inbox_count", "would_block")
-		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]int64{"count": count})
@@ -401,120 +350,15 @@ func (h *Handler) UnreadInboxSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type workspacePolicy struct {
-		policy      issueWindowPolicy
-		legacyCount int64
-	}
-	policies := make(map[pgtype.UUID]workspacePolicy, len(rows))
-	workspaceIDs := make([]pgtype.UUID, 0, len(rows))
-	limits := make([]int64, 0, len(rows))
-	for _, row := range rows {
-		if policy, enabled := h.issueWindowPolicy(r.Context(), row.WorkspaceID); enabled {
-			policies[row.WorkspaceID] = workspacePolicy{policy: policy, legacyCount: row.Count}
-			workspaceIDs = append(workspaceIDs, row.WorkspaceID)
-			limits = append(limits, policy.limit)
-		}
-	}
-	windowedCounts := map[pgtype.UUID]int64{}
-	if len(workspaceIDs) > 0 {
-		windowedCounts, err = h.unreadInboxCountsWithinWindows(r.Context(), parseUUID(userID), workspaceIDs, limits)
-		if err != nil {
-			failClosed := false
-			for _, item := range policies {
-				if item.policy.action == entitlement.ActionEnforce {
-					failClosed = true
-				} else {
-					h.recordIssueWindow(item.policy.action, "inbox_summary", "error")
-				}
-			}
-			if failClosed {
-				writeError(w, http.StatusInternalServerError, "failed to summarize unread inbox")
-				return
-			}
-			slog.Warn("observe unread inbox summary window failed", "error", err)
-		}
-	}
-
-	resp := make([]InboxWorkspaceUnreadResponse, 0, len(rows))
-	for _, row := range rows {
-		count := row.Count
-		if item, enabled := policies[row.WorkspaceID]; enabled && err == nil {
-			windowed := windowedCounts[row.WorkspaceID]
-			if item.policy.action == entitlement.ActionEnforce {
-				count = windowed
-			} else if windowed == item.legacyCount {
-				h.recordIssueWindow(item.policy.action, "inbox_summary", "allowed")
-			} else {
-				h.recordIssueWindow(item.policy.action, "inbox_summary", "would_block")
-			}
-		}
-		if count == 0 {
-			continue
-		}
-		resp = append(resp, InboxWorkspaceUnreadResponse{
+	resp := make([]InboxWorkspaceUnreadResponse, len(rows))
+	for i, row := range rows {
+		resp[i] = InboxWorkspaceUnreadResponse{
 			WorkspaceID: uuidToString(row.WorkspaceID),
-			Count:       count,
-		})
+			Count:       row.Count,
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func (h *Handler) countUnreadInboxWithinWindow(ctx context.Context, workspaceID, recipientID pgtype.UUID, policy issueWindowPolicy) (int64, error) {
-	query := fmt.Sprintf(`SELECT COUNT(*)::bigint
-	FROM inbox_item i
-	WHERE i.workspace_id = $1
-	  AND i.recipient_type = 'member'
-	  AND i.recipient_id = $2
-	  AND i.read = false
-	  AND i.archived = false
-	  AND (i.issue_id IS NULL OR %s)`, issueWindowIDPredicate("i.issue_id", "$1", "$3"))
-	var count int64
-	err := h.DB.QueryRow(ctx, query, workspaceID, recipientID, policy.limit).Scan(&count)
-	return count, err
-}
-
-// unreadInboxCountsWithinWindows preserves CountUnreadInboxByWorkspace's
-// DISTINCT ON semantics while applying every enabled workspace policy in one
-// database round trip. Observe callers use the result only for telemetry; the
-// legacy response remains untouched.
-func (h *Handler) unreadInboxCountsWithinWindows(ctx context.Context, recipientID pgtype.UUID, workspaceIDs []pgtype.UUID, limits []int64) (map[pgtype.UUID]int64, error) {
-	query := fmt.Sprintf(`WITH policies AS (
-	SELECT workspace_id, issue_limit
-	FROM unnest($1::uuid[], $2::bigint[]) AS policy(workspace_id, issue_limit)
-)
-	SELECT policy.workspace_id, filtered.count
-	FROM policies policy
-	CROSS JOIN LATERAL (
-		SELECT COUNT(*)::bigint AS count
-		FROM (
-			SELECT DISTINCT ON (COALESCE(i.issue_id, i.id)) i.read
-			FROM inbox_item i
-			JOIN member m ON m.workspace_id = i.workspace_id AND m.user_id = i.recipient_id
-			WHERE i.workspace_id = policy.workspace_id
-			  AND i.recipient_type = 'member'
-			  AND i.recipient_id = $3
-			  AND i.archived = false
-			  AND (i.issue_id IS NULL OR %s)
-			ORDER BY COALESCE(i.issue_id, i.id), i.created_at DESC
-		) newest
-		WHERE newest.read = false
-	) filtered`, issueWindowIDPredicate("i.issue_id", "policy.workspace_id", "policy.issue_limit"))
-	rows, err := h.DB.Query(ctx, query, workspaceIDs, limits, recipientID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	counts := make(map[pgtype.UUID]int64, len(workspaceIDs))
-	for rows.Next() {
-		var workspaceID pgtype.UUID
-		var count int64
-		if err := rows.Scan(&workspaceID, &count); err != nil {
-			return nil, err
-		}
-		counts[workspaceID] = count
-	}
-	return counts, rows.Err()
 }
 
 func (h *Handler) MarkAllInboxRead(w http.ResponseWriter, r *http.Request) {

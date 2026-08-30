@@ -1,6 +1,7 @@
 -- name: ListInboxItems :many
 SELECT i.*,
-       iss.status as issue_status
+       iss.status AS issue_status,
+       iss.priority AS issue_priority
 FROM inbox_item i
 LEFT JOIN issue iss ON iss.id = i.issue_id
 WHERE i.workspace_id = $1 AND i.recipient_type = $2 AND i.recipient_id = $3 AND i.archived = false
@@ -30,7 +31,7 @@ ORDER BY i.created_at DESC;
 -- the final selected ids, not copied for every archived notification scanned.
 WITH eligible_archived AS MATERIALIZED (
     SELECT i.id,
-           COALESCE(i.issue_id, i.id) AS group_id,
+           COALESCE(i.issue_id::text, i.room_attention_key, i.id::text) AS group_id,
            i.created_at,
            i.details
     FROM inbox_item i
@@ -38,15 +39,16 @@ WITH eligible_archived AS MATERIALIZED (
       AND i.recipient_type = $2
       AND i.recipient_id = $3
       AND i.archived = true
-      AND (i.issue_id IS NULL OR NOT EXISTS (
+      AND NOT EXISTS (
           SELECT 1
           FROM inbox_item active
           WHERE active.workspace_id = i.workspace_id
             AND active.recipient_type = i.recipient_type
             AND active.recipient_id = i.recipient_id
-            AND active.issue_id = i.issue_id
             AND active.archived = false
-      ))
+            AND COALESCE(active.issue_id::text, active.room_attention_key, active.id::text) =
+                COALESCE(i.issue_id::text, i.room_attention_key, i.id::text)
+      )
 ), newest_groups AS (
     SELECT DISTINCT ON (group_id)
            group_id,
@@ -73,7 +75,8 @@ WITH eligible_archived AS MATERIALIZED (
     SELECT id FROM comment_anchors
 )
 SELECT i.*,
-       iss.status as issue_status
+       iss.status AS issue_status,
+       iss.priority AS issue_priority
 FROM inbox_item i
 JOIN selected_ids selected ON selected.id = i.id
 LEFT JOIN issue iss ON iss.id = i.issue_id
@@ -94,6 +97,41 @@ INSERT INTO inbox_item (
     actor_type, actor_id, details, id
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()))
 RETURNING *;
+
+-- name: UpsertRoomInboxItem :one
+INSERT INTO inbox_item (
+    workspace_id, recipient_type, recipient_id,
+    type, severity, title, body, details,
+    room_id, room_cycle_id, room_review_identity, room_attention_key
+) VALUES (
+    $1, 'member', $2, $3, $4, $5, NULL, $6,
+    $7, $8, $9, $10
+)
+ON CONFLICT (workspace_id, recipient_type, recipient_id, room_attention_key)
+    WHERE room_attention_key IS NOT NULL AND archived = false
+DO UPDATE SET
+    type = EXCLUDED.type,
+    severity = EXCLUDED.severity,
+    title = EXCLUDED.title,
+    body = NULL,
+    details = EXCLUDED.details,
+    room_id = EXCLUDED.room_id,
+    room_cycle_id = EXCLUDED.room_cycle_id,
+    room_review_identity = EXCLUDED.room_review_identity,
+    read = false,
+    created_at = now()
+RETURNING *;
+
+-- name: ArchiveRoomInboxItems :many
+UPDATE inbox_item
+SET archived = true
+WHERE workspace_id = $1
+  AND room_id = $2
+  AND archived = false
+  AND (sqlc.narg('room_cycle_id')::uuid IS NULL OR room_cycle_id = sqlc.narg('room_cycle_id'))
+  AND (sqlc.narg('type')::text IS NULL OR type = sqlc.narg('type'))
+  AND (sqlc.narg('room_review_identity')::text IS NULL OR room_review_identity = sqlc.narg('room_review_identity'))
+RETURNING id, recipient_type, recipient_id;
 
 -- name: MarkInboxRead :one
 UPDATE inbox_item SET read = true
@@ -157,14 +195,14 @@ WHERE workspace_id = $1 AND recipient_type = $2 AND recipient_id = $3 AND read =
 -- light the dot.
 SELECT newest.workspace_id, count(*) AS count
 FROM (
-    SELECT DISTINCT ON (i.workspace_id, COALESCE(i.issue_id, i.id))
+    SELECT DISTINCT ON (i.workspace_id, COALESCE(i.issue_id::text, i.room_attention_key, i.id::text))
         i.workspace_id, i.read
     FROM inbox_item i
     JOIN member m ON m.workspace_id = i.workspace_id AND m.user_id = i.recipient_id
     WHERE i.recipient_type = 'member'
       AND i.recipient_id = $1
       AND i.archived = false
-    ORDER BY i.workspace_id, COALESCE(i.issue_id, i.id), i.created_at DESC
+    ORDER BY i.workspace_id, COALESCE(i.issue_id::text, i.room_attention_key, i.id::text), i.created_at DESC
 ) newest
 WHERE newest.read = false
 GROUP BY newest.workspace_id;
@@ -184,15 +222,15 @@ WHERE workspace_id = $1 AND recipient_type = 'member' AND recipient_id = $2 AND 
 -- read rows instead makes an older unread sibling reappear after the newest
 -- row is archived (and can archive an older read sibling under an unread row).
 WITH newest_groups AS (
-    SELECT DISTINCT ON (COALESCE(i.issue_id, i.id))
-           COALESCE(i.issue_id, i.id) AS group_id,
+    SELECT DISTINCT ON (COALESCE(i.issue_id::text, i.room_attention_key, i.id::text))
+           COALESCE(i.issue_id::text, i.room_attention_key, i.id::text) AS group_id,
            i.read
     FROM inbox_item i
     WHERE i.workspace_id = $1
       AND i.recipient_type = 'member'
       AND i.recipient_id = $2
       AND i.archived = false
-    ORDER BY COALESCE(i.issue_id, i.id), i.created_at DESC, i.id DESC
+    ORDER BY COALESCE(i.issue_id::text, i.room_attention_key, i.id::text), i.created_at DESC, i.id DESC
 ), read_groups AS (
     SELECT group_id
     FROM newest_groups
@@ -204,7 +242,7 @@ WHERE i.workspace_id = $1
   AND i.recipient_type = 'member'
   AND i.recipient_id = $2
   AND i.archived = false
-  AND COALESCE(i.issue_id, i.id) = selected.group_id;
+  AND COALESCE(i.issue_id::text, i.room_attention_key, i.id::text) = selected.group_id;
 
 -- name: ArchiveCompletedInbox :execrows
 UPDATE inbox_item i SET archived = true

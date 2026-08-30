@@ -11,6 +11,7 @@ import {
 import { useDefaultLayout } from "react-resizable-panels";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { ApiError, errorCode } from "@multica/core/api";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useModalStore } from "@multica/core/modals";
 import {
@@ -37,7 +38,16 @@ import {
   useArchiveAllInbox,
   useArchiveAllReadInbox,
   useArchiveCompletedInbox,
+  useRetrySourceContextQuickCreate,
 } from "@multica/core/inbox/mutations";
+import {
+  filterInboxItems,
+  inboxFiltersForPrioritySupport,
+  inboxFilterCount,
+  inboxPriorityFilterSupport,
+  useInboxFilters,
+  useInboxFilterStore,
+} from "@multica/core/inbox/filter-store";
 
 import { IssueDetail, issueHighlightMementoKey } from "../../issues/components";
 import { useViewStateWriter } from "../../platform";
@@ -76,6 +86,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { PAGE_GUTTER, PageHeader } from "../../layout/page-header";
 import { useTimeAgo } from "./inbox-list-item";
 import { InboxList } from "./inbox-list";
+import { InboxFilterMenu } from "./inbox-filter-menu";
 import { InboxContextMenuProvider } from "./inbox-context-menu";
 import { ARCHIVED_VIEW_PARAM, type InboxView } from "./inbox-view";
 import { useTypeLabels } from "./inbox-detail-label";
@@ -85,10 +96,12 @@ import {
   resolveDetailItem,
 } from "./inbox-display";
 import { useT } from "../../i18n";
+import { useIssueLimitUpgradePrompt } from "../../modals/use-issue-limit-upgrade-prompt";
 
 export function InboxPage() {
   const { t } = useT("inbox");
-  const { searchParams, replace } = useNavigation();
+  const showIssueLimitUpgradePrompt = useIssueLimitUpgradePrompt();
+  const { searchParams, replace, push } = useNavigation();
   const urlIssue = searchParams.get("issue") ?? "";
   const urlView: InboxView =
     searchParams.get("view") === ARCHIVED_VIEW_PARAM ? "archived" : "inbox";
@@ -123,10 +136,33 @@ export function InboxPage() {
   );
 
   const isArchivedView = view === "archived";
-  const visibleItems = isArchivedView ? archivedItems : items;
+  const viewItems = isArchivedView ? archivedItems : items;
+  const filters = useInboxFilters(wsId);
+  const clearFilters = useInboxFilterStore((state) => state.clearFilters);
+  // Active and archived endpoints return the same row contract and are both
+  // already loaded on this page. Requiring the combined response to expose the
+  // projection prevents one pod in a rolling deploy from advertising a
+  // capability the other pod does not have yet.
+  const priorityFilterSupport = useMemo(
+    () => inboxPriorityFilterSupport([...rawItems, ...rawArchivedItems]),
+    [rawItems, rawArchivedItems],
+  );
+  const effectiveFilters = useMemo(
+    () => inboxFiltersForPrioritySupport(filters, priorityFilterSupport),
+    [filters, priorityFilterSupport],
+  );
+  const visibleItems = useMemo(
+    () => filterInboxItems(viewItems, effectiveFilters),
+    [viewItems, effectiveFilters],
+  );
+  const hasActiveFilters = inboxFilterCount(effectiveFilters) > 0;
 
   const selected =
     visibleItems.find((i) => (i.issue_id ?? i.id) === selectedKey) ?? null;
+  const selectedInView =
+    viewItems.find((i) => (i.issue_id ?? i.id) === selectedKey) ?? null;
+  const selectionFilteredOut =
+    selectedKey.length > 0 && selectedInView !== null && selected === null;
 
   // What the DETAIL pane shows, one React transition behind the click.
   //
@@ -188,6 +224,13 @@ export function InboxPage() {
   // an inline arrow here would rebuild (and remount) the entry every render.
   const openArchived = useCallback(() => setView("archived"), [setView]);
 
+  // Applying a filter can remove the open row from the list. Clear that local
+  // selection instead of treating it as a broken deep link and redirecting to
+  // the issue page; the notification still exists, it is simply filtered out.
+  useEffect(() => {
+    if (selectionFilteredOut) setSelectedKey("");
+  }, [selectionFilteredOut, setSelectedKey]);
+
   // Whether the list currently on screen has finished its first load. The
   // fallback and drain effects below both key on this, and getting it wrong in
   // the archived view means acting on an empty list that simply hasn't arrived.
@@ -203,12 +246,21 @@ export function InboxPage() {
     if (viewLoading) return;
     if (!selectedKey) return;
     if (selected) return;
+    if (selectionFilteredOut) return;
     if (lastResolvedKeyRef.current === selectedKey) {
       setSelectedKey("");
       return;
     }
     replace(wsPaths.issueDetail(selectedKey));
-  }, [viewLoading, selectedKey, selected, replace, wsPaths, setSelectedKey]);
+  }, [
+    viewLoading,
+    selectedKey,
+    selected,
+    selectionFilteredOut,
+    replace,
+    wsPaths,
+    setSelectedKey,
+  ]);
 
   // Never strand the user on an empty archive: when the last archived issue is
   // restored (or a new notification revives it into the main inbox), fall back
@@ -251,6 +303,7 @@ export function InboxPage() {
   const archiveAllMutation = useArchiveAllInbox();
   const archiveAllReadMutation = useArchiveAllReadInbox();
   const archiveCompletedMutation = useArchiveCompletedInbox();
+  const retrySourceContextMutation = useRetrySourceContextQuickCreate();
   const timeAgo = useTimeAgo();
   const typeLabels = useTypeLabels();
 
@@ -297,6 +350,21 @@ export function InboxPage() {
   // by issue) and a fresh mount with a cleared memento entry lands by itself.
   const [highlightRequestToken, setHighlightRequestToken] = useState(0);
   const handleSelect = (item: InboxItem) => {
+		const roomRoute = item.details?.route;
+		if (item.room_id && roomRoute?.startsWith("/rooms?")) {
+			if (!item.read) {
+				markReadMutation.mutate(item.id, {
+					onError: (err) =>
+						toast.error(
+							err instanceof Error && err.message
+								? err.message
+								: t(($) => $.errors.mark_read_failed),
+						),
+				});
+			}
+			push(`${wsPaths.rooms()}${roomRoute.slice("/rooms".length)}`);
+			return;
+		}
     const nextKey = item.issue_id ?? item.id;
     // Every click on a notification row is a fresh deep-link intent: clear
     // the "highlight already landed" memento entry so the comment jump runs
@@ -359,7 +427,7 @@ export function InboxPage() {
 
   // Toasts live in these shared handlers so every archive surface confirms alike.
   const handleArchive = (id: string) => {
-    advanceSelectionPast(id, items);
+    advanceSelectionPast(id, visibleItems);
     archiveMutation.mutate(id, {
       onSuccess: () => toast.success(t(($) => $.toasts.archived)),
       onError: (err) =>
@@ -372,7 +440,7 @@ export function InboxPage() {
   };
 
   const handleUnarchive = (id: string) => {
-    advanceSelectionPast(id, archivedItems);
+    advanceSelectionPast(id, visibleItems);
     unarchiveMutation.mutate(id, {
       onSuccess: () => toast.success(t(($) => $.toasts.unarchived)),
       onError: (err) =>
@@ -473,6 +541,11 @@ export function InboxPage() {
           />
         )}
       </div>
+      <InboxFilterMenu
+        wsId={wsId}
+        items={viewItems}
+        priorityFilterSupport={priorityFilterSupport}
+      />
       {/* Batch actions are main-view only. Every entry archives from the MAIN
           inbox, so offering them while the archived list is on screen reads as
           "archive all of these" and does the opposite of what it looks like. */}
@@ -554,6 +627,22 @@ export function InboxPage() {
         onSelect={handleSelect}
         onAction={isArchivedView ? handleUnarchive : handleArchive}
         onOpenArchived={openArchived}
+        emptyLabel={
+          hasActiveFilters && viewItems.length > 0 && visibleItems.length === 0
+            ? t(($) => $.filters.empty)
+            : undefined
+        }
+        emptyAction={
+          hasActiveFilters && viewItems.length > 0 && visibleItems.length === 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => clearFilters(wsId)}
+            >
+              {t(($) => $.filters.clear)}
+            </Button>
+          ) : undefined
+        }
       />
     </InboxContextMenuProvider>
   );
@@ -652,6 +741,37 @@ export function InboxPage() {
         </div>
       )}
       <div className="mt-4 flex gap-2">
+        {detailItem.type === "quick_create_failed" &&
+          detailItem.details?.source_context_id &&
+          detailItem.details?.task_id && (
+            <Button
+              size="sm"
+              data-testid="retry-source-context"
+              disabled={retrySourceContextMutation.isPending}
+              onClick={async () => {
+                try {
+                  await retrySourceContextMutation.mutateAsync(detailItem.details!.task_id!);
+                  toast.success(t(($) => $.toasts.source_context_retry_started));
+                } catch (error) {
+                  if (
+                    error instanceof ApiError &&
+                    errorCode(error) === "issue_limit_reached"
+                  ) {
+                    showIssueLimitUpgradePrompt();
+                    return;
+                  }
+                  toast.error(
+                    error instanceof ApiError &&
+                      errorCode(error) === "source_context_retry_unavailable"
+                      ? t(($) => $.errors.source_context_retry_unavailable)
+                      : t(($) => $.errors.source_context_retry_failed),
+                  );
+                }
+              }}
+            >
+              {t(($) => $.detail.retry_with_context)}
+            </Button>
+          )}
         {isQuickCreateOutcome(detailItem.type) && (
           <Button
             size="sm"

@@ -4,6 +4,7 @@ import { wikiKeys } from "@/data/queries/wiki";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import {
   getWikiRevisionConflict,
+  type PinWikiRevisionAsLMWikiEvidenceInput,
   type AcceptWikiProposalInput,
   type CreateWikiPageInput,
   type RejectWikiProposalInput,
@@ -56,6 +57,20 @@ export function useDeleteWikiPage(pageId: string) {
     mutationFn: () => api.deleteWikiPage(pageId),
     onSuccess: () => {
       qc.removeQueries({ queryKey: wikiKeys.detail(wsId, pageId) });
+      qc.invalidateQueries({ queryKey: wikiKeys.all(wsId) });
+    },
+  });
+}
+
+export function usePinWikiRevisionAsLMWikiEvidence() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  return useMutation({
+    mutationKey: ["pinWikiRevisionAsLMWikiEvidence", wsId] as const,
+    mutationFn: (input: PinWikiRevisionAsLMWikiEvidenceInput) =>
+      api.pinWikiRevisionAsLMWikiEvidence(input),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: wikiKeys.all(wsId) });
     },
   });

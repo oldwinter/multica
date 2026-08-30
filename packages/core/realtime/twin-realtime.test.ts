@@ -24,6 +24,7 @@ describe("Twin realtime query invalidation", () => {
     })).toEqual([
       twinKeys.overview(wsId),
       twinKeys.proposal(wsId, "proposal-1"),
+      twinExecutionKeys.activation(wsId),
       twinKeys.version(wsId, "version-1"),
     ]);
   });
@@ -38,6 +39,7 @@ describe("Twin realtime query invalidation", () => {
       twinKeys.version(wsId, "version-2"),
       twinKeys.proposal(wsId, "proposal-2"),
       twinProfileKeys.overview(wsId),
+      twinExecutionKeys.activation(wsId),
     ]);
   });
 
@@ -49,6 +51,7 @@ describe("Twin realtime query invalidation", () => {
     })).toEqual([
       twinExecutionKeys.bindings(wsId),
       twinExecutionKeys.metrics(wsId),
+      twinExecutionKeys.activation(wsId),
     ]);
   });
 
@@ -64,6 +67,7 @@ describe("Twin realtime query invalidation", () => {
       twinExecutionKeys.metrics(wsId),
       twinKeys.overview(wsId),
       twinKeys.proposal(wsId, "proposal-1"),
+      twinExecutionKeys.activation(wsId),
     ]);
   });
 

@@ -76,6 +76,40 @@ export const RoomSynthesisSchema = z.object({
   confidence: nullableNumber,
 }).loose();
 
+export const RoomValueSignalSchema = z.object({
+  last_accepted_revision_id: nullableString,
+  last_accepted_at: nullableString,
+  last_cycle_id: nullableString,
+  last_run_status: unknownEnum([
+    "refused",
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+  ]).nullable().optional().default(null),
+  last_run_phase: unknownEnum([
+    "gathering",
+    "synthesizing",
+    "awaiting_review",
+    "completed",
+    "failed",
+    "cancelled",
+    "refused",
+  ]).nullable().optional().default(null),
+  last_run_reason: nullableString,
+  last_run_at: nullableString,
+  last_run_cost_ticks: z.number().optional().default(0),
+  repeat_run_count: z.number().optional().default(0),
+  accepted_outcomes: z.number().optional().default(0),
+  active_weeks: z.number().optional().default(0),
+  accepted_outcomes_per_active_week: z.number().optional().default(0),
+  median_review_latency_seconds: z.number().optional().default(0),
+  promotion_rate: z.number().optional().default(0),
+  failed_cycles: z.number().optional().default(0),
+  refused_cycles: z.number().optional().default(0),
+}).loose();
+
 export const RoomSchema = z.object({
   id: z.string(),
   workspace_id: z.string(),
@@ -106,6 +140,7 @@ export const RoomSchema = z.object({
   revision: nullableNumber,
   created_at: z.string().optional().default(""),
   updated_at: z.string().optional().default(""),
+  value: RoomValueSignalSchema.nullable().optional().default(null),
 }).loose();
 
 export const RoomParticipantSchema = z.object({
@@ -286,6 +321,14 @@ export const RoomUsageSchema = z.object({
   failures: z.number().optional().default(0),
   accepted_syntheses: z.number().optional().default(0),
   promoted_artifacts: z.number().optional().default(0),
+  repeat_run_count: z.number().optional().default(0),
+  active_weeks: z.number().optional().default(0),
+  median_review_latency_seconds: z.number().optional().default(0),
+  accepted_outcomes_per_active_week: z.number().optional().default(0),
+  promotion_rate: z.number().optional().default(0),
+  failed_cycles: z.number().optional().default(0),
+  refused_cycles: z.number().optional().default(0),
+  cost_ticks_per_accepted_outcome: z.number().optional().default(0),
 }).loose();
 
 export const RecommendationReviewResponseSchema = z.object({

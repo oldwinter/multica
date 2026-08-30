@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { afterEach, describe, it, expect } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   builderArgsForTarget,
   deriveVersion,
@@ -328,14 +329,12 @@ describe("builderArgsForTarget", () => {
         },
         "1.2.3",
         {
-          disableMacNotarize: true,
           hostPlatform: "darwin",
           useScopedOutputDir: true,
         },
       ),
     ).toEqual([
       "-c.extraMetadata.version=1.2.3",
-      "-c.mac.notarize=false",
       "--win",
       "nsis",
       "--arm64",
@@ -416,6 +415,38 @@ describe("builderArgsForTarget", () => {
     ).toEqual([
       "-c.extraMetadata.version=1.2.3",
       "--mac",
+      "--arm64",
+      "--publish",
+      "always",
+      "-c.directories.output=dist/mac-arm64",
+    ]);
+  });
+
+  it("disables notarization for unsigned macOS release packages", () => {
+    expect(
+      builderArgsForTarget(
+        { platform: "mac", arch: "arm64" },
+        {
+          allPlatforms: false,
+          sharedArgs: ["--publish", "always"],
+          platformTargets: { mac: ["dmg", "zip"], win: [], linux: [] },
+          requestedPlatforms: ["mac"],
+          requestedArchs: ["arm64"],
+        },
+        "1.2.3-oldwinter.1",
+        {
+          unsignedMac: true,
+          hostPlatform: "darwin",
+          useScopedOutputDir: true,
+        },
+      ),
+    ).toEqual([
+      "-c.extraMetadata.version=1.2.3-oldwinter.1",
+      "-c.mac.identity=null",
+      "-c.mac.notarize=false",
+      "--mac",
+      "dmg",
+      "zip",
       "--arm64",
       "--publish",
       "always",
@@ -523,5 +554,38 @@ describe("electron-builder.yml packaging config", () => {
     const entries = readFilesBlock(readFileSync(configPath, "utf-8"));
     expect(entries.length).toBeGreaterThan(0);
     expect(entries).toContain("!dist/**");
+  });
+});
+
+describe("release workflow Desktop matrix", () => {
+  const workflowPath = [
+    resolve(process.cwd(), ".github/workflows/release.yml"),
+    resolve(process.cwd(), "../../.github/workflows/release.yml"),
+  ].find((candidate) => existsSync(candidate));
+
+  it("publishes unsigned macOS installers for Intel and Apple Silicon", () => {
+    expect(workflowPath, "release workflow not found").toBeTruthy();
+    const workflow = parseYaml(readFileSync(workflowPath, "utf-8"));
+    const desktop = workflow.jobs.desktop;
+
+    expect(desktop.strategy.matrix.include).toContainEqual({
+      os: "macos-latest",
+      target: "mac",
+    });
+
+    const packageStep = desktop.steps.find((step) =>
+      step.name?.startsWith("Package Desktop installers"),
+    );
+    expect(packageStep).toBeTruthy();
+    expect(packageStep.env.CSC_IDENTITY_AUTO_DISCOVERY).toBe("false");
+    expect(packageStep.run).toContain(
+      "--${{ matrix.target }} --x64 --arm64 --publish always",
+    );
+
+    const verifyStep = desktop.steps.find(
+      (step) => step.name === "Verify macOS installer outputs",
+    );
+    expect(verifyStep).toBeTruthy();
+    expect(verifyStep.if).toBe("matrix.target == 'mac'");
   });
 });

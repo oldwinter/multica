@@ -94,6 +94,22 @@ export interface AppearancePreferenceChangeOptions {
   readonly systemAppearance: ResolvedAppearance;
 }
 
+export interface AppearanceUndoReceipt {
+  readonly previous: AppearancePreferences;
+  readonly expectedUpdatedAt: string;
+}
+
+export type AppearanceUndoResult =
+  | Readonly<{
+      status: "applied";
+      preferences: AppearancePreferences;
+      expectedUpdatedAt: string;
+    }>
+  | Readonly<{
+      status: "expired";
+      preferences: AppearancePreferences;
+    }>;
+
 export type AppearanceReconciliationWinner = "default" | "local" | "server";
 
 export interface AppearanceReconciliationResult {
@@ -469,6 +485,39 @@ export function changeAppearancePreferences(
     source: "local",
     updatedAt: parsedTimestamp.canonical,
     syncState: { status: "pending" },
+  };
+}
+
+export function createAppearanceUndoReceipt(
+  previous: AppearancePreferences,
+  applied: AppearancePreferences,
+): AppearanceUndoReceipt {
+  return {
+    previous,
+    expectedUpdatedAt: applied.updatedAt,
+  };
+}
+
+export function undoAppearancePreferences(
+  current: AppearancePreferences,
+  receipt: AppearanceUndoReceipt,
+  options: AppearancePreferenceChangeOptions,
+): AppearanceUndoResult {
+  if (current.updatedAt !== receipt.expectedUpdatedAt) {
+    return { status: "expired", preferences: current };
+  }
+
+  return {
+    status: "applied",
+    preferences: changeAppearancePreferences(
+      current,
+      {
+        skin: receipt.previous.skin,
+        requestedAppearance: receipt.previous.requestedAppearance,
+      },
+      options,
+    ),
+    expectedUpdatedAt: receipt.expectedUpdatedAt,
   };
 }
 

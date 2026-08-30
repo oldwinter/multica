@@ -2,7 +2,7 @@
 // (github.com/openai/openai-go). It exists so the rest of the server has a
 // single, well-typed entry point for "just call an LLM" needs that do NOT
 // require the full agent runtime — currently chat auto-titling, chat follow-up
-// questions, and explicitly requested Twin builds.
+// questions, explicitly requested Twin builds, and bounded Skill replay.
 //
 // # Scope: the assist layer, not every model call in the product
 //
@@ -50,6 +50,11 @@
 //     assertions. It excludes mutable Workspace Wiki and personal Wiki content,
 //     local-only evidence, raw paths and basenames, private profile names, and
 //     credentials.
+//   - Skill evolution replay —
+//     server/internal/skillevolution/behavioral_replay.go. Sends one currently
+//     authorized, size-bounded evidence case with the base and candidate Skill
+//     to execute and compare. The payload and responses are transient; only
+//     content-free verdicts, counts, digests, duration, and cost are persisted.
 //
 // These consumers can send private chat or workspace evidence, which is why an
 // unconfigured deployment making zero upstream requests is a contract rather
@@ -57,9 +62,9 @@
 // client whose every call fails with ErrNotConfigured before an HTTP request
 // is ever built
 // (TestUnconfiguredClientMakesZeroUpstreamRequests). An operator who must not
-// let THIS layer send chat or Twin evidence leaves MULTICA_LLM_API_KEY and
+// let THIS layer send chat, Twin, or Skill replay evidence leaves MULTICA_LLM_API_KEY and
 // MULTICA_LLM_BASE_URL empty. Chat retains client-derived titles, follow-up
-// question buttons stay hidden, and Twin Build is explicitly unavailable.
+// question buttons stay hidden, and Twin Build and behavioral replay are unavailable.
 // Agent task execution is a separate path and remains unaffected.
 //
 // The wrapper is intentionally small:
@@ -363,6 +368,15 @@ func (c *Client) GenerateText(ctx context.Context, model, systemPrompt, userProm
 	return completion.Choices[0].Message.Content, nil
 }
 
+// JSONGeneration is structured output plus the provider-reported token usage.
+// Callers that enforce a bounded cost need the usage fields; content-only
+// callers should keep using GenerateJSON.
+type JSONGeneration struct {
+	Content          string
+	PromptTokens     int64
+	CompletionTokens int64
+}
+
 // GenerateJSON is GenerateText's structured sibling, for internal callers whose
 // reply has to be machine-readable (quick-action suggestions, ...). It requests
 // response_format=json_object and returns the assistant's raw text unparsed.
@@ -382,8 +396,17 @@ func (c *Client) GenerateText(ctx context.Context, model, systemPrompt, userProm
 // maxCompletionTokens apply only when positive; zero leaves the corresponding
 // upstream default in place. Model empty -> the configured default.
 func (c *Client) GenerateJSON(ctx context.Context, model, systemPrompt, userPrompt string, temperature float64, maxCompletionTokens int64) (string, error) {
+	result, err := c.GenerateJSONWithUsage(ctx, model, systemPrompt, userPrompt, temperature, maxCompletionTokens)
+	return result.Content, err
+}
+
+// GenerateJSONWithUsage has the same request contract as GenerateJSON and
+// additionally returns provider-reported token counts. It never estimates
+// missing usage: callers that require a cost bound must fail closed when both
+// counts are zero for a non-empty completion.
+func (c *Client) GenerateJSONWithUsage(ctx context.Context, model, systemPrompt, userPrompt string, temperature float64, maxCompletionTokens int64) (JSONGeneration, error) {
 	if !c.Enabled() {
-		return "", ErrNotConfigured
+		return JSONGeneration{}, ErrNotConfigured
 	}
 
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, 2)
@@ -443,7 +466,7 @@ func (c *Client) GenerateJSON(ctx context.Context, model, systemPrompt, userProm
 			break
 		}
 		if compatibilityRetries >= 2 {
-			return "", err
+			return JSONGeneration{}, err
 		}
 
 		switch {
@@ -453,20 +476,23 @@ func (c *Client) GenerateJSON(ctx context.Context, model, systemPrompt, userProm
 		case params.ReasoningEffort != "" && isUnsupportedParameter(err, "reasoning_effort"):
 			params.ReasoningEffort = ""
 		default:
-			return "", err
+			return JSONGeneration{}, err
 		}
 	}
 	if len(completion.Choices) == 0 {
-		return "", errors.New("llm: upstream returned no choices")
+		return JSONGeneration{}, errors.New("llm: upstream returned no choices")
 	}
 	choice := completion.Choices[0]
 	if choice.FinishReason == "length" {
-		return "", errors.New("llm: upstream reached the max completion token limit before producing complete JSON")
+		return JSONGeneration{}, errors.New("llm: upstream reached the max completion token limit before producing complete JSON")
 	}
 	if strings.TrimSpace(choice.Message.Content) == "" {
-		return "", errors.New("llm: upstream returned empty JSON content")
+		return JSONGeneration{}, errors.New("llm: upstream returned empty JSON content")
 	}
-	return choice.Message.Content, nil
+	return JSONGeneration{
+		Content: choice.Message.Content, PromptTokens: completion.Usage.PromptTokens,
+		CompletionTokens: completion.Usage.CompletionTokens,
+	}, nil
 }
 
 func isUnsupportedParameter(err error, parameter string) bool {

@@ -386,13 +386,12 @@ jobs:
       - name: Verify published chart
         run: helm show chart "$OCI_REGISTRY/multica" --version "$CHART_VERSION"
 
-  # Build the Desktop installers for Linux and Windows and upload them to
-  # the current repository's GitHub Release that `release` just published.
+  # Build the Desktop installers for macOS, Linux, and Windows and upload them
+  # to the current repository's GitHub Release that `release` just published.
   # package.mjs derives that repository from GITHUB_REPOSITORY in Actions,
-  # overriding electron-builder.yml's canonical-upstream default. macOS
-  # Desktop continues to ship via the manual `release-desktop` skill so it
-  # can be signed + notarized with Apple Developer credentials that are
-  # not (yet) wired into CI.
+  # overriding electron-builder.yml's canonical-upstream default. Until Apple
+  # Developer credentials are wired into CI, macOS packages are unsigned and
+  # unnotarized; users must approve the app once in Privacy & Security.
   desktop:
     needs: release
     strategy:
@@ -403,6 +402,8 @@ jobs:
             target: linux
           - os: windows-latest
             target: win
+          - os: macos-latest
+            target: mac
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -444,9 +445,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # electron-builder's GitHub publisher reads this:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Disable code signing on Linux/Windows for now — the public
-          # release is unsigned for these platforms, the CLI carries the
-          # trust boundary. Set CSC_LINK in repo secrets to enable
-          # Windows signing later.
+          # Disable certificate discovery for every platform. On macOS,
+          # package.mjs also sets mac.notarize=false while APPLE_TEAM_ID is
+          # absent, leaving an unsigned package that users can approve
+          # manually. Wire platform credentials before removing this.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: node scripts/package.mjs --${{ matrix.target }} --x64 --arm64 --publish always
+
+      - name: Verify macOS installer outputs
+        if: matrix.target == 'mac'
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          for arch in x64 arm64; do
+            for ext in dmg zip; do
+              pattern="dist/mac-${arch}/multica-desktop-*-mac-${arch}.${ext}"
+              if ! compgen -G "$pattern" > /dev/null; then
+                echo "::error::Missing macOS ${arch} ${ext} artifact: ${pattern}"
+                exit 1
+              fi
+            done
+          done

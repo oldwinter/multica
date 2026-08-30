@@ -58,6 +58,22 @@ export function usePostRoomMessage(roomId: string) {
   });
 }
 
+export function useWakeRoom(roomId: string) {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((state) => state.currentWorkspaceId);
+
+  return useMutation({
+    mutationKey: ["wakeRoom", roomId] as const,
+    mutationFn: (idempotencyKey: string) => api.wakeRoom(roomId, idempotencyKey),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: roomKeys.detail(wsId, roomId) });
+      qc.invalidateQueries({ queryKey: roomKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: roomKeys.preflights(wsId, roomId) });
+      qc.invalidateQueries({ queryKey: roomKeys.usage(wsId, roomId) });
+    },
+  });
+}
+
 export function useSetRoomStatus(roomId: string) {
   const qc = useQueryClient();
   const wsId = useWorkspaceStore((state) => state.currentWorkspaceId);

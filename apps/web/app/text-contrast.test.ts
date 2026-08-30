@@ -58,17 +58,21 @@ const backgroundTokens = [
 type Rgb = [number, number, number];
 
 function readBlock(source: string, selector: string): Map<string, string> {
-  const start = source.indexOf(`${selector} {`);
-  if (start < 0) throw new Error(`${selector} block not found`);
-  const end = source.indexOf("\n}", start);
-  if (end < 0) throw new Error(`${selector} block is unterminated`);
+  const css = source.replace(/\/\*[\s\S]*?\*\//g, "");
 
-  const declarations = new Map<string, string>();
-  for (const match of source.slice(start, end).matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
-    const [, name, value] = match;
-    if (name && value) declarations.set(name, value.trim());
+  for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = block[1]?.split(",").map((candidate) => candidate.trim());
+    if (!selectors?.includes(selector)) continue;
+
+    const declarations = new Map<string, string>();
+    for (const match of (block[2] ?? "").matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
+      const [, name, value] = match;
+      if (name && value) declarations.set(name, value.trim());
+    }
+    return declarations;
   }
-  return declarations;
+
+  throw new Error(`${selector} block not found`);
 }
 
 /** Follows `--card: var(--surface)` style indirection to a literal colour. */

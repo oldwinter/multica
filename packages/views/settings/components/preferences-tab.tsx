@@ -1,8 +1,27 @@
 "use client";
 
-import { useMemo } from "react";
-import { Check, Monitor, Moon, RefreshCw, RotateCcw, Sun } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Check,
+  Copy,
+  Monitor,
+  Moon,
+  RefreshCw,
+  RotateCcw,
+  Sun,
+} from "lucide-react";
 import { toast } from "sonner";
+import { SemanticAppearanceFixture } from "@multica/ui/components/common/semantic-appearance-fixture";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@multica/ui/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -16,8 +35,14 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@multica/ui/components/ui/radio-group";
-import { SKIN_IDS, type SkinId } from "@multica/core/appearance";
+import {
+  SKIN_IDS,
+  serializeAppearanceDiagnostics,
+  type AppearanceUndoReceipt,
+  type SkinId,
+} from "@multica/core/appearance";
 import { cn } from "@multica/ui/lib/utils";
+import { copyText } from "@multica/ui/lib/clipboard";
 import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
@@ -40,16 +65,66 @@ import {
 export function PreferencesTab() {
   const {
     preferences,
+    diagnostics,
+    canRetry,
+    canCopyDiagnostics,
+    recoveryNoticePending,
     selectSkin,
     selectAppearance,
     reset: resetAppearance,
+    undo: undoAppearance,
     retry: retryAppearanceSync,
+    acknowledgeRecoveryNotice,
   } = useAppearancePreferences();
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const skin = preferences.skin;
   const theme = preferences.requestedAppearance;
   const { t, i18n } = useT("settings");
   const localeAdapter = useLocaleAdapter();
   const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    if (!recoveryNoticePending) return;
+    toast.warning(t(($) => $.preferences.appearance_sync.recovered), {
+      id: "settings-appearance-recovered",
+    });
+    acknowledgeRecoveryNotice();
+  }, [acknowledgeRecoveryNotice, recoveryNoticePending, t]);
+
+  const showAppearanceSaved = (receipt: AppearanceUndoReceipt | null) => {
+    if (!receipt) return;
+    toast.success(t(($) => $.auto_save.toast_saved), {
+      id: "settings-appearance-save",
+      action: {
+        label: t(($) => $.preferences.appearance_sync.undo),
+        onClick: () => {
+          void undoAppearance(receipt).then((outcome) => {
+            if (outcome === "expired") {
+              toast.warning(
+                t(($) => $.preferences.appearance_sync.undo_expired),
+                { id: "settings-appearance-undo" },
+              );
+              return;
+            }
+            toast.success(
+              t(($) => $.preferences.appearance_sync.undo_applied),
+              { id: "settings-appearance-undo" },
+            );
+          });
+        },
+      },
+    });
+  };
+
+  const handleCopyDiagnostics = async () => {
+    const copied = await copyText(serializeAppearanceDiagnostics(diagnostics));
+    toast[copied ? "success" : "error"](
+      copied
+        ? t(($) => $.preferences.appearance_sync.diagnostics_copied)
+        : t(($) => $.preferences.appearance_sync.diagnostics_copy_failed),
+      { id: "settings-appearance-diagnostics" },
+    );
+  };
 
   // i18next.language can be a region-tagged BCP-47 string (e.g. "en-US",
   // "zh-Hans-CN") returned by intl-localematcher. Normalize to a supported
@@ -138,10 +213,7 @@ export function PreferencesTab() {
           aria-label={t(($) => $.preferences.skin.title)}
           value={skin}
           onValueChange={(value) => {
-            selectSkin(value as SkinId);
-            toast.success(t(($) => $.auto_save.toast_saved), {
-              id: "settings-auto-save",
-            });
+            showAppearanceSaved(selectSkin(value as SkinId));
           }}
           className="grid gap-2 @xl:grid-cols-3"
         >
@@ -160,16 +232,13 @@ export function PreferencesTab() {
                     : "border-surface-border",
                 )}
               >
-                <span
-                  data-skin-preview={option.value}
-                  className="relative flex h-16 items-center justify-center overflow-hidden border-b border-inherit bg-[var(--skin-preview-canvas)]"
+                <SemanticAppearanceFixture
+                  skin={option.value}
+                  mode={preferences.resolvedAppearance}
+                  compact
+                  className="border-b border-inherit"
                   aria-hidden="true"
-                >
-                  <span className="absolute inset-x-3 top-3 h-px bg-[var(--skin-preview-line)]" />
-                  <span className="size-7 rounded-full bg-[var(--skin-preview-signal)]" />
-                  <span className="absolute bottom-3 left-3 h-px w-10 bg-[var(--skin-preview-ink)]" />
-                  <span className="absolute bottom-3 right-3 size-2 rounded-full bg-[var(--skin-preview-secondary)]" />
-                </span>
+                />
                 <span className="flex min-h-16 items-start gap-2 px-3 py-2.5">
                   <span className="min-w-0 flex-1">
                     <span className="block text-body font-semibold text-foreground">
@@ -203,10 +272,9 @@ export function PreferencesTab() {
               aria-label={t(($) => $.preferences.theme.title)}
               value={theme}
               onValueChange={(value) => {
-                selectAppearance(value as "system" | "light" | "dark");
-                toast.success(t(($) => $.auto_save.toast_saved), {
-                  id: "settings-auto-save",
-                });
+                showAppearanceSaved(
+                  selectAppearance(value as "system" | "light" | "dark"),
+                );
               }}
               className="grid grid-cols-3 gap-1 rounded-lg bg-secondary p-1"
             >
@@ -236,7 +304,7 @@ export function PreferencesTab() {
         </SettingsCard>
 
         <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
-          <div className="flex min-h-8 items-center gap-1">
+          <div className="flex min-h-8 flex-wrap items-center gap-1">
             <span
               className="text-caption text-muted-foreground"
               role="status"
@@ -254,7 +322,7 @@ export function PreferencesTab() {
               {preferences.syncState.status === "failed" &&
                 t(($) => $.preferences.appearance_sync.failed)}
             </span>
-            {preferences.syncState.status === "failed" && (
+            {canRetry && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -265,17 +333,51 @@ export function PreferencesTab() {
                 {t(($) => $.preferences.appearance_sync.retry)}
               </Button>
             )}
+            {canCopyDiagnostics && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => void handleCopyDiagnostics()}
+              >
+                <Copy className="size-3.5" aria-hidden="true" />
+                {t(($) => $.preferences.appearance_sync.copy_diagnostics)}
+              </Button>
+            )}
           </div>
           <Button
             variant="ghost"
             size="sm"
             className="h-8 px-2 text-muted-foreground"
-            onClick={resetAppearance}
+            onClick={() => setResetDialogOpen(true)}
           >
             <RotateCcw className="size-3.5" aria-hidden="true" />
             {t(($) => $.preferences.appearance_sync.reset)}
           </Button>
         </div>
+
+        <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t(($) => $.preferences.appearance_sync.reset_title)}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(($) => $.preferences.appearance_sync.reset_description)}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t(($) => $.preferences.appearance_sync.cancel)}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => showAppearanceSaved(resetAppearance())}
+              >
+                {t(($) => $.preferences.appearance_sync.reset_confirm)}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SettingsSection>
 
       <SettingsSection title={t(($) => $.preferences.general_title)}>

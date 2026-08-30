@@ -18,6 +18,8 @@ const proposal: WikiProposal = {
   rationale: "Clarifies the release steps.",
   evidenceRefs: ["run:123"],
   agentId: "agent-1",
+  sourceKind: "agent",
+  sourceRefId: null,
   idempotencyKey: "proposal-key",
   status: "pending",
   reviewedById: null,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, FileLock2 } from "lucide-react";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -15,6 +15,11 @@ import { Button } from "@multica/ui/components/ui/button";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
 import { RichContent } from "../rich-content";
+import {
+  activationTargetFromRevision,
+  PersonalWikiKnowledgeActivation,
+  WorkspaceWikiKnowledgeActivation,
+} from "./wiki-knowledge-activation";
 
 interface ImmutableWikiRevisionProps {
   revision?: WikiRevision;
@@ -24,6 +29,7 @@ interface ImmutableWikiRevisionProps {
   onBack: () => void;
   citationPrefix: "wiki_page_revision" | "personal_wiki_revision";
   personal: boolean;
+  activation?: ReactNode;
 }
 
 export function ImmutableWikiRevision({
@@ -34,6 +40,7 @@ export function ImmutableWikiRevision({
   onBack,
   citationPrefix,
   personal,
+  activation,
 }: ImmutableWikiRevisionProps) {
   const { t } = useT("wiki");
   const [copied, setCopied] = useState(false);
@@ -59,16 +66,19 @@ export function ImmutableWikiRevision({
             <ArrowLeft />
             <span className="sr-only">{t(($) => $.actions.back)}</span>
           </Button>
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
-              <FileLock2 className="size-3.5" aria-hidden="true" />
-              <span>{personal ? t(($) => $.revision.personal_eyebrow) : t(($) => $.revision.shared_eyebrow)}</span>
-              <Badge variant="secondary">{t(($) => $.revision.read_only)}</Badge>
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
+                <FileLock2 className="size-3.5" aria-hidden="true" />
+                <span>{personal ? t(($) => $.revision.personal_eyebrow) : t(($) => $.revision.shared_eyebrow)}</span>
+                <Badge variant="secondary">{t(($) => $.revision.read_only)}</Badge>
+              </div>
+              <h1 className="break-words text-display-sm font-medium text-foreground">
+                {revision?.title || revision?.path || t(($) => $.revision.title)}
+              </h1>
+              <p className="break-words text-body text-muted-foreground">{t(($) => $.revision.description)}</p>
             </div>
-            <h1 className="break-words text-display-sm font-medium text-foreground">
-              {revision?.title || revision?.path || t(($) => $.revision.title)}
-            </h1>
-            <p className="break-words text-body text-muted-foreground">{t(($) => $.revision.description)}</p>
+            {revision?.id ? (personal ? <PersonalWikiKnowledgeActivation /> : activation) : null}
           </div>
         </header>
 
@@ -161,6 +171,9 @@ export function WorkspaceWikiRevisionView({ revisionId }: { revisionId: string }
       onBack={() => nav.push(workspacePaths.wiki())}
       citationPrefix="wiki_page_revision"
       personal={false}
+      activation={query.data ? (
+        <WorkspaceWikiKnowledgeActivation target={activationTargetFromRevision(query.data)} />
+      ) : undefined}
     />
   );
 }

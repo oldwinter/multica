@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/attributionbackfill"
+	"github.com/multica-ai/multica/server/internal/chatoriginbackfill"
 	"github.com/multica-ai/multica/server/internal/dbstartup"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/migrations"
@@ -329,6 +330,61 @@ var concurrentIndexCleanups = map[string]string{
 	"445_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
 	"447_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
 	"450_room_memory_review_key_index":                          "room_memory_review_key_uidx",
+	"461_room_inbox_active_identity_index":                      "idx_inbox_room_active_identity",
+	"462_room_inbox_cleanup_index":                              "idx_inbox_room_cleanup",
+	"481_twin_activation_preview_checkpoint_index":              "twin_activation_preview_checkpoint_lookup_idx",
+	"408_issue_source_context_id_index":                         "idx_issue_source_context_id",
+	"409_issue_source_context_issue_index":                      "idx_issue_source_context_issue",
+	"410_issue_source_context_origin_task_index":                "idx_issue_source_context_origin_task",
+	"411_attachment_source_context_index":                       "idx_attachment_source_context",
+	"412_issue_source_context_object_intent_key_index":          "idx_issue_source_context_object_intent_key",
+	"413_issue_source_context_object_intent_due_index":          "idx_issue_source_context_object_intent_due",
+	"414_issue_source_context_object_intent_context_index":      "idx_issue_source_context_object_intent_context",
+	"416_seat_capacity_operation_token_index":                   "idx_seat_capacity_outbox_operation_token",
+	"418_seat_capacity_due_index":                               "idx_seat_capacity_outbox_due",
+	"419_seat_capacity_share_join_index":                        "idx_seat_capacity_outbox_share_join",
+	"421_channel_chat_active_route_index":                       "idx_channel_chat_session_binding_active_route",
+	"423_channel_task_delivery_pkey_index":                      "channel_task_delivery_pkey",
+	"426_channel_outbound_message_id_index":                     "idx_channel_outbound_message_id",
+	"428_channel_task_delivery_binding_index":                   "idx_channel_task_delivery_binding",
+	"429_channel_task_delivery_installation_index":              "idx_channel_task_delivery_installation",
+	"430_channel_outbound_message_binding_index":                "idx_channel_outbound_message_binding_route",
+	"438_agent_runtime_online_last_seen_index":                  "idx_agent_runtime_online_last_seen",
+	"439_agent_runtime_offline_last_seen_index":                 "idx_agent_runtime_offline_last_seen",
+	"440_github_pr_head_sha_index":                              "idx_github_pull_request_head_sha",
+	"483_agent_task_queue_manual_rerun_index":                   "idx_agent_task_queue_manual_rerun_source",
+	"484_skill_evolution_loop_id_index":                         "skill_evolution_loop_id_uidx",
+	"485_skill_evolution_revision_id_index":                     "skill_evolution_revision_id_uidx",
+	"486_skill_evolution_revision_file_id_index":                "skill_evolution_revision_file_id_uidx",
+	"487_skill_evolution_proposal_id_index":                     "skill_evolution_proposal_id_uidx",
+	"488_skill_evolution_evidence_id_index":                     "skill_evolution_evidence_id_uidx",
+	"489_skill_evolution_evaluation_id_index":                   "skill_evolution_evaluation_id_uidx",
+	"490_skill_evolution_review_id_index":                       "skill_evolution_review_id_uidx",
+	"491_skill_evolution_release_id_index":                      "skill_evolution_release_id_uidx",
+	"492_skill_evolution_task_attribution_id_index":             "skill_evolution_task_attribution_id_uidx",
+	"493_task_run_review_id_index":                              "task_run_review_id_uidx",
+	"494_skill_evolution_loop_skill_index":                      "skill_evolution_loop_workspace_skill_uidx",
+	"495_skill_evolution_revision_hash_index":                   "skill_evolution_revision_workspace_skill_hash_uidx",
+	"496_skill_evolution_revision_file_path_index":              "skill_evolution_revision_file_workspace_path_uidx",
+	"497_skill_evolution_proposal_generation_index":             "skill_evolution_proposal_generation_uidx",
+	"498_skill_evolution_proposal_active_index":                 "skill_evolution_proposal_active_uidx",
+	"499_skill_evolution_evidence_identity_index":               "skill_evolution_evidence_identity_uidx",
+	"500_skill_evolution_evaluation_idempotency_index":          "skill_evolution_evaluation_idempotency_uidx",
+	"501_skill_evolution_review_idempotency_index":              "skill_evolution_review_idempotency_uidx",
+	"502_skill_evolution_release_idempotency_index":             "skill_evolution_release_idempotency_uidx",
+	"503_skill_evolution_task_attribution_identity_index":       "skill_evolution_task_attribution_identity_uidx",
+	"504_skill_evolution_loop_schedule_index":                   "skill_evolution_loop_schedule_idx",
+	"505_skill_evolution_revision_skill_index":                  "skill_evolution_revision_skill_created_idx",
+	"506_skill_evolution_proposal_skill_index":                  "skill_evolution_proposal_skill_created_idx",
+	"507_skill_evolution_release_skill_index":                   "skill_evolution_release_skill_created_idx",
+	"508_skill_evolution_task_attribution_task_index":           "skill_evolution_task_attribution_task_idx",
+	"509_task_run_review_workspace_index":                       "task_run_review_workspace_created_idx",
+	"510_task_run_review_task_index":                            "task_run_review_task_created_idx",
+	"512_agent_task_queue_manual_rerun_agent_index":             "idx_agent_task_queue_manual_rerun_agent_created",
+	"516_skill_evolution_task_dispatch_snapshot_id_index":       "skill_evolution_task_dispatch_snapshot_id_uidx",
+	"517_skill_evolution_task_dispatch_snapshot_identity_index": "skill_evolution_task_dispatch_snapshot_identity_uidx",
+	"521_wiki_page_room_proposal_idempotency_index":             "wiki_page_edit_proposal_room_idempotency_uidx",
+	"524_task_run_review_idempotency_index":                     "task_run_review_idempotency_uidx",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction
@@ -344,6 +400,7 @@ var concurrentDownIndexCleanups = map[string]string{
 	"258_drop_pending_issue_agent_v1":                       "idx_one_pending_task_per_issue_agent",
 	"262_drop_agent_task_queue_terminal_completed_at_v1":    "idx_agent_task_queue_terminal_completed_at",
 	"263_wiki_page_user_path_unique_drop":                   "wiki_page_user_path_uidx",
+	"422_channel_chat_route_history":                        "channel_chat_session_binding_installation_id_channel_chat_i_key",
 	"300_drop_redundant_issue_workspace_number_index":       "idx_issue_workspace_number",
 	"301_drop_redundant_sys_cron_job_plan_index":            "idx_sys_cron_exec_job_plan",
 	"302_drop_redundant_channel_chat_session_binding_index": "idx_channel_chat_session_binding_session",
@@ -353,12 +410,14 @@ var concurrentDownIndexCleanups = map[string]string{
 	"375_drop_issue_last_activity_index":                    "idx_issue_workspace_last_activity",
 	"391_drop_agent_task_queue_dispatched_prepare_index":    "idx_agent_task_queue_dispatched_prepare",
 	"438_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
+	"437_drop_agent_runtime_last_seen_at_index":             "idx_agent_runtime_last_seen_at",
 }
 
 var preMigrationHooks = func() map[string]preMigrationHook {
 	hooks := map[string]preMigrationHook{
 		"103_drop_legacy_daily_rollups":                         runTaskUsageHourlyHook,
 		"198_agent_task_attribution_strict_constraint_validate": runAttributionStrictHook,
+		"431_chat_explicit_origin_backfill":                     runChatOriginBackfillHook,
 	}
 	for version, index := range concurrentIndexCleanups {
 		hooks[version] = cleanupInvalidConcurrentIndexHook(index)
@@ -367,7 +426,7 @@ var preMigrationHooks = func() map[string]preMigrationHook {
 }()
 
 var preRollbackHooks = func() map[string]preMigrationHook {
-	hooks := make(map[string]preMigrationHook, len(concurrentDownIndexCleanups))
+	hooks := make(map[string]preMigrationHook, len(concurrentDownIndexCleanups)+len(sourceContextMigrationVersions)+2)
 	for version, index := range concurrentDownIndexCleanups {
 		hooks[version] = cleanupInvalidConcurrentIndexHook(index)
 	}
@@ -386,6 +445,14 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 		hooks[roomTurnIdentityVersion],
 		preflightRoomTurnIdentityRollback,
 	)
+
+	// Source-context indexes are split into one-statement concurrent
+	// migrations. Register the guard on every step so a rollback from any
+	// partially applied version fails before dropping its first live index.
+	for _, version := range sourceContextMigrationVersions {
+		hooks[version] = ensureSourceContextRollbackSafe
+	}
+	hooks["430_channel_outbound_message_binding_index"] = refuseChannelChatRouteHistoryRollback
 	return hooks
 }()
 
@@ -464,6 +531,49 @@ func preflightRoomTurnIdentityRollback(ctx context.Context, pool *pgxpool.Pool) 
 	)
 }
 
+var sourceContextMigrationVersions = []string{
+	"407_issue_source_context",
+	"408_issue_source_context_id_index",
+	"409_issue_source_context_issue_index",
+	"410_issue_source_context_origin_task_index",
+	"411_attachment_source_context_index",
+	"412_issue_source_context_object_intent_key_index",
+	"413_issue_source_context_object_intent_due_index",
+	"414_issue_source_context_object_intent_context_index",
+}
+
+type rowQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func refuseChannelChatRouteHistoryRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	return refuseChannelChatRouteHistoryRollbackWith(ctx, pool)
+}
+
+func runChatOriginBackfillHook(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := chatoriginbackfill.Hook(ctx, pool, chatoriginbackfill.HookOptions{})
+	return err
+}
+
+func refuseChannelChatRouteHistoryRollbackWith(ctx context.Context, query rowQuerier) error {
+	var channelChatRouteStateExists bool
+	if err := query.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM channel_chat_session_binding AS binding
+			LEFT JOIN chat_session AS session ON session.id = binding.chat_session_id
+			WHERE binding.retired_at IS NOT NULL
+			   OR session.explicitly_created_at IS NOT NULL
+		)
+	`).Scan(&channelChatRouteStateExists); err != nil {
+		return fmt.Errorf("check channel chat route state: %w", err)
+	}
+	if channelChatRouteStateExists {
+		return errors.New("cannot roll back channel chat routes after /new has created a channel Chat")
+	}
+	return nil
+}
+
 var upMigrationConditions = map[string]migrationCondition{
 	// Fresh databases that successfully built the CJK-friendly bigram index do
 	// not need to build the trigram fallback only to remove it at migration 371.
@@ -472,6 +582,72 @@ var upMigrationConditions = map[string]migrationCondition{
 	// fallback only after proving the preferred index has the exact usable shape;
 	// pg_bigm-less self-hosted databases keep trgm and record 371 as a no-op.
 	"371_comment_content_search_index_strategy": whenIndexUsable(commentContentBigramIndex),
+}
+
+// legacyMigrationVersionAliases preserves the schema_migrations identities of
+// the four downstream outcome-loop features across two historical renumbering
+// passes. Those filenames reached self-hosted databases before upstream added
+// migrations in the same numeric range. Replaying the renamed SQL is unsafe:
+// most statements intentionally are not idempotent and would fail on existing
+// columns, tables, or indexes.
+//
+// Keep this map explicit and append-only. A match means the exact migration was
+// already applied under an older filename; runMigrations records the current
+// identity without executing its SQL. New migrations must use a fresh prefix
+// and must never be added here merely to avoid resolving a real DDL conflict.
+var legacyMigrationVersionAliases = map[string][]string{
+	"403_room_outcome_lifecycle":                    {"400_room_outcome_lifecycle", "377_room_outcome_lifecycle"},
+	"404_room_memory_revision_id_index":             {"401_room_memory_revision_id_index", "378_room_memory_revision_id_index"},
+	"405_room_memory_revision_primary_key":          {"402_room_memory_revision_primary_key", "379_room_memory_revision_primary_key"},
+	"406_room_memory_revision_version_index":        {"403_room_memory_revision_version_index", "380_room_memory_revision_version_index"},
+	"407_room_cycle_phase_index":                    {"404_room_cycle_phase_index", "381_room_cycle_phase_index"},
+	"408_room_artifact_memory_revision_index":       {"405_room_artifact_memory_revision_index", "382_room_artifact_memory_revision_index"},
+	"409_room_recommendation_review":                {"406_room_recommendation_review", "383_room_recommendation_review"},
+	"410_room_recommendation_review_id_index":       {"407_room_recommendation_review_id_index", "384_room_recommendation_review_id_index"},
+	"411_room_recommendation_review_primary_key":    {"408_room_recommendation_review_primary_key", "385_room_recommendation_review_primary_key"},
+	"412_room_recommendation_review_identity_index": {"409_room_recommendation_review_identity_index", "386_room_recommendation_review_identity_index"},
+	"413_user_appearance_preferences":               {"410_user_appearance_preferences", "387_user_appearance_preferences"},
+	"414_wiki_knowledge_loop":                       {"420_wiki_knowledge_loop", "388_wiki_knowledge_loop"},
+	"415_wiki_page_revision_id_index":               {"421_wiki_page_revision_id_index", "389_wiki_page_revision_id_index"},
+	"416_wiki_page_revision_number_index":           {"422_wiki_page_revision_number_index", "390_wiki_page_revision_number_index"},
+	"417_wiki_page_revision_list_index":             {"423_wiki_page_revision_list_index", "391_wiki_page_revision_list_index"},
+	"418_wiki_page_search_index":                    {"424_wiki_page_search_index", "392_wiki_page_search_index"},
+	"419_wiki_page_proposal_id_index":               {"425_wiki_page_proposal_id_index", "393_wiki_page_proposal_id_index"},
+	"420_wiki_page_proposal_idempotency_index":      {"426_wiki_page_proposal_idempotency_index", "394_wiki_page_proposal_idempotency_index"},
+	"421_wiki_page_proposal_list_index":             {"427_wiki_page_proposal_list_index", "395_wiki_page_proposal_list_index"},
+	"422_lm_wiki_source_policy_index":               {"428_lm_wiki_source_policy_index", "396_lm_wiki_source_policy_index"},
+	"423_lm_wiki_source_page_index":                 {"429_lm_wiki_source_page_index", "397_lm_wiki_source_page_index"},
+	"424_twin_execution_tables":                     {"430_twin_execution_tables", "398_twin_execution_tables"},
+	"425_twin_binding_id_index":                     {"431_twin_binding_id_index", "399_twin_binding_id_index"},
+	"426_twin_task_attribution_id_index":            {"432_twin_task_attribution_id_index", "400_twin_task_attribution_id_index"},
+	"427_twin_run_feedback_id_index":                {"433_twin_run_feedback_id_index", "401_twin_run_feedback_id_index"},
+	"428_twin_deposition_id_index":                  {"434_twin_deposition_id_index", "402_twin_deposition_id_index"},
+	"429_twin_execution_primary_keys":               {"435_twin_execution_primary_keys", "403_twin_execution_primary_keys"},
+	"430_twin_binding_scope_index":                  {"436_twin_binding_scope_index", "404_twin_binding_scope_index"},
+	"431_twin_task_attribution_claim_index":         {"437_twin_task_attribution_claim_index", "405_twin_task_attribution_claim_index"},
+	"432_twin_run_feedback_task_index":              {"438_twin_run_feedback_task_index", "406_twin_run_feedback_task_index"},
+	"433_twin_deposition_proposal_index":            {"439_twin_deposition_proposal_index", "407_twin_deposition_proposal_index"},
+	"434_twin_deposition_task_index":                {"440_twin_deposition_task_index", "408_twin_deposition_task_index"},
+	"435_twin_schema_v2_and_deposition":             {"441_twin_schema_v2_and_deposition", "409_twin_schema_v2_and_deposition"},
+	"436_agent_task_twin_use_snapshot":              {"442_agent_task_twin_use_snapshot", "410_agent_task_twin_use_snapshot"},
+	"437_twin_deposition_replacement":               {"443_twin_deposition_replacement", "411_twin_deposition_replacement"},
+	"438_drop_twin_proposal_identity_index":         {"444_drop_twin_proposal_identity_index", "412_drop_twin_proposal_identity_index"},
+	"439_twin_proposal_identity_partial_index":      {"445_twin_proposal_identity_partial_index", "413_twin_proposal_identity_partial_index"},
+	"440_twin_deposition_request_index":             {"446_twin_deposition_request_index", "414_twin_deposition_request_index"},
+	"441_twin_deposition_edit_digest":               {"447_twin_deposition_edit_digest", "415_twin_deposition_edit_digest"},
+	"442_twin_proposal_correction":                  {"448_twin_proposal_correction", "416_twin_proposal_correction"},
+	"443_twin_proposal_replacement_index":           {"449_twin_proposal_replacement_index", "417_twin_proposal_replacement_index"},
+	"444_room_turn_identity_index_drop":             {"450_room_turn_identity_index_drop", "418_room_turn_identity_index_drop"},
+	"445_room_turn_kind_attempt_index":              {"451_room_turn_kind_attempt_index", "419_room_turn_kind_attempt_index"},
+	"446_room_lifecycle_idempotency":                {"452_room_lifecycle_idempotency", "420_room_lifecycle_idempotency"},
+	"447_room_synthesis_retry_key_index":            {"453_room_synthesis_retry_key_index", "421_room_synthesis_retry_key_index"},
+	"448_room_capability_rollout":                   {"454_room_capability_rollout", "422_room_capability_rollout"},
+	"449_room_artifact_recommendation_key":          {"455_room_artifact_recommendation_key", "423_room_artifact_recommendation_key"},
+	"450_room_memory_review_key_index":              {"456_room_memory_review_key_index", "424_room_memory_review_key_index"},
+	"451_room_memory_revision_creator":              {"457_room_memory_revision_creator", "425_room_memory_revision_creator"},
+	"452_room_cycle_cost_limit":                     {"458_room_cycle_cost_limit", "426_room_cycle_cost_limit"},
+	"453_room_spend_limit_refusal":                  {"459_room_spend_limit_refusal", "427_room_spend_limit_refusal"},
+	"454_wiki_knowledge_primary_keys":               {"460_wiki_knowledge_primary_keys", "428_wiki_knowledge_primary_keys"},
 }
 
 func hooksForDirection(direction string) map[string]preMigrationHook {
@@ -483,6 +659,21 @@ func hooksForDirection(direction string) map[string]preMigrationHook {
 	default:
 		return nil
 	}
+}
+
+func ensureSourceContextRollbackSafe(ctx context.Context, pool *pgxpool.Pool) error {
+	var dataExists bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM issue_source_context)
+		    OR EXISTS (SELECT 1 FROM attachment WHERE source_context_id IS NOT NULL)
+		    OR EXISTS (SELECT 1 FROM issue_source_context_object_intent)
+	`).Scan(&dataExists); err != nil {
+		return fmt.Errorf("inspect source-context rollback ownership: %w", err)
+	}
+	if dataExists {
+		return errors.New("cannot roll back issue source context while captured data or stored objects still exist; remove source-context captures and their stored objects through application cleanup, then retry")
+	}
+	return nil
 }
 
 func conditionsForDirection(direction string) map[string]migrationCondition {
@@ -697,6 +888,10 @@ type runOptions struct {
 	// migration ledger, allowing later migrations to run in environments where
 	// this version's DDL is intentionally unnecessary.
 	Conditions map[string]migrationCondition
+	// VersionAliases maps the current migration identity to older published
+	// identities for the same SQL. Production passes the frozen downstream map;
+	// tests may inject a small fixture map. Never use aliases for different DDL.
+	VersionAliases map[string][]string
 }
 
 func main() {
@@ -733,10 +928,11 @@ func main() {
 	}
 
 	options := runOptions{
-		Direction:  direction,
-		Files:      files,
-		Hooks:      hooksForDirection(direction),
-		Conditions: conditionsForDirection(direction),
+		Direction:      direction,
+		Files:          files,
+		Hooks:          hooksForDirection(direction),
+		Conditions:     conditionsForDirection(direction),
+		VersionAliases: legacyMigrationVersionAliases,
 	}
 	startupCtx, stopStartup := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopStartup()
@@ -862,10 +1058,24 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 
 	for _, file := range opts.Files {
 		version := migrations.ExtractVersion(file)
+		aliases := opts.VersionAliases[version]
 
 		var exists bool
 		if err := conn.QueryRow(ctx, existsSQL, version).Scan(&exists); err != nil {
 			return fmt.Errorf("check migration %q: %w", version, err)
+		}
+		legacyVersion := ""
+		if !exists {
+			for _, alias := range aliases {
+				var aliasExists bool
+				if err := conn.QueryRow(ctx, existsSQL, alias).Scan(&aliasExists); err != nil {
+					return fmt.Errorf("check legacy migration %q for %q: %w", alias, version, err)
+				}
+				if aliasExists {
+					legacyVersion = alias
+					break
+				}
+			}
 		}
 
 		if opts.Direction == "up" {
@@ -873,8 +1083,15 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 				fmt.Printf("  skip  %s (already applied)\n", version)
 				continue
 			}
+			if legacyVersion != "" {
+				if _, err := conn.Exec(ctx, insertSQL, version); err != nil {
+					return fmt.Errorf("record migration alias %q for %q: %w", legacyVersion, version, err)
+				}
+				fmt.Printf("  skip  %s (already applied as %s; recorded current identity)\n", version, legacyVersion)
+				continue
+			}
 		} else {
-			if !exists {
+			if !exists && legacyVersion == "" {
 				fmt.Printf("  skip  %s (not applied)\n", version)
 				continue
 			}
@@ -916,7 +1133,11 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 		if opts.Direction == "up" {
 			_, err = conn.Exec(ctx, insertSQL, version)
 		} else {
-			_, err = conn.Exec(ctx, deleteSQL, version)
+			for _, recordedVersion := range append([]string{version}, aliases...) {
+				if _, err = conn.Exec(ctx, deleteSQL, recordedVersion); err != nil {
+					break
+				}
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("record migration %q: %w", version, err)

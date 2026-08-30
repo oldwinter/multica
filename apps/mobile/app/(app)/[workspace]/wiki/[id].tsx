@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { WikiErrorState, WikiOfflineNotice } from "@/components/wiki/wiki-states";
 import { wikiScopeLabel } from "@/components/wiki/wiki-page-row";
+import { useWikiKnowledgeActivation } from "@/components/wiki/use-wiki-knowledge-activation";
 import { Markdown } from "@/lib/markdown";
 import { timeAgo } from "@/lib/time-ago";
 import { wikiPageDetailOptions } from "@/data/queries/wiki";
@@ -37,9 +38,11 @@ export default function WikiPageDetail() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const detail = useQuery(wikiPageDetailOptions(wsId, id));
   const remove = useDeleteWikiPage(id);
+  const activation = useWikiKnowledgeActivation(id);
   const onRemoteDelete = useCallback(() => router.back(), []);
   useWikiPageRealtime(id, onRemoteDelete);
   const page = detail.data;
+  const sourceStatusLabel = page?.scope === "user" ? "Always excluded" : activation.statusLabel;
   const citationKey = page?.currentRevisionId
     ? `wiki_page_revision:${page.currentRevisionId}`
     : "";
@@ -85,17 +88,39 @@ export default function WikiPageDetail() {
   }, [remove]);
 
   const onActions = useCallback(() => {
-    const options = ["Cancel", "Edit", "Revision history", "Agent proposals", "Delete"];
+    if (!page) return;
+    const exactPinned = activation.source?.selectedRevisionId === page.currentRevisionId
+      && activation.source.state !== "excluded";
+    const activationLabel = exactPinned ? "Exact revision pinned" : "Use as LM Wiki evidence";
+    const canActivate = activation.canPinRevision(page.currentRevisionId, page.scope);
+    const options = ["Cancel", activationLabel, "Edit", "Revision history", "Agent proposals", "Delete"];
     ActionSheetIOS.showActionSheetWithOptions(
-      { options, cancelButtonIndex: 0, destructiveButtonIndex: 4 },
+      {
+        options,
+        cancelButtonIndex: 0,
+        destructiveButtonIndex: 5,
+        disabledButtonIndices: canActivate ? [] : [1],
+      },
       (index) => {
-        if (index === 1) navigate("edit");
-        else if (index === 2) navigate("history");
-        else if (index === 3) navigate("proposals");
-        else if (index === 4) onDelete();
+        if (index === 1) {
+          activation.confirmRevision({
+            pageId: page.id,
+            revisionId: page.currentRevisionId,
+            revisionNumber: page.currentRevisionNumber,
+            title: page.title,
+            path: page.path,
+            contentDigest: page.contentDigest,
+            scope: page.scope,
+            sourceKind: page.lastSourceKind,
+            actorType: page.lastActorType,
+          });
+        } else if (index === 2) navigate("edit");
+        else if (index === 3) navigate("history");
+        else if (index === 4) navigate("proposals");
+        else if (index === 5) onDelete();
       },
     );
-  }, [navigate, onDelete]);
+  }, [activation, navigate, onDelete, page]);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["bottom"]}>
@@ -145,7 +170,22 @@ export default function WikiPageDetail() {
               <Text className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground">
                 {SOURCE_LABELS[page.lastSourceKind]}
               </Text>
+              <Text
+                className="rounded-md border border-border px-2 py-1 text-xs text-foreground"
+                accessibilityLabel={`LM Wiki source status: ${sourceStatusLabel}`}
+              >
+                {sourceStatusLabel}
+              </Text>
             </View>
+            {!activation.canManage && page.scope !== "user" ? (
+              <Text className="text-xs text-muted-foreground">
+                Only workspace owners and admins can change LM Wiki evidence.
+              </Text>
+            ) : page.scope === "user" ? (
+              <Text className="text-xs text-muted-foreground">
+                Personal Wiki is permanently excluded from shared LM Wiki evidence.
+              </Text>
+            ) : null}
             <Text className="text-xs text-muted-foreground">
               Updated {timeAgo(page.updatedAt)} · digest {page.contentDigest.slice(0, 18) || "unavailable"}
             </Text>

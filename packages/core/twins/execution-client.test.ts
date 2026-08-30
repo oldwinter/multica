@@ -65,6 +65,7 @@ describe("Twin execution HTTP contract", () => {
     const client = new ApiClient("https://api.example.test");
 
     await client.getTwinBindings();
+    await client.getTwinActivationReadiness();
     await client.upsertTwinBinding({
       scopeType: "project",
       scopeId: "00000000-0000-4000-8000-000000000002",
@@ -72,6 +73,7 @@ describe("Twin execution HTTP contract", () => {
       twinVersionId: "00000000-0000-4000-8000-000000000003",
     });
     await client.deleteTwinBinding("00000000-0000-4000-8000-000000000004");
+    await client.pauseTwinExecution();
     await client.previewTwinBriefing({
       agentId: "00000000-0000-4000-8000-000000000005",
       projectId: "00000000-0000-4000-8000-000000000002",
@@ -101,21 +103,23 @@ describe("Twin execution HTTP contract", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "https://api.example.test/api/twins/bindings",
+      "https://api.example.test/api/twins/activation",
       "https://api.example.test/api/twins/bindings",
       "https://api.example.test/api/twins/bindings/00000000-0000-4000-8000-000000000004",
+      "https://api.example.test/api/twins/pause",
       "https://api.example.test/api/twins/briefings/preview",
       "https://api.example.test/api/twins/tasks/00000000-0000-4000-8000-000000000008/context",
       "https://api.example.test/api/twins/tasks/00000000-0000-4000-8000-000000000008/feedback",
       "https://api.example.test/api/twins/tasks/00000000-0000-4000-8000-000000000008/depositions",
       "https://api.example.test/api/twins/metrics",
     ]);
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({
       scope_type: "project",
       scope_id: "00000000-0000-4000-8000-000000000002",
       state: "preview",
       twin_version_id: "00000000-0000-4000-8000-000000000003",
     });
-    expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[5]?.[1]?.body))).toEqual({
       agent_id: "00000000-0000-4000-8000-000000000005",
       project_id: "00000000-0000-4000-8000-000000000002",
       issue_id: "00000000-0000-4000-8000-000000000006",
@@ -125,11 +129,11 @@ describe("Twin execution HTTP contract", () => {
       one_off_state: "enabled",
       twin_version_id: "00000000-0000-4000-8000-000000000003",
     });
-    expect(JSON.parse(String(fetchMock.mock.calls[5]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[7]?.[1]?.body))).toEqual({
       rating: "helped",
       note: "kept scope precise",
     });
-    expect(JSON.parse(String(fetchMock.mock.calls[6]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[8]?.[1]?.body))).toEqual({
       replaces_proposal_id: "00000000-0000-4000-8000-000000000009",
       edited_assertions: [{
         id: "review.explicit",
@@ -140,7 +144,7 @@ describe("Twin execution HTTP contract", () => {
       }],
     });
     expect(fetchMock.mock.calls.map(([, init]) => init?.method ?? "GET")).toEqual([
-      "GET", "POST", "DELETE", "POST", "GET", "PUT", "POST", "GET",
+      "GET", "GET", "POST", "DELETE", "POST", "POST", "GET", "PUT", "POST", "GET",
     ]);
   });
 });

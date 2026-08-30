@@ -69,6 +69,7 @@ const navigation: NavigationAdapter = {
   replace: vi.fn(),
   back: vi.fn(),
   pathname: "/acme/office",
+  hash: "",
   searchParams: new URLSearchParams(),
   getShareableUrl: (path) => `https://multica.test${path}`,
 };

@@ -7,6 +7,7 @@ import {
   Clock3,
   Download,
   FileText,
+  GitCompareArrows,
   HardDrive,
   Loader2,
   Lock,
@@ -1186,6 +1187,22 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
                 </TooltipContent>
               </Tooltip>
             )}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    render={<AppLink href={`${paths.skillDetail(skill.id)}/evolution`} />}
+                    nativeButton={false}
+                    aria-label={t(($) => $.detail.evolution)}
+                  >
+                    <GitCompareArrows className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent>{t(($) => $.detail.evolution)}</TooltipContent>
+            </Tooltip>
             <Button
               variant="outline"
               size="xs"

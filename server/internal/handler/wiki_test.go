@@ -106,6 +106,61 @@ func TestDecodeWikiProposalUsesFrozenAgentContract(t *testing.T) {
 	}
 }
 
+func TestWikiProposalResponsePreservesAgentAndRoomProvenance(t *testing.T) {
+	t.Parallel()
+	agentID := util.MustParseUUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	roomID := util.MustParseUUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	base := db.WikiPageEditProposal{
+		ID:                 util.MustParseUUID("11111111-1111-1111-1111-111111111111"),
+		PageID:             util.MustParseUUID("22222222-2222-2222-2222-222222222222"),
+		BaseRevisionNumber: 3,
+		ProposedPath:       "playbook/review.md",
+		ProposedTitle:      "Review",
+		ProposedContent:    "# Review",
+		ContentDigest:      "sha256:proposal",
+		Rationale:          "evidence",
+		EvidenceRefs:       []byte(`[]`),
+		IdempotencyKey:     "run-1",
+		Status:             "pending",
+		CreatedAt:          pgtype.Timestamptz{Time: time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC), Valid: true},
+	}
+
+	agent := base
+	agent.AgentID = agentID
+	agent.SourceKind = "agent"
+	agentResponse := wikiProposalToResponse(agent)
+	if agentResponse.AgentID == nil || *agentResponse.AgentID != uuidToString(agentID) {
+		t.Fatalf("agent_id = %v, want %s", agentResponse.AgentID, uuidToString(agentID))
+	}
+	if agentResponse.SourceKind != "agent" || agentResponse.SourceRefID != nil {
+		t.Fatalf("agent provenance = kind %q ref %v", agentResponse.SourceKind, agentResponse.SourceRefID)
+	}
+
+	room := base
+	room.AgentID = pgtype.UUID{}
+	room.SourceKind = "room"
+	room.SourceRefID = roomID
+	roomResponse := wikiProposalToResponse(room)
+	if roomResponse.AgentID != nil {
+		t.Fatalf("room agent_id = %v, want nil", roomResponse.AgentID)
+	}
+	if roomResponse.SourceKind != "room" || roomResponse.SourceRefID == nil || *roomResponse.SourceRefID != uuidToString(roomID) {
+		t.Fatalf("room provenance = kind %q ref %v", roomResponse.SourceKind, roomResponse.SourceRefID)
+	}
+
+	payload, err := json.Marshal([]WikiPageEditProposalResponse{agentResponse, roomResponse})
+	if err != nil {
+		t.Fatalf("marshal mixed proposal responses: %v", err)
+	}
+	var wire []map[string]any
+	if err := json.Unmarshal(payload, &wire); err != nil {
+		t.Fatalf("unmarshal mixed proposal responses: %v", err)
+	}
+	if wire[0]["source_kind"] != "agent" || wire[1]["source_kind"] != "room" || wire[1]["agent_id"] != nil || wire[1]["source_ref_id"] != uuidToString(roomID) {
+		t.Fatalf("mixed proposal wire response = %#v", wire)
+	}
+}
+
 func TestRequireWikiHumanRejectsCloudMachineCredential(t *testing.T) {
 	t.Parallel()
 	h := &Handler{}

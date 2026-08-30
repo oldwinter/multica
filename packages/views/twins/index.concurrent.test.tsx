@@ -24,6 +24,7 @@ vi.mock("../navigation", () => ({
   AppLink: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
     <a href={href} {...props}>{children}</a>
   ),
+  useNavigation: () => ({ push: vi.fn() }),
 }));
 
 const resources = { en: { common: enCommon, twins: enTwins } };

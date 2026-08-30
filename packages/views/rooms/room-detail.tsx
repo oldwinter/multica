@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Gauge, Loader2, Pause, Play, RotateCw, Square } from "lucide-react";
+import { Archive, Copy, Gauge, Loader2, Pause, Play, RotateCw, Square } from "lucide-react";
 import type { Agent } from "@multica/core/types";
 import type {
   RoomComposerDraft,
@@ -21,7 +21,7 @@ import { useT } from "../i18n";
 import { roomStatusClass } from "./room-display";
 import { RoomTranscript } from "./room-transcript";
 import { RoomInspector } from "./room-inspector";
-import { RoomOutcome } from "./room-outcome";
+import { RoomOutcome, type RoomAttentionTarget } from "./room-outcome";
 import type { PromotionSource } from "./promote-room-dialog";
 
 interface RoomDetailProps {
@@ -43,6 +43,7 @@ interface RoomDetailProps {
   readonly retryPending: boolean;
   readonly cancelPending: boolean;
   readonly recommendationPending: boolean;
+	readonly attentionTarget?: RoomAttentionTarget;
 	readonly canManageBudget: boolean;
   readonly onPost: React.ComponentProps<typeof RoomTranscript>["onPost"];
   readonly onWake: (input: { readonly idempotency_key: string }) => void;
@@ -53,6 +54,7 @@ interface RoomDetailProps {
   readonly onCancelCycle: () => void;
   readonly onRejectRecommendation: (revisionId: string, recommendationKey: string) => void;
   readonly onPromote: (source: PromotionSource) => void;
+	readonly onDuplicate: () => void;
 	readonly onManageBudget: () => void;
 }
 
@@ -75,6 +77,7 @@ export function RoomDetail({
   retryPending,
   cancelPending,
   recommendationPending,
+	attentionTarget,
 	canManageBudget,
   onPost,
   onWake,
@@ -85,13 +88,20 @@ export function RoomDetail({
   onCancelCycle,
   onRejectRecommendation,
   onPromote,
+	onDuplicate,
 	onManageBudget,
 }: RoomDetailProps) {
   const { t } = useT("rooms");
   const room = detail.room;
   const canWake = outcomeState.nextAction === "run_cycle" && !waking;
+  const repeatEligible =
+    room.status === "active" &&
+    outcomeState.activeCycle === null &&
+    outcomeState.latestCycle !== null &&
+    ["completed", "failed", "cancelled", "refused"].includes(outcomeState.phase);
+  const canRunAgain = repeatEligible && !waking;
   const canRetryPreflight = preflightError && !preflightPending;
-  const wakeBusy = waking || preflightPending;
+  const wakeBusy = waking || (!repeatEligible && preflightPending);
 
   const jumpToCitation = (entryId: string) => {
     onDetailTabChange("transcript");
@@ -153,6 +163,21 @@ export function RoomDetail({
             <span className="hidden sm:inline">{t(($) => $.actions.cancel_cycle)}</span>
           </Button>
         ) : null}
+		<Tooltip>
+			<TooltipTrigger render={
+				<Button
+					type="button"
+					size="icon-sm"
+					variant="ghost"
+					aria-label={t(($) => $.actions.duplicate)}
+					data-testid="room-duplicate"
+					onClick={onDuplicate}
+				>
+					<Copy aria-hidden="true" />
+				</Button>
+			} />
+			<TooltipContent>{t(($) => $.actions.duplicate)}</TooltipContent>
+		</Tooltip>
 		{canManageBudget ? (
 			<Tooltip>
 				<TooltipTrigger render={
@@ -177,25 +202,34 @@ export function RoomDetail({
                 <Button
                   type="button"
                   size="sm"
-                  disabled={!canWake && !canRetryPreflight}
-                  aria-label={canRetryPreflight
-                    ? t(($) => $.actions.retry_preflight)
-                    : wakeBusy ? t(($) => $.actions.waking) : t(($) => $.actions.wake)}
+                  disabled={!canRunAgain && !canWake && !canRetryPreflight}
+                  aria-label={repeatEligible
+                    ? t(($) => $.actions.run_again)
+                    : canRetryPreflight
+                      ? t(($) => $.actions.retry_preflight)
+                      : wakeBusy
+                      ? t(($) => $.actions.waking)
+                      : t(($) => $.actions.wake)}
                   data-testid="room-wake"
                   onClick={() => {
-                    if (canRetryPreflight) onRetryPreflight();
+                    if (canRunAgain) onWake({ idempotency_key: createSafeId() });
+                    else if (canRetryPreflight) onRetryPreflight();
                     else onWake({ idempotency_key: createSafeId() });
                   }}
                 >
                   {wakeBusy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RotateCw aria-hidden="true" />}
                   <span className="hidden sm:inline">
-                    {canRetryPreflight ? t(($) => $.actions.retry_preflight) : t(($) => $.actions.wake)}
+                    {repeatEligible
+                      ? t(($) => $.actions.run_again)
+                      : canRetryPreflight
+                        ? t(($) => $.actions.retry_preflight)
+                        : t(($) => $.actions.wake)}
                   </span>
                 </Button>
               </span>
             }
           />
-          {!canWake && !waking ? (
+          {!canRunAgain && !canWake && !waking ? (
             <TooltipContent>
               {preflightError
                 ? t(($) => $.refusal.preflight_failed)
@@ -261,6 +295,7 @@ export function RoomDetail({
           reviewPending={reviewPending}
           retryPending={retryPending}
           recommendationPending={recommendationPending}
+          attentionTarget={attentionTarget}
           onReview={onReview}
           onRetry={onRetrySynthesis}
           onCitation={jumpToCitation}

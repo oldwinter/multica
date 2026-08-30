@@ -218,6 +218,9 @@ deleted_channel_outbound_cards AS (
 deleted_lark_outbound_cards AS (
     DELETE FROM lark_outbound_card_message WHERE task_id IN (SELECT id FROM batch)
 ),
+deleted_channel_task_deliveries AS (
+    DELETE FROM channel_task_delivery WHERE task_id IN (SELECT id FROM batch)
+),
 deleted_draft_restores AS (
     DELETE FROM chat_draft_restore WHERE task_id IN (SELECT id FROM batch)
 )
@@ -427,6 +430,14 @@ deleted_github_check_suites AS (
 deleted_pending_github_suites AS (
     DELETE FROM github_pending_check_suite WHERE workspace_id = $1
 ),
+deleted_channel_task_deliveries AS (
+    DELETE FROM channel_task_delivery
+    WHERE installation_id IN (SELECT id FROM ws_channel_installations)
+),
+deleted_channel_outbound_messages AS (
+    DELETE FROM channel_outbound_message
+    WHERE installation_id IN (SELECT id FROM ws_channel_installations)
+),
 deleted_channel_chat_contexts AS (
     DELETE FROM channel_chat_context_generation
     WHERE chat_session_id IN (SELECT id FROM ws_sessions)
@@ -510,6 +521,9 @@ deleted_wiki_proposals AS (
 ),
 deleted_wiki_revisions AS (
     DELETE FROM wiki_page_revision WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+),
+deleted_twin_activation_preview_checkpoints AS (
+    DELETE FROM twin_activation_preview_checkpoint WHERE workspace_id = sqlc.arg(workspace_id)::uuid
 ),
 deleted_twin_run_feedback AS (
     DELETE FROM twin_run_feedback WHERE workspace_id = sqlc.arg(workspace_id)::uuid

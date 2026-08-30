@@ -6,14 +6,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components
 import { useT } from "../../i18n";
 import { PageHeader } from "../../layout/page-header";
 import { TwinPanel } from "./twin-panel";
+import { TwinActivationReadiness, type TwinWorkspaceTab } from "./twin-activation-readiness";
 import { TwinUsePanel } from "./twin-use-panel";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import { WikiPanel } from "./wiki-panel";
 import { ReadOnlyNotice, WorkspaceState } from "./workspace-state";
 
-type WorkspaceTab = "wiki" | "twin" | "use";
-
-function isWorkspaceTab(value: unknown): value is WorkspaceTab {
+function isWorkspaceTab(value: unknown): value is TwinWorkspaceTab {
   return value === "wiki" || value === "twin" || value === "use";
 }
 
@@ -21,7 +20,7 @@ export type { TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
 
 export function TwinWorkspaceView(props: TwinWorkspaceProps) {
   const { t } = useT("twins");
-  const [tab, setTab] = useState<WorkspaceTab>("wiki");
+  const [tab, setTab] = useState<TwinWorkspaceTab>("wiki");
   return (
     <main className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-twin-copy data-twin-workspace>
       <PageHeader className="gap-2 bg-page-canvas">
@@ -44,23 +43,27 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
         {!props.canManageWiki || !props.canManageTwin ? <ReadOnlyNotice /> : null}
 
         {props.state === "ready" ? (
-          <Tabs value={tab} onValueChange={(value) => isWorkspaceTab(value) && setTab(value)} className="gap-5">
-            <TabsList variant="line" className="w-full justify-start">
-              <TabsTrigger value="wiki"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
-              <TabsTrigger value="twin"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
-              <TabsTrigger value="use"><SlidersHorizontal aria-hidden="true" />{t(($) => $.tabs.use)}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="wiki"><WikiPanel {...props} /></TabsContent>
-            <TabsContent value="twin"><TwinPanel {...props} /></TabsContent>
-            <TabsContent value="use">
-              <TwinUsePanel
-                wsId={props.wsId}
-                versions={props.twin.versions}
-                currentVersionId={props.twin.current_version?.id ?? ""}
-                canManage={props.canManageTwin}
-              />
-            </TabsContent>
-          </Tabs>
+          <>
+            <TwinActivationReadiness wsId={props.wsId} onNavigate={setTab} />
+            <Tabs value={tab} onValueChange={(value) => isWorkspaceTab(value) && setTab(value)} className="gap-5">
+              <TabsList variant="line" className="w-full justify-start">
+                <TabsTrigger value="wiki"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
+                <TabsTrigger value="twin"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
+                <TabsTrigger value="use"><SlidersHorizontal aria-hidden="true" />{t(($) => $.tabs.use)}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="wiki"><WikiPanel {...props} /></TabsContent>
+              <TabsContent value="twin"><TwinPanel {...props} /></TabsContent>
+              <TabsContent value="use">
+                <TwinUsePanel
+                  wsId={props.wsId}
+                  versions={props.twin.versions}
+                  currentVersionId={props.twin.current_version?.id ?? ""}
+                  canManage={props.canManageTwin}
+                  onNavigate={setTab}
+                />
+              </TabsContent>
+            </Tabs>
+          </>
         ) : <WorkspaceState state={props.state} onRetry={props.onRetry} />}
       </div>
     </main>

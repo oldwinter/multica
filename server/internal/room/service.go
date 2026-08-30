@@ -50,6 +50,29 @@ func (s *Service) List(ctx context.Context, workspaceID pgtype.UUID) ([]db.Room,
 	return s.queries.ListRooms(ctx, workspaceID)
 }
 
+func (s *Service) ListValueSignals(ctx context.Context, workspaceID pgtype.UUID) ([]ValueSignal, error) {
+	rows, err := s.queries.ListRoomValueSignals(ctx, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list Room value signals: %w", err)
+	}
+	signals := make([]ValueSignal, len(rows))
+	for index, row := range rows {
+		signals[index] = ValueSignal{
+			RoomID: row.RoomID, LastAcceptedRevisionID: row.LastAcceptedRevisionID,
+			LastAcceptedAt: row.LastAcceptedAt, LastCycleID: row.LastCycleID,
+			LastRunStatus: row.LastRunStatus, LastRunPhase: row.LastRunPhase,
+			LastRunReason: row.LastRunReason, LastRunAt: row.LastRunAt,
+			LastRunCostTicks: row.LastRunCostTicks, RepeatRunCount: row.RepeatRunCount,
+			AcceptedOutcomes: row.AcceptedOutcomes, ActiveWeeks: row.ActiveWeeks,
+			AcceptedOutcomesPerActiveWeek: row.AcceptedOutcomesPerActiveWeek,
+			MedianReviewLatencySeconds:    row.MedianReviewLatencySeconds,
+			PromotionRate:                 row.PromotionRate, FailedCycles: row.FailedCycles,
+			RefusedCycles: row.RefusedCycles,
+		}
+	}
+	return signals, nil
+}
+
 func (s *Service) Get(ctx context.Context, workspaceID, roomID pgtype.UUID) (Detail, error) {
 	roomRow, err := s.queries.GetRoom(ctx, db.GetRoomParams{ID: roomID, WorkspaceID: workspaceID})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -179,6 +202,14 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Detail, error)
 	})
 	if err != nil {
 		return Detail{}, fmt.Errorf("create room: %w", err)
+	}
+	if input.StartPaused && input.ScheduleIntervalMinutes != nil {
+		roomRow, err = queries.SetRoomStatus(ctx, db.SetRoomStatusParams{
+			Status: "paused", ID: roomRow.ID, WorkspaceID: roomRow.WorkspaceID,
+		})
+		if err != nil {
+			return Detail{}, fmt.Errorf("pause duplicated Room schedule: %w", err)
+		}
 	}
 	for _, participant := range participants {
 		role := participant.Role
@@ -382,10 +413,18 @@ func (s *Service) SetStatus(ctx context.Context, workspaceID, roomID pgtype.UUID
 	if err != nil {
 		return db.Room{}, fmt.Errorf("set room status: %w", err)
 	}
+	var archivedAttention []db.ArchiveRoomInboxItemsRow
+	if status == "archived" {
+		archivedAttention, err = archiveRoomAttention(ctx, queries, updated, pgtype.UUID{}, "", "")
+		if err != nil {
+			return db.Room{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return db.Room{}, fmt.Errorf("commit room status update: %w", err)
 	}
 	s.publish(EventRoomUpdated, updated, pgtype.UUID{}, roomEventPayload(updated))
+	s.publishRoomAttentionArchived(updated.WorkspaceID, archivedAttention)
 	return updated, nil
 }
 
@@ -466,7 +505,24 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 			}
 			turns = append(turns, turn)
 		}
-		return WakeResult{Cycle: cycle, Turns: turns, Tasks: []db.AgentTaskQueue{}}, nil
+		var attentionItems []db.InboxItem
+		var archivedAttention []db.ArchiveRoomInboxItemsRow
+		if roomRefusalNeedsAttention(reason) {
+			archivedAttention, err = archiveSupersededRoomRunAttention(ctx, queries, roomRow)
+			if err != nil {
+				return WakeResult{}, err
+			}
+			attentionItems, err = s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxCycleBlocked, roomAttentionInput{
+				RoomID: roomRow.ID, CycleID: cycle.ID, Phase: cycle.Phase, ReasonCode: reason,
+			})
+			if err != nil {
+				return WakeResult{}, err
+			}
+		}
+		return WakeResult{
+			Cycle: cycle, Turns: turns, Tasks: []db.AgentTaskQueue{},
+			attentionItems: attentionItems, archivedAttention: archivedAttention,
+		}, nil
 	}
 
 	cycle, err := queries.CreateRoomCycle(ctx, db.CreateRoomCycleParams{
@@ -499,12 +555,19 @@ func (s *Service) wakeTx(ctx context.Context, queries *db.Queries, roomRow db.Ro
 	}); err != nil {
 		return WakeResult{}, fmt.Errorf("activate room cycle: %w", err)
 	}
+	archivedAttention, err := archiveSupersededRoomRunAttention(ctx, queries, roomRow)
+	if err != nil {
+		return WakeResult{}, err
+	}
 	entryRows, err := queries.ListRoomEntries(ctx, db.ListRoomEntriesParams{WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID, LimitCount: 100})
 	if err != nil {
 		return WakeResult{}, fmt.Errorf("load room transcript: %w", err)
 	}
 	entries := roomEntries(entryRows)
-	result := WakeResult{Cycle: cycle, Turns: make([]db.RoomTurn, 0, len(agents)), Tasks: make([]db.AgentTaskQueue, 0, len(agents))}
+	result := WakeResult{
+		Cycle: cycle, Turns: make([]db.RoomTurn, 0, len(agents)),
+		Tasks: make([]db.AgentTaskQueue, 0, len(agents)), archivedAttention: archivedAttention,
+	}
 	for index, agent := range agents {
 		turn, err := queries.CreateRoomTurn(ctx, db.CreateRoomTurnParams{
 			WorkspaceID: roomRow.WorkspaceID, RoomID: roomRow.ID, CycleID: cycle.ID,
@@ -651,7 +714,7 @@ func marshalRoomStringList(values []string) ([]byte, error) {
 
 func validRoomTemplate(value string) bool {
 	switch value {
-	case "research", "planning", "risk", "incident", "decision":
+	case "research", "planning", "risk", "incident", "decision", "improvement":
 		return true
 	default:
 		return false
@@ -805,10 +868,18 @@ func participantInstructions(roomRow db.Room) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func synthesisInstructions(roomRow db.Room) string {
-	return participantInstructions(roomRow) + `
+const skillImprovementRecommendationBodyExample = `{"schema_version":1,"base_skill_id":"550e8400-e29b-41d4-a716-446655440000","base_hash":"sha256:0000000000000000000000000000000000000000000000000000000000000000","bundle":{"id":"550e8400-e29b-41d4-a716-446655440000","source":"workspace","name":"focused-review","description":"Review one bounded change.","content":"---\nname: focused-review\ndescription: Review one bounded change.\n---\n\nReview the smallest useful change.","files":[{"path":"references/checklist.md","content":"# Checklist\n\nVerify the focused behavior."}]},"observed_pattern":"Repeated reviews miss the same focused check.","expected_benefit":"The procedure makes that check explicit without expanding unrelated scope.","regression_risk":"An overly broad rule could make unrelated reviews slower.","evidence_digests":["sha256:1111111111111111111111111111111111111111111111111111111111111111"]}`
 
-You are the Room facilitator. Synthesize the participant outputs into exactly one JSON object with no Markdown fence or commentary. Use schema_version 1 and these fields: summary, facts, decisions, open_questions, disagreements, action_items, recommendations, confidence. Each item has text, citation_entry_ids, confidence. Each recommendation has kind (issue, wiki, or decision), title, body, rationale, citation_entry_ids, confidence. Cite only entry IDs present in the Room transcript. Preserve disagreement and uncertainty; do not invent consensus or evidence.`
+const skillImprovementRecommendationBodyContract = `For an executable_procedure recommendation in an improvement Room, body MUST be a JSON object with exactly these fields and no others: schema_version (integer 1); base_skill_id (UUID); base_hash (sha256 digest); bundle (object with exactly id, source, name, description, content, files); bundle.id must equal base_skill_id; bundle.source must be workspace; bundle.files is an array of objects with exactly path and content; observed_pattern, expected_benefit, and regression_risk (non-empty strings); evidence_digests (non-empty unique array of sha256 digests copied from the eligible evidence envelopes). Return the body as a JSON-encoded string inside the recommendation, with no Markdown fence. Never invent an ID, hash, evidence digest, bundle field, or file. The exact bundle becomes an immutable change plan only if a human promotes this recommendation; candidate output cannot authorize later changes beyond that approved bundle. If any required value is unavailable, or the proposed bundle is not a complete workspace Skill bundle, use kind unsupported instead of executable_procedure. Example executable_procedure body: ` + skillImprovementRecommendationBodyExample
+
+func synthesisInstructions(roomRow db.Room) string {
+	prompt := participantInstructions(roomRow) + `
+
+You are the Room facilitator. Synthesize the participant outputs into exactly one JSON object with no Markdown fence or commentary. Use schema_version 1 and these fields: summary, facts, decisions, open_questions, disagreements, action_items, recommendations, confidence. Each item has text, citation_entry_ids, confidence. Each recommendation has kind (knowledge, preference, constraint, executable_procedure, implementation_defect, decision, or unsupported), title, body, rationale, citation_entry_ids, confidence. Classify durable facts as knowledge, human or team working style as preference or constraint, executable Agent instructions as executable_procedure, and product or code work as implementation_defect. Use unsupported when no safe target applies. Cite only entry IDs present in the Room transcript. Preserve disagreement and uncertainty; do not invent consensus or evidence.`
+	if roomRow.TemplateID.Valid && roomRow.TemplateID.String == "improvement" {
+		prompt += "\n\n" + skillImprovementRecommendationBodyContract
+	}
+	return prompt
 }
 
 func roomStringList(raw []byte) []string {
@@ -920,7 +991,18 @@ func (s *Service) afterWake(ctx context.Context, roomRow db.Room, actorID pgtype
 			notifier.NotifyTaskEnqueued(ctx, task)
 		}
 	}
+	s.publishRoomAttentionArchived(roomRow.WorkspaceID, result.archivedAttention)
+	s.publishRoomAttentionItems(result.attentionItems)
 	s.publish(EventRoomCycle, roomRow, actorID, roomCycleEventPayload(result.Cycle))
+}
+
+func roomRefusalNeedsAttention(reason string) bool {
+	switch reason {
+	case "", "room_paused", "room_archived", "cycle_active":
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *Service) publish(eventType string, roomRow db.Room, actorID pgtype.UUID, payload any) {

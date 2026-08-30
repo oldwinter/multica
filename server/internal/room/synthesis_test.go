@@ -20,7 +20,7 @@ func validSynthesisJSON(citation string) []byte {
 		Disagreements: []SynthesisItem{},
 		ActionItems:   []SynthesisItem{},
 		Recommendations: []ArtifactRecommendation{{
-			Kind: "issue", Title: "Make the write idempotent", Body: "Add a durable request key.",
+			Kind: string(RecommendationTargetImplementationDefect), Title: "Make the write idempotent", Body: "Add a durable request key.",
 			Rationale:        "The participant supplied a concrete failure mode.",
 			CitationEntryIDs: []string{citation}, Confidence: 0.8,
 		}},
@@ -28,6 +28,54 @@ func validSynthesisJSON(citation string) []byte {
 	}
 	encoded, _ := json.Marshal(payload)
 	return encoded
+}
+
+func TestValidateSynthesisAcceptsClosedRecommendationTaxonomy(t *testing.T) {
+	const entryID = "5b592564-7835-4fde-83b1-4a3c5166db45"
+	allowed := map[string]struct{}{entryID: {}}
+	targets := []RecommendationTarget{
+		RecommendationTargetKnowledge,
+		RecommendationTargetPreference,
+		RecommendationTargetConstraint,
+		RecommendationTargetExecutableProcedure,
+		RecommendationTargetImplementationDefect,
+		RecommendationTargetDecision,
+		RecommendationTargetUnsupported,
+	}
+
+	for _, target := range targets {
+		t.Run(string(target), func(t *testing.T) {
+			var synthesis Synthesis
+			if err := json.Unmarshal(validSynthesisJSON(entryID), &synthesis); err != nil {
+				t.Fatal(err)
+			}
+			synthesis.Recommendations[0].Kind = string(target)
+			payload, err := json.Marshal(synthesis)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, err := ValidateSynthesis(payload, allowed); err != nil {
+				t.Fatalf("target %q rejected: %v", target, err)
+			}
+		})
+	}
+}
+
+func TestValidateSynthesisRejectsUnknownRecommendationTarget(t *testing.T) {
+	const entryID = "5b592564-7835-4fde-83b1-4a3c5166db45"
+	var synthesis Synthesis
+	if err := json.Unmarshal(validSynthesisJSON(entryID), &synthesis); err != nil {
+		t.Fatal(err)
+	}
+	synthesis.Recommendations[0].Kind = "future_target"
+	payload, err := json.Marshal(synthesis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, err = ValidateSynthesis(payload, map[string]struct{}{entryID: {}})
+	if !errors.Is(err, ErrInvalidSynthesis) {
+		t.Fatalf("error = %v, want ErrInvalidSynthesis", err)
+	}
 }
 
 func TestValidateSynthesisCanonicalizesDigestAndRecommendationKey(t *testing.T) {

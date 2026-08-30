@@ -5,6 +5,7 @@ import { IssueDetailPage } from "./pages/issue-detail-page";
 import { ProjectDetailPage } from "./pages/project-detail-page";
 import { AutopilotDetailPage } from "./pages/autopilot-detail-page";
 import { SkillDetailPage } from "./pages/skill-detail-page";
+import { SkillEvolutionPage } from "./pages/skill-evolution-page";
 import { AgentDetailPage } from "./pages/agent-detail-page";
 import { AiBuilderSessionPage } from "./pages/ai-builder-session-page";
 import { MemberDetailPage } from "./pages/member-detail-page";
@@ -193,6 +194,11 @@ export const appRoutes: RouteObject[] = [
             path: "skills/:id",
             element: <SkillDetailPage />,
             handle: { title: "Skill" },
+          },
+          {
+            path: "skills/:id/evolution",
+            element: <SkillEvolutionPage />,
+            handle: { title: "Evolution" },
           },
           { path: "agents", element: <DesktopAgentsPage />, handle: { title: "Agents" } },
           {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func TestRoomMutationBodiesAreBounded(t *testing.T) {
@@ -177,33 +176,26 @@ func TestRoomHTTPWorkflowPersistsRefusalsAndHidesRuntimeState(t *testing.T) {
 		"kind": "wiki", "entry_id": resultEntryID,
 		"idempotency_key": "handler-wiki-1", "title": "Atomic terminal projections",
 	}), "id", roomID)
-	var wikiArtifact roomArtifactResponse
-	testutil.Call(t, testHandler.PromoteRoomArtifact, wikiPromoteRequest).
-		Want(http.StatusCreated).
-		JSON(&wikiArtifact)
-	if wikiArtifact.TargetID == nil {
-		t.Fatalf("Room Wiki promotion response = %+v", wikiArtifact)
+	wikiRefusal := testutil.Call(t, testHandler.PromoteRoomArtifact, wikiPromoteRequest).
+		Want(http.StatusBadRequest)
+	if !strings.Contains(wikiRefusal.Text(), "invalid room input") {
+		t.Fatalf("unavailable Wiki proposal target response: %s", wikiRefusal.Text())
 	}
-	wikiPageID := parseUUID(*wikiArtifact.TargetID)
-	dbfx.Cleanup(t, "DELETE FROM wiki_page WHERE id = $1", wikiPageID)
-	dbfx.Cleanup(t, "DELETE FROM wiki_page_revision WHERE page_id = $1", wikiPageID)
-	wikiPage, err := testHandler.Queries.GetWikiPage(ctx, wikiPageID)
-	if err != nil {
-		t.Fatalf("load promoted Wiki page: %v", err)
+	var wikiArtifactCount, wikiPageCount int
+	if err := testPool.QueryRow(ctx, `
+		SELECT count(*) FROM room_artifact
+		WHERE room_id = $1 AND kind = 'wiki' AND idempotency_key = 'handler-wiki-1'
+	`, roomID).Scan(&wikiArtifactCount); err != nil {
+		t.Fatal(err)
 	}
-	wikiRevision, err := testHandler.Queries.GetWikiPageRevision(ctx, db.GetWikiPageRevisionParams{
-		PageID: wikiPage.ID,
-		ID:     wikiPage.CurrentRevisionID,
-	})
-	if err != nil {
-		t.Fatalf("load promoted Wiki revision: %v", err)
+	if err := testPool.QueryRow(ctx, `
+		SELECT count(*) FROM wiki_page
+		WHERE workspace_id = $1 AND path LIKE 'rooms/' || $2 || '/%'
+	`, testWorkspaceID, roomID).Scan(&wikiPageCount); err != nil {
+		t.Fatal(err)
 	}
-	if wikiPage.LastSourceKind != "room_promotion" || wikiPage.LastActorType != "member" || wikiPage.LastActorID != parseUUID(testUserID) ||
-		wikiRevision.SourceKind != "room_promotion" || wikiRevision.SourceRefID != parseUUID(wikiArtifact.ID) ||
-		wikiRevision.ActorType != "member" || wikiRevision.ActorID != parseUUID(testUserID) {
-		t.Fatalf("promoted Wiki provenance = page %q/%q/%v revision %q/%v/%q/%v",
-			wikiPage.LastSourceKind, wikiPage.LastActorType, wikiPage.LastActorID,
-			wikiRevision.SourceKind, wikiRevision.SourceRefID, wikiRevision.ActorType, wikiRevision.ActorID)
+	if wikiArtifactCount != 0 || wikiPageCount != 0 {
+		t.Fatalf("unavailable Wiki proposal target left artifact/page rows = %d/%d", wikiArtifactCount, wikiPageCount)
 	}
 
 	statusRequest := withURLParam(newRequest(http.MethodPut, "/api/rooms/"+roomID+"/status", map[string]any{"status": "paused"}), "id", roomID)

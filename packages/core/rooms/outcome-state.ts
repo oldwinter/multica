@@ -45,6 +45,14 @@ const EMPTY_USAGE: RoomUsage = {
   failures: 0,
   accepted_syntheses: 0,
   promoted_artifacts: 0,
+  repeat_run_count: 0,
+  active_weeks: 0,
+  median_review_latency_seconds: 0,
+  accepted_outcomes_per_active_week: 0,
+  promotion_rate: 0,
+  failed_cycles: 0,
+  refused_cycles: 0,
+  cost_ticks_per_accepted_outcome: 0,
 };
 
 export function deriveRoomOutcomeState(
