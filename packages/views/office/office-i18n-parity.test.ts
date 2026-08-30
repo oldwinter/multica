@@ -1,0 +1,55 @@
+// @vitest-environment node
+import { describe, expect, it } from "vitest";
+import en from "../locales/en/office.json";
+import zhHans from "../locales/zh-Hans/office.json";
+import ja from "../locales/ja/office.json";
+import ko from "../locales/ko/office.json";
+import enLayout from "../locales/en/layout.json";
+import zhHansLayout from "../locales/zh-Hans/layout.json";
+import jaLayout from "../locales/ja/layout.json";
+import koLayout from "../locales/ko/layout.json";
+
+const LOCALES: Record<string, unknown> = {
+  en,
+  "zh-Hans": zhHans,
+  ja,
+  ko,
+};
+
+function leafEntries(value: unknown, prefix = ""): readonly string[] {
+  if (typeof value === "string") return [`${prefix}=${value}`];
+  if (typeof value !== "object" || value === null) return [];
+  return Object.entries(value).flatMap(([key, child]) =>
+    leafEntries(child, prefix ? `${prefix}.${key}` : key),
+  );
+}
+
+function leafKeys(value: unknown): readonly string[] {
+  return leafEntries(value)
+    .map((entry) => entry.slice(0, entry.indexOf("=")))
+    .sort();
+}
+
+describe("Office locale parity", () => {
+  it("keeps the same non-empty key set in all four locales", () => {
+    const englishKeys = leafKeys(en);
+    for (const [locale, resources] of Object.entries(LOCALES)) {
+      expect(leafKeys(resources), `${locale} key set`).toEqual(englishKeys);
+      for (const entry of leafEntries(resources)) {
+        const value = entry.slice(entry.indexOf("=") + 1);
+        expect(value.trim().length, `${locale}: ${entry}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("registers the Office navigation label in all four layout locales", () => {
+    expect(enLayout.nav.office).toBe("Office");
+    expect(zhHansLayout.nav.office).toBe("办公室");
+    expect(jaLayout.nav.office).toBe("オフィス");
+    expect(koLayout.nav.office).toBe("오피스");
+  });
+
+  it("uses the approved Simplified Chinese Expedition name", () => {
+    expect(zhHans.toolbar.worlds.expedition).toBe("拓荒基地");
+  });
+});

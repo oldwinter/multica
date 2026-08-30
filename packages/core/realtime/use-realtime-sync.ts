@@ -17,6 +17,7 @@ import { runtimeKeys } from "../runtimes/queries";
 import { labelKeys } from "../labels/queries";
 import { propertyKeys } from "../properties/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { officeKeys } from "../office/queries";
 import {
   agentTaskSnapshotKeys,
   workspaceWorkingAgentsKeys,
@@ -872,6 +873,7 @@ function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
     qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: autopilotKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentTaskSnapshotKeys.all(wsId) });
+    qc.invalidateQueries({ queryKey: officeKeys.issueBriefsAll(wsId) });
     qc.invalidateQueries({ queryKey: workspaceWorkingAgentsKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentActivityKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentRunCountsKeys.all(wsId) });
@@ -929,6 +931,10 @@ function invalidateSquadMemberStatusQueries(qc: QueryClient, wsId: string): void
       );
     },
   });
+}
+
+function invalidateOfficeIssueBriefs(qc: QueryClient, wsId: string): void {
+  qc.invalidateQueries({ queryKey: officeKeys.issueBriefsAll(wsId) });
 }
 
 export interface RealtimeSyncStores {
@@ -1254,6 +1260,7 @@ export function useRealtimeSync(
         if (issue.status) {
           onInboxIssueStatusChanged(qc, wsId, issue.id, issue.status);
         }
+        invalidateOfficeIssueBriefs(qc, wsId);
       }
     });
 
@@ -1268,7 +1275,10 @@ export function useRealtimeSync(
       const { issue } = p as IssueCreatedPayload;
       if (!issue) return;
       const wsId = getCurrentWsId();
-      if (wsId) onIssueCreated(qc, wsId, issue);
+      if (wsId) {
+        onIssueCreated(qc, wsId, issue);
+        invalidateOfficeIssueBriefs(qc, wsId);
+      }
     });
 
     const wikiEventTypes = [
@@ -1306,6 +1316,7 @@ export function useRealtimeSync(
       if (wsId) {
         onIssueDeleted(qc, wsId, issue_id);
         onInboxIssueDeleted(qc, wsId, issue_id);
+        invalidateOfficeIssueBriefs(qc, wsId);
       }
     });
 

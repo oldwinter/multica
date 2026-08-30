@@ -27,6 +27,7 @@ import enBilling from "./en/billing.json";
 import enTwins from "./en/twins.json";
 import enWiki from "./en/wiki.json";
 import enRooms from "./en/rooms.json";
+import enOffice from "./en/office.json";
 import enSkillEvolution from "./en/skill-evolution.json";
 import zhHansCommon from "./zh-Hans/common.json";
 import zhHansAuth from "./zh-Hans/auth.json";
@@ -56,6 +57,7 @@ import zhHansBilling from "./zh-Hans/billing.json";
 import zhHansTwins from "./zh-Hans/twins.json";
 import zhHansWiki from "./zh-Hans/wiki.json";
 import zhHansRooms from "./zh-Hans/rooms.json";
+import zhHansOffice from "./zh-Hans/office.json";
 import zhHansSkillEvolution from "./zh-Hans/skill-evolution.json";
 import koCommon from "./ko/common.json";
 import koAuth from "./ko/auth.json";
@@ -85,6 +87,7 @@ import koBilling from "./ko/billing.json";
 import koTwins from "./ko/twins.json";
 import koWiki from "./ko/wiki.json";
 import koRooms from "./ko/rooms.json";
+import koOffice from "./ko/office.json";
 import koSkillEvolution from "./ko/skill-evolution.json";
 import jaCommon from "./ja/common.json";
 import jaAuth from "./ja/auth.json";
@@ -114,6 +117,7 @@ import jaBilling from "./ja/billing.json";
 import jaTwins from "./ja/twins.json";
 import jaWiki from "./ja/wiki.json";
 import jaRooms from "./ja/rooms.json";
+import jaOffice from "./ja/office.json";
 import jaSkillEvolution from "./ja/skill-evolution.json";
 
 // Single source of truth for the resource bundle. Both apps (web layout +
@@ -149,6 +153,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     twins: enTwins,
     wiki: enWiki,
     rooms: enRooms,
+    office: enOffice,
     "skill-evolution": enSkillEvolution,
   },
   "zh-Hans": {
@@ -180,6 +185,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     twins: zhHansTwins,
     wiki: zhHansWiki,
     rooms: zhHansRooms,
+    office: zhHansOffice,
     "skill-evolution": zhHansSkillEvolution,
   },
   ko: {
@@ -211,6 +217,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     twins: koTwins,
     wiki: koWiki,
     rooms: koRooms,
+    office: koOffice,
     "skill-evolution": koSkillEvolution,
   },
   ja: {
@@ -242,6 +249,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     twins: jaTwins,
     wiki: jaWiki,
     rooms: jaRooms,
+    office: jaOffice,
     "skill-evolution": jaSkillEvolution,
   },
 };

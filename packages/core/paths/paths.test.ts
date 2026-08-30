@@ -16,6 +16,7 @@ describe("paths.workspace(slug)", () => {
     expect(ws.wikiPage("p1")).toBe("/acme/wiki/p1");
     expect(ws.wikiRevision("r1")).toBe("/acme/wiki/revisions/r1");
     expect(ws.roomDetail("room 1")).toBe("/acme/rooms?room=room%201");
+    expect(ws.office()).toBe("/acme/office");
     expect(ws.personalWiki()).toBe("/acme/personal-wiki");
     expect(ws.personalWikiPage("p1")).toBe("/acme/personal-wiki/p1");
     expect(ws.personalWikiRevision("r1")).toBe("/acme/personal-wiki/revisions/r1");

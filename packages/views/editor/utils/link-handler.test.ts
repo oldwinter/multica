@@ -149,6 +149,12 @@ describe("resolveInternalLinkPath", () => {
     ).toBe("/other/wiki/revisions/revision-1");
   });
 
+  it("recognizes a slugless Office route as an internal workspace page", () => {
+    expect(resolveInternalLinkPath("/office", "acme", APP_ORIGIN)).toBe(
+      "/acme/office",
+    );
+  });
+
   it("rejects protocol-relative links as internal paths", () => {
     expect(
       resolveInternalLinkPath("//evil.example/issues/MUL-1", "acme", APP_ORIGIN),

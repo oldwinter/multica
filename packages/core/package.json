@@ -142,6 +142,7 @@
     "./navigation": "./navigation/index.ts",
     "./modals": "./modals/index.ts",
     "./onboarding": "./onboarding/index.ts",
+    "./office": "./office/index.ts",
     "./paths": "./paths/index.ts",
     "./hooks": "./hooks.tsx",
     "./hooks/*": "./hooks/*.ts",

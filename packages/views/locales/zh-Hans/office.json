@@ -1,0 +1,117 @@
+{
+  "toolbar": {
+    "title": "办公室",
+    "world_control": "办公室场景",
+    "worlds": {
+      "studio": "工作室",
+      "expedition": "拓荒基地"
+    },
+    "scene_counts": "场景中显示的对象",
+    "counts": {
+      "agents": "智能体 {{shown}}/{{total}}",
+      "squads": "小队 {{shown}}/{{total}}",
+      "issues": "任务 {{shown}}/{{total}}"
+    },
+    "roster_toggle": "切换名册",
+    "fit": "适应视图",
+    "zoom_out": "缩小",
+    "zoom_in": "放大"
+  },
+  "poster": {
+    "studio_title": "工作室信号层",
+    "studio_description": "在一个工作视图中查看智能体工位、小队看板和进行中的任务信号。",
+    "expedition_title": "探险野外基地",
+    "expedition_description": "同一组工作区事实分布在野外工位、路线看板和信号标记中。",
+    "renderer_fallback": "视觉场景不可用。完整名册仍可使用。"
+  },
+  "states": {
+    "loading_title": "正在加载办公室",
+    "unavailable_title": "办公室数据不可用",
+    "unavailable_body": "无法加载智能体列表。请重试以恢复办公室。",
+    "retry": "重试",
+    "empty_title": "办公室当前很安静",
+    "empty_body": "没有可显示的活跃智能体、小队或任务信号。",
+    "refreshing": "正在刷新工作区事实",
+    "partial_title": "部分办公室详情不可用",
+    "partial_body": "已显示可用的工作区事实，不会补猜缺失详情。",
+    "stale_title": "正在显示上次获取的办公室数据",
+    "stale_body": "无法刷新更新。计数和链接仍可使用，但场景并非实时。",
+    "gaps": {
+      "availability": "智能体可用性",
+      "workload": "智能体工作负载",
+      "squads": "小队",
+      "issue_briefs": "任务详情",
+      "selected_squad": "所选小队的成员信息"
+    }
+  },
+  "roster": {
+    "title": "办公室名册",
+    "tabs": {
+      "agents": "智能体",
+      "squads": "小队",
+      "issues": "进行中的任务"
+    },
+    "empty": {
+      "agents": "没有可显示的智能体",
+      "squads": "没有可显示的小队",
+      "issues": "没有进行中的任务"
+    },
+    "preview": "成员预览",
+    "members": "{{count}} 位成员",
+    "leader": "负责人：{{name}}",
+    "leader_unknown": "负责人不可用",
+    "active_issue_count": "{{count}} 个进行中的任务",
+    "executing_agent_count": "{{count}} 个执行中的智能体",
+    "unresolved_issue": "任务详情不可用",
+    "selected": "已选择"
+  },
+  "presence": {
+    "availability": "可用性",
+    "workload": "工作负载",
+    "online": "在线",
+    "unstable": "不稳定",
+    "offline": "离线",
+    "idle": "空闲",
+    "queued": "排队中",
+    "working": "工作中",
+    "loading": "加载中",
+    "unavailable": "不可用",
+    "running_count": "{{count}} 个运行中",
+    "queued_count": "{{count}} 个排队中",
+    "capacity": "容量 {{count}}"
+  },
+  "inspector": {
+    "back": "返回名册",
+    "agent_title": "智能体",
+    "squad_title": "小队",
+    "issue_title": "进行中的任务",
+    "description": "描述",
+    "active_issues": "进行中的任务",
+    "open_agent": "打开智能体",
+    "open_squad": "打开小队",
+    "open_issue": "打开任务",
+    "leader": "负责人",
+    "member_count": "完整成员数",
+    "member_preview": "成员预览",
+    "members": "成员",
+    "members_loading": "正在加载完整成员信息",
+    "members_unavailable": "完整成员信息不可用",
+    "retry_members": "重新加载成员信息",
+    "member_agent": "智能体",
+    "member_human": "成员",
+    "member_unknown": "未知成员",
+    "assigned_squad": "负责小队",
+    "executing_agents": "执行中的智能体",
+    "none": "无",
+    "unresolved_title": "任务 {{id}}",
+    "unresolved_body": "此任务正在进行，但标题和状态不可用。",
+    "missing_title": "所选对象已不可用",
+    "missing_body": "此对象已不在当前办公室快照中。"
+  },
+  "a11y": {
+    "agent_row": "选择智能体 {{name}}",
+    "squad_row": "选择小队 {{name}}",
+    "issue_row": "选择任务 {{name}}",
+    "selection_disappeared": "所选办公室对象已不可用。"
+  }
+}

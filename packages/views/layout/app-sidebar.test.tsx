@@ -128,6 +128,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     inbox: () => "/acme/inbox",
     chat: () => "/acme/chat",
     rooms: () => "/acme/rooms",
+    office: () => "/acme/office",
     myIssues: () => "/acme/my-issues",
     issues: () => "/acme/issues",
     projects: () => "/acme/projects",
@@ -247,6 +248,22 @@ describe("Personal Wiki discoverability", () => {
   it("shows Personal Wiki in the account menu", () => {
     render(<AppSidebar />);
     expect(screen.getByTestId("personal-wiki-menu-label")).toBeTruthy();
+  });
+});
+
+describe("workspace navigation", () => {
+  it("places Office after Rooms and before Agents", () => {
+    const { container } = render(<AppSidebar />);
+    const hrefs = Array.from(
+      container.querySelectorAll<HTMLElement>("button[data-href]"),
+    ).map((button) => button.dataset.href);
+
+    expect(hrefs.indexOf("/acme/rooms")).toBeLessThan(
+      hrefs.indexOf("/acme/office"),
+    );
+    expect(hrefs.indexOf("/acme/office")).toBeLessThan(
+      hrefs.indexOf("/acme/agents"),
+    );
   });
 });
 
