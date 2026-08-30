@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Clock3, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, RefreshCw, XCircle } from "lucide-react";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
@@ -13,10 +13,11 @@ import { ReviewDialog } from "./review-dialog";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import { DetailStateNotice } from "./workspace-state";
 
-function reviewState(decision: string | undefined): "accepted" | "rejected" | "pending" {
+function reviewState(decision: string | undefined): "accepted" | "rejected" | "pending" | "unknown" {
+  if (decision === undefined) return "pending";
   if (decision === "accepted") return "accepted";
   if (decision === "rejected") return "rejected";
-  return "pending";
+  return "unknown";
 }
 
 export function WikiPanel(props: TwinWorkspaceProps) {
@@ -27,7 +28,7 @@ export function WikiPanel(props: TwinWorkspaceProps) {
   const acceptedContent = props.wiki.accepted_revision?.content ?? null;
   const items = revision ? projectWikiContent(revision.content) : [];
   const diff = revision ? diffWikiContent(revision.content, acceptedContent) : { added: [], removed: [], unchanged: [] };
-  const StateIcon = state === "accepted" ? CheckCircle2 : state === "rejected" ? XCircle : Clock3;
+  const StateIcon = state === "accepted" ? CheckCircle2 : state === "rejected" ? XCircle : state === "unknown" ? AlertTriangle : Clock3;
 
   return (
     <div className="space-y-6">

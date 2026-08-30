@@ -21,7 +21,7 @@
     "read_only": "只读访问",
     "read_only_description": "你可以检查历史和引用。工作区 owner 和 admin 可以作出审阅决定。"
   },
-  "status": { "pending": "等待审阅", "accepted": "已接受", "rejected": "已拒绝" },
+  "status": { "pending": "等待审阅", "accepted": "已接受", "rejected": "已拒绝", "unknown": "未知审核状态" },
   "wiki": {
     "title": "工作区知识",
     "description": "从当前工作区收集的规范源材料。",

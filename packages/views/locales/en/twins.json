@@ -21,7 +21,7 @@
     "read_only": "Read-only access",
     "read_only_description": "You can inspect history and citations. Workspace owners and admins make review decisions."
   },
-  "status": { "pending": "Pending review", "accepted": "Accepted", "rejected": "Rejected" },
+  "status": { "pending": "Pending review", "accepted": "Accepted", "rejected": "Rejected", "unknown": "Unknown review state" },
   "wiki": {
     "title": "Workspace knowledge",
     "description": "Canonical source material collected from this workspace.",

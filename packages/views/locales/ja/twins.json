@@ -21,7 +21,7 @@
     "read_only": "読み取り専用アクセス",
     "read_only_description": "履歴と引用を確認できます。レビュー判断はワークスペースの owner と admin が行います。"
   },
-  "status": { "pending": "レビュー待ち", "accepted": "承認済み", "rejected": "却下済み" },
+  "status": { "pending": "レビュー待ち", "accepted": "承認済み", "rejected": "却下済み", "unknown": "不明なレビュー状態" },
   "wiki": {
     "title": "ワークスペースの知識",
     "description": "このワークスペースから収集された正規のソース資料です。",

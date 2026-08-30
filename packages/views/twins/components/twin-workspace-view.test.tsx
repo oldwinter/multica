@@ -201,6 +201,28 @@ describe("TwinWorkspaceView", () => {
     expect(screen.queryByRole("button", { name: "Build proposal" })).not.toBeInTheDocument();
   });
 
+  it("fails closed when a Wiki review decision is unknown", () => {
+    const fixture = lifecycleFixture();
+    const unknownRevision = {
+      ...fixture.wiki.pending_revision!,
+      review: {
+        id: "review-future",
+        decision: "deferred_by_policy",
+        reviewer_id: "member-1",
+        reason: "Held by a newer policy",
+        created_at: "2026-08-11T08:10:00Z",
+      },
+    };
+    renderView({
+      wiki: { ...fixture.wiki, pending_revision: unknownRevision, latest_revision: unknownRevision, revisions: [unknownRevision] },
+      wikiDetail: { ...fixture.wikiDetail, revision: unknownRevision },
+    });
+
+    expect(screen.getByText("Unknown review state")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept revision" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject revision" })).not.toBeInTheDocument();
+  });
+
   it("keeps history readable for members while hiding lifecycle mutations", () => {
     renderView({ canManageWiki: false, canManageTwin: false });
 
