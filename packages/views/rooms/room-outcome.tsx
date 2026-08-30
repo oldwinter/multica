@@ -247,7 +247,7 @@ export function RoomOutcome({
                         key={recommendation.key}
                         id={roomRecommendationTargetId(recommendation.key)}
                         tabIndex={-1}
-                        className="rounded-sm border-l-2 border-brand/40 pl-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-sm border border-surface-border bg-surface-selected px-3 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <div className="flex flex-wrap items-start gap-2">
                           <div className="min-w-0 flex-1">
