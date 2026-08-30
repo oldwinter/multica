@@ -371,7 +371,11 @@ export function PreferencesTab() {
                 {t(($) => $.preferences.appearance_sync.cancel)}
               </AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => showAppearanceSaved(resetAppearance())}
+                onClick={() => {
+                  const receipt = resetAppearance();
+                  setResetDialogOpen(false);
+                  showAppearanceSaved(receipt);
+                }}
               >
                 {t(($) => $.preferences.appearance_sync.reset_confirm)}
               </AlertDialogAction>

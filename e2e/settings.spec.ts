@@ -209,15 +209,55 @@ test.describe("Settings", () => {
       );
       await waitForPageText(secondPage, "Appearance", 60000);
 
+      const fieldPatch = page.waitForResponse((response) => {
+        const request = response.request();
+        return (
+          request.method() === "PATCH" &&
+          new URL(request.url()).pathname === "/api/me" &&
+          request.postData()?.includes('"skin":"field"') === true
+        );
+      });
       await page.getByRole("radio", { name: /Field/ }).click();
+      const fieldResponse = await fieldPatch;
+      expect(fieldResponse.ok()).toBe(true);
+      expect(await fieldResponse.json()).toEqual(
+        expect.objectContaining({ skin: "field" }),
+      );
       await expect(page.getByText("Synced across devices")).toBeVisible();
-      await secondPage.waitForTimeout(25);
+
+      const relayPatch = secondPage.waitForResponse((response) => {
+        const request = response.request();
+        return (
+          request.method() === "PATCH" &&
+          new URL(request.url()).pathname === "/api/me" &&
+          request.postData()?.includes('"skin":"relay"') === true
+        );
+      });
       await secondPage.getByRole("radio", { name: /Relay/ }).click();
+      const relayResponse = await relayPatch;
+      expect(relayResponse.ok()).toBe(true);
+      expect(await relayResponse.json()).toEqual(
+        expect.objectContaining({ skin: "relay" }),
+      );
       await expect(
         secondPage.getByText("Synced across devices"),
       ).toBeVisible();
 
+      const staleUndoPatch = page.waitForResponse((response) => {
+        const request = response.request();
+        return (
+          request.method() === "PATCH" &&
+          new URL(request.url()).pathname === "/api/me" &&
+          request.postData()?.includes('"appearance_expected_updated_at"') ===
+            true
+        );
+      });
       await page.getByRole("button", { name: "Undo" }).click();
+      const staleUndoResponse = await staleUndoPatch;
+      expect(staleUndoResponse.ok()).toBe(true);
+      expect(await staleUndoResponse.json()).toEqual(
+        expect.objectContaining({ skin: "relay" }),
+      );
       await expect(
         page.getByText(
           "Undo expired because appearance changed elsewhere",
@@ -268,12 +308,13 @@ test.describe("Settings", () => {
       ).toBeVisible();
       await page.unroute("**/api/me");
 
+      await expect(page.getByRole("radio", { name: /Field/ })).toBeChecked();
       await page.getByRole("button", { name: "Reset appearance" }).click();
       await expect(page.getByRole("alertdialog")).toBeVisible();
       await expect(page.getByText(/skin to Tension/i)).toBeVisible();
       await expect(page.getByText(/color mode to System/i)).toBeVisible();
-      await expect(page.getByRole("radio", { name: /Field/ })).toBeChecked();
       await page.getByRole("button", { name: "Reset to defaults" }).click();
+      await expect(page.getByRole("alertdialog")).toBeHidden();
       await expect(
         page.getByRole("radio", { name: /Tension/ }),
       ).toBeChecked();

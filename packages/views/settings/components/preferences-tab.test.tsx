@@ -354,6 +354,7 @@ describe("PreferencesTab — Language switcher", () => {
       screen.getByRole("button", { name: "Reset to defaults" }),
     );
 
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(mockResetAppearance).toHaveBeenCalledTimes(1);
     expect(mockToastSuccess).toHaveBeenCalledWith(
       "Changes saved",

@@ -177,6 +177,7 @@ describe("ApiClient Agent task snapshot boundary", () => {
     await expect(
       new ApiClient("https://api.example.test").getAgentTaskSnapshot(),
     ).resolves.toEqual([]);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("task-1");
     expect(warn).toHaveBeenCalledWith(
       "API response failed schema validation: GET /api/agent-task-snapshot",
       expect.objectContaining({

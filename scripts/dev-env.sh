@@ -196,15 +196,19 @@ EOF
 
 # ------------------------------------------------------------------- ports ---
 
-# -sTCP:LISTEN matters: an unfiltered lsof also returns CLIENTS of the port, and
-# the daemon holds a long-lived connection to the backend. Killing what the
-# unfiltered lookup returns takes the daemon down with the server (#6573).
-#
-# The trailing `|| true` is load-bearing on macOS's bash 3.2: `x="$(fn)"` inside
-# a function aborts the script under `set -e` when fn's last command fails, and
-# "no process is listening" is the normal answer here, not an error.
+# Keep lsof as the portable primary lookup. On Linux it can miss a stable Next
+# listener, so an empty result falls back to the exact ss LISTEN query. Neither
+# lookup includes client connections such as the daemon's backend connection
+# (#6573). A missing listener remains a successful empty result on bash 3.2.
 port_listener_pid() {
-  lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1 || true
+  local pid=""
+  pid="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  if [ -z "$pid" ] && [ "$(uname -s 2>/dev/null || true)" = Linux ] \
+    && command -v ss >/dev/null 2>&1; then
+    pid="$(ss -H -ltnp "sport = :$1" 2>/dev/null \
+      | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1 || true)"
+  fi
+  printf '%s' "$pid"
 }
 
 port_free() { [ -z "$(port_listener_pid "$1")" ]; }
@@ -428,6 +432,7 @@ component_selected() {
 
 pid_file()  { printf '%s/%s.pid' "$STATE_DIR" "$1"; }
 listener_pid_file() { printf '%s/%s.listener.pid' "$STATE_DIR" "$1"; }
+session_id_file() { printf '%s/%s.session.id' "$STATE_DIR" "$1"; }
 log_file()  { printf '%s/%s.log' "$LOG_DIR" "$1"; }
 
 component_pid() {
@@ -440,16 +445,23 @@ component_pid() {
   printf '%s' "$pid"
 }
 
-# set -m puts the launcher in its own process group, so stopping can signal the
-# whole tree (make → go run → server) with one kill, and the child's own
-# `trap 'kill 0'` can never reach back into this shell.
+# A dedicated session survives both process-group changes and reparenting.
+# Where setsid is unavailable, retain the process-group isolation used before.
 launch_detached() {
-  local name=$1
+  local name=$1 launcher
   shift
+  rm -f "$(listener_pid_file "$name")" "$(session_id_file "$name")"
   (
-    set -m
-    nohup "${CLEAN_ENV[@]}" "$@" > "$(log_file "$name")" 2>&1 < /dev/null &
-    printf '%s\n' "$!" > "$(pid_file "$name")"
+    if command -v setsid >/dev/null 2>&1; then
+      nohup setsid "${CLEAN_ENV[@]}" "$@" > "$(log_file "$name")" 2>&1 < /dev/null &
+      launcher=$!
+      printf '%s\n' "$launcher" > "$(pid_file "$name")"
+      printf '%s\n' "$launcher" > "$(session_id_file "$name")"
+    else
+      set -m
+      nohup "${CLEAN_ENV[@]}" "$@" > "$(log_file "$name")" 2>&1 < /dev/null &
+      printf '%s\n' "$!" > "$(pid_file "$name")"
+    fi
   )
 }
 
@@ -481,6 +493,10 @@ process_group_id() {
   ps -p "$1" -o pgid= 2>/dev/null | tr -d ' ' || true
 }
 
+process_session_id() {
+  ps -p "$1" -o sid= 2>/dev/null | tr -d ' ' || true
+}
+
 process_parent_id() {
   ps -p "$1" -o ppid= 2>/dev/null | tr -d ' ' || true
 }
@@ -500,13 +516,24 @@ process_is_descendant_of() {
   return 1
 }
 
+component_session_id() {
+  local component=$1 launcher=$2 recorded actual
+  recorded="$(cat "$(session_id_file "$component")" 2>/dev/null || true)"
+  [ -n "$launcher" ] && [ -n "$recorded" ] || return 1
+  actual="$(process_session_id "$launcher")"
+  [ "$actual" = "$recorded" ] || return 1
+  printf '%s' "$recorded"
+}
+
 listener_belongs_to_component() {
-  local component=$1 port=$2 launcher listener recorded
+  local component=$1 port=$2 launcher listener recorded session
   launcher="$(component_pid "$component" || true)"
   listener="$(port_listener_pid "$port")"
   [ -n "$launcher" ] && [ -n "$listener" ] || return 1
   recorded="$(cat "$(listener_pid_file "$component")" 2>/dev/null || true)"
   [ -n "$recorded" ] && [ "$listener" = "$recorded" ] && return 0
+  session="$(component_session_id "$component" "$launcher" || true)"
+  [ -n "$session" ] && [ "$(process_session_id "$listener")" = "$session" ] && return 0
   [ "$(process_group_id "$listener")" = "$launcher" ] && return 0
   process_is_descendant_of "$listener" "$launcher"
 }
@@ -794,7 +821,7 @@ desktop_env_matches() {
 }
 
 stop_component() {
-  local name=$1 pid launcher="" status state recorded_listener=""
+  local name=$1 pid launcher="" owned_session="" status state recorded_listener=""
   case "$name" in
     daemon)
       if [ -x "$MULTICA_BIN" ]; then
@@ -827,6 +854,7 @@ stop_component() {
   pid="$(component_pid "$name" || true)"
   if [ -n "$pid" ]; then
     launcher="$pid"
+    owned_session="$(component_session_id "$name" "$launcher" || true)"
     # Negative pid targets the process group, so make → go run → server all go
     # down together instead of leaving the real listener orphaned.
     kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
@@ -846,10 +874,9 @@ stop_component() {
     info "$name was not running"
   fi
 
-  # A process group kill can miss a listener that has reparented away from its
-  # launcher. Only kill that listener when its process group still proves it
-  # belongs to the recorded launcher; a stale manifest must never kill an
-  # unrelated process that later reused the port.
+  # A group kill can miss a listener that changed groups or was reparented.
+  # Preserve the launch session before stopping its leader, then require that
+  # session or an older ownership proof before touching the remaining listener.
   local port=""
   case "$name" in
     api) port="$BACKEND_PORT" ;;
@@ -861,6 +888,7 @@ stop_component() {
     listener="$(port_listener_pid "$port")"
     if [ -n "$listener" ]; then
       if { [ -n "$recorded_listener" ] && [ "$listener" = "$recorded_listener" ]; } \
+        || { [ -n "$owned_session" ] && [ "$(process_session_id "$listener")" = "$owned_session" ]; } \
         || { [ -n "$launcher" ] && [ "$(process_group_id "$listener")" = "$launcher" ]; } \
         || { [ -n "$launcher" ] && process_is_descendant_of "$listener" "$launcher"; }; then
         kill -TERM "$listener" 2>/dev/null || true
@@ -879,7 +907,7 @@ stop_component() {
       fi
     fi
   fi
-  rm -f "$(listener_pid_file "$name")"
+  rm -f "$(listener_pid_file "$name")" "$(session_id_file "$name")"
 }
 
 # ------------------------------------------------------------------ status ---

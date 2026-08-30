@@ -24,7 +24,35 @@ case " $* " in
   *) printf '1\n' ;;
 esac
 EOF
-chmod +x "$fake_bin/psql"
+
+# These are registry fixtures, so their hand-written ports must remain stopped
+# even when a shared runner has unrelated listeners on the same machine ports.
+cat > "$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+exit 7
+EOF
+cat > "$fake_bin/lsof" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat > "$fake_bin/ss" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat > "$fake_bin/multica" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "daemon status") printf '{"status":"stopped"}\n' ;;
+  "daemon stop") exit 0 ;;
+  *) echo "unexpected multica fixture command: $*" >&2; exit 64 ;;
+esac
+EOF
+chmod +x \
+  "$fake_bin/psql" \
+  "$fake_bin/curl" \
+  "$fake_bin/lsof" \
+  "$fake_bin/ss" \
+  "$fake_bin/multica"
 export PATH="$fake_bin:$PATH"
 
 fail() {
@@ -67,6 +95,13 @@ WORKSPACES_ROOT=$(printf '%q' "$MULTICA_DEV_WORKSPACES_PARENT/multica_workspaces
 DESKTOP_RENDERER_PORT=$((5174 + offset))
 DESKTOP_APP_SUFFIX=$name
 EOF
+}
+
+prepare_checkout() {
+  local dir=$1
+  mkdir -p "$dir/server/bin"
+  cp "$fake_bin/multica" "$dir/server/bin/multica"
+  chmod +x "$dir/server/bin/multica"
 }
 
 out="$tmp_dir/out"
@@ -117,8 +152,8 @@ rewritten="$(bash -c 'source "$1"; database_url_with_name "$2" "$3"' _ \
 # A registered environment is visible to both renderings, and the JSON one
 # parses — agents read it, so a stray log line in it is a broken contract.
 # ---------------------------------------------------------------------------
+prepare_checkout "$tmp_dir/checkout"
 write_manifest "probe-901" "$tmp_dir/checkout" 901
-mkdir -p "$tmp_dir/checkout"
 
 dev_env list > "$out" 2>&1 || fail "list must succeed with one environment"
 require_contains "$out" "probe-901"
@@ -174,6 +209,49 @@ if bash -c 'source "$1"; api_started_after '\''{"status":"ok"}'\'' 1' _ "$root_d
   fail "legacy /health without started_at was accepted as current"
 fi
 
+# System lsof can repeatedly miss a stable Linux Next listener that ss reports.
+# Keep lsof as the primary and macOS lookup; use the exact ss LISTEN query only
+# after an empty lsof result on Linux.
+bash -c '
+  set -euo pipefail
+  source "$1"
+  trace="$2/listener-lookup.trace"
+
+  uname() { [ "$1" = -s ] && printf "Linux\n"; }
+  lsof() {
+    printf "lsof:%s:<%s>:<%s>:<%s>:<%s>\n" "$#" "$1" "$2" "$3" "$4" >> "$trace"
+    printf "31337\n"
+  }
+  ss() {
+    printf "ss:%s:<%s>:<%s>:<%s>\n" "$#" "$1" "$2" "$3" >> "$trace"
+    printf "%s\n" "LISTEN 0 511 *:13999 *:* users:((\"listener\",pid=4242,fd=22))"
+  }
+  : > "$trace"
+  result="$(port_listener_pid 13999)"
+  [ "$result" = 31337 ] || { echo "lsof PID was not preferred: $result"; exit 1; }
+  [ "$(cat "$trace")" = "lsof:4:<-nP>:<-iTCP:13999>:<-sTCP:LISTEN>:<-t>" ] \
+    || { echo "listener lookup bypassed lsof: $(cat "$trace")"; exit 1; }
+
+  lsof() {
+    printf "lsof:%s:<%s>:<%s>:<%s>:<%s>\n" "$#" "$1" "$2" "$3" "$4" >> "$trace"
+    return 1
+  }
+  : > "$trace"
+  result="$(port_listener_pid 13999)"
+  [ "$result" = 4242 ] || { echo "Linux ss fallback PID = $result"; exit 1; }
+  expected="$(printf "lsof:4:<-nP>:<-iTCP:13999>:<-sTCP:LISTEN>:<-t>\nss:3:<-H>:<-ltnp>:<sport = :13999>")"
+  [ "$(cat "$trace")" = "$expected" ] \
+    || { echo "Linux fallback query/order changed: $(cat "$trace")"; exit 1; }
+
+  uname() { [ "$1" = -s ] && printf "Darwin\n"; }
+  : > "$trace"
+  result="$(port_listener_pid 13999)"
+  [ -z "$result" ] || { echo "Darwin used Linux fallback: $result"; exit 1; }
+  [ "$(cat "$trace")" = "lsof:4:<-nP>:<-iTCP:13999>:<-sTCP:LISTEN>:<-t>" ] \
+    || { echo "Darwin listener lookup changed: $(cat "$trace")"; exit 1; }
+' _ "$root_dir/scripts/dev-env.sh" "$tmp_dir" \
+  || fail "listener lookup must be lsof-first with a Linux-only ss fallback"
+
 # Next.js sits in a turbo/pnpm process group that is not the make launcher.
 # Ownership must follow PPID, not only PGID, or `make up` kills a healthy web.
 bash -c '
@@ -205,6 +283,82 @@ bash -c '
 ' _ "$root_dir/scripts/dev-env.sh" \
   || fail "listener ownership must follow PPID across a new process group"
 
+# The live pnpm/turbo chain can leave the launcher ancestry while both the
+# launcher and Next listener remain alive. A dedicated launch session survives
+# that reparenting, while an unrelated listener cannot join the session.
+bash -c '
+  set -euo pipefail
+  source "$1"
+  STATE_DIR="$2/session-state"
+  LOG_DIR="$STATE_DIR/logs"
+  mkdir -p "$LOG_DIR"
+  launcher_pid=""
+  listener_pid=""
+  unrelated_pid=""
+  cleanup() {
+    [ -z "$launcher_pid" ] || kill -TERM -"$launcher_pid" 2>/dev/null || kill "$launcher_pid" 2>/dev/null || true
+    [ -z "$listener_pid" ] || kill "$listener_pid" 2>/dev/null || true
+    [ -z "$unrelated_pid" ] || kill "$unrelated_pid" 2>/dev/null || true
+  }
+  trap cleanup EXIT
+
+  launch_detached web python3 -c "
+import os, sys, time
+
+middle = os.fork()
+if middle == 0:
+    listener = os.fork()
+    if listener == 0:
+        os.setpgid(0, 0)
+        time.sleep(30)
+        os._exit(0)
+    fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.write(fd, str(listener).encode())
+    os.close(fd)
+    os._exit(0)
+
+time.sleep(30)
+" "$STATE_DIR/listener.pid"
+  launcher_pid="$(cat "$(pid_file web)")"
+
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ -s "$STATE_DIR/listener.pid" ] && break
+    sleep 0.05
+  done
+  [ -s "$STATE_DIR/listener.pid" ] || { echo "reparented listener pid was not written"; exit 1; }
+  listener_pid="$(cat "$STATE_DIR/listener.pid")"
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    ! process_is_descendant_of "$listener_pid" "$launcher_pid" && break
+    sleep 0.05
+  done
+
+  launcher_sid="$(ps -p "$launcher_pid" -o sid= 2>/dev/null | tr -d " ")"
+  [ "$launcher_sid" = "$launcher_pid" ] || { echo "launcher did not start in a dedicated session"; exit 1; }
+  [ "$(ps -p "$listener_pid" -o sid= 2>/dev/null | tr -d " ")" = "$launcher_sid" ] \
+    || { echo "reparented listener left the launch session"; exit 1; }
+  [ "$(process_group_id "$listener_pid")" != "$launcher_pid" ] \
+    || { echo "reparented listener stayed in the launcher process group"; exit 1; }
+  if process_is_descendant_of "$listener_pid" "$launcher_pid"; then
+    echo "listener remained a launcher descendant"; exit 1
+  fi
+
+  port_listener_pid() { printf "%s" "$listener_pid"; }
+  listener_belongs_to_component web 13999 \
+    || { echo "same-session reparented listener was rejected"; exit 1; }
+
+  python3 -c "import os, time; os.setsid(); time.sleep(30)" &
+  unrelated_pid=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ "$(ps -p "$unrelated_pid" -o sid= 2>/dev/null | tr -d " ")" = "$unrelated_pid" ] && break
+    sleep 0.05
+  done
+  port_listener_pid() { printf "%s" "$unrelated_pid"; }
+  if listener_belongs_to_component web 13999; then
+    echo "unrelated session was accepted as the component listener"; exit 1
+  fi
+' _ "$root_dir/scripts/dev-env.sh" "$tmp_dir" \
+  || fail "listener ownership must survive reparenting without trusting an unrelated port owner"
+
 # ---------------------------------------------------------------------------
 # Unknown names and components fail loudly instead of doing something else.
 # ---------------------------------------------------------------------------
@@ -234,7 +388,8 @@ fi
 
 # A failed database drop keeps the manifest and slot so cleanup can be retried;
 # destroy must never print success and forget the only deletion recipe.
-write_manifest "drop-fails-904" "$root_dir" 904
+prepare_checkout "$tmp_dir/drop-checkout"
+write_manifest "drop-fails-904" "$tmp_dir/drop-checkout" 904
 status=0
 FAIL_DROP=1 dev_env destroy drop-fails-904 --yes > "$out" 2>&1 || status=$?
 [ "$status" -ne 0 ] || fail "destroy succeeded after DROP DATABASE failed"
