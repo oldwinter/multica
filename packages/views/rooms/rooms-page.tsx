@@ -52,6 +52,14 @@ const EMPTY_AGENTS: readonly Agent[] = [];
 const EMPTY_MEMBERS: readonly MemberWithUser[] = [];
 const EMPTY_SQUADS: readonly Squad[] = [];
 
+export function isLinkedRoomMissing(
+  linkedRoomId: string,
+  rooms: readonly Pick<Room, "id">[],
+  listLoaded: boolean,
+): boolean {
+  return Boolean(linkedRoomId) && listLoaded && !rooms.some((room) => room.id === linkedRoomId);
+}
+
 export function RoomsPage() {
   const { t } = useT("rooms");
   const workspaceId = useWorkspaceId();
@@ -73,7 +81,9 @@ export function RoomsPage() {
   const membersQuery = useQuery(memberListOptions(workspaceId));
   const squadsQuery = useQuery(squadListOptions(workspaceId));
   const rooms = roomsQuery.data ?? EMPTY_ROOMS;
-  const activeRoomId = selectedRoomId || rooms[0]?.id || "";
+  const roomsLoaded = roomsQuery.data !== undefined && !roomsQuery.isPending && !roomsQuery.isError;
+  const linkedRoomMissing = isLinkedRoomMissing(linkedRoomId, rooms, roomsLoaded);
+  const activeRoomId = linkedRoomMissing ? "" : selectedRoomId || rooms[0]?.id || "";
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
   const preflightQuery = useQuery(roomPreflightOptions(workspaceId, activeRoomId));
   const scheduledPreflightQuery = useQuery({
@@ -96,13 +106,14 @@ export function RoomsPage() {
   }, [currentUser?.id, members]);
 
   useEffect(() => {
-    if (linkedRoomId && rooms.some((room) => room.id === linkedRoomId)) {
-      setSelectedRoomId(linkedRoomId);
+    if (linkedRoomId) {
+      if (!roomsLoaded) return;
+      if (rooms.some((room) => room.id === linkedRoomId)) setSelectedRoomId(linkedRoomId);
       return;
     }
     if (selectedRoomId && rooms.some((room) => room.id === selectedRoomId)) return;
     setSelectedRoomId(rooms[0]?.id ?? "");
-  }, [linkedRoomId, rooms, selectedRoomId]);
+  }, [linkedRoomId, rooms, roomsLoaded, selectedRoomId]);
 
   useEffect(() => {
     if (linkedRoomId && nav.searchParams.get("tab") === "outcome") {
@@ -199,6 +210,18 @@ export function RoomsPage() {
             description={latestError?.message || t(($) => $.states.error_description)}
             actionLabel={t(($) => $.actions.retry)}
             onAction={() => roomsQuery.refetch()}
+          />
+        ) : linkedRoomMissing ? (
+          <WorkspaceState
+            icon={AlertTriangle}
+            title={t(($) => $.states.no_room_title)}
+            description={t(($) => $.states.no_room_description)}
+            actionLabel={t(($) => $.actions.new_room)}
+            onAction={() => {
+              setSelectedRoomId("");
+              nav.replace(paths.rooms());
+              openCreate();
+            }}
           />
         ) : !activeRoomId ? (
           <WorkspaceState
