@@ -223,6 +223,18 @@ describe("TwinWorkspaceView", () => {
     expect(screen.queryByRole("button", { name: "Reject revision" })).not.toBeInTheDocument();
   });
 
+  it("does not offer Twin sign-off for an unknown proposal kind", () => {
+    const fixture = lifecycleFixture();
+    const unknownProposal = { ...fixture.twin.proposals[0], kind: "future_kind" };
+    renderView({
+      twin: { ...fixture.twin, pending_proposal: unknownProposal, proposals: [unknownProposal] },
+      proposalDetail: { ...fixture.proposalDetail, proposal: unknownProposal },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    expect(screen.queryByRole("button", { name: "Sign off proposal" })).not.toBeInTheDocument();
+  });
+
   it("keeps history readable for members while hiding lifecycle mutations", () => {
     renderView({ canManageWiki: false, canManageTwin: false });
 
