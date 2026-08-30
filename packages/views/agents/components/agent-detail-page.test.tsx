@@ -57,7 +57,7 @@ const currentUserRef = vi.hoisted(() => ({
 }));
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
-const mockModalOpen = vi.hoisted(() => vi.fn());
+const mockOpenQuickCreateForAgent = vi.hoisted(() => vi.fn());
 const mockGetAgent = vi.hoisted(() => vi.fn());
 const mockUpdateAgent = vi.hoisted(() => vi.fn());
 const mockCopyText = vi.hoisted(() => vi.fn());
@@ -132,9 +132,7 @@ vi.mock("@multica/core/auth", () => {
   return { useAuthStore };
 });
 vi.mock("@multica/core/modals", () => ({
-  useModalStore: Object.assign(vi.fn(), {
-    getState: () => ({ open: mockModalOpen }),
-  }),
+  openQuickCreateForAgent: mockOpenQuickCreateForAgent,
 }));
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
@@ -487,6 +485,24 @@ describe("AgentDetailPage DM button", () => {
     expect(mockToastError).toHaveBeenCalledWith(
       "Bind a runtime before running this agent.",
     );
-    expect(mockModalOpen).not.toHaveBeenCalled();
+    mockToastError.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Assign work" }));
+    expect(mockToastError).toHaveBeenCalledWith(
+      "Bind a runtime before running this agent.",
+    );
+    expect(mockOpenQuickCreateForAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe("AgentDetailPage assign work button", () => {
+  it("opens quick create with the selected agent", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Assign work" }));
+
+    expect(mockOpenQuickCreateForAgent).toHaveBeenCalledWith({
+      agentId: "agent-1",
+    });
   });
 });

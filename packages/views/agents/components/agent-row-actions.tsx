@@ -6,6 +6,7 @@ import {
   Copy,
   ExternalLink,
   MoreHorizontal,
+  Plus,
   RotateCcw,
   Square,
   Trash2,
@@ -38,6 +39,7 @@ import {
 import { useT } from "../../i18n";
 import { AppLink, useIntentNavigate } from "../../navigation";
 import { AgentMentionMenuItem } from "./agent-mention-menu-item";
+import { useAssignWorkToAgent } from "./use-assign-work-to-agent";
 
 interface AgentRowActionsProps {
   agent: Agent;
@@ -47,6 +49,10 @@ interface AgentRowActionsProps {
   // the server is still the source of truth, this only hides UI for ops
   // the user can't perform.
   canManage: boolean;
+  // Invocation permission is derived once by the list from the current
+  // member and the agent's access policy. Runtime readiness stays a click-time
+  // check so an unbound agent explains why work cannot start yet.
+  canAssign: boolean;
   // Destination of "Duplicate" — the manual create form, pre-populated with
   // this agent's config as a template. A href rather than a callback so the
   // menu item is a real link (modifier-click opens it in a new tab).
@@ -68,6 +74,7 @@ export function AgentRowActions({
   agent,
   presence,
   canManage,
+  canAssign,
   duplicateHref,
 }: AgentRowActionsProps) {
   const { t } = useT("agents");
@@ -76,6 +83,7 @@ export function AgentRowActions({
   const intentNavigate = useIntentNavigate();
   const wsId = useWorkspaceId();
   const qc = useQueryClient();
+  const assignWorkToAgent = useAssignWorkToAgent();
 
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -89,6 +97,7 @@ export function AgentRowActions({
   // below a flat list of conditionals rather than a tangle of role/state
   // branches.
   const showStop = canManage && !isArchived && hasActiveWork;
+  const showAssign = canAssign && !isArchived;
   const showDuplicate = !isArchived; // any workspace member can duplicate
   // Multica's built-in agents cannot be archived — the server refuses it, and
   // the workspace's entry point runs through one. Hide the action rather than
@@ -150,6 +159,12 @@ export function AgentRowActions({
           }
         />
         <DropdownMenuContent align="end" className="w-auto">
+          {showAssign && (
+            <DropdownMenuItem onClick={() => assignWorkToAgent(agent)}>
+              <Plus className="h-3.5 w-3.5" />
+              {t(($) => $.detail.assign_work)}
+            </DropdownMenuItem>
+          )}
           {/* Same shape as every other entity row menu: an explicit CTA is a
               foreground open executed through the adapter (an anchor-based
               item would depend on native activation surviving the menu
