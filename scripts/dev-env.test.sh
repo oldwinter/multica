@@ -39,7 +39,20 @@ cat > "$fake_bin/ss" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-chmod +x "$fake_bin/psql" "$fake_bin/curl" "$fake_bin/lsof" "$fake_bin/ss"
+cat > "$fake_bin/multica" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "daemon status") printf '{"status":"stopped"}\n' ;;
+  "daemon stop") exit 0 ;;
+  *) echo "unexpected multica fixture command: $*" >&2; exit 64 ;;
+esac
+EOF
+chmod +x \
+  "$fake_bin/psql" \
+  "$fake_bin/curl" \
+  "$fake_bin/lsof" \
+  "$fake_bin/ss" \
+  "$fake_bin/multica"
 export PATH="$fake_bin:$PATH"
 
 fail() {
@@ -82,6 +95,13 @@ WORKSPACES_ROOT=$(printf '%q' "$MULTICA_DEV_WORKSPACES_PARENT/multica_workspaces
 DESKTOP_RENDERER_PORT=$((5174 + offset))
 DESKTOP_APP_SUFFIX=$name
 EOF
+}
+
+prepare_checkout() {
+  local dir=$1
+  mkdir -p "$dir/server/bin"
+  cp "$fake_bin/multica" "$dir/server/bin/multica"
+  chmod +x "$dir/server/bin/multica"
 }
 
 out="$tmp_dir/out"
@@ -132,8 +152,8 @@ rewritten="$(bash -c 'source "$1"; database_url_with_name "$2" "$3"' _ \
 # A registered environment is visible to both renderings, and the JSON one
 # parses — agents read it, so a stray log line in it is a broken contract.
 # ---------------------------------------------------------------------------
+prepare_checkout "$tmp_dir/checkout"
 write_manifest "probe-901" "$tmp_dir/checkout" 901
-mkdir -p "$tmp_dir/checkout"
 
 dev_env list > "$out" 2>&1 || fail "list must succeed with one environment"
 require_contains "$out" "probe-901"
@@ -368,7 +388,8 @@ fi
 
 # A failed database drop keeps the manifest and slot so cleanup can be retried;
 # destroy must never print success and forget the only deletion recipe.
-write_manifest "drop-fails-904" "$root_dir" 904
+prepare_checkout "$tmp_dir/drop-checkout"
+write_manifest "drop-fails-904" "$tmp_dir/drop-checkout" 904
 status=0
 FAIL_DROP=1 dev_env destroy drop-fails-904 --yes > "$out" 2>&1 || status=$?
 [ "$status" -ne 0 ] || fail "destroy succeeded after DROP DATABASE failed"
