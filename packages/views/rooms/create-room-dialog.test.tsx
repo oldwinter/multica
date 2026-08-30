@@ -91,6 +91,25 @@ describe("CreateRoomDialog", () => {
     expect(view.getByTestId("room-create-submit")).toBeInTheDocument();
   });
 
+  it("keeps mobile form content and footer actions in the bounded dialog scroller", () => {
+    const view = renderDialog();
+    const dialog = view.getByRole("dialog");
+    const formScroll = view.getByTestId("room-create-scroll");
+
+    expect(dialog).toHaveClass(
+      "max-h-[min(48rem,calc(100dvh-2rem))]",
+      "overflow-y-auto",
+      "sm:overflow-hidden",
+    );
+    expect(dialog).not.toHaveClass("overflow-hidden");
+    expect(formScroll).toHaveClass("sm:min-h-0", "sm:flex-1", "sm:overflow-y-auto");
+    expect(formScroll).not.toHaveClass("flex-1", "overflow-y-auto");
+
+    fireEvent.click(view.getByRole("button", { name: "Advanced configuration" }));
+    expect(view.getByRole("textbox", { name: "Success criteria" })).toBeInTheDocument();
+    expect(view.getByTestId("room-create-submit")).toBeInTheDocument();
+  });
+
   it("submits a scheduled duplicate as a paused fresh Room", () => {
     const initialInput: CreateRoomInput = {
       title: "Weekly review",

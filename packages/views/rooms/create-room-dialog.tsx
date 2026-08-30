@@ -107,7 +107,7 @@ export function CreateRoomDialog({
         if (!pending || next) onOpenChange(next);
       }}
     >
-      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-hidden sm:max-w-2xl">
+      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-y-auto sm:overflow-hidden sm:max-w-2xl">
         {open ? (
           <CreateRoomForm
             agents={agents}
@@ -322,7 +322,7 @@ function CreateRoomForm({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto" data-testid="room-create-scroll">
+      <div className="space-y-5 sm:min-h-0 sm:flex-1 sm:overflow-y-auto" data-testid="room-create-scroll">
         <section aria-labelledby="room-create-template-label">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2
