@@ -305,7 +305,20 @@ test("template creation, attention route, safe reuse, and value review", async (
     await test.step("create from an outcome template without losing edits", async () => {
       await page.getByTestId("room-create-open").click();
       await expect(page.getByRole("dialog")).toBeVisible();
-      await expect(page.locator('[data-testid^="room-template-"]')).toHaveCount(5);
+      const templateCards = page.locator('[data-testid^="room-template-"]');
+      await expect(templateCards).toHaveCount(6);
+      expect(
+        await templateCards.evaluateAll((cards) =>
+          cards.map((card) => card.getAttribute("data-testid")),
+        ),
+      ).toEqual([
+        "room-template-research",
+        "room-template-planning",
+        "room-template-risk",
+        "room-template-incident",
+        "room-template-decision",
+        "room-template-improvement",
+      ]);
       await expect(page.getByTestId("room-template-research")).toContainText(
         "A cited answer with uncertainty made explicit.",
       );
