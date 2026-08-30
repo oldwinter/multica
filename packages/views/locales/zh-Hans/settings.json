@@ -126,6 +126,18 @@
       "undo_expired": "外观已在其他位置更改，无法撤销",
       "recovered": "无效的外观设置已替换为安全默认值"
     },
+    "appearance_fixture": {
+      "review_ready": "评审已就绪",
+      "updated_moments_ago": "刚刚更新",
+      "selected_task": "已选任务",
+      "assignee": "负责人",
+      "done": "完成",
+      "watch": "关注",
+      "remove": "移除",
+      "summary": "摘要",
+      "linked_task": "关联任务",
+      "command_menu": "命令菜单"
+    },
     "skin": {
       "title": "皮肤",
       "tension": {

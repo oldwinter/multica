@@ -660,6 +660,63 @@ describe("AppearanceSyncBridge", () => {
     expect(mockUpdateMe).not.toHaveBeenCalled();
   });
 
+  it("fails closed on an incomplete server appearance tuple instead of waiting to sync", async () => {
+    userRef.current = serverUser({
+      skin: "field",
+      appearance: null,
+      appearanceUpdatedAt: "2026-08-23T11:00:00.000Z",
+      appearanceTokenVersion: APPEARANCE_TOKEN_CONTRACT_VERSION,
+    });
+    const harness = createAdapter(
+      preference({
+        source: "local",
+        syncState: { status: "pending" },
+      }),
+    );
+    renderBridge(harness.adapter);
+
+    await waitFor(() => expect(screen.getByTestId("ready")).toHaveTextContent("true"));
+    await waitFor(() => expect(screen.getByTestId("sync")).toHaveTextContent("failed"));
+    expect(screen.getByTestId("can-retry")).toHaveTextContent("true");
+    expect(mockUpdateMe).not.toHaveBeenCalled();
+  });
+
+  it("retries an incomplete server tuple by writing the complete local choice", async () => {
+    userRef.current = serverUser({
+      skin: "field",
+      appearance: null,
+      appearanceUpdatedAt: "2026-08-23T11:00:00.000Z",
+      appearanceTokenVersion: APPEARANCE_TOKEN_CONTRACT_VERSION,
+    });
+    const harness = createAdapter(
+      preference({
+        source: "local",
+        syncState: { status: "pending" },
+      }),
+    );
+    mockUpdateMe.mockImplementation(async (request: UpdateMeRequest) =>
+      serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      }),
+    );
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByTestId("can-retry")).toHaveTextContent("true"));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(screen.getByTestId("sync")).toHaveTextContent("synced"));
+    expect(mockUpdateMe).toHaveBeenCalledWith({
+      skin: "relay",
+      appearance: "system",
+      appearanceUpdatedAt: "2026-08-23T10:00:00.000Z",
+      appearanceTokenVersion: APPEARANCE_TOKEN_CONTRACT_VERSION,
+    });
+  });
+
   it("does not import another account's bootstrap cache", async () => {
     userRef.current = serverUser({ id: "account-b" });
     const harness = createAdapter(

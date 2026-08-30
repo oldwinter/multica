@@ -126,6 +126,18 @@
       "undo_expired": "別の場所で外観が変更されたため、元に戻せませんでした",
       "recovered": "無効な外観設定を安全なデフォルト値に置き換えました"
     },
+    "appearance_fixture": {
+      "review_ready": "レビュー準備完了",
+      "updated_moments_ago": "たった今更新",
+      "selected_task": "選択中のタスク",
+      "assignee": "担当者",
+      "done": "完了",
+      "watch": "監視",
+      "remove": "削除",
+      "summary": "要約",
+      "linked_task": "リンクされたタスク",
+      "command_menu": "コマンドメニュー"
+    },
     "skin": {
       "title": "スキン",
       "tension": {

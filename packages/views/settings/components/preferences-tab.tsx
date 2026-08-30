@@ -238,6 +238,20 @@ export function PreferencesTab() {
                   compact
                   className="border-b border-inherit"
                   aria-hidden="true"
+                  labels={{
+                    reviewReady: t(($) => $.preferences.appearance_fixture.review_ready),
+                    updatedMomentsAgo: t(
+                      ($) => $.preferences.appearance_fixture.updated_moments_ago,
+                    ),
+                    selectedTask: t(($) => $.preferences.appearance_fixture.selected_task),
+                    assignee: t(($) => $.preferences.appearance_fixture.assignee),
+                    done: t(($) => $.preferences.appearance_fixture.done),
+                    watch: t(($) => $.preferences.appearance_fixture.watch),
+                    remove: t(($) => $.preferences.appearance_fixture.remove),
+                    summary: t(($) => $.preferences.appearance_fixture.summary),
+                    linkedTask: t(($) => $.preferences.appearance_fixture.linked_task),
+                    commandMenu: t(($) => $.preferences.appearance_fixture.command_menu),
+                  }}
                 />
                 <span className="flex min-h-16 items-start gap-2 px-3 py-2.5">
                   <span className="min-w-0 flex-1">
