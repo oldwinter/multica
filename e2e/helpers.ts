@@ -18,7 +18,7 @@ export async function waitForPageText(page: Page, text: string, timeout = 30000)
   await page.waitForFunction(
     (expected) => document.body?.innerText.includes(expected),
     text,
-    { timeout },
+    { polling: 100, timeout },
   );
 }
 
