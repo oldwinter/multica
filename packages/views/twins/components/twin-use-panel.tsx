@@ -13,6 +13,16 @@ import {
   type TwinBriefingPreviewInput, type TwinEffectivenessMetrics, type TwinMaintenanceItem, type TwinVersion,
 } from "@multica/core/twins";
 import { Alert, AlertDescription, AlertTitle } from "@multica/ui/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@multica/ui/components/ui/alert-dialog";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
@@ -107,6 +117,7 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
   const [request, setRequest] = useState("");
   const [tags, setTags] = useState("");
   const [confirmPause, setConfirmPause] = useState(false);
+  const [deleteBindingId, setDeleteBindingId] = useState<string | null>(null);
   const currentPreviewInput = previewAgent ? normalizePreviewInput({
     agentId: previewAgent.id,
     projectId: previewProject?.id,
@@ -178,6 +189,9 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
     if (binding.scopeType === "issue") return issuesById.get(binding.scopeId) ?? (scopeIssue?.id === binding.scopeId ? `${scopeIssue.identifier} ${scopeIssue.title}` : `${t(($) => $.use.unavailable_issue)} (${binding.scopeId})`);
     return t(($) => $.use.unavailable_target);
   };
+  const deleteBindingTarget = deleteBindingId
+    ? bindings.find((binding) => binding.id === deleteBindingId) ?? null
+    : null;
 
   if (loading) return <div className="space-y-4" role="status" aria-label={t(($) => $.use.loading)}><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /><Skeleton className="h-36 w-full" /></div>;
   if (failed) return (
@@ -202,7 +216,40 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
         <Button disabled={!mayManage || !effectiveScopeId || !versionId || upsertBinding.isPending} onClick={() => upsertBinding.mutate({ scopeType, scopeId: effectiveScopeId, state, twinVersionId: versionId })}><Save data-icon="inline-start" />{upsertBinding.isPending ? t(($) => $.use.saving_binding) : t(($) => $.use.save_binding)}</Button>
       </section>
 
-      <section className="space-y-3" aria-labelledby="configured-bindings-title"><h3 id="configured-bindings-title" className="text-title font-medium text-foreground">{t(($) => $.use.configured_title)}</h3>{bindings.length === 0 ? <p className="text-body text-muted-foreground">{t(($) => $.use.configured_empty)}</p> : <div className="divide-y divide-border/70">{bindings.map((binding) => <div key={binding.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"><Badge variant="outline">{scopeLabel(binding.scopeType)}</Badge><span className="min-w-0 flex-1 truncate text-body text-foreground">{entityLabel(binding)}</span><span className="text-caption text-muted-foreground">{versionsById.get(binding.twinVersionId) ?? t(($) => $.use.unavailable_version)}</span><Badge variant={binding.state === "enabled" ? "default" : "secondary"}>{stateLabel(binding.state)}</Badge>{mayManage ? <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t(($) => $.use.delete_binding)} />} onClick={() => deleteBinding.mutate(binding.id)} disabled={deleteBinding.isPending}><Trash2 aria-hidden="true" /></TooltipTrigger><TooltipContent>{t(($) => $.use.delete_binding)}</TooltipContent></Tooltip> : null}</div>)}</div>}</section>
+      <section className="space-y-3" aria-labelledby="configured-bindings-title"><h3 id="configured-bindings-title" className="text-title font-medium text-foreground">{t(($) => $.use.configured_title)}</h3>{bindings.length === 0 ? <p className="text-body text-muted-foreground">{t(($) => $.use.configured_empty)}</p> : <div className="divide-y divide-border/70">{bindings.map((binding) => <div key={binding.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"><Badge variant="outline">{scopeLabel(binding.scopeType)}</Badge><span className="min-w-0 flex-1 truncate text-body text-foreground">{entityLabel(binding)}</span><span className="text-caption text-muted-foreground">{versionsById.get(binding.twinVersionId) ?? t(($) => $.use.unavailable_version)}</span><Badge variant={binding.state === "enabled" ? "default" : "secondary"}>{stateLabel(binding.state)}</Badge>{mayManage ? <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t(($) => $.use.delete_binding)} />} onClick={() => { deleteBinding.reset(); setDeleteBindingId(binding.id); }} disabled={deleteBinding.isPending}><Trash2 aria-hidden="true" /></TooltipTrigger><TooltipContent>{t(($) => $.use.delete_binding)}</TooltipContent></Tooltip> : null}</div>)}</div>}</section>
+
+      <AlertDialog
+        open={deleteBindingId !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBinding.isPending) setDeleteBindingId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.use.delete_binding_title)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(($) => $.use.delete_binding_description, {
+                target: deleteBindingTarget ? entityLabel(deleteBindingTarget) : t(($) => $.use.unavailable_target),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBinding.isPending}>{t(($) => $.actions.cancel)}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteBinding.isPending || deleteBindingId === null}
+              onClick={() => {
+                if (!deleteBindingId) return;
+                deleteBinding.mutate(deleteBindingId, {
+                  onSuccess: () => setDeleteBindingId(null),
+                });
+              }}
+            >
+              {deleteBinding.isPending ? t(($) => $.use.deleting_binding) : t(($) => $.use.confirm_delete_binding)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <section className="space-y-4 border-y border-border/70 py-5" aria-labelledby="twin-preview-title">
         <div className="space-y-1"><div className="flex items-center gap-2"><FileSearch className="size-4 text-muted-foreground" aria-hidden="true" /><h3 id="twin-preview-title" className="text-title font-medium text-foreground">{t(($) => $.use.preview_title)}</h3></div><p className="text-body text-muted-foreground">{t(($) => $.use.preview_description)}</p></div>

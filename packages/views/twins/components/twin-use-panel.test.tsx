@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setApiInstance } from "@multica/core/api";
@@ -293,6 +293,28 @@ describe("TwinUsePanel", () => {
 
     expect(await screen.findByText("MUL-42 Review auth")).toBeInTheDocument();
     expect(screen.queryByText("issue-1")).not.toBeInTheDocument();
+  });
+
+  it("requires confirmation before deleting a binding", async () => {
+    const row = {
+      id: "binding-1",
+      scopeType: "workspace" as const,
+      scopeId: wsId,
+      state: "enabled" as const,
+      twinVersionId: "version-1",
+      createdAt: "2026-08-26T10:00:00Z",
+      updatedAt: "2026-08-26T10:00:00Z",
+    };
+    qc.setQueryData(twinExecutionKeys.bindings(wsId), bindings(enabledKillSwitch, true, [row]));
+    getTwinBindings.mockResolvedValue(bindings(enabledKillSwitch, true, [row]));
+    renderPanel(qc);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete binding" }));
+    expect(deleteTwinBinding).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Delete this binding?");
+
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete binding" }));
+    await waitFor(() => expect(deleteTwinBinding).toHaveBeenCalledWith("binding-1"));
   });
 
   it("disables every policy mutation when the kill switch is off", () => {
