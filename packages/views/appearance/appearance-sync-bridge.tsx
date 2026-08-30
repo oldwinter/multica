@@ -353,6 +353,7 @@ export function AppearanceSyncBridge({
       ) {
         return "ignored";
       }
+      if (!environmentRef.current.online) return "ignored";
 
       const accountId = currentUser.id;
       const requestKey = appearanceSyncRequestKey(

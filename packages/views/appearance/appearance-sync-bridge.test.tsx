@@ -66,7 +66,10 @@ function serverUser(overrides: Partial<User> = {}): User {
   };
 }
 
-function createAdapter(initial: unknown | null) {
+function createAdapter(
+  initial: unknown | null,
+  environment: AppearanceEnvironment = DARK_ENVIRONMENT,
+) {
   let stored = initial;
   let applied: AppearancePreferences | null = null;
   const listeners = new Set<(event: AppearanceAdapterEvent) => void>();
@@ -80,7 +83,7 @@ function createAdapter(initial: unknown | null) {
     apply: (next) => {
       applied = next;
     },
-    getEnvironment: () => DARK_ENVIRONMENT,
+    getEnvironment: () => environment,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -225,6 +228,44 @@ describe("AppearanceSyncBridge", () => {
     await waitFor(() => expect(harness.stored().skin).toBe("field"));
     expect(harness.stored().syncState).toEqual({ status: "local-only" });
     expect(mockUpdateMe).not.toHaveBeenCalled();
+  });
+
+  it("keeps an authenticated offline choice pending until connectivity returns", async () => {
+    userRef.current = serverUser();
+    const harness = createAdapter(null, {
+      ...DARK_ENVIRONMENT,
+      online: false,
+    });
+    mockGetMe.mockResolvedValue(serverUser());
+    mockUpdateMe.mockImplementation(async (request: UpdateMeRequest) =>
+      serverUser({
+        skin: request.skin,
+        appearance: request.appearance,
+        appearanceUpdatedAt: request.appearanceUpdatedAt,
+        appearanceTokenVersion: request.appearanceTokenVersion,
+      }),
+    );
+    renderBridge(harness.adapter);
+    const user = userEvent.setup();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("ready")).toHaveTextContent("true"),
+    );
+    await user.click(screen.getByRole("button", { name: "Field" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("skin")).toHaveTextContent("field"),
+    );
+    expect(screen.getByTestId("sync")).toHaveTextContent("pending");
+    expect(harness.stored().syncState).toEqual({ status: "pending" });
+    expect(mockUpdateMe).not.toHaveBeenCalled();
+
+    harness.emit({ type: "connectivity-changed", online: true });
+
+    await waitFor(() => expect(mockUpdateMe).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("synced"),
+    );
   });
 
   it("applies and caches a newer server tuple without writing it back", async () => {
