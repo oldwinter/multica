@@ -340,10 +340,10 @@ export function PreferencesTab() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 text-warning"
+                className="h-8 px-2 text-foreground"
                 onClick={retryAppearanceSync}
               >
-                <RefreshCw className="size-3.5" aria-hidden="true" />
+                <RefreshCw className="size-3.5 text-warning" aria-hidden="true" />
                 {t(($) => $.preferences.appearance_sync.retry)}
               </Button>
             )}
