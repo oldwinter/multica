@@ -18,6 +18,7 @@ describe("isLinkedRoomMissing", () => {
   it("does not replace an unresolved deep link with another Room", () => {
     expect(isLinkedRoomMissing("room-missing", [{ id: "room-a" }], true)).toBe(true);
     expect(isLinkedRoomMissing("room-a", [{ id: "room-a" }], true)).toBe(false);
+    // A background list refresh must not turn a temporarily absent row into a 404 state.
     expect(isLinkedRoomMissing("room-missing", [], false)).toBe(false);
   });
 });

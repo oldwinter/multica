@@ -81,7 +81,10 @@ export function RoomsPage() {
   const membersQuery = useQuery(memberListOptions(workspaceId));
   const squadsQuery = useQuery(squadListOptions(workspaceId));
   const rooms = roomsQuery.data ?? EMPTY_ROOMS;
-  const roomsLoaded = roomsQuery.data !== undefined && !roomsQuery.isPending && !roomsQuery.isError;
+  const roomsLoaded = roomsQuery.data !== undefined
+    && !roomsQuery.isPending
+    && !roomsQuery.isFetching
+    && !roomsQuery.isError;
   const linkedRoomMissing = isLinkedRoomMissing(linkedRoomId, rooms, roomsLoaded);
   const activeRoomId = linkedRoomMissing ? "" : selectedRoomId || rooms[0]?.id || "";
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
