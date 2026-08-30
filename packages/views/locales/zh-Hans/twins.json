@@ -45,6 +45,7 @@
   "deposition": { "evidence_title": "已脱敏的运行证据", "task": "任务", "base_version": "基础 Twin 版本", "status": "运行状态", "completed": "完成时间", "feedback": "运行反馈", "evidence_digest": "证据摘要", "sanitized_notice": "这里只保留审计元数据，不包含原始输出和本地路径。", "edit_action": "编辑沉淀", "edit_title": "编辑沉淀论断", "edit_description": "保存后会创建替换提案，当前提案保持不变。", "edit_label": "论断 JSON", "edit_invalid_json": "请输入有效的 JSON。", "edit_array_required": "请提供论断数组；使用 [] 可删除全部论断。", "edit_assertion_required": "每条论断都需要非空的 id 和 text。", "edit_duplicate_id": "论断 id 不能重复。", "edit_no_changes": "请先修改内容再创建替换提案。", "edit_ready": "改动已可提交审核。", "edit_submit": "创建替换提案", "edit_saving": "正在创建替换提案" },
   "correction": { "edit_action": "编辑提案", "edit_title": "编辑提案论断", "edit_description": "保存后会创建经过校验的修正提案；当前提案和已签署版本保持不变。", "edit_label": "论断 JSON", "edit_no_changes": "请先修改内容再创建修正提案。", "edit_ready": "改动已可提交校验。", "edit_submit": "创建修正提案", "edit_saving": "正在创建修正提案" },
   "use": {
+    "entity_load_error": "无法加载选项。", "entity_retry": "重试",
     "title": "Twin 执行策略", "description": "明确选择已签署 Twin 可以预览或影响智能体运行的范围。新范围保存前始终为关闭。",
     "loading": "正在加载 Twin 执行策略", "error_title": "执行策略不可用", "error_description": "无法加载最新绑定和指标。", "stale_title": "正在显示上次已知策略", "stale_description": "暂时无法获取最新策略；变更前请先确认这份缓存状态。", "try_again": "重试",
     "kill_switch_title": "Twin 执行已暂停", "kill_switch_fallback": "运维人员已停用 Twin 执行，现有审计历史仍可查看。", "read_only": "你可以查看策略和预览；绑定由 owner 或 admin 管理。",

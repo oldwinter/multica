@@ -23,11 +23,14 @@ const ISSUES = [
   { id: "issue-auth-id", identifier: "MUL-42", title: "Review auth", project_id: "project-apollo-id", status: "in_progress" },
 ];
 
+const selectorErrors = vi.hoisted(() => ({ agents: false, projects: false, issues: false }));
+const selectorRefetch = vi.hoisted(() => vi.fn());
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: readonly string[] }) => {
-    if (queryKey[0] === "twin-agents") return { data: AGENTS };
-    if (queryKey[0] === "twin-projects") return { data: PROJECTS };
-    if (queryKey[0] === "twin-issues") return { data: queryKey[1] ? ISSUES : [], isFetching: false };
+    if (queryKey[0] === "twin-agents") return { data: selectorErrors.agents ? undefined : AGENTS, isError: selectorErrors.agents, refetch: selectorRefetch };
+    if (queryKey[0] === "twin-projects") return { data: selectorErrors.projects ? undefined : PROJECTS, isError: selectorErrors.projects, refetch: selectorRefetch };
+    if (queryKey[0] === "twin-issues") return { data: selectorErrors.issues ? undefined : (queryKey[1] ? ISSUES : []), isError: selectorErrors.issues, isFetching: false, refetch: selectorRefetch };
     return { data: [], isFetching: false };
   },
 }));
@@ -52,7 +55,13 @@ function withI18n(children: React.ReactNode) {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  selectorErrors.agents = false;
+  selectorErrors.projects = false;
+  selectorErrors.issues = false;
+  selectorRefetch.mockReset();
+});
 
 describe("Twin entity selectors", () => {
   it("selects an eligible Agent by keyboard and disables archived Agents", async () => {
@@ -97,5 +106,19 @@ describe("Twin entity selectors", () => {
       status: "in_progress",
     });
     expect(screen.queryByText("issue-auth-id")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes a failed Issue search from an empty result and offers retry", async () => {
+    selectorErrors.issues = true;
+    const user = userEvent.setup();
+    render(withI18n(
+      <TwinIssueSelector wsId="workspace-id" value={null} onChange={vi.fn()} ariaLabel="Issue" />,
+    ));
+
+    await user.click(screen.getByRole("button", { name: "Issue" }));
+    await user.type(screen.getByPlaceholderText("Search by issue identifier or title"), "MUL-42");
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load options.");
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(selectorRefetch).toHaveBeenCalled();
   });
 });

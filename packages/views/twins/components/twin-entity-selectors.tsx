@@ -8,6 +8,7 @@ import { projectListOptions } from "@multica/core/projects/queries";
 import { twinIssueSelectorOptions } from "@multica/core/twins";
 import type { Agent, Issue, Project } from "@multica/core/types";
 import { Badge } from "@multica/ui/components/ui/badge";
+import { Button } from "@multica/ui/components/ui/button";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 import {
@@ -37,7 +38,8 @@ export function TwinAgentSelector({ wsId, value, onChange, disabled, ariaLabel }
   const { t } = useT("twins");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
-  const { data: agents = [] } = useQuery(agentListOptions(wsId));
+  const agentsQuery = useQuery(agentListOptions(wsId));
+  const agents = agentsQuery.data ?? [];
   const normalized = filter.trim().toLowerCase();
   const filtered = agents.filter((agent) =>
     !normalized || agent.name.toLowerCase().includes(normalized) || matchesPinyin(agent.name, normalized),
@@ -59,7 +61,7 @@ export function TwinAgentSelector({ wsId, value, onChange, disabled, ariaLabel }
         <><Bot className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="truncate text-muted-foreground">{t(($) => $.use.select_agent)}</span></>
       )}
     >
-      {filtered.length === 0 ? <PickerEmpty /> : filtered.map((agent) => (
+      {agentsQuery.isError ? <SelectorError onRetry={() => void agentsQuery.refetch()} /> : filtered.length === 0 ? <PickerEmpty /> : filtered.map((agent) => (
         <PickerItem
           key={agent.id}
           selected={agent.id === value?.id}
@@ -83,7 +85,8 @@ export function TwinProjectSelector({ wsId, value, onChange, disabled, optional,
   const { t } = useT("twins");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
-  const { data: projects = [] } = useQuery(projectListOptions(wsId));
+  const projectsQuery = useQuery(projectListOptions(wsId));
+  const projects = projectsQuery.data ?? [];
   const normalized = filter.trim().toLowerCase();
   const filtered = projects.filter((project) =>
     !normalized || project.title.toLowerCase().includes(normalized) || matchesPinyin(project.title, normalized),
@@ -111,7 +114,7 @@ export function TwinProjectSelector({ wsId, value, onChange, disabled, optional,
           <span className="text-muted-foreground">{t(($) => $.use.no_project)}</span>
         </PickerItem>
       ) : null}
-      {filtered.length === 0 ? <PickerEmpty /> : filtered.map((project) => (
+      {projectsQuery.isError ? <SelectorError onRetry={() => void projectsQuery.refetch()} /> : filtered.length === 0 ? <PickerEmpty /> : filtered.map((project) => (
         <PickerItem
           key={project.id}
           selected={project.id === value?.id}
@@ -161,7 +164,7 @@ export function TwinIssueSelector({ wsId, value, onChange, disabled, optional, a
           <span className="text-muted-foreground">{t(($) => $.use.no_issue)}</span>
         </PickerItem>
       ) : null}
-      {!search.trim() && !value ? (
+      {query.isError ? <SelectorError onRetry={() => void query.refetch()} /> : !search.trim() && !value ? (
         <div className="px-2 py-3 text-center text-body text-muted-foreground">{t(($) => $.use.issue_search_hint)}</div>
       ) : query.isFetching && issues.length === 0 ? (
         <div className="px-2 py-3 text-center text-body text-muted-foreground">{t(($) => $.use.searching)}</div>
@@ -186,5 +189,15 @@ export function TwinIssueSelector({ wsId, value, onChange, disabled, optional, a
         </PickerItem>
       ))}
     </PropertyPicker>
+  );
+}
+
+function SelectorError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useT("twins");
+  return (
+    <div className="grid gap-2 px-2 py-3 text-center text-body text-destructive" role="alert">
+      <p>{t(($) => $.use.entity_load_error)}</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>{t(($) => $.use.entity_retry)}</Button>
+    </div>
   );
 }
