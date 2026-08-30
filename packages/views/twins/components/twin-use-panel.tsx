@@ -32,24 +32,44 @@ const LONG_LIVED_SCOPES: readonly TwinBindingScope[] = ["workspace", "agent", "p
 const BINDING_STATES: readonly TwinBindingState[] = ["off", "preview", "enabled"];
 
 type PreviewKeyInput = {
-  workspaceId: string;
-  scopeType: TwinBindingScope;
-  scopeAgentId: string;
-  scopeProjectId: string;
-  scopeIssueId: string;
-  state: TwinBindingState;
-  versionId: string;
-  currentVersionId: string;
-  agentId: string;
-  projectId: string;
-  issueId: string;
-  runId: string;
-  request: string;
-  tags: string;
+  readonly workspaceId: string;
+  readonly scopeType: TwinBindingScope;
+  readonly scopeAgentId: string;
+  readonly scopeProjectId: string;
+  readonly scopeIssueId: string;
+  readonly state: TwinBindingState;
+  readonly versionId: string;
+  readonly currentVersionId: string;
+  readonly previewInput: TwinBriefingPreviewInput | null;
 };
 
 function previewKey(input: PreviewKeyInput): string {
   return JSON.stringify(input);
+}
+
+function normalizePreviewInput({
+  agentId,
+  projectId,
+  issueId,
+  runId,
+  request,
+  tags,
+}: {
+  agentId: string;
+  projectId?: string;
+  issueId?: string;
+  runId: string;
+  request: string;
+  tags: string;
+}): TwinBriefingPreviewInput {
+  return {
+    agentId,
+    projectId,
+    issueId,
+    runId: runId.trim() || undefined,
+    request: request.trim(),
+    tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+  };
 }
 
 function metric(value: number): string { return new Intl.NumberFormat().format(value); }
@@ -87,6 +107,14 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
   const [request, setRequest] = useState("");
   const [tags, setTags] = useState("");
   const [confirmPause, setConfirmPause] = useState(false);
+  const currentPreviewInput = previewAgent ? normalizePreviewInput({
+    agentId: previewAgent.id,
+    projectId: previewProject?.id,
+    issueId: previewIssue?.id,
+    runId,
+    request,
+    tags,
+  }) : null;
   const currentPreviewKey = previewKey({
     workspaceId: wsId,
     scopeType,
@@ -96,12 +124,7 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
     state,
     versionId,
     currentVersionId,
-    agentId: previewAgent?.id ?? "",
-    projectId: previewProject?.id ?? "",
-    issueId: previewIssue?.id ?? "",
-    runId,
-    request,
-    tags,
+    previewInput: currentPreviewInput,
   });
   const [submittedPreviewKey, setSubmittedPreviewKey] = useState<string | null>(null);
 
@@ -188,15 +211,8 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
         <details className="group text-body"><summary className="cursor-pointer text-label font-medium text-muted-foreground">{t(($) => $.use.advanced_context)}</summary><div className="mt-3 grid gap-3 md:grid-cols-2"><LabeledInput label={t(($) => $.use.run_id)} value={runId} onChange={setRunId} /><LabeledInput label={t(($) => $.use.tags)} value={tags} onChange={setTags} /></div></details>
         {previewBriefing.isError ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_failed)}</p> : previewIsOutOfDate ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_stale)}</p> : null}
         <Button variant="outline" disabled={!previewAgent || !request.trim() || previewBriefing.isPending} onClick={() => {
-          if (!previewAgent) return;
-          const input: TwinBriefingPreviewInput = {
-            agentId: previewAgent.id,
-            projectId: previewProject?.id,
-            issueId: previewIssue?.id,
-            runId: runId.trim() || undefined,
-            request: request.trim(),
-            tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
-          };
+          if (!currentPreviewInput) return;
+          const input = currentPreviewInput;
           setSubmittedPreviewKey(currentPreviewKey);
           previewBriefing.mutate(input);
         }}><Braces data-icon="inline-start" />{previewBriefing.isPending ? t(($) => $.use.previewing) : t(($) => $.use.preview_action)}</Button>

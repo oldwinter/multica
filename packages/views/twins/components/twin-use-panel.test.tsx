@@ -239,6 +239,22 @@ describe("TwinUsePanel", () => {
     );
   });
 
+  it("keeps a compiled preview current when request and tag whitespace changes", async () => {
+    renderPanel(qc);
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth" } });
+    fireEvent.click(screen.getByText("Advanced run context"));
+    fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: "security,auth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compile preview" }));
+
+    expect(await screen.findByText("Keep the review decision explicit.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "  Review auth  " } });
+    fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: " security, auth " } });
+
+    expect(screen.getByText("Keep the review decision explicit.")).toBeInTheDocument();
+    expect(screen.queryByText("This preview is out of date. Compile it again to inspect the current inputs.")).not.toBeInTheDocument();
+  });
+
   it("pauses every future scope only after confirmation and keeps history copy visible", async () => {
     const active = [{
       id: "binding-1",
