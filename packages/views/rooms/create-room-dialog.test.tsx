@@ -82,6 +82,15 @@ describe("CreateRoomDialog", () => {
     expect(objective).toHaveValue("Identify, rank, and mitigate the material risks.");
   });
 
+  it("focuses the name field instead of a template card", () => {
+    const view = renderDialog();
+
+    expect(view.getByRole("textbox", { name: "Name" })).toHaveFocus();
+    expect(view.getByTestId("room-template-research")).not.toHaveFocus();
+    expect(view.getByTestId("room-create-summary")).toBeInTheDocument();
+    expect(view.getByTestId("room-create-submit")).toBeInTheDocument();
+  });
+
   it("submits a scheduled duplicate as a paused fresh Room", () => {
     const initialInput: CreateRoomInput = {
       title: "Weekly review",

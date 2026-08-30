@@ -154,7 +154,7 @@ RETURNING *;
 
 -- name: ListDueRooms :many
 SELECT * FROM room
-WHERE status IN ('active', 'paused')
+WHERE status = 'active'
   AND schedule_interval_minutes IS NOT NULL
   AND next_wake_at IS NOT NULL
   AND next_wake_at <= @due_at

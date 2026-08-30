@@ -107,7 +107,7 @@ export function CreateRoomDialog({
         if (!pending || next) onOpenChange(next);
       }}
     >
-      <DialogContent className="max-h-[min(48rem,calc(100dvh-2rem))] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-hidden sm:max-w-2xl">
         {open ? (
           <CreateRoomForm
             agents={agents}
@@ -309,7 +309,7 @@ function CreateRoomForm({
 
   return (
     <>
-      <DialogHeader>
+      <DialogHeader className="shrink-0">
         <DialogTitle>
           {formMode === "duplicate"
             ? t(($) => $.create.duplicate_title)
@@ -322,7 +322,7 @@ function CreateRoomForm({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-5">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto" data-testid="room-create-scroll">
         <section aria-labelledby="room-create-template-label">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2
@@ -344,7 +344,6 @@ function CreateRoomForm({
                 <button
                   key={value}
                   type="button"
-                  autoFocus={value === templateId}
                   aria-pressed={selected}
                   data-testid={`room-template-${value}`}
                   className={cn(
@@ -379,6 +378,7 @@ function CreateRoomForm({
             <Input
               value={title}
               maxLength={160}
+              autoFocus
               aria-label={t(($) => $.create.fields.title)}
               placeholder={t(($) => $.create.placeholders.title)}
               onChange={(event) => setTitle(event.target.value)}
@@ -586,12 +586,13 @@ function CreateRoomForm({
             </div>
           </CollapsibleContent>
         </Collapsible>
+      </div>
 
-        <section
-          className="border-y border-surface-border py-3"
-          aria-labelledby="room-create-summary-label"
-          data-testid="room-create-summary"
-        >
+      <section
+        className="shrink-0 border-t border-surface-border pt-3"
+        aria-labelledby="room-create-summary-label"
+        data-testid="room-create-summary"
+      >
           <h2 id="room-create-summary-label" className="mb-2 text-caption font-medium text-foreground">
             {t(($) => $.create.summary)}
           </h2>
@@ -634,7 +635,6 @@ function CreateRoomForm({
             </p>
           ) : null}
         </section>
-      </div>
 
       <DialogFooter>
         <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>

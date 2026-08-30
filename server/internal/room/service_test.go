@@ -855,7 +855,7 @@ func TestPausedAndBudgetExhaustedWakesPersistRefusal(t *testing.T) {
 	}
 }
 
-func TestDispatchDueAdvancesOnceAndPersistsPausedRefusal(t *testing.T) {
+func TestDispatchDueAdvancesOnceAndSkipsPausedRooms(t *testing.T) {
 	fixture := newServiceFixture(t)
 	interval := int32(5)
 	now := time.Date(2026, 8, 13, 4, 40, 0, 0, time.UTC)
@@ -919,20 +919,19 @@ func TestDispatchDueAdvancesOnceAndPersistsPausedRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pausedResult.RoomsAdvanced != 1 || pausedResult.CyclesRefused != 1 || pausedResult.TasksQueued != 0 {
+	if pausedResult != (DueResult{}) {
 		t.Fatalf("paused due result = %+v", pausedResult)
 	}
-	var refusal string
+	var pausedCycles int
 	var pausedNext time.Time
 	if err := fixture.pool.QueryRow(context.Background(), `
-		SELECT cycle.refusal_reason, room.next_wake_at
-		FROM room_cycle cycle JOIN room ON room.id = cycle.room_id
-		WHERE cycle.room_id = $1
-	`, paused.Room.ID).Scan(&refusal, &pausedNext); err != nil {
+		SELECT (SELECT count(*) FROM room_cycle WHERE room_id = $1),
+		       (SELECT next_wake_at FROM room WHERE id = $1)
+	`, paused.Room.ID).Scan(&pausedCycles, &pausedNext); err != nil {
 		t.Fatal(err)
 	}
-	if refusal != "room_paused" || !pausedNext.After(now) || fixture.notifier.count() != 1 {
-		t.Fatalf("paused schedule state = refusal %q next %s notifications %d", refusal, pausedNext, fixture.notifier.count())
+	if pausedCycles != 0 || !pausedNext.Equal(pausedPlan.UTC()) || fixture.notifier.count() != 1 {
+		t.Fatalf("paused schedule state = cycles %d next %s notifications %d", pausedCycles, pausedNext, fixture.notifier.count())
 	}
 }
 
