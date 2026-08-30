@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { twinExecutionKeys } from "../twins/execution-queries";
 import { personalWikiKeys, wikiKeys } from "./queries";
 import type {
   AcceptWikiProposalInput,
@@ -75,7 +76,10 @@ export function useUpdateLMWikiSourcePolicy(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateLMWikiSourcePolicyInput) => api.updateLMWikiSourcePolicy(input),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+    onSettled: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+      queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
+    ]),
   });
 }
 
@@ -85,7 +89,10 @@ export function usePinWikiRevisionAsLMWikiEvidence(wsId: string) {
     mutationFn: (input: PinWikiRevisionAsLMWikiEvidenceInput) => (
       api.pinWikiRevisionAsLMWikiEvidence(input)
     ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+    onSettled: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: wikiKeys.all(wsId) }),
+      queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
+    ]),
   });
 }
 
