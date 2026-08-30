@@ -126,6 +126,18 @@
       "undo_expired": "다른 곳에서 화면 모양이 변경되어 실행 취소할 수 없습니다",
       "recovered": "잘못된 화면 모양 설정을 안전한 기본값으로 교체했습니다"
     },
+    "appearance_fixture": {
+      "review_ready": "검토 준비됨",
+      "updated_moments_ago": "방금 업데이트됨",
+      "selected_task": "선택한 작업",
+      "assignee": "담당자",
+      "done": "완료",
+      "watch": "주의",
+      "remove": "제거",
+      "summary": "요약",
+      "linked_task": "연결된 작업",
+      "command_menu": "명령 메뉴"
+    },
     "skin": {
       "title": "스킨",
       "tension": {

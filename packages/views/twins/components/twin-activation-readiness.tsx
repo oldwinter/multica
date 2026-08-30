@@ -29,7 +29,31 @@ export function TwinActivationReadiness({
   if (readiness.isPending) {
     return <Skeleton className="h-28 w-full" aria-label={t(($) => $.use.activation_loading)} />;
   }
-  if (!readiness.data) return null;
+  if (readiness.isError || !readiness.data) {
+    return (
+      <section
+        className="border-y border-border/70 py-4"
+        aria-labelledby="twin-next-action-title"
+        data-testid="twin-activation-readiness"
+      >
+        <h2 id="twin-next-action-title" className="text-title font-medium text-foreground">
+          {t(($) => $.use.next_action_title)}
+        </h2>
+        <p className="mt-2 text-body text-destructive" role="alert">
+          {t(($) => $.use.activation_unavailable)}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={() => void readiness.refetch()}
+        >
+          {t(($) => $.use.activation_retry)}
+        </Button>
+      </section>
+    );
+  }
 
   const action = readiness.data.nextAction;
   return (

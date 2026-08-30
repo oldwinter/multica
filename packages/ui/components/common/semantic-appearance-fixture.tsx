@@ -1,6 +1,9 @@
 import type { ComponentProps } from "react";
 import { AlertTriangle, Check, CircleCheck, Code2 } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
+import type { SemanticAppearanceFixtureLabels } from "./semantic-appearance-fixture-contract";
+
+export type { SemanticAppearanceFixtureLabels };
 
 type SemanticAppearanceFixtureProps = Omit<
   ComponentProps<"div">,
@@ -9,12 +12,14 @@ type SemanticAppearanceFixtureProps = Omit<
   skin: "tension" | "relay" | "field";
   mode: "light" | "dark";
   compact?: boolean;
+  labels: SemanticAppearanceFixtureLabels;
 };
 
 export function SemanticAppearanceFixture({
   skin,
   mode,
   compact = false,
+  labels,
   className,
   ...props
 }: SemanticAppearanceFixtureProps) {
@@ -33,13 +38,13 @@ export function SemanticAppearanceFixture({
       <div className={cn("grid", compact ? "gap-1.5" : "gap-3")}>
         <div data-fixture-role="primary-text" className="min-w-0">
           <div className="truncate text-caption font-semibold text-foreground">
-            Review ready
+            {labels.reviewReady}
           </div>
           <div
             data-fixture-role="muted-text"
             className="truncate text-caption text-muted-foreground"
           >
-            Updated moments ago
+            {labels.updatedMomentsAgo}
           </div>
         </div>
 
@@ -48,7 +53,7 @@ export function SemanticAppearanceFixture({
           className="flex min-w-0 items-center gap-1.5 bg-surface-selected px-2 py-1 text-caption font-medium text-surface-selected-foreground"
         >
           <Check className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate">Selected task</span>
+          <span className="truncate">{labels.selectedTask}</span>
         </div>
 
         <div className="grid grid-cols-[1fr_auto] items-center gap-2">
@@ -56,7 +61,7 @@ export function SemanticAppearanceFixture({
             data-fixture-role="form-control"
             className="h-7 min-w-0 truncate border border-control-border bg-surface px-2 py-1 text-caption text-foreground"
           >
-            Assignee
+            {labels.assignee}
           </div>
           <div
             data-fixture-role="focus"
@@ -72,20 +77,20 @@ export function SemanticAppearanceFixture({
             className="flex items-center gap-1 text-foreground"
           >
             <CircleCheck className="size-3.5 text-success" aria-hidden="true" />
-            Done
+            {labels.done}
           </span>
           <span
             data-fixture-role="warning"
             className="flex items-center gap-1 text-foreground"
           >
             <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" />
-            Watch
+            {labels.watch}
           </span>
           <span
             data-fixture-role="destructive"
             className="bg-destructive px-1.5 py-0.5 font-medium text-destructive-foreground"
           >
-            Remove
+            {labels.remove}
           </span>
         </div>
 
@@ -106,7 +111,8 @@ export function SemanticAppearanceFixture({
             compact && "sr-only",
           )}
         >
-          <strong>Summary</strong> with a <span className="text-primary underline">linked task</span>.
+          <strong>{labels.summary}</strong>{" "}
+          <span className="text-primary underline">{labels.linkedTask}</span>
         </div>
 
         <div
@@ -124,7 +130,7 @@ export function SemanticAppearanceFixture({
             compact ? "sr-only" : "block",
           )}
         >
-          Command menu
+          {labels.commandMenu}
         </div>
       </div>
     </div>

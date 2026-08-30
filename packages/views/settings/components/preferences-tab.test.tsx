@@ -330,6 +330,8 @@ describe("PreferencesTab — Language switcher", () => {
           fixture.querySelector('[data-fixture-role="code-editor"]'),
       ),
     ).toBe(true);
+    expect(fixtures[0]).toHaveTextContent("Review ready");
+    expect(fixtures[0]).toHaveTextContent("Selected task");
   });
 
   it("names the exact defaults before reset and only resets on confirm", async () => {

@@ -16,6 +16,24 @@ export const SEMANTIC_APPEARANCE_FIXTURE_STATES = [
 export type SemanticAppearanceFixtureState =
   (typeof SEMANTIC_APPEARANCE_FIXTURE_STATES)[number];
 
+export const SEMANTIC_APPEARANCE_FIXTURE_LABEL_KEYS = [
+  "reviewReady",
+  "updatedMomentsAgo",
+  "selectedTask",
+  "assignee",
+  "done",
+  "watch",
+  "remove",
+  "summary",
+  "linkedTask",
+  "commandMenu",
+] as const;
+
+export type SemanticAppearanceFixtureLabels = Record<
+  (typeof SEMANTIC_APPEARANCE_FIXTURE_LABEL_KEYS)[number],
+  string
+>;
+
 export const SEMANTIC_APPEARANCE_FIXTURE_TOKENS = [
   "--background",
   "--foreground",

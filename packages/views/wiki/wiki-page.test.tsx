@@ -170,6 +170,13 @@ describe("WikiPageView", () => {
     expect(screen.getByRole("combobox")).toHaveTextContent("Roadmap");
   });
 
+  it("labels a new page action as create instead of save", () => {
+    renderWiki();
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
   it("sends expectedRevisionNumber with direct edits", () => {
     harness.detail.data = page;
     renderWiki("page-1");

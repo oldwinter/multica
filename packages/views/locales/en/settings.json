@@ -126,6 +126,18 @@
       "undo_expired": "Undo expired because appearance changed elsewhere",
       "recovered": "An invalid appearance value was replaced with a safe default"
     },
+    "appearance_fixture": {
+      "review_ready": "Review ready",
+      "updated_moments_ago": "Updated moments ago",
+      "selected_task": "Selected task",
+      "assignee": "Assignee",
+      "done": "Done",
+      "watch": "Watch",
+      "remove": "Remove",
+      "summary": "Summary",
+      "linked_task": "linked task",
+      "command_menu": "Command menu"
+    },
     "skin": {
       "title": "Skin",
       "tension": {

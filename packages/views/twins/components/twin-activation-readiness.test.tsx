@@ -5,6 +5,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { twinExecutionKeys, type TwinActivationReadiness as Readiness } from "@multica/core/twins";
 import { renderWithI18n } from "../../test/i18n";
+
+vi.mock("@multica/core/twins", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@multica/core/twins")>();
+  return {
+    ...actual,
+    twinActivationReadinessOptions: (wsId: string) => ({
+      queryKey: actual.twinExecutionKeys.activation(wsId),
+      queryFn: () => Promise.reject(new Error("unavailable")),
+      enabled: Boolean(wsId),
+    }),
+  };
+});
+
 import { TwinActivationReadiness } from "./twin-activation-readiness";
 
 const wsId = "00000000-0000-4000-8000-000000000001";
@@ -82,6 +95,23 @@ describe("TwinActivationReadiness", () => {
     expect(screen.getByText("Responsible: owner or admin")).toBeInTheDocument();
     expect(screen.getByText("A required lifecycle state is incomplete.")).toBeInTheDocument();
     expect(screen.getByText("Owner or admin action is required.")).toBeInTheDocument();
+    queryClient.clear();
+  });
+
+  it("surfaces a failed readiness fetch instead of hiding the loop", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderWithI18n(
+      <QueryClientProvider client={queryClient}>
+        <TwinActivationReadiness wsId={wsId} onNavigate={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Activation readiness could not be loaded.",
+    );
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     queryClient.clear();
   });
 });

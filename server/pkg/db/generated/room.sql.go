@@ -2018,7 +2018,7 @@ func (q *Queries) GetRoomUsageSummary(ctx context.Context, arg GetRoomUsageSumma
 
 const listDueRooms = `-- name: ListDueRooms :many
 SELECT id, workspace_id, title, instructions, created_by_user_id, facilitator_agent_id, facilitator_squad_id, status, daily_turn_limit, schedule_interval_minutes, next_wake_at, active_cycle_id, memory, memory_version, last_entry_ordinal, last_cycle_sequence, created_at, updated_at, objective, success_criteria, stop_conditions, template_id, max_cost_ticks, accepted_memory_revision_id, last_memory_revision_version, capability_version FROM room
-WHERE status IN ('active', 'paused')
+WHERE status = 'active'
   AND schedule_interval_minutes IS NOT NULL
   AND next_wake_at IS NOT NULL
   AND next_wake_at <= $1

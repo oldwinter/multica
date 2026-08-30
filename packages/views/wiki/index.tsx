@@ -302,7 +302,7 @@ export function WikiPageView({
 
           <section className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
             {creating ? (
-              <WikiEditor path={draftPath} title={draftTitle} content={draftContent} onPathChange={setDraftPath} onTitleChange={setDraftTitle} onContentChange={setDraftContent} onSave={createPage} onCancel={() => setCreating(false)} pending={createMutation.isPending} error={actionError} />
+              <WikiEditor path={draftPath} title={draftTitle} content={draftContent} onPathChange={setDraftPath} onTitleChange={setDraftTitle} onContentChange={setDraftContent} onSave={createPage} onCancel={() => setCreating(false)} pending={createMutation.isPending} create error={actionError} />
             ) : !pageId ? (
               <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center">
                 <p className="text-body font-medium text-foreground">{t(($) => $.empty.title)}</p>

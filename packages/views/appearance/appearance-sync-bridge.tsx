@@ -49,6 +49,7 @@ import {
 type ServerAppearance = {
   preferences: AppearancePreferences | null;
   writable: boolean;
+  incomplete: boolean;
 };
 
 type AppearanceSyncContextValue = {
@@ -108,13 +109,13 @@ function serverAppearanceFromUser(
     user.appearanceTokenVersion,
   ];
   if (values.every((value) => value === null)) {
-    return { preferences: null, writable: true };
+    return { preferences: null, writable: true, incomplete: false };
   }
-  if (
-    values.some((value) => value === null) ||
-    user.appearanceTokenVersion !== APPEARANCE_TOKEN_CONTRACT_VERSION
-  ) {
-    return { preferences: null, writable: false };
+  if (values.some((value) => value === null)) {
+    return { preferences: null, writable: true, incomplete: true };
+  }
+  if (user.appearanceTokenVersion !== APPEARANCE_TOKEN_CONTRACT_VERSION) {
+    return { preferences: null, writable: false, incomplete: false };
   }
 
   const requestedAppearance = user.appearance!;
@@ -135,8 +136,8 @@ function serverAppearanceFromUser(
     { systemAppearance },
   );
   return parsed.recovered
-    ? { preferences: null, writable: false }
-    : { preferences: parsed.preferences, writable: true };
+    ? { preferences: null, writable: false, incomplete: false }
+    : { preferences: parsed.preferences, writable: true, incomplete: false };
 }
 
 function classifySyncError(error: unknown): AppearanceSyncErrorClass {
@@ -390,6 +391,15 @@ export function AppearanceSyncBridge({
         );
         if (!remote.preferences) {
           remoteWritableRef.current = remote.writable;
+          if (remote.incomplete) {
+            const failed = markAppearanceSyncFailed(submitted, "server");
+            await apply(failed, {
+              animate: false,
+              persist: true,
+              accountId,
+            });
+            recordSyncFailure("server");
+          }
           return "failed";
         }
 
@@ -590,7 +600,9 @@ export function AppearanceSyncBridge({
         environmentRef.current.systemAppearance,
       );
       let next = reconciled.preferences;
-      if (!remote.writable) {
+      if (remote.incomplete) {
+        next = markAppearanceSyncFailed(next, "server");
+      } else if (!remote.writable) {
         next = { ...next, syncState: { status: "local-only" as const } };
       }
       if (futureContract) {
@@ -622,9 +634,12 @@ export function AppearanceSyncBridge({
       }
       if (storageFailed || futureContract) {
         recordSyncFailure(storageFailed ? "storage" : "conflict");
+      } else if (remote.incomplete) {
+        recordSyncFailure("server");
       }
       if (
         remote.writable &&
+        !remote.incomplete &&
         !futureContract &&
         !storageFailed &&
         reconciled.shouldSyncServer
@@ -681,16 +696,18 @@ export function AppearanceSyncBridge({
           ? serverAppearanceFromUser(
               userRef.current,
               environmentRef.current.systemAppearance,
-            ).preferences
-          : null;
+            )
+          : { preferences: null, writable: true, incomplete: false };
         const reconciled = reconcileAppearancePreferences(
           futureContract ? null : parsed.preferences,
-          remote,
+          remote.preferences,
           environmentRef.current.systemAppearance,
         );
         const next = futureContract
           ? markAppearanceSyncFailed(reconciled.preferences, "conflict")
-          : reconciled.preferences;
+          : remote.incomplete
+            ? markAppearanceSyncFailed(reconciled.preferences, "server")
+            : reconciled.preferences;
         void apply(next, {
           animate: false,
           persist:
@@ -698,7 +715,11 @@ export function AppearanceSyncBridge({
             (reconciled.shouldPersistLocal || parsed.recovered),
           accountId: event.accountId ?? userRef.current?.id,
         }).then(() => {
-          if (!futureContract && reconciled.shouldSyncServer) {
+          if (
+            !futureContract &&
+            !remote.incomplete &&
+            reconciled.shouldSyncServer
+          ) {
             void syncToServer(reconciled.preferences);
           }
         });
