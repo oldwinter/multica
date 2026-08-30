@@ -76,6 +76,7 @@
     "jsdom": "catalog:",
     "tailwindcss": "^4",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "catalog:"
   }
 }

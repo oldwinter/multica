@@ -307,6 +307,41 @@ UNION ALL
 SELECT * FROM existing
 LIMIT 1;
 
+-- name: CreateRoomWikiPageEditProposal :one
+WITH existing AS (
+    SELECT proposal.*
+    FROM wiki_page_edit_proposal proposal
+    WHERE proposal.workspace_id = sqlc.arg(workspace_id)
+      AND proposal.source_kind = 'room'
+      AND proposal.source_ref_id = sqlc.arg(source_ref_id)
+      AND proposal.idempotency_key = sqlc.arg(idempotency_key)
+), inserted AS (
+    INSERT INTO wiki_page_edit_proposal (
+        workspace_id, page_id, base_revision_number, proposed_path,
+        proposed_title, proposed_content, content_digest, rationale,
+        evidence_refs, agent_id, idempotency_key, source_kind, source_ref_id
+    )
+    SELECT page.workspace_id, page.id, sqlc.arg(base_revision_number),
+           sqlc.arg(proposed_path), sqlc.arg(proposed_title), sqlc.arg(proposed_content),
+           'sha256:' || encode(sha256(convert_to(sqlc.arg(proposed_content), 'UTF8')), 'hex'),
+           sqlc.arg(rationale), sqlc.arg(evidence_refs)::jsonb,
+           NULL, sqlc.arg(idempotency_key), 'room', sqlc.arg(source_ref_id)
+    FROM wiki_page page
+    WHERE page.id = sqlc.arg(page_id)
+      AND page.workspace_id = sqlc.arg(workspace_id)
+      AND page.scope IN ('workspace', 'project')
+      AND page.current_revision_number = sqlc.arg(base_revision_number)
+      AND NOT EXISTS (SELECT 1 FROM existing)
+    ON CONFLICT (workspace_id, source_ref_id, idempotency_key)
+        WHERE source_kind = 'room'
+        DO NOTHING
+    RETURNING *
+)
+SELECT * FROM inserted
+UNION ALL
+SELECT * FROM existing
+LIMIT 1;
+
 -- name: GetWikiPageEditProposal :one
 SELECT * FROM wiki_page_edit_proposal
 WHERE workspace_id = sqlc.arg(workspace_id)
@@ -317,6 +352,13 @@ WHERE workspace_id = sqlc.arg(workspace_id)
 SELECT * FROM wiki_page_edit_proposal
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND agent_id = sqlc.arg(agent_id)
+  AND idempotency_key = sqlc.arg(idempotency_key);
+
+-- name: GetRoomWikiPageEditProposalByIdempotencyKey :one
+SELECT * FROM wiki_page_edit_proposal
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND source_kind = 'room'
+  AND source_ref_id = sqlc.arg(source_ref_id)
   AND idempotency_key = sqlc.arg(idempotency_key);
 
 -- name: ListWikiPageEditProposals :many
@@ -394,9 +436,7 @@ WHERE workspace_id = sqlc.arg(workspace_id)
 RETURNING *;
 
 -- name: DeleteWikiPage :exec
-WITH deleted_policy_selection AS (
-    DELETE FROM lm_wiki_source_wiki_page WHERE page_id = sqlc.arg(deleted_page_id)
-), deleted_proposals AS (
+WITH deleted_proposals AS (
     DELETE FROM wiki_page_edit_proposal WHERE page_id = sqlc.arg(deleted_page_id)
 )
 DELETE FROM wiki_page page WHERE page.id = sqlc.arg(deleted_page_id)::uuid;

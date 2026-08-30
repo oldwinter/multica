@@ -42,7 +42,6 @@ MULTICA_PUBLIC_URL=https://api.multica.example.com
 | `LOG_LEVEL` | アプリのデフォルト | ログレベル |
 | `MULTICA_SHUTDOWN_HOLD_DURATION` | `0` | 終了シグナル受信後、グレースフルシャットダウンを開始するまでの待機時間 |
 | `MULTICA_RUNTIME_RECONNECT_GRACE` | `3h` | オフラインのランタイムが処理中の作業を失敗させずに再接続できる猶予時間。`150s` 未満は `150s` に補正されます |
-| `MULTICA_TASK_QUEUED_TTL` | `2h` | タスクがキュー内でクレームされずに置かれることのできる最長時間。超過すると `queued_expired` で失敗します。低並行度のランタイムが長時間実行中の作業の後ろに正当に待機しうる場合は大きくしてください |
 
 Kubernetes で shutdown hold を設定する場合、`terminationGracePeriodSeconds` は hold と実際のシャットダウンにかかる時間の合計より大きくしてください。
 
@@ -53,9 +52,14 @@ Kubernetes で shutdown hold を設定する場合、`terminationGracePeriodSeco
 | `FRONTEND_ORIGIN` | 空 | ユーザーがアクセスするフロントエンドの origin。CORS、cookie、招待リンクに使われます |
 | `MULTICA_APP_URL` | `FRONTEND_ORIGIN` にフォールバック | ユーザーが到達できる Web アドレス。CLI ログインとアカウント連携リンクが使います |
 | `MULTICA_PUBLIC_URL` | 空 | 公開 API アドレス。webhook URL とランタイム接続案内に使われます |
+| `MULTICA_DAEMON_SERVER_URL` | `MULTICA_PUBLIC_URL`、次に `MULTICA_APP_URL` / `FRONTEND_ORIGIN` にフォールバック | API プロセスが `multica setup self-host` コマンドに埋め込むサーバー URL。デーモンから到達する API URL が公開 webhook URL と異なる場合に設定します |
 | `CORS_ALLOWED_ORIGINS` | 空 | 追加で許可する HTTP origin。カンマ区切り |
 | `ALLOWED_ORIGINS` | CORS / フロントエンド設定にフォールバック | WebSocket origin の許可リスト。カンマ区切り |
 | `COOKIE_DOMAIN` | 空 | フロントエンドと API の host が異なり、ブラウザが API ドメインへ直接アクセスする場合は必須。単一ドメイン構成では空のまま |
+
+<Callout type="warning">
+`MULTICA_DAEMON_SERVER_URL` は認証なしの `/api/config` エンドポイントから返され、クライアントが読み取れます。公開設定として扱い、認証情報・トークンなどのシークレットを含めないでください。
+</Callout>
 
 フロントエンドと API が異なる host を使い、ブラウザが API ドメインへ直接アクセスする構成では、`COOKIE_DOMAIN` の設定が必須です。設定しないとブラウザが CSRF cookie を読めず、すべての書き込みリクエストが `403 CSRF validation failed` を返す一方、読み取りは正常に動きます。値には、両方の host を同時にカバーできる最も狭い親ドメインを使ってください（`.example.com` より `.agent.example.com`）。この設定はログインセッション cookie をそのドメイン配下のすべての host に広げるため、それらの host がすべて同一の信頼できる運用主体のものである場合にのみ使えます。変更後は両方の host で古い cookie を削除し、再ログインしてください。[セルフホストクイックスタート](/self-host-quickstart#3-アクセス方法を選ぶ)の同一オリジン構成（ブラウザは app ドメインのみアクセス）に従う場合は、空のままで構いません。IP アドレスは指定しないでください。ブラウザは Domain が IP の cookie を無視します。
 
@@ -198,13 +202,14 @@ allowlist の正確な判定順序は[ログインとサインアップ](/auth-s
 
 `MULTICA_LLM_MAX_RETRIES` はリトライポリシーの唯一の設定元です。未設定ならデフォルトの 2 回、`0` なら 1 回の呼び出しにつきリクエストは 1 回だけ、1〜5 ならリトライは最大その回数までになります。これは割り当てではなく上限です。消費するのはリトライ対象の失敗だけで、成功や呼び出し側自身のデッドラインによって早く終わることもあります。それ以外の値（負数、非数値、5 超過）は静かに補正されるのではなく起動に失敗します。上限はレイテンシ予算です。バックオフは 0.5 秒から始まり 8 秒を上限に倍増するため、これより大きい予算は呼び出し側自身のタイムアウトを超え、リトライ可能な失敗をタイムアウトに変えてしまいます。リトライの対象は接続失敗と HTTP 408、409、429、5xx で、それ以外の 4xx はそのまま返されます。サーバーは起動時に有効なポリシーを `llm retry policy` として記録しますが、その行に資格情報は含まれません。
 
-このレイヤーを使う機能は 3 つあります。最初の 2 つは以下のとおりチャット内容を送信し、Twin Build は明示的な操作の後にのみレビュー済みの証拠を送信します。
+このレイヤーを使う機能は 4 つあります。最初の 2 つは以下のとおりチャット内容を送信し、Twin Build と Skill リプレイは承認済みの証拠を送信します。
 
 - **会話タイトルの自動生成** — 新しいチャットセッションでユーザーが最初に送ったメッセージを、そのまま送信します。添付ファイルは含まれません。
 - **フォローアップ質問**（エージェントの返信の下に表示されるボタン） — 会話の末尾を送信します。最大 6 メッセージで、対象の返信は 3000 文字、それより古いメッセージは各 800 文字が上限です。
 - **Twin Build** — ワークスペースの owner または admin が明示的に Build を実行した場合に限り、承認済みでイミュータブルな LM Wiki の canonical JSON、安全な citation key、直前の署名済み assertion を設定済み endpoint に送信します。可変の Workspace Wiki や個人 Wiki の内容、local-only の証拠、生のパスや basename、非公開のプロファイル名、資格情報は送信しません。
+- **Skill evolution リプレイ** — 現在承認され、サイズ制限された 1 件の証拠 case を、base Skill および candidate Skill とともに実行と比較のため送信します。case とモデル応答は呼び出し中のみ保持され、本文を含まない判定、件数、digest、所要時間、cost だけが永続化されます。
 
-API key と base URL の両方が空の場合、このレイヤーは無効になり、上流へのリクエストを一切行いません。このレイヤーからチャットや Twin の証拠をデプロイ外へ出せないポリシーでは、これがサポートされた構成です。セッションはクライアントが最初のメッセージから生成したタイトルをそのまま使い、フォローアップ質問のボタンは表示されず、Twin Build はモデル生成を利用できないことを明示します。エージェントの task 実行は別の経路であり、影響を受けません。
+API key と base URL の両方が空の場合、このレイヤーは無効になり、上流へのリクエストを一切行いません。このレイヤーからチャット、Twin、Skill リプレイの証拠をデプロイ外へ出せないポリシーでは、これがサポートされた構成です。セッションはクライアントが最初のメッセージから生成したタイトルをそのまま使い、フォローアップ質問のボタンは表示されず、Twin Build と Skill リプレイはモデル生成を利用できないことを明示します。エージェントの task 実行は別の経路であり、影響を受けません。
 
 <Callout type="info">
 これは補助生成レイヤーのみに関する説明です。エージェントの実行は別のデータ経路です。エージェントがチャットに応答するとき、デーモンはそのエージェントの AI コーディングツールをツール自身の資格情報で実行し、上記の `MULTICA_LLM_*` 設定をツールへ渡すことはありません。（エージェント自身が必要とするタスク単位の Multica 接続用変数は、デーモンが別途注入します。）上記の変数を空にしてもこの経路には影響しないため、エージェントのランタイム設定側で制御してください。
@@ -223,10 +228,10 @@ API key と base URL の両方が空の場合、このレイヤーは無効に�
 | `MULTICA_DAEMON_HEARTBEAT_INTERVAL` | `15s` | ハートビート間隔 |
 | `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | `20` | デーモン 1 つあたりの同時実行タスク上限 |
 | `MULTICA_AGENT_TIMEOUT` | `0` | 1 回の実行の絶対時間上限。`0` は上限なし |
-| `MULTICA_AGENT_IDLE_WATCHDOG` | `30m` | 出力もツール実行もない状態の静穏上限 |
-| `MULTICA_AGENT_TOOL_WATCHDOG` | `2h` | 単一のツール呼び出しが静穏なままでいられる上限 |
+| `MULTICA_AGENT_IDLE_WATCHDOG` | `2h` | 出力もツール実行もない状態の静穏上限。`0` で watchdog 全体を無効化 |
+| `MULTICA_AGENT_TOOL_WATCHDOG` | `MULTICA_AGENT_IDLE_WATCHDOG` と同じ | 単一のツール呼び出しが静穏なままでいられる上限。モデルより長い余裕をツールに与えたい場合のみ設定し、`0` はツール実行中に強制停止しません |
 | `MULTICA_OPENCODE_IDLE_WATCHDOG` | `10m` | OpenCode 専用の静穏しきい値 |
-| `MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT` | `10m` | Codex のセマンティック静穏しきい値 |
+| `MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT` | `MULTICA_AGENT_IDLE_WATCHDOG` と同じ | Codex のセマンティック静穏しきい値。Codex 自身のタイマーはツール実行中かどうかを判別できないため、独自の短い上限を持たず idle / tool 予算の大きい方に追従します |
 | `MULTICA_CODEX_FIRST_TURN_TIMEOUT` | `0` | Codex 初回ターンの無進捗上限を明示的に上書き；`0` はデフォルトを維持。実効の初回ターン待機は依然として `MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT` と全体の実行タイムアウトに制限される——`MULTICA_CODEX_SEMANTIC_INACTIVITY_TIMEOUT` をこの値より厳密に大きく（余裕を持たせて）設定すること。さもないと待機はその値で打ち切られ、モデルカタログの起動リトライがスキップされる。同値では不十分：セマンティックタイマーが先に起動するため、同値の場合でもリトライが失われることがある |
 | `MULTICA_CODEX_HANDSHAKE_TIMEOUT` | `30s` | Codex app-server 起動ハンドシェイクの上限 |
 | `MULTICA_DAEMON_AUTO_UPDATE` | Cloud は `true`、セルフホストは `false` | CLI の更新を自動でチェックして適用するか |
@@ -236,7 +241,7 @@ API key と base URL の両方が空の場合、このレイヤーは無効に�
 | `MULTICA_AGENT_TEMP_BASE` | `/tmp`（Linux/macOS） | Linux/macOS 専用。作業ごとのプライベート一時ディレクトリの親ディレクトリ。既存かつ書き込み可能な絶対パスである必要があり、無効な値の場合は `/tmp` にフォールバックせず作業の開始に失敗します。短いパスを選んでください。子ツールがその配下に AF_UNIX ソケットを作成する場合があり、`sun_path` の上限は Linux で 108 バイト、macOS で 104 バイトです |
 | `MULTICA_KEEP_ENV_AFTER_TASK` | `false` | デバッグ用にタスクディレクトリを保持 |
 
-各 AI コーディングツールは `MULTICA_<PROVIDER>_PATH` でコマンドパスを上書きでき、モデル上書き対応ツールでは `MULTICA_<PROVIDER>_MODEL` も利用できます。QwenPaw と MiniMax Code にはモデル変数がなく、MiniMax Code のパス変数は `MULTICA_MCODE_PATH` です。詳しくは [AI コーディングツール比較](/providers#モデルの取得元) を参照してください。DeepSeek Harness は `MULTICA_DSH_PATH` と `MULTICA_DSH_MODEL` に対応しています（値は dsh のモデルカタログにあるモデル ID、例: `deepseek-official/deepseek-chat`）。マシン全体のデフォルト引数 `MULTICA_<PROVIDER>_ARGS` は、現在 Claude Code、Codex、CodeBuddy、Qwen Code、QwenPaw の 5 ツールに対応しています。対応する変数は `MULTICA_CLAUDE_ARGS`、`MULTICA_CODEX_ARGS`、`MULTICA_CODEBUDDY_ARGS`、`MULTICA_QWEN_ARGS`、`MULTICA_QWENPAW_ARGS` です。例:
+各 AI コーディングツールは `MULTICA_<PROVIDER>_PATH` でコマンドパスを上書きでき、モデル上書き対応ツールでは `MULTICA_<PROVIDER>_MODEL` も利用できます。QwenPaw と MiniMax Code にはモデル変数がなく、MiniMax Code のパス変数は `MULTICA_MCODE_PATH` です。詳しくは [AI コーディングツール比較](/providers#モデルの取得元) を参照してください。DeepSeek Harness は `MULTICA_DSH_PATH` と `MULTICA_DSH_MODEL` に対応しています（値は dsh のモデルカタログにあるモデル ID、例: `deepseek-official/deepseek-chat`）。ZeroClaw は `MULTICA_ZEROCLAW_PATH` に対応しますが、モデル変数はありません。モデルは ZeroClaw のエージェント設定で管理します。マシン全体のデフォルト引数 `MULTICA_<PROVIDER>_ARGS` は、現在 Claude Code、Codex、CodeBuddy、Qwen Code、QwenPaw の 5 ツールに対応しています。対応する変数は `MULTICA_CLAUDE_ARGS`、`MULTICA_CODEX_ARGS`、`MULTICA_CODEBUDDY_ARGS`、`MULTICA_QWEN_ARGS`、`MULTICA_QWENPAW_ARGS` です。例:
 
 ```dotenv
 MULTICA_CLAUDE_PATH=/opt/bin/claude
@@ -268,7 +273,7 @@ multica config show
 | `poll_interval` | `30s` | タスクのポーリング間隔 |
 | `heartbeat_interval` | `15s` | ハートビート間隔 |
 | `agent_timeout` | 無制限 | 1 回の実行の絶対時間上限 |
-| `codex_semantic_inactivity_timeout` | `10m` | Codex のセマンティック静穏しきい値 |
+| `codex_semantic_inactivity_timeout` | 派生値 | Codex のセマンティック静穏しきい値。未設定なら idle と tool の watchdog 予算のうち大きい方を採用し、tool 予算が `0` の場合は idle 予算に回帰します。Codex 自身の `10m` が残るのは watchdog 一式を無効化したときだけです |
 | `codex_handshake_timeout` | `30s` | Codex app-server ハンドシェイクの上限 |
 | `disable_auto_update` | 環境に従う | `true` で自動更新を無効化。`false` はローカルの上書きをクリアし、環境変数またはデフォルトに戻します |
 | `auto_update_check_interval` | `6h` | 更新チェックの間隔 |

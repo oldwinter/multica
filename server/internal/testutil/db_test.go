@@ -120,6 +120,23 @@ func TestBuildersInsertRowsTheSchemaAccepts(t *testing.T) {
 	}
 }
 
+func TestFixtureAcceptsTransactionScopedDBTX(t *testing.T) {
+	if testPool == nil {
+		t.Skip("database not available")
+	}
+	tx, err := testPool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+
+	f := New(tx, testWorkspaceID, testUserID)
+	id := f.Issue(t, "transaction-scoped fixture")
+	if n := f.Count(t, `SELECT count(*) FROM issue WHERE id = $1`, id); n != 1 {
+		t.Fatalf("transaction fixture row count = %d, want 1", n)
+	}
+}
+
 // TestInsertedRowsAreGoneAfterTheirTest pins the half of the contract the
 // builders exist for. Rows that outlive their test are what forced suites to
 // hand-write a DELETE beside every INSERT, and a builder that quietly stopped

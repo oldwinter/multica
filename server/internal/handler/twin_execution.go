@@ -206,6 +206,21 @@ func (h *Handler) ListTwinExecutionBindings(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+func (h *Handler) GetTwinActivationReadiness(w http.ResponseWriter, r *http.Request) {
+	member, workspaceID, ok := h.twinReadWorkspace(w, r, h.resolveWorkspaceID(r))
+	if !ok {
+		return
+	}
+	readiness, err := h.twinExecutionService(r).GetActivationReadiness(
+		r.Context(), workspaceID, roleAllowed(member.Role, "owner", "admin"),
+	)
+	if err != nil {
+		h.writeTwinExecutionError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, readiness)
+}
+
 func (h *Handler) UpsertTwinExecutionBinding(w http.ResponseWriter, r *http.Request) {
 	if !h.requireTwinExecutionHumanManager(w, r) {
 		return
@@ -263,6 +278,23 @@ func (h *Handler) DeleteTwinExecutionBinding(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) PauseTwinExecution(w http.ResponseWriter, r *http.Request) {
+	if !h.requireTwinExecutionHumanManager(w, r) {
+		return
+	}
+	workspaceID, ok := parseUUIDOrBadRequest(w, h.resolveWorkspaceID(r), "workspace id")
+	if !ok {
+		return
+	}
+	binding, err := h.twinExecutionService(r).PauseWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		h.writeTwinExecutionError(w, err)
+		return
+	}
+	h.publishTwinBindingChanged(uuidToString(workspaceID), requestUserID(r), binding)
+	writeJSON(w, http.StatusOK, map[string]twinExecutionBindingResponse{"binding": mapTwinExecutionBinding(binding)})
+}
+
 func (h *Handler) PreviewTwinExecutionBriefing(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		AgentID       string   `json:"agent_id"`
@@ -314,6 +346,10 @@ func (h *Handler) PreviewTwinExecutionBriefing(w http.ResponseWriter, r *http.Re
 			State:   analytics.TwinCompilationStateFailed, ExclusionCode: analytics.TwinExclusionNone,
 			LatencyMS: time.Since(startedAt).Milliseconds(),
 		}))
+		h.writeTwinExecutionError(w, err)
+		return
+	}
+	if err := execution.RecordActivationPreview(r.Context(), workspaceID, preview); err != nil {
 		h.writeTwinExecutionError(w, err)
 		return
 	}

@@ -44,6 +44,7 @@ import { WikiHistoryDialog } from "./wiki-history-dialog";
 import { WikiProposalsPanel } from "./wiki-proposals-panel";
 import { WikiEditor, WikiPageList } from "./wiki-page-primitives";
 import { wikiConflict } from "./wiki-conflict";
+import { WorkspaceWikiKnowledgeActivation } from "./wiki-knowledge-activation";
 
 export function WikiPageView({
   pageId,
@@ -371,10 +372,22 @@ export function WikiPageView({
                       </Button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => { setActionError(null); setHistoryOpen(true); }}><History data-icon="inline-start" />{t(($) => $.history.action)}</Button>
-                    <Button variant="outline" onClick={startEdit}>{t(($) => $.actions.edit)}</Button>
-                    <Button variant="ghost" onClick={() => { setActionError(null); setDeleteOpen(true); }}><Trash2 data-icon="inline-start" />{t(($) => $.actions.delete)}</Button>
+                  <div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
+                    <WorkspaceWikiKnowledgeActivation target={{
+                      pageId: selected.id,
+                      revisionId: selected.currentRevisionId,
+                      revisionNumber: selected.currentRevisionNumber,
+                      title: selected.title,
+                      path: selected.path,
+                      contentDigest: selected.contentDigest,
+                      sourceKind: selected.lastSourceKind,
+                      actorType: selected.lastActorType,
+                    }} />
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => { setActionError(null); setHistoryOpen(true); }}><History data-icon="inline-start" />{t(($) => $.history.action)}</Button>
+                      <Button variant="outline" onClick={startEdit}>{t(($) => $.actions.edit)}</Button>
+                      <Button variant="ghost" onClick={() => { setActionError(null); setDeleteOpen(true); }}><Trash2 data-icon="inline-start" />{t(($) => $.actions.delete)}</Button>
+                    </div>
                   </div>
                 </div>
 
@@ -485,6 +498,10 @@ function WikiSearchResults({ groups, isLoading, isError, activePageId, onSelect 
 export { WikiPageView as WikiPage };
 export { LMWikiSourcePolicyPanel } from "./lm-wiki-source-policy-panel";
 export type { LMWikiSourcePolicyPanelProps } from "./lm-wiki-source-policy-panel";
+export {
+  PersonalWikiKnowledgeActivation,
+  WorkspaceWikiKnowledgeActivation,
+} from "./wiki-knowledge-activation";
 export { PersonalWikiPageView } from "./personal-wiki-page";
 export type { PersonalWikiRoutePaths } from "./personal-wiki-page";
 export {

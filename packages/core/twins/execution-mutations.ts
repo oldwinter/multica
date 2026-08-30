@@ -17,6 +17,7 @@ export function useUpsertTwinBinding(wsId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.bindings(wsId) }),
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) }),
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
       ]);
     },
   });
@@ -30,14 +31,35 @@ export function useDeleteTwinBinding(wsId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.bindings(wsId) }),
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) }),
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
       ]);
     },
   });
 }
 
-export function usePreviewTwinBriefing() {
+export function usePreviewTwinBriefing(wsId?: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: TwinBriefingPreviewInput) => api.previewTwinBriefing(input),
+    onSuccess: async () => {
+      if (wsId) {
+        await queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) });
+      }
+    },
+  });
+}
+
+export function usePauseTwinExecution(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.pauseTwinExecution(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.bindings(wsId) }),
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) }),
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
+      ]);
+    },
   });
 }
 
@@ -49,6 +71,7 @@ export function useSubmitTwinTaskFeedback(wsId: string, taskId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.taskContext(wsId, taskId) }),
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) }),
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
       ]);
     },
   });
@@ -62,6 +85,7 @@ export function useCreateTwinDeposition(wsId: string, taskId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.taskContext(wsId, taskId) }),
         queryClient.invalidateQueries({ queryKey: twinExecutionKeys.metrics(wsId) }),
+        queryClient.invalidateQueries({ queryKey: twinExecutionKeys.activation(wsId) }),
         queryClient.invalidateQueries({ queryKey: twinKeys.all(wsId) }),
       ]);
     },

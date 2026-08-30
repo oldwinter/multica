@@ -23,6 +23,25 @@ function seedWikiCollections(qc: QueryClient) {
 }
 
 describe("applyWikiRealtimeEvent", () => {
+  it("invalidates readiness for every Wiki event that can change source health", () => {
+    const events = [
+      ["wiki:page_created", {}],
+      ["wiki:page_updated", {}],
+      ["wiki:page_deleted", {}],
+      ["wiki:revision_created", {}],
+      ["wiki:revision_restored", {}],
+      ["wiki:proposal_reviewed", { status: "accepted" }],
+    ] as const;
+
+    for (const [eventType, extra] of events) {
+      const qc = createQueryClient();
+      const readinessKey = workspaceWikiKeys.readiness(wsId);
+      qc.setQueryData(readinessKey, {});
+      applyWikiRealtimeEvent(qc, wsId, eventType, { page_id: "page-1", ...extra });
+      expect(qc.getQueryState(readinessKey)?.isInvalidated, eventType).toBe(true);
+    }
+  });
+
   it("invalidates collections for page creation without exposing page content", () => {
     const qc = createQueryClient();
     seedWikiCollections(qc);
@@ -163,8 +182,10 @@ describe("applyLMWikiRealtimeEvent", () => {
     const qc = createQueryClient();
     const overviewKey = lmWikiKeys.overview(wsId);
     const revisionKey = lmWikiKeys.revision(wsId, "revision-2");
+    const readinessKey = workspaceWikiKeys.readiness(wsId);
     qc.setQueryData(overviewKey, {});
     qc.setQueryData(revisionKey, {});
+    qc.setQueryData(readinessKey, {});
 
     applyLMWikiRealtimeEvent(qc, wsId, "lm_wiki:review_changed", {
       revision_id: "revision-2",
@@ -173,6 +194,7 @@ describe("applyLMWikiRealtimeEvent", () => {
 
     expect(qc.getQueryState(overviewKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(revisionKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(readinessKey)?.isInvalidated).toBe(true);
   });
 
   it("invalidates the LM Wiki tree when source policy changes", () => {
@@ -180,9 +202,11 @@ describe("applyLMWikiRealtimeEvent", () => {
     const sourcePolicyKey = workspaceWikiKeys.sourcePolicy(wsId);
     const overviewKey = lmWikiKeys.overview(wsId);
     const signedRevisionKey = lmWikiKeys.revision(wsId, "signed-revision");
+    const readinessKey = workspaceWikiKeys.readiness(wsId);
     qc.setQueryData(sourcePolicyKey, {});
     qc.setQueryData(overviewKey, {});
     qc.setQueryData(signedRevisionKey, {});
+    qc.setQueryData(readinessKey, {});
 
     applyLMWikiRealtimeEvent(qc, wsId, "lm_wiki:source_policy_changed", {
       policy_version: 2,
@@ -191,5 +215,6 @@ describe("applyLMWikiRealtimeEvent", () => {
     expect(qc.getQueryState(sourcePolicyKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(overviewKey)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(signedRevisionKey)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(readinessKey)?.isInvalidated).toBe(true);
   });
 });

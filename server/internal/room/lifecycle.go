@@ -81,6 +81,10 @@ func (s *Service) RetrySynthesis(ctx context.Context, input RetrySynthesisInput)
 	if err != nil {
 		return RetrySynthesisResult{}, fmt.Errorf("start Room synthesis retry: %w", err)
 	}
+	archivedAttention, err := archiveRoomAttention(ctx, queries, roomRow, cycle.ID, "", "")
+	if err != nil {
+		return RetrySynthesisResult{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return RetrySynthesisResult{}, fmt.Errorf("commit Room synthesis retry: %w", err)
 	}
@@ -88,6 +92,7 @@ func (s *Service) RetrySynthesis(ctx context.Context, input RetrySynthesisInput)
 		notifier.NotifyTaskEnqueued(ctx, task)
 	}
 	s.recordRoomSynthesisRetried(roomRow, cycle, input.ActorUserID)
+	s.publishRoomAttentionArchived(roomRow.WorkspaceID, archivedAttention)
 	s.publish(EventRoomTurn, roomRow, input.ActorUserID, roomTurnEventPayload(turn))
 	s.publish(EventRoomCycle, roomRow, input.ActorUserID, roomCycleEventPayload(cycle))
 	return RetrySynthesisResult{Cycle: cycle, Turn: turn, Task: task}, nil
@@ -156,6 +161,7 @@ func (s *Service) Review(ctx context.Context, input ReviewInput) (ReviewResult, 
 	if roomRow.MemoryVersion != input.ExpectedMemoryVersion {
 		return ReviewResult{}, ErrStaleReview
 	}
+	reviewedRevisionID := revision.ID
 
 	reviewStatus := map[string]string{
 		"accept":  "accepted",
@@ -176,6 +182,7 @@ func (s *Service) Review(ctx context.Context, input ReviewInput) (ReviewResult, 
 	}
 
 	firstCompletedCycle := false
+	var newAttention []db.InboxItem
 	switch input.Action {
 	case "accept":
 		roomRow, err = queries.AcceptRoomMemoryRevision(ctx, db.AcceptRoomMemoryRevisionParams{
@@ -199,6 +206,20 @@ func (s *Service) Review(ctx context.Context, input ReviewInput) (ReviewResult, 
 			return ReviewResult{}, fmt.Errorf("load Room acceptance usage: %w", usageErr)
 		}
 		firstCompletedCycle = usage.AcceptedSyntheses == 1
+		var synthesis Synthesis
+		if err := json.Unmarshal(revision.Synthesis, &synthesis); err != nil {
+			return ReviewResult{}, fmt.Errorf("decode accepted Room recommendations: %w", err)
+		}
+		for _, recommendation := range synthesis.Recommendations {
+			items, attentionErr := s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxRecommendationReviewRequired, roomAttentionInput{
+				RoomID: roomRow.ID, CycleID: cycle.ID, MemoryRevisionID: revision.ID,
+				RecommendationKey: recommendation.Key, Phase: cycle.Phase,
+			})
+			if attentionErr != nil {
+				return ReviewResult{}, attentionErr
+			}
+			newAttention = append(newAttention, items...)
+		}
 	case "reject":
 		errorData, _ := json.Marshal(synthesisError{Code: "review_rejected", Message: "Another synthesis was requested.", Retryable: true})
 		cycle, err = queries.SetRoomCycleReviewRetryable(ctx, db.SetRoomCycleReviewRetryableParams{
@@ -228,6 +249,18 @@ func (s *Service) Review(ctx context.Context, input ReviewInput) (ReviewResult, 
 			return ReviewResult{}, fmt.Errorf("link corrected Room memory revision: %w", err)
 		}
 		revision = corrected
+		newAttention, err = s.upsertRoomAttention(ctx, queries, roomRow, RoomInboxOutcomeReviewRequired, roomAttentionInput{
+			RoomID: roomRow.ID, CycleID: cycle.ID, MemoryRevisionID: corrected.ID, Phase: cycle.Phase,
+		})
+		if err != nil {
+			return ReviewResult{}, err
+		}
+	}
+	archivedAttention, err := archiveRoomAttention(
+		ctx, queries, roomRow, cycle.ID, RoomInboxOutcomeReviewRequired, util.UUIDToString(reviewedRevisionID),
+	)
+	if err != nil {
+		return ReviewResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ReviewResult{}, fmt.Errorf("commit Room memory review: %w", err)
@@ -241,6 +274,8 @@ func (s *Service) Review(ctx context.Context, input ReviewInput) (ReviewResult, 
 	case "reject":
 		s.recordRoomSynthesisRejected(roomRow, cycle, input.ActorUserID)
 	}
+	s.publishRoomAttentionArchived(roomRow.WorkspaceID, archivedAttention)
+	s.publishRoomAttentionItems(newAttention)
 	s.publish(EventRoomReview, roomRow, input.ActorUserID, roomReviewEventPayload(roomRow, cycle, revision, input.Action))
 	return ReviewResult{Room: roomRow, MemoryRevision: revision}, nil
 }
@@ -274,9 +309,14 @@ func (s *Service) Cancel(ctx context.Context, input CancelInput) (db.RoomCycle, 
 	} else if err != nil {
 		return db.RoomCycle{}, fmt.Errorf("cancel Room cycle: %w", err)
 	}
+	archivedAttention, err := archiveRoomAttention(ctx, queries, roomRow, cycle.ID, "", "")
+	if err != nil {
+		return db.RoomCycle{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return db.RoomCycle{}, fmt.Errorf("commit Room cycle cancellation: %w", err)
 	}
+	s.publishRoomAttentionArchived(roomRow.WorkspaceID, archivedAttention)
 	s.publish(EventRoomCycle, roomRow, input.ActorUserID, roomCycleEventPayload(cycle))
 	return cycle, nil
 }
@@ -336,9 +376,16 @@ func (s *Service) ReviewRecommendation(ctx context.Context, input Recommendation
 	if err != nil {
 		return db.RoomRecommendationReview{}, fmt.Errorf("create Room recommendation review: %w", err)
 	}
+	archivedAttention, err := archiveRoomAttention(
+		ctx, queries, roomRow, revision.CycleID, RoomInboxRecommendationReviewRequired, input.RecommendationKey,
+	)
+	if err != nil {
+		return db.RoomRecommendationReview{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return db.RoomRecommendationReview{}, fmt.Errorf("commit Room recommendation review: %w", err)
 	}
+	s.publishRoomAttentionArchived(roomRow.WorkspaceID, archivedAttention)
 	s.publish(EventRoomRecommendationReview, roomRow, input.ActorUserID, roomRecommendationReviewEventPayload(review))
 	return review, nil
 }

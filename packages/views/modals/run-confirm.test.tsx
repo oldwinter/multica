@@ -390,7 +390,8 @@ describe("RunConfirmModal", () => {
         oneOffState: state,
       }));
       expect(await screen.findByText(`briefing-${state}`)).toBeInTheDocument();
-      expect(screen.getByText(versionId)).toBeInTheDocument();
+      expect(screen.queryByText(versionId)).not.toBeInTheDocument();
+      expect(screen.getAllByText(/v7/).length).toBeGreaterThan(0);
       expect(screen.getByText(digest)).toBeInTheDocument();
       await waitForPreview();
       fireEvent.click(confirmButton());

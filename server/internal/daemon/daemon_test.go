@@ -24,6 +24,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 	"github.com/multica-ai/multica/server/internal/daemon/repocache"
 	"github.com/multica-ai/multica/server/pkg/agent"
+	"github.com/multica-ai/multica/server/pkg/skillbundle"
 	"github.com/multica-ai/multica/server/pkg/taskfailure"
 	"github.com/pelletier/go-toml/v2"
 )
@@ -3267,6 +3268,47 @@ func (b idleWatchdogBackend) Execute(_ context.Context, _ string, _ agent.ExecOp
 	return &agent.Session{Messages: msgCh, Result: resCh}, nil
 }
 
+// TestIdleWatchdogTickInterval pins the ceiling, which is the reason the helper
+// exists: at window/2 alone the default 2h budget would only be polled hourly,
+// so a stuck run would hold its slot for up to 3h, and the overshoot would grow
+// with every increase to the budget instead of staying bounded.
+func TestIdleWatchdogTickInterval(t *testing.T) {
+	tests := []struct {
+		name   string
+		window time.Duration
+		want   time.Duration
+	}{
+		// Tiny budgets keep the raw half-window so the watchdog tests below,
+		// which use millisecond windows, still see it fire within a few ticks.
+		{name: "millisecond test window halves", window: 50 * time.Millisecond, want: 25 * time.Millisecond},
+		{name: "half rate at one minute", window: time.Minute, want: 30 * time.Second},
+		{name: "half rate below the ceiling", window: 8 * time.Minute, want: 4 * time.Minute},
+		{name: "ceiling engages exactly at its double", window: 10 * time.Minute, want: idleWatchdogMaxTick},
+		{name: "ceiling caps the default budget", window: 2 * time.Hour, want: idleWatchdogMaxTick},
+		{name: "ceiling holds for very large budgets", window: 24 * time.Hour, want: idleWatchdogMaxTick},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := idleWatchdogTickInterval(tt.window); got != tt.want {
+				t.Fatalf("idleWatchdogTickInterval(%s) = %s, want %s", tt.window, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIdleWatchdogTickInterval_NeverPollsFasterThanThirtySecondsInProduction
+// keeps the guarantee the removed 30 s floor was written for. The floor itself
+// was unreachable (window >= 1 min implies window/2 >= 30 s), so this asserts
+// the property directly against every production-shaped budget instead of
+// re-introducing a branch that can never run.
+func TestIdleWatchdogTickInterval_NeverPollsFasterThanThirtySecondsInProduction(t *testing.T) {
+	for window := time.Minute; window <= 4*time.Hour; window += time.Second {
+		if got := idleWatchdogTickInterval(window); got < 30*time.Second {
+			t.Fatalf("idleWatchdogTickInterval(%s) = %s, want >= 30s", window, got)
+		}
+	}
+}
+
 func TestExecuteAndDrain_IdleWatchdog_FiresOnInactivity(t *testing.T) {
 	t.Parallel()
 
@@ -4060,11 +4102,20 @@ func TestReportTaskResult_CompletedHitsCompleteEndpoint(t *testing.T) {
 
 	d := &Daemon{client: NewClient(srv.URL), logger: slog.Default()}
 	d.reportTaskResult(context.Background(), "task-1", TaskResult{
-		Status:     "completed",
-		Comment:    "all good",
-		BranchName: "agent/foo",
-		SessionID:  "ses-1",
-		WorkDir:    "/tmp/foo",
+		Status:           "completed",
+		Comment:          "all good",
+		BranchName:       "agent/foo",
+		SessionID:        "ses-1",
+		WorkDir:          "/tmp/foo",
+		TaskDispatchedAt: "2026-08-29T12:34:56.123456Z",
+		SkillExecutionManifest: &skillbundle.ExecutionManifest{
+			Version: skillbundle.ExecutionManifestVersion,
+			Skills: []skillbundle.ExecutionRecord{{
+				Source:     "workspace",
+				SkillID:    "skill-1",
+				BundleHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			}},
+		},
 	}, slog.Default())
 
 	rec.mu.Lock()
@@ -4080,6 +4131,13 @@ func TestReportTaskResult_CompletedHitsCompleteEndpoint(t *testing.T) {
 	}
 	if rec.payload["session_id"] != "ses-1" {
 		t.Errorf("session_id: got %v", rec.payload["session_id"])
+	}
+	if rec.payload["task_dispatched_at"] != "2026-08-29T12:34:56.123456Z" {
+		t.Errorf("task_dispatched_at: got %v", rec.payload["task_dispatched_at"])
+	}
+	manifest, ok := rec.payload["skill_execution_manifest"].(map[string]any)
+	if !ok || manifest["version"] != float64(skillbundle.ExecutionManifestVersion) {
+		t.Errorf("skill_execution_manifest: got %#v", rec.payload["skill_execution_manifest"])
 	}
 }
 
@@ -4210,6 +4268,14 @@ func TestReportTaskResult_NonCompletedHitsFailEndpoint(t *testing.T) {
 				SessionID:     "ses-x",
 				WorkDir:       "/tmp/x",
 				FailureReason: tc.failureReasonIn,
+				SkillExecutionManifest: &skillbundle.ExecutionManifest{
+					Version: skillbundle.ExecutionManifestVersion,
+					Skills: []skillbundle.ExecutionRecord{{
+						Source:     "workspace",
+						SkillID:    "skill-1",
+						BundleHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					}},
+				},
 			}, slog.Default())
 
 			rec.mu.Lock()
@@ -4219,6 +4285,9 @@ func TestReportTaskResult_NonCompletedHitsFailEndpoint(t *testing.T) {
 			}
 			if rec.payload["error"] != tc.comment {
 				t.Errorf("error body: got %v", rec.payload["error"])
+			}
+			if _, present := rec.payload["skill_execution_manifest"]; present {
+				t.Errorf("non-completed task must not report a skill execution manifest: %v", rec.payload)
 			}
 			if got := rec.payload["failure_reason"]; got != tc.wantFailureReason {
 				t.Errorf("failure_reason: got %v, want %q", got, tc.wantFailureReason)

@@ -134,6 +134,28 @@ export function RoomInspector({
           <UsageValue label={t(($) => $.usage.promoted)} value={usage.promoted_artifacts} />
           <UsageValue label={t(($) => $.usage.failures)} value={usage.failures} />
           <UsageValue label={t(($) => $.usage.uncosted)} value={usage.uncosted_turns} />
+          <UsageValue label={t(($) => $.usage.repeat_runs)} value={usage.repeat_run_count} />
+          <UsageValue label={t(($) => $.usage.active_weeks)} value={usage.active_weeks} />
+          <UsageValue
+            label={t(($) => $.usage.accepted_per_week)}
+            value={formatRate(usage.accepted_outcomes_per_active_week)}
+          />
+          <UsageValue
+            label={t(($) => $.usage.review_latency)}
+            value={formatReviewLatency(usage.median_review_latency_seconds, t)}
+          />
+          <UsageValue
+            label={t(($) => $.usage.promotion_rate)}
+            value={`${Math.round(usage.promotion_rate * 100)}%`}
+          />
+          <UsageValue
+            label={t(($) => $.usage.failed_refused)}
+            value={`${usage.failed_cycles} / ${usage.refused_cycles}`}
+          />
+          <UsageValue
+            label={t(($) => $.usage.cost_per_outcome)}
+            value={formatRate(usage.cost_ticks_per_accepted_outcome)}
+          />
         </dl>
       </InspectorSection>
 
@@ -314,13 +336,23 @@ function InspectorSection({
   );
 }
 
-function UsageValue({ label, value }: { readonly label: string; readonly value: number }) {
+function UsageValue({ label, value }: { readonly label: string; readonly value: number | string }) {
   return (
     <div>
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 font-mono text-body tabular-nums text-foreground">{value}</dd>
     </div>
   );
+}
+
+function formatRate(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatReviewLatency(value: number, t: ReturnType<typeof useT<"rooms">>["t"]): string {
+  if (value < 60) return t(($) => $.usage.seconds, { count: Math.round(value) });
+  if (value < 3600) return t(($) => $.usage.minutes, { count: Math.round(value / 60) });
+  return t(($) => $.usage.hours, { count: Math.round(value / 3600) });
 }
 
 function CycleRow({

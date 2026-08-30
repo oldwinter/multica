@@ -215,6 +215,7 @@ function makeAdapter(
     back: vi.fn(),
     pathname: "/test-workspace/projects",
     searchParams: new URLSearchParams(),
+    hash: "",
     getShareableUrl: (p) => p,
     ...overrides,
   };

@@ -7,7 +7,6 @@
     "show_archived": "Show archived ({{count}})",
     "archived_badge": "Archived",
     "archived_hint": "Retired from new assignments. Issues already on it keep it.",
-    "flag_off": "Custom statuses are not enabled for this deployment yet. The built-in statuses below work as usual.",
     "reorder_failed": "Could not save the new order.",
     "actions": {
       "open": "Actions for {{name}}",
@@ -22,6 +21,7 @@
       "name": "Name",
       "name_placeholder": "e.g. Code Review",
       "key_hint": "Referred to as {{key}} by the API and the CLI.",
+      "created": "Status created. The API and the CLI refer to it as {{key}}.",
       "category": "Category",
       "category_locked": "Category cannot be changed — issues already on this status depend on it.",
       "description": "Description",
@@ -107,13 +107,24 @@
     "appearance_title": "Appearance",
     "appearance_hint": "Choose a visual material and how it responds to ambient light.",
     "appearance_sync": {
-      "default": "Using product defaults",
+      "default": "Using Tension with your system setting",
       "synced": "Synced across devices",
-      "pending": "Waiting to sync",
-      "local_only": "Saved on this device",
-      "failed": "Sync failed",
+      "pending": "Applied here and waiting to sync",
+      "local_only": "Applied and saved on this device only",
+      "failed": "Sync failed. Your choice is still applied here.",
       "retry": "Retry sync",
-      "reset": "Reset appearance"
+      "copy_diagnostics": "Copy diagnostics",
+      "diagnostics_copied": "Appearance diagnostics copied",
+      "diagnostics_copy_failed": "Couldn't copy appearance diagnostics",
+      "reset": "Reset appearance",
+      "reset_title": "Reset appearance?",
+      "reset_description": "This sets the skin to Tension and color mode to System.",
+      "reset_confirm": "Reset to defaults",
+      "cancel": "Cancel",
+      "undo": "Undo",
+      "undo_applied": "Previous appearance restored",
+      "undo_expired": "Undo expired because appearance changed elsewhere",
+      "recovered": "An invalid appearance value was replaced with a safe default"
     },
     "skin": {
       "title": "Skin",
@@ -613,6 +624,10 @@
       "agent_activity": {
         "label": "Agent activity",
         "description": "When an agent task completes or fails"
+      },
+      "rooms": {
+        "label": "Rooms",
+        "description": "Review gates, failed cycles, and blocked Room runs"
       }
     },
     "system": {
@@ -1185,6 +1200,15 @@
     "inviting": "Inviting...",
     "toast_invitation_sent": "Invitation sent",
     "toast_invitation_failed": "Failed to send invitation",
+    "toast_seat_capacity_unavailable": "Member capacity could not be verified. Please try again.",
+    "toast_seat_capacity_rate_limited": "Seat capacity is busy. Try again shortly.",
+    "seat_purchase_title": "Add a seat to send this invitation?",
+    "seat_purchase_description": "No purchased seat is available for {{email}}. Review Stripe's estimate, then approve the purchase and invitation together.",
+    "purchase_seat_and_invite": "Buy 1 seat and invite",
+    "retry_seat_purchase": "Retry purchase",
+    "seat_purchase_waiting": "Waiting for Stripe to confirm the new seat. Keep this page open so the invitation can be sent automatically; if you leave, the purchased seat remains and you can invite again later.",
+    "seat_purchase_timeout": "The seat purchase was submitted, but confirmation is taking longer than expected. No invitation was sent. Retry the invitation after Billing shows an available seat.",
+    "seat_purchase_capacity_taken": "The purchased seat is no longer available, so the invitation was not sent. Review current seats before trying again.",
     "no_members": "No members found.",
     "pending_title": "Pending invitations ({{count}})",
     "pending_status": "Pending",

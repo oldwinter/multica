@@ -28,6 +28,7 @@ export interface NativeNotificationPayload {
   issueKey: string;
   title: string;
   body: string;
+	targetPath?: string;
 }
 
 export function parseNativeNotificationPayload(
@@ -35,7 +36,8 @@ export function parseNativeNotificationPayload(
 ): NativeNotificationPayload | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
-  const limits: Record<keyof NativeNotificationPayload, number> = {
+	type RequiredField = Exclude<keyof NativeNotificationPayload, "targetPath">;
+	const limits: Record<RequiredField, number> = {
     slug: 256,
     itemId: 256,
     issueKey: 256,
@@ -43,7 +45,7 @@ export function parseNativeNotificationPayload(
     body: 2_000,
   };
   const result = {} as NativeNotificationPayload;
-  for (const key of Object.keys(limits) as (keyof NativeNotificationPayload)[]) {
+	for (const key of Object.keys(limits) as RequiredField[]) {
     const field = candidate[key];
     const mayBeEmpty = key === "slug" || key === "body";
     if (
@@ -54,6 +56,23 @@ export function parseNativeNotificationPayload(
       return null;
     }
     result[key] = field;
+  }
+  const targetPath = candidate.targetPath;
+  if (targetPath !== undefined) {
+    if (
+      typeof targetPath !== "string" ||
+      !targetPath.startsWith("/") ||
+      targetPath.startsWith("//") ||
+      targetPath.includes("\\") ||
+      [...targetPath].some((character) => {
+        const code = character.charCodeAt(0);
+        return code < 0x20 || code === 0x7f;
+      }) ||
+      targetPath.length > 2_048
+    ) {
+      return null;
+    }
+    result.targetPath = targetPath;
   }
   return result;
 }

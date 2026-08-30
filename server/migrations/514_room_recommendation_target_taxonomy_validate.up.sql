@@ -1,0 +1,1 @@
+ALTER TABLE room_artifact VALIDATE CONSTRAINT room_artifact_kind_check;

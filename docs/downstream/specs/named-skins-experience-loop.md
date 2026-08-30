@@ -1,6 +1,10 @@
 # Spec: Named Skins Experience And Quality Loop
 
-Triage: `ready-for-agent`
+Status: `baseline-shipped`
+
+Follow-up: [Named Skins Confidence And Recovery Loop](./named-skins-confidence-and-recovery-loop.md)
+
+> Historical baseline: the problem and solution below describe the pre-implementation state and the contract that was delivered. Use the follow-up spec for current gaps.
 
 ## Problem Statement
 

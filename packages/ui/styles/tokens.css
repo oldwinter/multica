@@ -131,7 +131,8 @@
     --text-display--line-height: 40px;
 }
 
-:root {
+:root,
+[data-appearance-fixture] {
     color-scheme: light;
     /* Surface system: the app shell is the quiet outer frame; the page canvas
        is where lists, boards, and conversations live; surfaces are reserved
@@ -259,7 +260,8 @@
     --find-match-foreground: oklch(0.22 0.03 92);
 }
 
-.dark {
+.dark,
+[data-appearance-fixture][data-appearance-mode="dark"] {
     color-scheme: dark;
     --app-shell: oklch(0.155 0.005 285.823);
     --page-canvas: oklch(0.175 0.008 25);
@@ -327,7 +329,8 @@
     --find-match-foreground: oklch(0.18 0.02 92);
 }
 
-:root[data-skin="relay"] {
+:root[data-skin="relay"],
+[data-appearance-fixture][data-skin="relay"] {
     --app-shell: oklch(0.955 0.009 210);
     --page-canvas: oklch(0.985 0.004 210);
     --surface-hover: oklch(0.955 0.014 210);
@@ -351,7 +354,8 @@
     --info: oklch(0.58 0.13 235);
 }
 
-.dark[data-skin="relay"] {
+.dark[data-skin="relay"],
+[data-appearance-fixture][data-skin="relay"][data-appearance-mode="dark"] {
     --app-shell: oklch(0.15 0.012 210);
     --page-canvas: oklch(0.175 0.014 210);
     --surface: oklch(0.205 0.016 210);
@@ -376,7 +380,8 @@
     --brand: oklch(0.72 0.13 190);
 }
 
-:root[data-skin="field"] {
+:root[data-skin="field"],
+[data-appearance-fixture][data-skin="field"] {
     --app-shell: oklch(0.955 0.01 135);
     --page-canvas: oklch(0.985 0.004 120);
     --surface-hover: oklch(0.953 0.014 130);
@@ -400,7 +405,8 @@
     --warning: oklch(0.73 0.15 82);
 }
 
-.dark[data-skin="field"] {
+.dark[data-skin="field"],
+[data-appearance-fixture][data-skin="field"][data-appearance-mode="dark"] {
     --app-shell: oklch(0.15 0.014 145);
     --page-canvas: oklch(0.175 0.016 145);
     --surface: oklch(0.205 0.018 145);
@@ -423,28 +429,4 @@
     --sidebar-accent-foreground: oklch(0.9 0.06 145);
     --sidebar-ring: oklch(0.7 0.13 145);
     --brand: oklch(0.7 0.13 145);
-}
-
-[data-skin-preview="tension"] {
-    --skin-preview-canvas: oklch(0.93 0.006 25);
-    --skin-preview-line: oklch(0.35 0.02 25);
-    --skin-preview-signal: oklch(0.56 0.205 28);
-    --skin-preview-ink: oklch(0.2 0.01 25);
-    --skin-preview-secondary: oklch(0.74 0.15 82);
-}
-
-[data-skin-preview="relay"] {
-    --skin-preview-canvas: oklch(0.93 0.014 210);
-    --skin-preview-line: oklch(0.35 0.04 210);
-    --skin-preview-signal: oklch(0.48 0.12 190);
-    --skin-preview-ink: oklch(0.2 0.02 210);
-    --skin-preview-secondary: oklch(0.62 0.18 32);
-}
-
-[data-skin-preview="field"] {
-    --skin-preview-canvas: oklch(0.93 0.018 135);
-    --skin-preview-line: oklch(0.35 0.04 145);
-    --skin-preview-signal: oklch(0.46 0.115 145);
-    --skin-preview-ink: oklch(0.2 0.025 145);
-    --skin-preview-secondary: oklch(0.72 0.15 82);
 }

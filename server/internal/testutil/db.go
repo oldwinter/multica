@@ -6,7 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Cols is one fixture row: column name to value. Values are bound as query
@@ -28,15 +29,23 @@ type Raw string
 // defaults every builder falls back to, so a test that only cares about one
 // column names only that column.
 type Fixture struct {
-	Pool        *pgxpool.Pool
+	DB          DBTX
 	WorkspaceID string
 	UserID      string
 }
 
+// DBTX is the common query surface implemented by both pgx pools and
+// transactions. Transaction-scoped fixtures must remain inside their caller's
+// authorization and visibility boundary.
+type DBTX interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 // New returns a Fixture bound to the workspace and user a test suite set up in
 // its TestMain.
-func New(pool *pgxpool.Pool, workspaceID, userID string) *Fixture {
-	return &Fixture{Pool: pool, WorkspaceID: workspaceID, UserID: userID}
+func New(database DBTX, workspaceID, userID string) *Fixture {
+	return &Fixture{DB: database, WorkspaceID: workspaceID, UserID: userID}
 }
 
 // Insert writes one row into table, registers its deletion with t.Cleanup and
@@ -53,7 +62,7 @@ func (f *Fixture) Insert(t TB, table string, cols Cols) string {
 		quoteIdent(table), strings.Join(names, ", "), strings.Join(placeholders, ", "))
 
 	var id string
-	if err := f.Pool.QueryRow(context.Background(), sql, args...).Scan(&id); err != nil {
+	if err := f.DB.QueryRow(context.Background(), sql, args...).Scan(&id); err != nil {
 		t.Fatalf("setup: insert into %s: %v", table, err)
 	}
 	f.deleteOnCleanup(t, table, id)
@@ -70,12 +79,12 @@ func (f *Fixture) InsertNoID(t TB, table string, cols Cols, where string, whereA
 	names, placeholders, args := compile(cols)
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 		quoteIdent(table), strings.Join(names, ", "), strings.Join(placeholders, ", "))
-	if _, err := f.Pool.Exec(context.Background(), sql, args...); err != nil {
+	if _, err := f.DB.Exec(context.Background(), sql, args...); err != nil {
 		t.Fatalf("setup: insert into %s: %v", table, err)
 	}
 
 	t.Cleanup(func() {
-		_, _ = f.Pool.Exec(context.Background(),
+		_, _ = f.DB.Exec(context.Background(),
 			fmt.Sprintf("DELETE FROM %s WHERE %s", quoteIdent(table), where), whereArgs...)
 	})
 }
@@ -83,7 +92,7 @@ func (f *Fixture) InsertNoID(t TB, table string, cols Cols, where string, whereA
 // Exec runs a statement and fails the test if it errors.
 func (f *Fixture) Exec(t TB, sql string, args ...any) {
 	t.Helper()
-	if _, err := f.Pool.Exec(context.Background(), sql, args...); err != nil {
+	if _, err := f.DB.Exec(context.Background(), sql, args...); err != nil {
 		t.Fatalf("exec: %v\nSQL: %s", err, strings.TrimSpace(sql))
 	}
 }
@@ -95,7 +104,7 @@ func (f *Fixture) Exec(t TB, sql string, args ...any) {
 func (f *Fixture) Cleanup(t TB, sql string, args ...any) {
 	t.Helper()
 	t.Cleanup(func() {
-		_, _ = f.Pool.Exec(context.Background(), sql, args...)
+		_, _ = f.DB.Exec(context.Background(), sql, args...)
 	})
 }
 
@@ -117,7 +126,7 @@ func (f *Fixture) QueryRow(t TB, sql string, args ...any) *Row {
 // matched nothing.
 func (r *Row) Scan(dest ...any) {
 	r.t.Helper()
-	if err := r.f.Pool.QueryRow(context.Background(), r.sql, r.args...).Scan(dest...); err != nil {
+	if err := r.f.DB.QueryRow(context.Background(), r.sql, r.args...).Scan(dest...); err != nil {
 		r.t.Fatalf("query: %v\nSQL: %s", err, strings.TrimSpace(r.sql))
 	}
 }
@@ -302,7 +311,7 @@ func (f *Fixture) ChatSession(t TB, agentID string, over ...Cols) string {
 
 func (f *Fixture) deleteOnCleanup(t TB, table, id string) {
 	t.Cleanup(func() {
-		_, _ = f.Pool.Exec(context.Background(),
+		_, _ = f.DB.Exec(context.Background(),
 			fmt.Sprintf("DELETE FROM %s WHERE id = $1", quoteIdent(table)), id)
 	})
 }

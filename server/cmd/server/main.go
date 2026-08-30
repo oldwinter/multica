@@ -25,6 +25,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/scheduler"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/skillevolution"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/featureflag"
 	"github.com/multica-ai/multica/server/pkg/llm"
@@ -285,7 +286,6 @@ func jwtSecretBootError(jwtSecret, appEnv string) error {
 
 func main() {
 	logger.Init()
-
 	// Warn about missing configuration
 	if err := jwtSecretBootError(os.Getenv("JWT_SECRET"), os.Getenv("APP_ENV")); err != nil {
 		slog.Error(
@@ -486,6 +486,12 @@ func main() {
 	defer analyticsClient.Close()
 
 	queries := db.New(pool)
+	skillEvolutionRegistration, err := skillevolution.NewProductionRegistration(pool)
+	if err != nil {
+		slog.Error("skill evolution: failed to initialize production registration", "error", err)
+		os.Exit(1)
+	}
+	defer skillEvolutionRegistration.Close()
 	hub.SetAuthorizer(newScopeAuthorizer(queries))
 	// Order matters: subscriber listeners must register BEFORE notification listeners.
 	// The notification listener queries the subscriber table to determine recipients,
@@ -501,6 +507,7 @@ func main() {
 	var samplerPool *pgxpool.Pool
 	var channelMediaMetrics *obsmetrics.ChannelMediaReconcilerMetrics
 	var channelLeaseMetrics *obsmetrics.ChannelLeaseMetrics
+	var seatCapacityMetrics *obsmetrics.SeatCapacityMetrics
 	var wecomMetrics *obsmetrics.WecomMetrics
 	if metricsConfig.Enabled() {
 		// Build a dedicated tiny pool for the BusinessSamplerCollector
@@ -515,11 +522,12 @@ func main() {
 		}
 
 		metricsRegistry := obsmetrics.NewRegistry(obsmetrics.RegistryOptions{
-			Pool:     pool,
-			Realtime: realtime.M,
-			DaemonWS: daemonws.M,
-			Version:  version,
-			Commit:   commit,
+			Pool:            pool,
+			Realtime:        realtime.M,
+			DaemonWS:        daemonws.M,
+			Version:         version,
+			Commit:          commit,
+			ExtraCollectors: skillEvolutionRegistration.Metrics().Collectors(),
 			BusinessSampler: func() *obsmetrics.BusinessSamplerOptions {
 				if samplerPool == nil {
 					return nil
@@ -531,6 +539,7 @@ func main() {
 		businessMetrics = metricsRegistry.Business
 		channelMediaMetrics = metricsRegistry.ChannelMedia
 		channelLeaseMetrics = metricsRegistry.ChannelLease
+		seatCapacityMetrics = metricsRegistry.SeatCapacity
 		wecomMetrics = metricsRegistry.Wecom
 		// Forward inbound daemon WS frames into the per-kind counter so
 		// dashboards can split heartbeat / unknown / invalid traffic.
@@ -565,16 +574,18 @@ func main() {
 	}
 
 	r, h := NewRouterWithOptions(pool, hub, bus, analyticsClient, storeRedis, RouterOptions{
-		HTTPMetrics:         httpMetrics,
-		BusinessMetrics:     businessMetrics,
-		ChannelLeaseMetrics: channelLeaseMetrics,
-		ChannelLeaseRedis:   channelLeaseRedis,
-		WecomMetrics:        wecomMetrics,
-		DaemonHub:           daemonHub,
-		DaemonWakeup:        daemonWakeup,
-		FeatureFlags:        flags,
-		HeartbeatScheduler:  heartbeatScheduler,
-		LLMMaxRetries:       llmMaxRetries,
+		HTTPMetrics:            httpMetrics,
+		BusinessMetrics:        businessMetrics,
+		ChannelLeaseMetrics:    channelLeaseMetrics,
+		SeatCapacityMetrics:    seatCapacityMetrics,
+		ChannelLeaseRedis:      channelLeaseRedis,
+		WecomMetrics:           wecomMetrics,
+		DaemonHub:              daemonHub,
+		DaemonWakeup:           daemonWakeup,
+		FeatureFlags:           flags,
+		HeartbeatScheduler:     heartbeatScheduler,
+		LLMMaxRetries:          llmMaxRetries,
+		RegisterSkillEvolution: skillEvolutionRegistration.RegisterRoutes,
 	})
 
 	srv := newAPIServer(":"+port, r)
@@ -610,12 +621,17 @@ func main() {
 		)
 		runtimeReconnectGrace = minimumRuntimeReconnectGrace
 	}
-	// MULTICA_TASK_QUEUED_TTL lets self-hosted deployments that legitimately
-	// hold queued work behind long-running tasks — e.g. a runtime with low
-	// task concurrency — raise the built-in 2h queued expiry without losing
-	// work to queued_expired failures.
-	go runRuntimeSweeper(sweepCtx, pool, queries, liveness, taskSvc, bus, runtimeReconnectGrace,
-		envDuration("MULTICA_TASK_QUEUED_TTL", defaultTaskQueuedTTL))
+	// Queued work now expires on the same runtime-liveness signal as in-flight
+	// work, so there is no separate queue TTL to tune: a busy runtime keeps its
+	// backlog, and a departed one retires everything it owned at once.
+	go runRuntimeSweeper(sweepCtx, queries, liveness, taskSvc, bus, runtimeReconnectGrace)
+	// Seven-day runtime retention does not share the 30-second liveness tick:
+	// its bounded transactions run independently once per hour, so a slow GC
+	// round cannot delay offline detection or task recovery.
+	go runRuntimeGCSweeper(sweepCtx, pool, queries, taskSvc.Metrics, h)
+	// Source-context cleanup is object-store work, so it gets its own goroutine
+	// instead of a slot in the runtime sweep tick.
+	go runSourceContextSweeper(sweepCtx, taskSvc)
 	go heartbeatScheduler.Run(sweepCtx)
 	go runAutopilotFailureMonitor(autopilotCtx, queries, bus, envFailureMonitorConfig())
 	if autopilotSvc.QuotaEnabled() {
@@ -624,6 +640,9 @@ func main() {
 	go runDBStatsLogger(sweepCtx, pool)
 	if h.WebhookDeliveryWorker != nil {
 		go h.WebhookDeliveryWorker.Run(sweepCtx)
+	}
+	if h.SeatCapacityWorker != nil {
+		go h.SeatCapacityWorker.Run(sweepCtx)
 	}
 	if h.TelegramOutbound != nil {
 		h.TelegramOutbound.Start(sweepCtx)
@@ -666,6 +685,14 @@ func main() {
 	// logging them on the tick that fails and retrying on the next
 	// cycle, so a temporary outage does not crash the server.
 	schedulerMgr := scheduler.NewManager(pool, scheduler.Options{})
+	skillEvolutionJob, err := skillEvolutionRegistration.JobSpec()
+	if err != nil {
+		slog.Error("skill evolution: failed to compose scheduled job", "error", err)
+		os.Exit(1)
+	}
+	if err := schedulerMgr.Register(skillEvolutionJob); err != nil {
+		slog.Warn("scheduler: failed to register skill_evolution job", "error", err)
+	}
 	if err := schedulerMgr.Register(scheduler.TaskUsageHourlyJob(pool)); err != nil {
 		slog.Warn("scheduler: failed to register task_usage_hourly rollup job", "error", err)
 	}

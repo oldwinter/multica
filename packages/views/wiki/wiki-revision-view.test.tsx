@@ -71,5 +71,6 @@ describe("ImmutableWikiRevision", () => {
     renderRevision({ personal: true, citationPrefix: "personal_wiki_revision" });
     expect(screen.getByText("Private evidence")).toBeInTheDocument();
     expect(screen.getByText("personal_wiki_revision:revision-2")).toBeInTheDocument();
+    expect(screen.getByText(/permanently excluded/)).toBeInTheDocument();
   });
 });

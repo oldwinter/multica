@@ -15,15 +15,18 @@ import (
 const maxLegacyMigrationPrefix = 148
 
 // legacyDuplicateMigrationStems lists prefixes that were already duplicated
-// before this lint existed. It is a frozen historical record, not an escape
-// hatch: a new collision must be renumbered instead of added here. Prefix 362
-// was briefly listed and is deliberately absent again — the later of the two
-// migrations was renumbered to 376, which its idempotent DDL made safe.
+// before this lint existed or arrived through a merge of published histories.
+// It is a frozen historical record, not an escape hatch: a new unpublished
+// collision must be renumbered instead of added here. Prefix 362 was briefly
+// listed and is deliberately absent again — the later of the two migrations
+// was renumbered to 376, which its idempotent DDL made safe.
 //
-// Prefixes 251–309 record the 2026-08-20 merge of two already-published
-// histories: upstream migrations and the downstream Twin, Wiki, and Rooms
-// migrations. Renaming either side would change its schema_migrations identity
-// and re-run DDL on existing installations, so their exact stems stay frozen.
+// Prefixes 251–309, 403–432, and 437–440 record merges of already-published
+// upstream and downstream histories. Renaming either side changes its
+// schema_migrations identity and can re-run DDL on existing installations, so
+// their exact stems stay frozen. The migration runner carries explicit aliases
+// for downstream migrations that had already been renumbered before this rule
+// was enforced.
 var legacyDuplicateMigrationStems = map[string][]string{
 	"020": {"020_issue_number", "020_task_session"},
 	"026": {"026_comment_reactions", "026_task_messages"},
@@ -112,6 +115,38 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"307": {"307_agent_task_room_turn_lookup_index", "307_dingtalk_group_route_id_unique"},
 	"308": {"308_agent_task_branch_name", "308_room_entry_turn_result_index"},
 	"309": {"309_agent_runtime_id_index", "309_room_invocation_refusal_reason"},
+	"403": {"403_room_outcome_lifecycle", "403_runtime_profile_add_zeroclaw"},
+	"404": {"404_agent_starter_prompts", "404_room_memory_revision_id_index"},
+	"407": {"407_issue_source_context", "407_room_cycle_phase_index"},
+	"408": {"408_issue_source_context_id_index", "408_room_artifact_memory_revision_index"},
+	"409": {"409_issue_source_context_issue_index", "409_room_recommendation_review"},
+	"410": {"410_issue_source_context_origin_task_index", "410_room_recommendation_review_id_index"},
+	"411": {"411_attachment_source_context_index", "411_room_recommendation_review_primary_key"},
+	"412": {"412_issue_source_context_object_intent_key_index", "412_room_recommendation_review_identity_index"},
+	"413": {"413_issue_source_context_object_intent_due_index", "413_user_appearance_preferences"},
+	"414": {"414_issue_source_context_object_intent_context_index", "414_wiki_knowledge_loop"},
+	"415": {"415_seat_capacity_outbox", "415_wiki_page_revision_id_index"},
+	"416": {"416_seat_capacity_operation_token_index", "416_wiki_page_revision_number_index"},
+	"417": {"417_seat_capacity_primary_key", "417_wiki_page_revision_list_index"},
+	"418": {"418_seat_capacity_due_index", "418_wiki_page_search_index"},
+	"419": {"419_seat_capacity_share_join_index", "419_wiki_page_proposal_id_index"},
+	"420": {"420_channel_chat_route_generation", "420_wiki_page_proposal_idempotency_index"},
+	"421": {"421_channel_chat_active_route_index", "421_wiki_page_proposal_list_index"},
+	"422": {"422_channel_chat_route_history", "422_lm_wiki_source_policy_index"},
+	"423": {"423_channel_task_delivery_pkey_index", "423_lm_wiki_source_page_index"},
+	"424": {"424_channel_task_delivery_primary_key", "424_twin_execution_tables"},
+	"425": {"425_channel_outbound_message", "425_twin_binding_id_index"},
+	"426": {"426_channel_outbound_message_id_index", "426_twin_task_attribution_id_index"},
+	"427": {"427_channel_task_delivery_backfill", "427_twin_run_feedback_id_index"},
+	"428": {"428_channel_task_delivery_binding_index", "428_twin_deposition_id_index"},
+	"429": {"429_channel_task_delivery_installation_index", "429_twin_execution_primary_keys"},
+	"430": {"430_channel_outbound_message_binding_index", "430_twin_binding_scope_index"},
+	"431": {"431_chat_explicit_origin_backfill", "431_twin_task_attribution_claim_index"},
+	"432": {"432_agent_conversation_starters_rename", "432_twin_run_feedback_task_index"},
+	"437": {"437_drop_agent_runtime_last_seen_at_index", "437_twin_deposition_replacement"},
+	"438": {"438_agent_runtime_online_last_seen_index", "438_drop_twin_proposal_identity_index"},
+	"439": {"439_agent_runtime_offline_last_seen_index", "439_twin_proposal_identity_partial_index"},
+	"440": {"440_github_pr_head_sha_index", "440_twin_deposition_request_index"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)

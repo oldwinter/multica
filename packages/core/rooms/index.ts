@@ -29,6 +29,7 @@ export {
   RoomTurnSchema,
   RoomWakeResultSchema,
   RoomUsageSchema,
+	RoomValueSignalSchema,
   RoomSynthesisItemSchema,
   RoomSynthesisSchema,
 } from "./schemas";
@@ -86,6 +87,13 @@ export {
 } from "./outcome-state";
 export { useRoomViewStore, type RoomDetailTab } from "./view-store";
 export { filterRooms } from "./search";
+export {
+  applyRoomTemplateDefaults,
+  duplicateRoomConfiguration,
+  rankRoomsForValueReview,
+  type RoomTemplateDraftFields,
+  type RoomTemplateTouchedFields,
+} from "./create-draft";
 export {
   EMPTY_ROOM_COMPOSER_DRAFTS,
   EMPTY_SCOPED_ROOM_COMPOSER_DRAFTS,
@@ -157,6 +165,7 @@ export type {
   RoomTurn,
   RoomWakeResult,
   RoomUsage,
+	RoomValueSignal,
   SetRoomStatusInput,
   UpdateRoomBudgetInput,
   WakeRoomInput,

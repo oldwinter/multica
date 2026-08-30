@@ -34,6 +34,88 @@ SELECT * FROM room
 WHERE workspace_id = @workspace_id
 ORDER BY updated_at DESC, id;
 
+-- name: ListRoomValueSignals :many
+WITH cycle_stats AS (
+    SELECT room_id,
+           count(*)::bigint AS cycle_count,
+           GREATEST(count(*) - 1, 0)::bigint AS repeat_run_count,
+           count(*) FILTER (WHERE status = 'failed')::bigint AS failed_cycles,
+           count(*) FILTER (WHERE status = 'refused')::bigint AS refused_cycles,
+           count(DISTINCT date_trunc('week', created_at))::bigint AS active_weeks
+    FROM room_cycle
+    WHERE workspace_id = @workspace_id
+    GROUP BY room_id
+), review_stats AS (
+    SELECT room_id,
+           count(*) FILTER (WHERE review_status = 'accepted')::bigint AS accepted_outcomes,
+           COALESCE(
+               percentile_cont(0.5) WITHIN GROUP (
+                   ORDER BY extract(epoch FROM (reviewed_at - created_at))
+               ) FILTER (WHERE reviewed_at IS NOT NULL),
+               0
+           )::double precision AS median_review_latency_seconds
+    FROM room_memory_revision
+    WHERE workspace_id = @workspace_id
+    GROUP BY room_id
+), artifact_stats AS (
+    SELECT room_id,
+           count(*) FILTER (WHERE target_id IS NOT NULL)::bigint AS promoted_artifacts
+    FROM room_artifact
+    WHERE workspace_id = @workspace_id
+    GROUP BY room_id
+)
+SELECT r.id AS room_id,
+       accepted.id AS last_accepted_revision_id,
+       accepted.reviewed_at AS last_accepted_at,
+       latest.id AS last_cycle_id,
+       COALESCE(latest.status, '') AS last_run_status,
+       COALESCE(latest.phase, '') AS last_run_phase,
+       latest.refusal_reason AS last_run_reason,
+       COALESCE(latest.completed_at, latest.created_at) AS last_run_at,
+       COALESCE(latest_cost.cost_ticks, 0)::bigint AS last_run_cost_ticks,
+       COALESCE(cycles.repeat_run_count, 0)::bigint AS repeat_run_count,
+       COALESCE(reviews.accepted_outcomes, 0)::bigint AS accepted_outcomes,
+       COALESCE(cycles.active_weeks, 0)::bigint AS active_weeks,
+       CASE WHEN COALESCE(cycles.active_weeks, 0) = 0 THEN 0::double precision
+            ELSE COALESCE(reviews.accepted_outcomes, 0)::double precision / cycles.active_weeks
+       END::double precision AS accepted_outcomes_per_active_week,
+       COALESCE(reviews.median_review_latency_seconds, 0)::double precision AS median_review_latency_seconds,
+       CASE WHEN COALESCE(reviews.accepted_outcomes, 0) = 0 THEN 0::double precision
+            ELSE COALESCE(artifacts.promoted_artifacts, 0)::double precision / reviews.accepted_outcomes
+       END::double precision AS promotion_rate,
+       COALESCE(cycles.failed_cycles, 0)::bigint AS failed_cycles,
+       COALESCE(cycles.refused_cycles, 0)::bigint AS refused_cycles
+FROM room r
+LEFT JOIN cycle_stats cycles ON cycles.room_id = r.id
+LEFT JOIN review_stats reviews ON reviews.room_id = r.id
+LEFT JOIN artifact_stats artifacts ON artifacts.room_id = r.id
+LEFT JOIN LATERAL (
+    SELECT revision.id, revision.reviewed_at
+    FROM room_memory_revision revision
+    WHERE revision.workspace_id = r.workspace_id AND revision.room_id = r.id
+      AND revision.review_status = 'accepted'
+    ORDER BY revision.reviewed_at DESC, revision.id DESC
+    LIMIT 1
+) accepted ON true
+LEFT JOIN LATERAL (
+    SELECT cycle.id, cycle.status, cycle.phase, cycle.refusal_reason,
+           cycle.completed_at, cycle.created_at
+    FROM room_cycle cycle
+    WHERE cycle.workspace_id = r.workspace_id AND cycle.room_id = r.id
+    ORDER BY cycle.sequence DESC, cycle.id DESC
+    LIMIT 1
+) latest ON true
+LEFT JOIN LATERAL (
+    SELECT COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks
+    FROM room_turn turn_row
+    LEFT JOIN agent_task_queue task ON task.room_turn_id = turn_row.id
+    LEFT JOIN task_usage tu ON tu.task_id = task.id
+    WHERE turn_row.workspace_id = r.workspace_id AND turn_row.room_id = r.id
+      AND turn_row.cycle_id = latest.id AND turn_row.status <> 'refused'
+) latest_cost ON true
+WHERE r.workspace_id = @workspace_id
+ORDER BY r.updated_at DESC, r.id;
+
 -- name: UpdateRoom :one
 UPDATE room
 SET title = @title,
@@ -570,33 +652,63 @@ WHERE room_cycle.id = @cycle_id AND room_cycle.workspace_id = @workspace_id
 RETURNING *;
 
 -- name: GetRoomUsageSummary :one
-SELECT
-    count(*) FILTER (WHERE rt.status <> 'refused')::bigint AS turns_total,
-    COALESCE(sum(attempt_usage.cost_ticks), 0)::bigint AS cost_ticks,
-    count(*) FILTER (
-        WHERE rt.status <> 'refused' AND attempt_usage.has_task
-          AND attempt_usage.has_uncosted_usage
-    )::bigint AS uncosted_turns,
-    count(*) FILTER (WHERE rt.status IN ('failed', 'cancelled'))::bigint AS failures,
-    (SELECT count(*) FROM room_memory_revision rmr
-     WHERE rmr.workspace_id = @workspace_id AND rmr.room_id = @room_id
-       AND rmr.review_status = 'accepted')::bigint AS accepted_syntheses,
-    (SELECT count(*) FROM room_artifact ra
-     WHERE ra.workspace_id = @workspace_id AND ra.room_id = @room_id
-       AND ra.target_id IS NOT NULL)::bigint AS promoted_artifacts
-FROM room_turn rt
-LEFT JOIN LATERAL (
-    SELECT COALESCE(bool_or(atq.id IS NOT NULL), false) AS has_task,
-           COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks,
-           COALESCE(bool_or(
-               atq.id IS NOT NULL
-               AND (tu.task_id IS NULL OR tu.cost_usd_ticks IS NULL)
-           ), false) AS has_uncosted_usage
-    FROM agent_task_queue atq
-    LEFT JOIN task_usage tu ON tu.task_id = atq.id
-    WHERE atq.room_turn_id = rt.id
-) attempt_usage ON true
-WHERE rt.workspace_id = @workspace_id AND rt.room_id = @room_id;
+WITH turn_usage AS (
+    SELECT count(*) FILTER (WHERE rt.status <> 'refused')::bigint AS turns_total,
+           COALESCE(sum(attempt_usage.cost_ticks), 0)::bigint AS cost_ticks,
+           count(*) FILTER (
+               WHERE rt.status <> 'refused' AND attempt_usage.has_task
+                 AND attempt_usage.has_uncosted_usage
+           )::bigint AS uncosted_turns,
+           count(*) FILTER (WHERE rt.status IN ('failed', 'cancelled'))::bigint AS failures
+    FROM room_turn rt
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(bool_or(atq.id IS NOT NULL), false) AS has_task,
+               COALESCE(sum(tu.cost_usd_ticks), 0)::bigint AS cost_ticks,
+               COALESCE(bool_or(
+                   atq.id IS NOT NULL
+                   AND (tu.task_id IS NULL OR tu.cost_usd_ticks IS NULL)
+               ), false) AS has_uncosted_usage
+        FROM agent_task_queue atq
+        LEFT JOIN task_usage tu ON tu.task_id = atq.id
+        WHERE atq.room_turn_id = rt.id
+    ) attempt_usage ON true
+    WHERE rt.workspace_id = @workspace_id AND rt.room_id = @room_id
+), cycle_usage AS (
+    SELECT GREATEST(count(*) - 1, 0)::bigint AS repeat_run_count,
+           count(*) FILTER (WHERE status = 'failed')::bigint AS failed_cycles,
+           count(*) FILTER (WHERE status = 'refused')::bigint AS refused_cycles,
+           count(DISTINCT date_trunc('week', created_at))::bigint AS active_weeks
+    FROM room_cycle
+    WHERE workspace_id = @workspace_id AND room_id = @room_id
+), review_usage AS (
+    SELECT count(*) FILTER (WHERE review_status = 'accepted')::bigint AS accepted_syntheses,
+           COALESCE(
+               percentile_cont(0.5) WITHIN GROUP (
+                   ORDER BY extract(epoch FROM (reviewed_at - created_at))
+               ) FILTER (WHERE reviewed_at IS NOT NULL),
+               0
+           )::double precision AS median_review_latency_seconds
+    FROM room_memory_revision
+    WHERE workspace_id = @workspace_id AND room_id = @room_id
+), artifact_usage AS (
+    SELECT count(*) FILTER (WHERE target_id IS NOT NULL)::bigint AS promoted_artifacts
+    FROM room_artifact
+    WHERE workspace_id = @workspace_id AND room_id = @room_id
+)
+SELECT turns.turns_total, turns.cost_ticks, turns.uncosted_turns, turns.failures,
+       reviews.accepted_syntheses, artifacts.promoted_artifacts,
+       cycles.repeat_run_count, cycles.active_weeks, reviews.median_review_latency_seconds,
+       CASE WHEN cycles.active_weeks = 0 THEN 0::double precision
+            ELSE reviews.accepted_syntheses::double precision / cycles.active_weeks
+       END::double precision AS accepted_outcomes_per_active_week,
+       CASE WHEN reviews.accepted_syntheses = 0 THEN 0::double precision
+            ELSE artifacts.promoted_artifacts::double precision / reviews.accepted_syntheses
+       END::double precision AS promotion_rate,
+       cycles.failed_cycles, cycles.refused_cycles,
+       CASE WHEN reviews.accepted_syntheses = 0 THEN 0::double precision
+            ELSE turns.cost_ticks::double precision / reviews.accepted_syntheses
+       END::double precision AS cost_ticks_per_accepted_outcome
+FROM turn_usage turns, cycle_usage cycles, review_usage reviews, artifact_usage artifacts;
 
 -- name: GetRoomCycleUsageSummary :one
 SELECT
