@@ -45,6 +45,11 @@ import { WikiProposalsPanel } from "./wiki-proposals-panel";
 import { WikiEditor, WikiPageList } from "./wiki-page-primitives";
 import { wikiConflict } from "./wiki-conflict";
 import { WorkspaceWikiKnowledgeActivation } from "./wiki-knowledge-activation";
+import {
+  buildWikiScopePath,
+  parseWikiScopeSelection,
+  type WikiScopeSelection,
+} from "./wiki-scope-url";
 
 export function WikiPageView({
   pageId,
@@ -58,8 +63,6 @@ export function WikiPageView({
   const paths = useWorkspacePaths();
   const nav = useNavigation();
 
-  const [scope, setScope] = useState<WikiScope>("workspace");
-  const [projectId, setProjectId] = useState("");
   const [searchText, setSearchText] = useState("");
   const [creating, setCreating] = useState(false);
   const [draftPath, setDraftPath] = useState("index.md");
@@ -79,12 +82,26 @@ export function WikiPageView({
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [citationCopied, setCitationCopied] = useState(false);
 
+  const urlSelection = parseWikiScopeSelection(nav.searchParams);
   const projectsQuery = useQuery(projectListOptions(wsId));
-  const listQuery = useQuery(wikiPageListOptions(wsId, {
-    scope,
-    projectId: scope === "project" ? projectId || undefined : undefined,
-  }));
   const detailQuery = useQuery(wikiPageDetailOptions(wsId, pageId ?? ""));
+  const selected = detailQuery.data?.id ? detailQuery.data : undefined;
+  const detailSelection: WikiScopeSelection | null = selected?.scope === "project"
+    ? { scope: "project", projectId: selected.projectId }
+    : selected?.scope === "workspace"
+      ? { scope: "workspace", projectId: null }
+      : null;
+  const selection = pageId && detailSelection ? detailSelection : urlSelection;
+  const scope = selection.scope;
+  const projectId = selection.projectId;
+  const listOptions = wikiPageListOptions(wsId, {
+    scope,
+    projectId: scope === "project" ? projectId ?? undefined : undefined,
+  });
+  const listQuery = useQuery({
+    ...listOptions,
+    enabled: listOptions.enabled && (!pageId || detailQuery.isError || Boolean(selected)),
+  });
   const revisionsQuery = useQuery(wikiRevisionListOptions(wsId, pageId ?? ""));
   const proposalsQuery = useQuery(wikiProposalListOptions(wsId, pageId ?? ""));
   const searchQuery = useQuery(wikiSearchOptions(wsId, { q: searchText }));
@@ -96,19 +113,11 @@ export function WikiPageView({
   const acceptProposalMutation = useAcceptWikiProposal(wsId, pageId ?? "");
   const rejectProposalMutation = useRejectWikiProposal(wsId, pageId ?? "");
 
-  const selected = detailQuery.data?.id ? detailQuery.data : undefined;
   const pages = listQuery.data ?? [];
   const normalizedSearch = searchText.trim();
   const isSearching = normalizedSearch.length >= 2;
-  const searchResults = searchQuery.data ?? [];
   const pendingProposalCount = (proposalsQuery.data ?? []).filter((proposal) => proposal.status === "pending").length;
   const citationKey = selected ? `wiki_page_revision:${selected.currentRevisionId}` : "";
-
-  useEffect(() => {
-    if (!selected) return;
-    setScope(selected.scope);
-    setProjectId(selected.scope === "project" ? selected.projectId ?? "" : "");
-  }, [selected?.id, selected?.scope, selected?.projectId]);
 
   useEffect(() => {
     setCreating(false);
@@ -132,9 +141,9 @@ export function WikiPageView({
   const personalWikiPagePath = (id: string) => `${personalWikiPath.replace(/\/$/, "")}/${encodeURIComponent(id)}`;
   const groupedSearchResults = useMemo(() => {
     const groups: Record<WikiScope, WikiPageSummary[]> = { workspace: [], project: [], user: [] };
-    for (const page of searchResults) groups[page.scope].push(page);
+    for (const page of searchQuery.data ?? []) groups[page.scope].push(page);
     return groups;
-  }, [searchResults]);
+  }, [searchQuery.data]);
 
   const startEdit = () => {
     if (!selected) return;
@@ -195,7 +204,7 @@ export function WikiPageView({
     setActionError(null);
     createMutation.mutate({
       scope,
-      projectId: scope === "project" ? projectId : undefined,
+      projectId: scope === "project" ? projectId ?? undefined : undefined,
       path: draftPath,
       title: draftTitle || undefined,
       content: draftContent,
@@ -209,6 +218,34 @@ export function WikiPageView({
       },
       onError: () => setActionError(t(($) => $.states.action_error)),
     });
+  };
+
+  const changeCollectionScope = (next: string) => {
+    if (next === "user") {
+      nav.push(personalWikiPath);
+      return;
+    }
+    if (next !== "workspace" && next !== "project") return;
+
+    const nextSelection: WikiScopeSelection = next === "project"
+      ? { scope: "project", projectId }
+      : { scope: "workspace", projectId: null };
+    const destination = pageId
+      ? { ...nav, pathname: paths.wiki(), hash: "" }
+      : nav;
+    const nextPath = buildWikiScopePath(destination, nextSelection);
+    setCreating(false);
+    if (pageId) nav.push(nextPath);
+    else nav.replace(nextPath);
+  };
+
+  const changeProject = (next: string | null) => {
+    const destination = pageId
+      ? { ...nav, pathname: paths.wiki(), hash: "" }
+      : nav;
+    const nextPath = buildWikiScopePath(destination, { scope: "project", projectId: next });
+    if (pageId) nav.push(nextPath);
+    else nav.replace(nextPath);
   };
 
   return (
@@ -232,15 +269,7 @@ export function WikiPageView({
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <Tabs
             value={scope}
-            onValueChange={(value) => {
-              if (value === "user") {
-                nav.push(personalWikiPath);
-                return;
-              }
-              setScope(value as WikiScope);
-              setCreating(false);
-              if (pageId) nav.push(paths.wiki());
-            }}
+            onValueChange={changeCollectionScope}
           >
             <TabsList variant="line" className="max-w-full overflow-x-auto">
               <TabsTrigger value="workspace">{t(($) => $.scopes.workspace)}</TabsTrigger>
@@ -268,12 +297,11 @@ export function WikiPageView({
           </div>
         </div>
 
-        {scope === "user" ? <p className="text-caption text-muted-foreground">{t(($) => $.scope_hints.user)}</p> : null}
         {scope === "project" ? (
           <label className="max-w-sm space-y-1.5 text-caption text-muted-foreground">
             <span>{t(($) => $.fields.project)}</span>
-            <Select items={projectSelectItems} value={projectId || null} onValueChange={(value) => setProjectId(value ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder={t(($) => $.empty.pick_project)} /></SelectTrigger>
+            <Select items={projectSelectItems} value={projectId} onValueChange={(value) => changeProject(value ?? null)}>
+              <SelectTrigger className="w-full" aria-label={t(($) => $.fields.project)}><SelectValue placeholder={t(($) => $.empty.pick_project)} /></SelectTrigger>
               <SelectContent>
                 {projectSelectItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
               </SelectContent>

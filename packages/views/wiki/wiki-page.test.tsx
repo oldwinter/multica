@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { ApiError } from "@multica/core/api";
 import enWiki from "../locales/en/wiki.json";
@@ -20,6 +21,10 @@ const harness = vi.hoisted(() => ({
   readiness: { isPending: false, isError: false, data: undefined as unknown, refetch: vi.fn() },
   projects: { isLoading: false, data: [{ id: "project-1", title: "Roadmap" }] },
   push: vi.fn(),
+  replace: vi.fn(),
+  pathname: "/acme/wiki",
+  urlSearch: "",
+  hash: "",
   create: { mutate: vi.fn(), isPending: false },
   update: { mutate: vi.fn(), isPending: false },
   remove: { mutate: vi.fn(), isPending: false },
@@ -59,8 +64,20 @@ vi.mock("@multica/core/paths", () => ({
 vi.mock("../navigation", () => ({
   resolveClickIntent: () => "push",
   useAppOrigin: () => null,
-  useNavigation: () => ({ push: harness.push }),
-  useOptionalNavigation: () => ({ push: harness.push }),
+  useNavigation: () => ({
+    push: harness.push,
+    replace: harness.replace,
+    pathname: harness.pathname,
+    searchParams: new URLSearchParams(harness.urlSearch),
+    hash: harness.hash,
+  }),
+  useOptionalNavigation: () => ({
+    push: harness.push,
+    replace: harness.replace,
+    pathname: harness.pathname,
+    searchParams: new URLSearchParams(harness.urlSearch),
+    hash: harness.hash,
+  }),
 }));
 vi.mock("@multica/core/wiki", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@multica/core/wiki")>();
@@ -115,6 +132,10 @@ describe("WikiPageView", () => {
     harness.search = { isPending: false, isError: false, data: [] };
     harness.readiness = { isPending: false, isError: false, data: undefined, refetch: vi.fn() };
     harness.push.mockClear();
+    harness.replace.mockClear();
+    harness.pathname = "/acme/wiki";
+    harness.urlSearch = "";
+    harness.hash = "";
     for (const mutation of [harness.create, harness.update, harness.remove, harness.restore, harness.accept, harness.reject, harness.pin]) {
       mutation.mutate.mockReset();
       mutation.isPending = false;
@@ -173,6 +194,75 @@ describe("WikiPageView", () => {
     renderWiki("page-1");
     await waitFor(() => expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true"));
     expect(screen.getByRole("combobox")).toHaveTextContent("Roadmap");
+  });
+
+  it("hydrates the project collection from the URL", async () => {
+    harness.urlSearch = "scope=project&project_id=project-1";
+    renderWiki();
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true");
+    });
+    expect(screen.getByRole("combobox")).toHaveTextContent("Roadmap");
+  });
+
+  it("uses replace for collection scope changes and preserves unrelated location state", () => {
+    harness.urlSearch = "view=grid";
+    harness.hash = "#wiki-note";
+    renderWiki();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Project" }));
+
+    expect(harness.replace).toHaveBeenCalledWith(
+      "/acme/wiki?view=grid&scope=project#wiki-note",
+    );
+    expect(harness.push).not.toHaveBeenCalled();
+  });
+
+  it("writes the selected project id to the collection URL", async () => {
+    harness.urlSearch = "scope=project&view=grid";
+    const user = userEvent.setup();
+    renderWiki();
+
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "Roadmap" }));
+
+    expect(harness.replace).toHaveBeenCalledWith(
+      "/acme/wiki?scope=project&view=grid&project_id=project-1",
+    );
+  });
+
+  it("keeps a project URL visible but disables list creation until a project is selected", () => {
+    harness.urlSearch = "scope=project";
+    renderWiki();
+
+    expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("combobox")).toHaveTextContent("Select a project");
+    expect(screen.getByRole("button", { name: "New page" })).toBeDisabled();
+  });
+
+  it("leaves a project detail page before changing its collection project", async () => {
+    harness.projects.data = [
+      { id: "project-1", title: "Roadmap" },
+      { id: "project-2", title: "Launch" },
+    ];
+    harness.detail = {
+      isLoading: false,
+      isError: false,
+      data: { ...page, scope: "project", projectId: "project-1" },
+      refetch: vi.fn(),
+    };
+    const user = userEvent.setup();
+    renderWiki("page-1");
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true"));
+    await user.click(screen.getByRole("combobox", { name: "Project" }));
+    await user.click(await screen.findByRole("option", { name: "Launch" }));
+
+    expect(harness.push).toHaveBeenCalledWith(
+      "/acme/wiki?scope=project&project_id=project-2",
+    );
+    expect(harness.replace).not.toHaveBeenCalled();
   });
 
   it("labels a new page action as create instead of save", () => {
