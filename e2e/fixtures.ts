@@ -158,6 +158,87 @@ export interface TestWikiTwinArtifactCounts {
   twin_versions: number;
 }
 
+interface TestTwinProposalSeedSource {
+  revision_id: string;
+  source_digest: string;
+  requested_by_id: string;
+  base_version_id: string | null;
+  base_content: unknown;
+}
+
+interface TestTwinProposalSeedResult {
+  proposal_id: string;
+  schema_version: number;
+  content_matches: boolean;
+  digest_matches: boolean;
+}
+
+interface TestTwinProposalContentV2 {
+  schema_version: 2;
+  source_wiki_revision_id: string;
+  source_digest: string;
+  name: "Workspace Twin";
+  assertions: [];
+  topics: [];
+  diff: {
+    added: [];
+    removed: string[];
+    changed: [];
+    unchanged: [];
+  };
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function priorTwinAssertionIds(content: unknown): string[] {
+  if (content === null) return [];
+  if (!isRecordValue(content) || !Array.isArray(content.assertions)) {
+    throw new Error("Current Twin fixture content has no assertions array");
+  }
+  const ids = content.assertions.map((assertion, index) => {
+    if (
+      !isRecordValue(assertion)
+      || typeof assertion.id !== "string"
+      || assertion.id.length === 0
+    ) {
+      throw new Error(`Current Twin fixture assertion ${index} has no id`);
+    }
+    return assertion.id;
+  });
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("Current Twin fixture content has duplicate assertion ids");
+  }
+  return ids.sort();
+}
+
+function canonicalTwinProposalFixture(
+  revisionId: string,
+  sourceDigest: string,
+  removedAssertionIds: string[],
+): { json: string; digest: string } {
+  const content = {
+    schema_version: 2,
+    source_wiki_revision_id: revisionId,
+    source_digest: sourceDigest,
+    name: "Workspace Twin",
+    assertions: [],
+    topics: [],
+    diff: {
+      added: [],
+      removed: removedAssertionIds,
+      changed: [],
+      unchanged: [],
+    },
+  } satisfies TestTwinProposalContentV2;
+  const json = JSON.stringify(content);
+  return {
+    json,
+    digest: `sha256:${createHash("sha256").update(json).digest("hex")}`,
+  };
+}
+
 export type TestIssueStatus =
   | "backlog"
   | "todo"
@@ -654,6 +735,166 @@ export class TestApiClient {
       method: "POST",
       body: JSON.stringify({ wiki_revision_id: wikiRevisionId }),
     });
+  }
+
+  async seedTwinProposalForBuild(
+    wikiRevisionId: string,
+  ): Promise<{ proposalId: string }> {
+    if (!this.workspaceId || !this.email) {
+      throw new Error("Cannot seed a Twin proposal before login and workspace setup");
+    }
+    const workspaceId = this.workspaceId;
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      try {
+        const workspace = await client.query(
+          "SELECT id FROM workspace WHERE id = $1 FOR KEY SHARE",
+          [workspaceId],
+        );
+        if (workspace.rowCount !== 1) {
+          throw new Error(`Twin fixture workspace ${workspaceId} does not exist`);
+        }
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text, 0))",
+          [workspaceId],
+        );
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text, 1))",
+          [workspaceId],
+        );
+
+        const sourceResult = await client.query<TestTwinProposalSeedSource>(
+          `
+            SELECT
+              revision.id::text AS revision_id,
+              revision.source_digest,
+              actor.id::text AS requested_by_id,
+              base.id::text AS base_version_id,
+              base.content AS base_content
+            FROM lm_wiki_revision revision
+            JOIN lm_wiki_review review
+              ON review.workspace_id = revision.workspace_id
+             AND review.revision_id = revision.id
+             AND review.decision = 'accepted'
+            JOIN "user" actor ON actor.email = $3
+            JOIN member membership
+              ON membership.workspace_id = revision.workspace_id
+             AND membership.user_id = actor.id
+            LEFT JOIN LATERAL (
+              SELECT version.id, version.content
+              FROM twin_version version
+              WHERE version.workspace_id = revision.workspace_id
+              ORDER BY version.version_number DESC
+              LIMIT 1
+            ) base ON true
+            WHERE revision.workspace_id = $1
+              AND revision.id = $2
+              AND revision.id = (
+                SELECT accepted.id
+                FROM lm_wiki_revision accepted
+                JOIN lm_wiki_review accepted_review
+                  ON accepted_review.workspace_id = accepted.workspace_id
+                 AND accepted_review.revision_id = accepted.id
+                 AND accepted_review.decision = 'accepted'
+                WHERE accepted.workspace_id = $1
+                ORDER BY accepted.revision_number DESC
+                LIMIT 1
+              )
+          `,
+          [workspaceId, wikiRevisionId, this.email],
+        );
+        const source = sourceResult.rows[0];
+        if (!source || source.revision_id !== wikiRevisionId) {
+          throw new Error(
+            `Twin fixture revision ${wikiRevisionId} is not the latest accepted revision`,
+          );
+        }
+        if (!/^sha256:[0-9a-f]{64}$/.test(source.source_digest)) {
+          throw new Error(
+            `Twin fixture revision ${wikiRevisionId} has an invalid source digest`,
+          );
+        }
+
+        const kind = source.base_version_id === null ? "initial" : "evolution";
+        const canonical = canonicalTwinProposalFixture(
+          source.revision_id,
+          source.source_digest,
+          priorTwinAssertionIds(source.base_content),
+        );
+        await client.query(
+          `
+            INSERT INTO twin_proposal (
+              workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+              schema_version, content, content_digest, requested_by_id
+            )
+            SELECT $1::uuid, $3::text, source.id, $4::uuid,
+                   2, $5::jsonb, $6::text, $7::uuid
+            FROM lm_wiki_revision source
+            LEFT JOIN twin_version base
+              ON base.workspace_id = $1::uuid
+             AND base.id = $4::uuid
+            WHERE source.workspace_id = $1::uuid
+              AND source.id = $2::uuid
+              AND ($4::uuid IS NULL OR base.id IS NOT NULL)
+            ON CONFLICT (
+              workspace_id, kind, source_wiki_revision_id,
+              (COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
+            ) WHERE kind IN ('initial', 'evolution') DO NOTHING
+          `,
+          [
+            workspaceId,
+            source.revision_id,
+            kind,
+            source.base_version_id,
+            canonical.json,
+            canonical.digest,
+            source.requested_by_id,
+          ],
+        );
+        const resolved = await client.query<TestTwinProposalSeedResult>(
+          `
+            SELECT
+              id::text AS proposal_id,
+              schema_version,
+              content = $5::jsonb AS content_matches,
+              content_digest = $6::text AS digest_matches
+            FROM twin_proposal
+            WHERE workspace_id = $1::uuid
+              AND kind = $3::text
+              AND source_wiki_revision_id = $2::uuid
+              AND base_twin_version_id IS NOT DISTINCT FROM $4::uuid
+          `,
+          [
+            workspaceId,
+            source.revision_id,
+            kind,
+            source.base_version_id,
+            canonical.json,
+            canonical.digest,
+          ],
+        );
+        const proposal = resolved.rows[0];
+        if (
+          !proposal
+          || proposal.schema_version !== 2
+          || !proposal.content_matches
+          || !proposal.digest_matches
+        ) {
+          throw new Error(
+            `Twin fixture natural key for ${wikiRevisionId} is inconsistent`,
+          );
+        }
+        await client.query("COMMIT");
+        return { proposalId: proposal.proposal_id };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    } finally {
+      await client.end();
+    }
   }
 
   async acceptTwinProposal(
