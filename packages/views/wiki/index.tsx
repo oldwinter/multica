@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpenText, Check, Copy, FileClock, FileDiff, History, Plus, Search, Trash2, X } from "lucide-react";
+import { ApiError } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths as appPaths, useWorkspacePaths } from "@multica/core/paths";
 import { projectListOptions } from "@multica/core/projects/queries";
@@ -105,9 +106,17 @@ export function WikiPageView({
     ...listOptions,
     enabled: listOptions.enabled && (!pageId || detailQuery.isError || Boolean(selected)),
   });
-  const revisionsQuery = useQuery(wikiRevisionListOptions(wsId, pageId ?? ""));
-  const proposalsQuery = useQuery(wikiProposalListOptions(wsId, pageId ?? ""));
+  const revisionsQuery = useQuery({
+    ...wikiRevisionListOptions(wsId, pageId ?? ""),
+    enabled: Boolean(wsId && pageId && selected),
+  });
+  const proposalsQuery = useQuery({
+    ...wikiProposalListOptions(wsId, pageId ?? ""),
+    enabled: Boolean(wsId && pageId && selected),
+  });
   const searchQuery = useQuery(wikiSearchOptions(wsId, { q: searchText }));
+  const detailUnavailable = detailQuery.error instanceof ApiError
+    && (detailQuery.error.status === 403 || detailQuery.error.status === 404);
 
   const createMutation = useCreateWikiPage(wsId);
   const updateMutation = useUpdateWikiPage(wsId, pageId ?? "");
@@ -350,8 +359,29 @@ export function WikiPageView({
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.states.loading)}</p>
             ) : detailQuery.isError || !selected ? (
               <div className="space-y-3">
-                <p className="text-body text-destructive" role="alert">{t(($) => $.states.error)}</p>
-                <Button variant="outline" onClick={() => detailQuery.refetch()}>{t(($) => $.actions.retry)}</Button>
+                <div className="space-y-1">
+                  <p className="text-body font-medium text-destructive" role="alert">
+                    {detailUnavailable
+                      ? t(($) => $.states.unavailable_title)
+                      : t(($) => $.states.detail_error)}
+                  </p>
+                  {detailUnavailable ? (
+                    <p className="text-caption text-muted-foreground">
+                      {t(($) => $.states.unavailable_description)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!detailUnavailable ? (
+                    <Button onClick={() => void detailQuery.refetch()}>{t(($) => $.actions.retry)}</Button>
+                  ) : null}
+                  <Button
+                    variant={detailUnavailable ? "default" : "outline"}
+                    onClick={() => nav.push(paths.wiki())}
+                  >
+                    {t(($) => $.actions.back_to_wiki)}
+                  </Button>
+                </div>
               </div>
             ) : editMode ? (
               <div className="space-y-4">

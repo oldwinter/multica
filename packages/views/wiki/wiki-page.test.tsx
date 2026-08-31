@@ -13,6 +13,7 @@ const harness = vi.hoisted(() => ({
     isLoading: false,
     isError: false,
     data: undefined as unknown,
+    error: undefined as unknown,
     refetch: vi.fn(),
   },
   revisions: { isPending: false, isError: false, data: [] as unknown[], refetch: vi.fn() },
@@ -126,7 +127,13 @@ function renderWiki(pageId?: string) {
 describe("WikiPageView", () => {
   beforeEach(() => {
     harness.list = { isLoading: false, isError: false, data: [] };
-    harness.detail = { isLoading: false, isError: false, data: undefined, refetch: vi.fn() };
+    harness.detail = {
+      isLoading: false,
+      isError: false,
+      data: undefined,
+      error: undefined,
+      refetch: vi.fn(),
+    };
     harness.revisions = { isPending: false, isError: false, data: [], refetch: vi.fn() };
     harness.proposals = { isPending: false, isError: false, data: [], refetch: vi.fn() };
     harness.search = { isPending: false, isError: false, data: [] };
@@ -171,8 +178,48 @@ describe("WikiPageView", () => {
     expect(document.querySelector('[data-testid="wiki-page"]')?.tagName).toBe("DIV");
   });
 
+  it("routes an unavailable deep link back to the Wiki collection", () => {
+    harness.detail = {
+      isLoading: false,
+      isError: true,
+      data: undefined,
+      error: new ApiError("not found", 404, "Not Found"),
+      refetch: vi.fn(),
+    };
+    renderWiki("missing-page");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Wiki page unavailable");
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wiki" }));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki");
+  });
+
+  it("keeps retry available for a transient detail failure", () => {
+    const refetch = vi.fn();
+    harness.detail = {
+      isLoading: false,
+      isError: true,
+      data: undefined,
+      error: new Error("offline"),
+      refetch,
+    };
+    renderWiki("page-1");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("This Wiki page could not be loaded.");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(refetch).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wiki" }));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki");
+  });
+
   it("opens the current immutable revision from document metadata", () => {
-    harness.detail = { isLoading: false, isError: false, data: page, refetch: vi.fn() };
+    harness.detail = {
+      isLoading: false,
+      isError: false,
+      data: page,
+      error: undefined,
+      refetch: vi.fn(),
+    };
     renderWiki("page-1");
     fireEvent.click(screen.getByRole("button", { name: "Open stable revision" }));
     expect(harness.push).toHaveBeenCalledWith("/acme/wiki/revisions/revision-4");
@@ -263,6 +310,7 @@ describe("WikiPageView", () => {
       isLoading: false,
       isError: false,
       data: { ...page, scope: "project", projectId: "project-1" },
+      error: undefined,
       refetch: vi.fn(),
     };
     const user = userEvent.setup();

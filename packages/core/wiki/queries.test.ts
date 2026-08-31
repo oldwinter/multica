@@ -3,6 +3,7 @@ import { setApiInstance } from "../api";
 import type { ApiClient } from "../api/client";
 import {
   wikiKeys,
+  wikiPageDetailOptions,
   wikiPageListOptions,
   wikiProposalListOptions,
   wikiRevisionListOptions,
@@ -120,9 +121,10 @@ describe("wikiPageListOptions", () => {
     });
     setApiInstance({ getWikiPage } as unknown as ApiClient);
 
-    const { wikiPageDetailOptions } = await import("./queries");
     const options = wikiPageDetailOptions("ws-1", "p1");
     expect(options.enabled).toBe(true);
+    expect(options.retry).toBe(false);
+    expect(personalWikiPageDetailOptions("p1").retry).toBe(false);
     await expect(options.queryFn!({} as never)).resolves.toMatchObject({ id: "p1", workspaceId: null });
     expect(getWikiPage).toHaveBeenCalledWith("p1");
   });
