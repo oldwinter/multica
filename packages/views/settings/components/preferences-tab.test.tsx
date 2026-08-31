@@ -245,6 +245,15 @@ describe("PreferencesTab — Language switcher", () => {
     await user.click(await screen.findByRole("option", { name }));
   }
 
+  it("keeps stacked skins clear of the chat launcher", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(screen.getByRole("radiogroup", { name: "Skin" })).toHaveClass(
+      "pe-chat-launcher",
+      "@xl:pe-0",
+    );
+  });
+
   it("does nothing when clicking the current locale", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
