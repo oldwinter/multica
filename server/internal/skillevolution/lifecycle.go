@@ -757,9 +757,11 @@ type RollbackRequest struct {
 }
 
 type Publication struct {
-	Proposal db.SkillEvolutionProposal
-	Release  db.SkillEvolutionRelease
-	Result   PublishSkillResult
+	Proposal         db.SkillEvolutionProposal
+	Release          db.SkillEvolutionRelease
+	Result           PublishSkillResult
+	Replayed         bool
+	DecisionRecorded bool
 }
 
 func (l *Lifecycle) Publish(ctx context.Context, request PublishRequest) (Publication, error) {
@@ -787,7 +789,7 @@ func (l *Lifecycle) Publish(ctx context.Context, request PublishRequest) (Public
 		}) || !publishReviewMatches(ctx, l.store, proposal, request) {
 			return Publication{}, ErrPersistenceConflict
 		}
-		return Publication{Proposal: proposal, Release: existing}, releaseReplayError(existing)
+		return Publication{Proposal: proposal, Release: existing, Replayed: true}, releaseReplayError(existing)
 	}
 	if ProposalState(proposal.State) != ProposalStateReady || !validUUID(proposal.CandidateRevisionID) || !proposal.CandidateHash.Valid {
 		return Publication{}, ErrDecisionConflict
@@ -820,10 +822,11 @@ func (l *Lifecycle) Publish(ctx context.Context, request PublishRequest) (Public
 		}
 		return Publication{Proposal: stale}, &StaleBaseError{Expected: Digest(proposal.BaseHash), Current: Digest(live.Manifest.Hash)}
 	}
-	if _, err := l.store.RecordReview(ctx, ReviewInput{
+	_, decisionRecorded, err := recordReviewWithStatus(ctx, l.store, ReviewInput{
 		WorkspaceID: request.WorkspaceID, ProposalID: proposal.ID, CandidateRevisionID: proposal.CandidateRevisionID,
 		Decision: "publish", ActorID: request.Actor.ID, Reason: request.Reason, IdempotencyKey: lifecycleKey("review", request.IdempotencyKey),
-	}); err != nil {
+	})
+	if err != nil {
 		return Publication{}, err
 	}
 	publishing, err := l.store.TransitionProposal(ctx, ProposalTransition{
@@ -831,7 +834,7 @@ func (l *Lifecycle) Publish(ctx context.Context, request PublishRequest) (Public
 		ExpectedState: ProposalStateReady, NextState: ProposalStatePublishing,
 	})
 	if err != nil {
-		return Publication{}, err
+		return Publication{Proposal: proposal, DecisionRecorded: decisionRecorded}, err
 	}
 	release, err := l.store.CreateRelease(ctx, ReleaseInput{
 		WorkspaceID: request.WorkspaceID, SkillID: proposal.SkillID, ProposalID: proposal.ID,
@@ -846,13 +849,15 @@ func (l *Lifecycle) Publish(ctx context.Context, request PublishRequest) (Public
 		if recoveryErr == nil {
 			publishing = recovered
 		}
-		return Publication{Proposal: publishing}, errors.Join(err, recoveryErr)
+		return Publication{Proposal: publishing, DecisionRecorded: decisionRecorded}, errors.Join(err, recoveryErr)
 	}
 	result, publishErr := l.publisher.Publish(ctx, PublishSkillRequest{
 		WorkspaceID: request.WorkspaceID, SkillID: proposal.SkillID, ExpectedBaseHash: Digest(proposal.BaseHash),
 		Bundle: revisionBundle(candidate),
 	})
-	return l.finishPublication(ctx, publishing, release, result, publishErr)
+	publication, finishErr := l.finishPublication(ctx, publishing, release, result, publishErr)
+	publication.DecisionRecorded = decisionRecorded
+	return publication, finishErr
 }
 
 func (l *Lifecycle) Rollback(ctx context.Context, request RollbackRequest) (Publication, error) {
@@ -884,7 +889,7 @@ func (l *Lifecycle) Rollback(ctx context.Context, request RollbackRequest) (Publ
 		if !rollbackReleaseMatchesRequest(existing, input) {
 			return Publication{}, ErrPersistenceConflict
 		}
-		return Publication{Release: existing}, releaseReplayError(existing)
+		return Publication{Release: existing, Replayed: true}, releaseReplayError(existing)
 	} else if !errors.Is(replayErr, ErrPersistenceNotFound) {
 		return Publication{}, replayErr
 	}
@@ -1381,6 +1386,23 @@ func publishReviewMatches(ctx context.Context, store lifecycleStore, proposal db
 		return false
 	}
 	return reviewMatches(detail.Reviews, proposal.CandidateRevisionID, "publish", request.Actor.ID, request.Reason, lifecycleKey("review", request.IdempotencyKey))
+}
+
+type reviewStatusRecorder interface {
+	RecordReviewWithStatus(context.Context, ReviewInput) (db.SkillEvolutionReview, bool, error)
+}
+
+func recordReviewWithStatus(ctx context.Context, store lifecycleStore, input ReviewInput) (db.SkillEvolutionReview, bool, error) {
+	if recorder, ok := store.(reviewStatusRecorder); ok {
+		return recorder.RecordReviewWithStatus(ctx, input)
+	}
+	detail, detailErr := store.GetProposalDetail(ctx, input.WorkspaceID, input.ProposalID)
+	if detailErr != nil && !errors.Is(detailErr, ErrPersistenceNotFound) {
+		return db.SkillEvolutionReview{}, false, detailErr
+	}
+	hadReview := detailErr == nil && reviewMatches(detail.Reviews, input.CandidateRevisionID, input.Decision, input.ActorID, input.Reason, input.IdempotencyKey)
+	review, err := store.RecordReview(ctx, input)
+	return review, !hadReview && err == nil, err
 }
 
 func reviewMatches(reviews []db.SkillEvolutionReview, candidateID pgtype.UUID, decision string, actorID pgtype.UUID, reason, key string) bool {

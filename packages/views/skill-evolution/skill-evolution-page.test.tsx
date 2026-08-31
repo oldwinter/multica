@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { ApiError } from "@multica/core/api";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithI18n } from "../test/i18n";
 import { NavigationProvider, type NavigationAdapter } from "../navigation";
@@ -346,6 +347,24 @@ describe("SkillEvolutionPage", () => {
     );
   }, 15_000);
 
+  it("does not report an unknown publication outcome as success", async () => {
+    mutations.publish.mockImplementation((_input, options) => options.onSuccess({
+      proposal: { ...READY_PROPOSAL, state: "publication_unknown" },
+      release: { ...RELEASE, outcome: "publication_unknown" },
+    }));
+    renderPage();
+    await screen.findByText("Repeated omissions in release summaries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Publish this proposal?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Publication outcome is unknown; inspect the release history.",
+    );
+    expect(toast.success).not.toHaveBeenCalledWith("Proposal published");
+  });
+
   it("keeps proposal actions visible but disabled without human permissions", async () => {
     state.overview = overview({
       permissions: { canConfigure: false, canPublish: false, canFork: false },
@@ -357,6 +376,39 @@ describe("SkillEvolutionPage", () => {
     expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Roll back" })).toBeDisabled();
+  });
+
+  it.each([
+    ["disabled", { ...LOOP, enabled: false, mode: "propose" }],
+    ["observe-only", { ...LOOP, enabled: true, mode: "observe" }],
+  ] as const)("disables proposal requests for %s loops", async (_name, loop) => {
+    state.overview = overview({ loop, proposals: [] });
+    state.proposal = null;
+    renderPage();
+
+    const request = await screen.findByRole("button", { name: "Request proposal" });
+    expect(request).toBeDisabled();
+    expect(mutations.request).not.toHaveBeenCalled();
+  });
+
+  it("keeps the replay sample control aligned with the server minimum", async () => {
+    state.overview = overview({ loop: null, proposals: [] });
+    state.proposal = null;
+    renderPage();
+
+    const replay = await screen.findByLabelText("Replay samples");
+    expect(replay).toHaveAttribute("min", "1");
+  });
+
+  it("blocks saving a replay sample count below the server minimum", async () => {
+    state.overview = overview({ loop: null, proposals: [] });
+    state.proposal = null;
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("switch", { name: "Enabled" }));
+    fireEvent.change(screen.getByLabelText("Replay samples"), { target: { value: "0" } });
+    expect(screen.getByRole("button", { name: "Save configuration" })).toBeDisabled();
+    expect(mutations.configure).not.toHaveBeenCalled();
   });
 
   it("renders a dedicated forbidden state for a non-member actor", async () => {

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5"
 	migrationfiles "github.com/multica-ai/multica/server/internal/migrations"
 )
+
+func TestSkillEvolutionScheduleIndexUsesCurrentLoopStateColumn(t *testing.T) {
+	path := filepath.Join("..", "..", "migrations", "527_skill_evolution_loop_schedule_index_is_enabled.up.sql")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read schedule index migration: %v", err)
+	}
+	sql := strings.Join(strings.Fields(string(raw)), " ")
+	if !strings.Contains(sql, "WHERE is_enabled AND mode IN ('observe', 'propose')") {
+		t.Fatalf("schedule index predicate = %q, want current loop state and modes", sql)
+	}
+	if strings.Contains(sql, "WHERE enabled") {
+		t.Fatalf("schedule index still uses retired enabled column: %q", sql)
+	}
+}
 
 func TestSkillEvolutionMigrationsUpgradeExisting514LedgerAndReplay(t *testing.T) {
 	pool, schema := newRoomMigrationTestSchema(t)
@@ -32,7 +49,9 @@ CREATE TABLE skill_evolution_loop (
     id UUID NOT NULL DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL,
     skill_id UUID NOT NULL,
-    enabled BOOLEAN NOT NULL DEFAULT FALSE
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    mode TEXT NOT NULL DEFAULT 'observe',
+    next_eligible_at TIMESTAMPTZ NULL
 );
 CREATE TABLE task_run_review (
     id UUID NOT NULL,
@@ -113,10 +132,11 @@ VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid
 		"524_task_run_review_idempotency_index",
 		"525_skill_evolution_exact_coverage_and_loop_state",
 		"526_skill_evolution_evidence_role",
+		"527_skill_evolution_loop_schedule_index_is_enabled",
 	}
 	opts.Files = realMigrationFiles(t, tailVersions, "up")
 	if err := runMigrations(ctx, pool, opts); err != nil {
-		t.Fatalf("upgrade existing 514 ledger through 526: %v", err)
+		t.Fatalf("upgrade existing 514 ledger through 527: %v", err)
 	}
 	var eligibility, reason string
 	var hasCoverage, hasIsEnabled, hasLegacyEnabled, enabledValuePreserved, reviewKeyBackfilled, hasEvidenceRole bool
@@ -146,7 +166,7 @@ SELECT
 
 	// Simulate DDL commit followed by a crash before either ledger write. Both
 	// the PK attach and validation migrations must accept their exact end state.
-	for _, version := range []string{"518_skill_evolution_task_dispatch_snapshot_primary_key", validateVersion, "525_skill_evolution_exact_coverage_and_loop_state", "526_skill_evolution_evidence_role"} {
+	for _, version := range []string{"518_skill_evolution_task_dispatch_snapshot_primary_key", validateVersion, "525_skill_evolution_exact_coverage_and_loop_state", "526_skill_evolution_evidence_role", "527_skill_evolution_loop_schedule_index_is_enabled"} {
 		if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
 			t.Fatalf("remove %s ledger row: %v", version, err)
 		}
@@ -201,7 +221,7 @@ func TestSkillEvolutionFollowupReplaysAfterFreshMigration(t *testing.T) {
 	if err := runMigrations(ctx, pool, opts); err != nil {
 		t.Fatalf("fresh migrate through skill evolution follow-up: %v", err)
 	}
-	for _, version := range []string{"522_wiki_page_proposal_source_validate", "525_skill_evolution_exact_coverage_and_loop_state", "526_skill_evolution_evidence_role"} {
+	for _, version := range []string{"522_wiki_page_proposal_source_validate", "525_skill_evolution_exact_coverage_and_loop_state", "526_skill_evolution_evidence_role", "527_skill_evolution_loop_schedule_index_is_enabled"} {
 		if _, err := pool.Exec(ctx, `DELETE FROM schema_migrations WHERE version = $1`, version); err != nil {
 			t.Fatalf("remove fresh ledger row %s: %v", version, err)
 		}
@@ -212,6 +232,13 @@ func TestSkillEvolutionFollowupReplaysAfterFreshMigration(t *testing.T) {
 		assertRoomMigrationRecorded(t, ctx, pool, version, true)
 	}
 	assertSkillEvolutionConstraintValidated(t, ctx, pool, "wiki_page_edit_proposal_source", true)
+	var indexDefinition string
+	if err := pool.QueryRow(ctx, `SELECT pg_get_indexdef(to_regclass($1))`, schema+".skill_evolution_loop_schedule_is_enabled_idx").Scan(&indexDefinition); err != nil {
+		t.Fatalf("read Skill Evolution schedule index definition: %v", err)
+	}
+	if !strings.Contains(indexDefinition, "is_enabled") || !strings.Contains(indexDefinition, "observe") || !strings.Contains(indexDefinition, "propose") {
+		t.Fatalf("schedule index definition = %q, want current loop state and runnable modes", indexDefinition)
+	}
 }
 
 func TestSkillEvolutionPrimaryKeyMigrationRejectsWrongCandidateIndex(t *testing.T) {

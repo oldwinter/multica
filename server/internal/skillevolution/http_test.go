@@ -242,7 +242,7 @@ func TestEvolutionHTTPPreservesUnknownPublicationIdentity(t *testing.T) {
 	}
 	evolution := &fakeEvolutionHTTP{
 		publish: func(PublishRequest) (Publication, error) {
-			return Publication{Proposal: proposal, Release: unknown}, ErrPublicationUnknown
+			return Publication{Proposal: proposal, Release: unknown, DecisionRecorded: true}, ErrPublicationUnknown
 		},
 		rollback: func(RollbackRequest) (Publication, error) {
 			value := unknown
@@ -276,7 +276,7 @@ func TestEvolutionHTTPRecordsSuccessfulPublicationMetrics(t *testing.T) {
 		CreatedAt: testEvolutionTime(), UpdatedAt: testEvolutionTime()}
 	evolution := &fakeEvolutionHTTP{
 		publish: func(PublishRequest) (Publication, error) {
-			return Publication{Proposal: proposal, Release: release}, nil
+			return Publication{Proposal: proposal, Release: release, DecisionRecorded: true}, nil
 		},
 		rollback: func(RollbackRequest) (Publication, error) {
 			value := release
@@ -304,6 +304,55 @@ func TestEvolutionHTTPRecordsSuccessfulPublicationMetrics(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(metrics.Rollbacks); got != 1 {
 		t.Fatalf("rollbacks = %v", got)
+	}
+}
+
+func TestEvolutionHTTPSeparatesDecisionAndPublicationMetrics(t *testing.T) {
+	workspaceID, skillID, proposalID, releaseID, userID := testEvolutionUUID("workspace-metrics"), testEvolutionUUID("skill-metrics"), testEvolutionUUID("proposal-metrics"), testEvolutionUUID("release-metrics"), testEvolutionUUID("user-metrics")
+	proposal := db.SkillEvolutionProposal{ID: proposalID, WorkspaceID: workspaceID, SkillID: skillID,
+		BaseRevisionID: testEvolutionUUID("base-metrics"), State: string(ProposalStatePublishing), BaseHash: testEvolutionDigest(),
+		CreatedAt: testEvolutionTime(), UpdatedAt: testEvolutionTime()}
+	unknown := db.SkillEvolutionRelease{ID: releaseID, WorkspaceID: workspaceID, SkillID: skillID,
+		RevisionID: testEvolutionUUID("revision-metrics"), Kind: string(ReleaseKindPublish), ExpectedBaseHash: testEvolutionDigest(),
+		Outcome: string(ReleaseOutcomePublicationUnknown), CreatedAt: testEvolutionTime()}
+	metrics := NewMetrics()
+	evolution := &fakeEvolutionHTTP{
+		publish: func(PublishRequest) (Publication, error) {
+			return Publication{Proposal: proposal, Release: unknown, DecisionRecorded: true}, ErrPublicationUnknown
+		},
+		rollback: func(RollbackRequest) (Publication, error) { return Publication{}, ErrDecisionConflict },
+	}
+	httpLeaf := NewHTTP(evolution, fakeSkillLoader{}, &fakeProposalRequester{}, metrics)
+	recorder := httptest.NewRecorder()
+	httpLeaf.Routes().ServeHTTP(recorder, evolutionRequest(http.MethodPost,
+		"/proposals/"+uuidString(proposalID)+"/publish", []byte(`{"idempotency_key":"unknown-metrics"}`), workspaceID, userID, "owner"))
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("unknown publication status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got := testutil.ToFloat64(metrics.ProposalsAccepted); got != 1 {
+		t.Fatalf("unknown publication accepted metric = %v, want 1 human decision", got)
+	}
+	if got := testutil.ToFloat64(metrics.Publications); got != 0 {
+		t.Fatalf("unknown publication count = %v, want 0", got)
+	}
+
+	replayRelease := unknown
+	replayRelease.Outcome = string(ReleaseOutcomeSucceeded)
+	publicationCalls := 0
+	evolution.publish = func(PublishRequest) (Publication, error) {
+		publicationCalls++
+		return Publication{Proposal: proposal, Release: replayRelease, Replayed: publicationCalls > 1, DecisionRecorded: publicationCalls == 1}, nil
+	}
+	for range 2 {
+		recorder = httptest.NewRecorder()
+		httpLeaf.Routes().ServeHTTP(recorder, evolutionRequest(http.MethodPost,
+			"/proposals/"+uuidString(proposalID)+"/publish", []byte(`{"idempotency_key":"replay-metrics"}`), workspaceID, userID, "owner"))
+	}
+	if got := testutil.ToFloat64(metrics.ProposalsAccepted); got != 2 {
+		t.Fatalf("replayed publication accepted metric = %v, want 2 decisions", got)
+	}
+	if got := testutil.ToFloat64(metrics.Publications); got != 1 {
+		t.Fatalf("replayed publication count = %v, want 1", got)
 	}
 }
 

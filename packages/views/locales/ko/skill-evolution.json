@@ -190,6 +190,7 @@
     "rejected": "제안을 거절했습니다",
     "published": "제안을 게시했습니다",
     "rolled_back": "롤백을 게시했습니다",
+    "publication_unknown": "게시 결과를 알 수 없습니다. 게시 기록을 확인하세요.",
     "forked": "워크스페이스 skill을 생성했습니다",
     "failed": "작업 실패"
   }

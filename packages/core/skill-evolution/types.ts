@@ -30,6 +30,7 @@ export type SkillEvolutionProposalRequestState =
   | "proposal_stale"
   | "proposal_publishing"
   | "proposal_published"
+  | "proposal_publication_unknown"
   | "unknown";
 
 export type SkillEvolutionReleaseKind = "publish" | "rollback" | "unknown";

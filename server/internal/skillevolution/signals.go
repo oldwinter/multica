@@ -89,6 +89,12 @@ func (a *SignalAdapter) Load(ctx context.Context, query SignalQuery, expected Ev
 		expected.Kind != a.kind || expected.Validate() != nil {
 		return ResolvedEvidence{}, ErrSignalSourceInvalid
 	}
+	workspaceID := uuid.UUID(query.WorkspaceID.Bytes).String()
+	skillID := uuid.UUID(query.SkillID.Bytes).String()
+	if expected.WorkspaceID != workspaceID ||
+		(expected.TargetSkillID != "" && expected.TargetSkillID != skillID) {
+		return ResolvedEvidence{}, ErrSignalSourceInvalid
+	}
 	resolved, err := a.load(ctx, query, expected)
 	if err != nil {
 		return ResolvedEvidence{}, err
