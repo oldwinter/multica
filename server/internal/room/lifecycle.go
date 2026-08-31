@@ -403,7 +403,8 @@ func (s *Service) enqueueSynthesisTx(ctx context.Context, queries *db.Queries, r
 	if roomRow.CapabilityVersion >= 2 {
 		requiredCapability = protocol.DaemonCapabilityRoomOutcomesV2
 	}
-	ready, err := roomAgentReadyForCapability(ctx, queries, agent, requiredCapability)
+	runtimeLookup := s.runtimeLookup(queries)
+	ready, err := roomAgentReadyForCapability(ctx, runtimeLookup, agent, requiredCapability)
 	if err != nil {
 		return db.RoomTurn{}, db.AgentTaskQueue{}, fmt.Errorf("check Room facilitator readiness: %w", err)
 	}
@@ -411,7 +412,7 @@ func (s *Service) enqueueSynthesisTx(ctx context.Context, queries *db.Queries, r
 		return db.RoomTurn{}, db.AgentTaskQueue{}, ErrSynthesisNotRetryable
 	}
 	if cycle.CostLimitTicks.Valid {
-		costReady, costErr := roomAgentReadyForCapability(ctx, queries, agent, protocol.DaemonCapabilityRoomCostLimitsV1)
+		costReady, costErr := roomAgentReadyForCapability(ctx, runtimeLookup, agent, protocol.DaemonCapabilityRoomCostLimitsV1)
 		if costErr != nil {
 			return db.RoomTurn{}, db.AgentTaskQueue{}, fmt.Errorf("check Room facilitator spend-limit support: %w", costErr)
 		}

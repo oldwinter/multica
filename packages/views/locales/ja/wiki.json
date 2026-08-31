@@ -26,6 +26,7 @@
   },
   "fields": {
     "path": "パス",
+    "path_placeholder": "index.md",
     "path_hint": "index.md や concepts/agents.md などの相対 .md パス",
     "title": "タイトル",
     "content": "内容",

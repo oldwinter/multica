@@ -26,6 +26,7 @@
   },
   "fields": {
     "path": "路径",
+    "path_placeholder": "index.md",
     "path_hint": "相对 .md 路径，例如 index.md 或 concepts/agents.md",
     "title": "标题",
     "content": "内容",

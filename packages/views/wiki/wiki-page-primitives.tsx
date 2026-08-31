@@ -70,7 +70,7 @@ export function WikiEditor({
     <div className="space-y-3">
       <label className="block space-y-1.5 text-caption text-muted-foreground">
         <span>{t(($) => $.fields.path)}</span>
-        <Input value={path} onChange={(event) => onPathChange(event.target.value)} placeholder="index.md" autoFocus />
+        <Input value={path} onChange={(event) => onPathChange(event.target.value)} placeholder={t(($) => $.fields.path_placeholder)} autoFocus />
         <span className="block break-words">{t(($) => $.fields.path_hint)}</span>
       </label>
       <label className="block space-y-1.5 text-caption text-muted-foreground">

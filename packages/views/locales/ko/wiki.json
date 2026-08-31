@@ -26,6 +26,7 @@
   },
   "fields": {
     "path": "경로",
+    "path_placeholder": "index.md",
     "path_hint": "index.md 또는 concepts/agents.md 같은 상대 .md 경로",
     "title": "제목",
     "content": "내용",

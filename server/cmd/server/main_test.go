@@ -7,9 +7,6 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"io"
-	"net"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -19,51 +16,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
-
-func TestAPIServerClosesSlowRequestHeaders(t *testing.T) {
-	srv := newAPIServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	if srv.ReadHeaderTimeout <= 0 || srv.IdleTimeout <= 0 {
-		t.Fatalf("server deadlines = read header %s, idle %s; want both positive", srv.ReadHeaderTimeout, srv.IdleTimeout)
-	}
-
-	srv.ReadHeaderTimeout = 50 * time.Millisecond
-	listener, err := net.Listen("tcp", srv.Addr)
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	serveErr := make(chan error, 1)
-	go func() {
-		serveErr <- srv.Serve(listener)
-	}()
-	t.Cleanup(func() {
-		_ = srv.Close()
-		<-serveErr
-	})
-
-	conn, err := net.Dial("tcp", listener.Addr().String())
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
-	if _, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example")); err != nil {
-		t.Fatalf("write partial request: %v", err)
-	}
-	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-		t.Fatalf("set read deadline: %v", err)
-	}
-	started := time.Now()
-	if _, err := io.ReadAll(conn); err != nil {
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			t.Fatalf("server left partial request open until client deadline: %v", err)
-		}
-		t.Fatalf("read server response: %v", err)
-	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("server closed partial request after %s, want before client deadline", elapsed)
-	}
-}
 
 func TestRedisClientName(t *testing.T) {
 	tests := []struct {
@@ -559,5 +511,30 @@ func TestJWTSecretBootError(t *testing.T) {
 				t.Fatalf("jwtSecretBootError(%q, %q) = %v, want nil", tt.jwtSecret, tt.appEnv, err)
 			}
 		})
+	}
+}
+
+// TestNewMainHTTPServerTimeouts pins the production timeout defaults on the
+// public HTTP server. These are safety settings, not tuning: removing them,
+// resetting them to zero, or making ReadTimeout/WriteTimeout non-zero would
+// silently reintroduce the Slowloris exposure or start killing uploads and
+// long-lived WebSocket connections mid-stream — none of which the rest of the
+// suite would catch.
+func TestNewMainHTTPServerTimeouts(t *testing.T) {
+	srv := newMainHTTPServer(":8080", nil)
+
+	if got, want := srv.ReadHeaderTimeout, 5*time.Second; got != want {
+		t.Errorf("ReadHeaderTimeout = %v, want %v", got, want)
+	}
+	if got, want := srv.IdleTimeout, 120*time.Second; got != want {
+		t.Errorf("IdleTimeout = %v, want %v", got, want)
+	}
+	// Zero is intentional: WebSocket upgrades and large uploads share this
+	// listener and must not be bounded by a whole-request deadline.
+	if got := srv.ReadTimeout; got != 0 {
+		t.Errorf("ReadTimeout = %v, want 0", got)
+	}
+	if got := srv.WriteTimeout; got != 0 {
+		t.Errorf("WriteTimeout = %v, want 0", got)
 	}
 }

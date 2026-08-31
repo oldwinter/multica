@@ -26,6 +26,7 @@
   },
   "fields": {
     "path": "Path",
+    "path_placeholder": "index.md",
     "path_hint": "Relative .md path, e.g. index.md or concepts/agents.md",
     "title": "Title",
     "content": "Content",
