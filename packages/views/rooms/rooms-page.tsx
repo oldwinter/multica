@@ -60,7 +60,7 @@ export function isLinkedRoomMissing(
   return Boolean(linkedRoomId) && listLoaded && !rooms.some((room) => room.id === linkedRoomId);
 }
 
-export function RoomsPage() {
+export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "div" } = {}) {
   const { t } = useT("rooms");
   const workspaceId = useWorkspaceId();
   const paths = useWorkspacePaths();
@@ -164,6 +164,8 @@ export function RoomsPage() {
     toast.error(error?.message || fallback);
   };
 
+  const Root = rootElement;
+
   const create = (
     input: CreateRoomInput,
     onSuccess: (detail: RoomDetail) => void,
@@ -192,7 +194,7 @@ export function RoomsPage() {
   };
 
   return (
-    <main
+    <Root
       data-room-workspace
       className="pe-chat-launcher flex min-h-0 flex-1 overflow-hidden bg-page-canvas"
     >
@@ -452,7 +454,7 @@ export function RoomsPage() {
           }}
         />
       ) : null}
-    </main>
+    </Root>
   );
 }
 

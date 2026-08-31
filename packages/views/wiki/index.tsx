@@ -54,14 +54,17 @@ import {
 export function WikiPageView({
   pageId,
   personalWikiPath = appPaths.personalWiki(),
+  rootElement = "main",
 }: {
   pageId?: string;
   personalWikiPath?: string;
+  rootElement?: "main" | "div";
 }) {
   const { t } = useT("wiki");
   const wsId = useWorkspaceId();
   const paths = useWorkspacePaths();
   const nav = useNavigation();
+  const Root = rootElement;
 
   const [searchText, setSearchText] = useState("");
   const [creating, setCreating] = useState(false);
@@ -249,7 +252,7 @@ export function WikiPageView({
   };
 
   return (
-    <main className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden" data-testid="wiki-page">
+    <Root className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden" data-testid="wiki-page">
       <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
@@ -508,7 +511,7 @@ export function WikiPageView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </Root>
   );
 }
 

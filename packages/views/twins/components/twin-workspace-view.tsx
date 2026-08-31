@@ -23,9 +23,12 @@ import { ReadOnlyNotice, WorkspaceStaleState, WorkspaceState } from "./workspace
 
 export type { TwinDetailState, TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
 
-export function TwinWorkspaceView(props: TwinWorkspaceProps) {
+type TwinWorkspaceViewProps = TwinWorkspaceProps & { rootElement?: "main" | "div" };
+
+export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorkspaceViewProps) {
   const { t } = useT("twins");
   const navigation = useOptionalNavigation();
+  const Root = rootElement;
   const [fallbackTab, setFallbackTab] = useState<TwinWorkspaceTab>(DEFAULT_TWIN_WORKSPACE_TAB);
   const tab = navigation
     ? parseTwinWorkspaceTab(navigation.searchParams.get(TWIN_WORKSPACE_TAB_QUERY_KEY))
@@ -38,7 +41,7 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
     }
   };
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-twin-copy data-twin-workspace>
+    <Root className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-twin-copy data-twin-workspace>
       <PageHeader className="gap-2 bg-page-canvas">
         <BrainCircuit className="size-4 text-muted-foreground" aria-hidden="true" />
         <h1 className="min-w-0 truncate text-title font-medium text-foreground">{t(($) => $.page.title)}</h1>
@@ -83,6 +86,6 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
           </>
         ) : <WorkspaceState state={props.state} onRetry={props.onRetry} />}
       </div>
-    </main>
+    </Root>
   );
 }

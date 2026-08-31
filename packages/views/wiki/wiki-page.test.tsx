@@ -158,6 +158,19 @@ describe("WikiPageView", () => {
     expect(screen.getByText("Could not load wiki pages.")).toBeInTheDocument();
   });
 
+  it("keeps the default main landmark opt-in for standalone callers", () => {
+    const { container, unmount } = renderWiki();
+    expect(container.querySelector('[data-testid="wiki-page"]')?.tagName).toBe("MAIN");
+    unmount();
+
+    render(
+      <I18nProvider locale="en" resources={{ en: { wiki: enWiki } }}>
+        <WikiPageView rootElement="div" />
+      </I18nProvider>,
+    );
+    expect(document.querySelector('[data-testid="wiki-page"]')?.tagName).toBe("DIV");
+  });
+
   it("opens the current immutable revision from document metadata", () => {
     harness.detail = { isLoading: false, isError: false, data: page, refetch: vi.fn() };
     renderWiki("page-1");

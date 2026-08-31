@@ -108,6 +108,11 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByTestId("twin-workspace-content")).not.toHaveClass("pe-chat-launcher");
   });
 
+  it("keeps the main landmark configurable for a dashboard shell", () => {
+    const { container } = renderView({ rootElement: "div" });
+    expect(container.querySelector("[data-twin-workspace]")?.tagName).toBe("DIV");
+  });
+
   it.each([
     ["loading", "Loading LM Wiki and Twin"],
     ["error", "Review workspace unavailable"],

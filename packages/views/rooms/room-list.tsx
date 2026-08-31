@@ -45,9 +45,9 @@ export function RoomList({
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-surface-border px-3">
         <div className="flex min-w-0 items-center gap-2">
           <MessageSquareText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <h2 className="truncate text-body font-medium text-foreground">
+          <div className="truncate text-body font-medium text-foreground">
             {t(($) => $.page.title)}
-          </h2>
+          </div>
           {rooms.length > 0 ? (
             <span className="font-mono text-caption tabular-nums text-muted-foreground">
               {rooms.length}
@@ -85,9 +85,9 @@ export function RoomList({
 
       {valueReviewRooms.length > 0 ? (
         <section className="border-b border-surface-border px-3 py-2" aria-labelledby="room-value-review-label">
-          <h3 id="room-value-review-label" className="mb-1 text-caption font-medium text-muted-foreground">
+          <div id="room-value-review-label" className="mb-1 text-caption font-medium text-muted-foreground">
             {t(($) => $.list.value_review)}
-          </h3>
+          </div>
           <ol className="space-y-0.5">
             {valueReviewRooms.map((room) => (
               <li key={room.id}>

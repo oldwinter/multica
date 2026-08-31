@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   Sidebar,
+  SidebarInset,
   SidebarProvider,
   useSidebar,
 } from "@multica/ui/components/ui/sidebar";
@@ -169,6 +170,24 @@ describe("sidebar auto-collapse between lg and xl", () => {
     setWidth(851);
 
     expect(state()).toBe("expanded");
+  });
+
+  it("makes the main content inert while the mobile sidebar is open", () => {
+    setWidth(851);
+    const { container } = renderWithI18n(
+      <SidebarProvider>
+        <Sidebar />
+        <Probe />
+        <SidebarInset>
+          <button type="button">Background action</button>
+        </SidebarInset>
+      </SidebarProvider>,
+    );
+    const inset = container.querySelector<HTMLElement>("[data-slot='sidebar-inset']")!;
+
+    expect(inset).not.toHaveAttribute("inert");
+    fireEvent.click(screen.getByTestId("state"));
+    expect(inset).toHaveAttribute("inert");
   });
 
   it("never persists the open state, however it changed", () => {

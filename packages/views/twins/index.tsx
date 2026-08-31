@@ -72,7 +72,7 @@ function detailQueryState(selectedId: string, query: { isPending: boolean; isErr
 export type { TwinViewState } from "./components/twin-workspace-view";
 export { TwinWorkspaceView } from "./components/twin-workspace-view";
 
-export function TwinsPage() {
+export function TwinsPage({ rootElement = "main" }: { rootElement?: "main" | "div" } = {}) {
   const { t } = useT("twins");
   const wsId = useWorkspaceId();
   const [revisionId, setRevisionId] = useState("");
@@ -147,6 +147,7 @@ export function TwinsPage() {
   return (
     <TwinWorkspaceView
       wsId={wsId}
+      rootElement={rootElement}
       state={state}
       overviewStale={overviewStale}
       wiki={wiki}
