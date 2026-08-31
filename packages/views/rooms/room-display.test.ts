@@ -4,9 +4,15 @@ import {
   artifactHref,
   countTodayTurns,
   latestRefusedCycle,
+  roomStatusClass,
 } from "./room-display";
 
 describe("room display helpers", () => {
+  it("keeps active badge text readable on the success tint", () => {
+    expect(roomStatusClass("active")).toContain("text-foreground");
+    expect(roomStatusClass("active")).not.toContain("text-success");
+  });
+
   it("counts only turns created during the current UTC day", () => {
     const detail = {
       turns: [

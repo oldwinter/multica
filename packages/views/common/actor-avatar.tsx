@@ -86,9 +86,10 @@ export function ActorAvatar({
 }: ActorAvatarProps) {
   const { getActorName, getActorInitials, getActorAvatarUrl } = useActorName();
   const paths = useWorkspacePaths();
+  const actorName = getActorName(actorType, actorId);
   const avatar = (
     <ActorAvatarBase
-      name={getActorName(actorType, actorId)}
+      name={actorName}
       initials={getActorInitials(actorType, actorId)}
       avatarUrl={getActorAvatarUrl(actorType, actorId)}
       isAgent={actorType === "agent"}
@@ -125,7 +126,9 @@ export function ActorAvatar({
           : null
     : null;
   const content = profileHref ? (
-    <ActorAvatarProfileLink href={profileHref}>{dotted}</ActorAvatarProfileLink>
+    <ActorAvatarProfileLink href={profileHref} label={actorName}>
+      {dotted}
+    </ActorAvatarProfileLink>
   ) : (
     dotted
   );
@@ -157,9 +160,11 @@ export function ActorAvatar({
  */
 function ActorAvatarProfileLink({
   href,
+  label,
   children,
 }: {
   href: string;
+  label: string;
   children: React.ReactNode;
 }) {
   // Web note: the trigger is a `<span role="link">`, not an anchor, so there
@@ -187,6 +192,7 @@ function ActorAvatarProfileLink({
   return (
     <span
       role="link"
+      aria-label={label}
       tabIndex={-1}
       className="inline-flex cursor-pointer rounded-full"
       onClick={navigate}

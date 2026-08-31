@@ -66,6 +66,7 @@ export function EmptyState({
       {agent ? (
         <div
           className="w-full max-w-sm space-y-2"
+          role="group"
           aria-label={t(($) => $.conversation_starters.aria_label)}
         >
           <ConversationStarterList starters={starters} onPick={onPickPrompt} />

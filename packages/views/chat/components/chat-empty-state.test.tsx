@@ -75,6 +75,7 @@ describe("chat empty-state conversation starters", () => {
   it("shows localized fallbacks for agents without configuration", () => {
     const onPickPrompt = renderEmptyState(agent());
 
+    expect(screen.getByRole("group", { name: "Conversation starters" })).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Suggest a first task" }),
     );
