@@ -32,6 +32,7 @@ import {
   type PromoteRoomArtifactInput,
   type Room,
   type RoomArtifact,
+  type RoomDetailTab,
   type RoomDetail,
   type RoomSynthesis,
 } from "@multica/core/rooms";
@@ -58,6 +59,13 @@ export function isLinkedRoomMissing(
   listLoaded: boolean,
 ): boolean {
   return Boolean(linkedRoomId) && listLoaded && !rooms.some((room) => room.id === linkedRoomId);
+}
+
+export function detailTabAfterRoomSelection(
+  currentTab: RoomDetailTab,
+  linkedRoomMissing: boolean,
+): RoomDetailTab {
+  return linkedRoomMissing ? "transcript" : currentTab;
 }
 
 export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "div" } = {}) {
@@ -130,6 +138,8 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
   };
 
   const selectRoom = (roomId: string) => {
+    const nextDetailTab = detailTabAfterRoomSelection(detailTab, linkedRoomMissing);
+    if (nextDetailTab !== detailTab) setDetailTab(nextDetailTab);
     setSelectedRoomId(roomId);
     nav.replace(paths.roomDetail(roomId));
   };
