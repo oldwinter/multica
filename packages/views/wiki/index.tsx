@@ -98,6 +98,7 @@ export function WikiPageView({
   const selection = pageId && detailSelection ? detailSelection : urlSelection;
   const scope = selection.scope;
   const projectId = selection.projectId;
+  const requiresProjectSelection = scope === "project" && !projectId;
   const listOptions = wikiPageListOptions(wsId, {
     scope,
     projectId: scope === "project" ? projectId ?? undefined : undefined,
@@ -272,7 +273,7 @@ export function WikiPageView({
             <h1 className="break-words text-display-sm font-medium text-foreground">{t(($) => $.page.title)}</h1>
             <p className="max-w-2xl break-words text-body text-muted-foreground">{t(($) => $.page.description)}</p>
           </div>
-          <Button onClick={() => setCreating(true)} disabled={scope === "project" && !projectId}>
+          <Button onClick={() => setCreating(true)} disabled={requiresProjectSelection}>
             <Plus data-icon="inline-start" />
             {t(($) => $.actions.new_page)}
           </Button>
@@ -337,7 +338,7 @@ export function WikiPageView({
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.states.loading)}</p>
             ) : listQuery.isError ? (
               <p className="text-body text-destructive" role="alert">{t(($) => $.states.error)}</p>
-            ) : scope === "project" && !projectId ? (
+            ) : requiresProjectSelection ? (
               <p className="text-body text-muted-foreground">{t(($) => $.empty.pick_project)}</p>
             ) : pages.length === 0 ? (
               <div className="space-y-1 px-1 py-4">
@@ -352,8 +353,12 @@ export function WikiPageView({
               <WikiEditor path={draftPath} title={draftTitle} content={draftContent} onPathChange={setDraftPath} onTitleChange={setDraftTitle} onContentChange={setDraftContent} onSave={createPage} onCancel={() => setCreating(false)} pending={createMutation.isPending} create error={actionError} />
             ) : !pageId ? (
               <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center">
-                <p className="text-body font-medium text-foreground">{t(($) => $.empty.title)}</p>
-                <p className="max-w-md text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
+                <p className="text-body font-medium text-foreground">
+                  {requiresProjectSelection ? t(($) => $.empty.pick_project) : t(($) => $.empty.title)}
+                </p>
+                {!requiresProjectSelection ? (
+                  <p className="max-w-md text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
+                ) : null}
               </div>
             ) : detailQuery.isLoading ? (
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.states.loading)}</p>

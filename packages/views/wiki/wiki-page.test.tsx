@@ -299,6 +299,8 @@ describe("WikiPageView", () => {
     expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("combobox")).toHaveTextContent("Select a project");
     expect(screen.getByRole("button", { name: "New page" })).toBeDisabled();
+    expect(screen.queryByText(enWiki.empty.title)).not.toBeInTheDocument();
+    expect(screen.queryByText(enWiki.empty.description)).not.toBeInTheDocument();
   });
 
   it("leaves a project detail page before changing its collection project", async () => {
