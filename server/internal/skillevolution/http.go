@@ -234,7 +234,7 @@ func (h *HTTP) publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value, err := h.evolution.Publish(r.Context(), PublishRequest{WorkspaceID: workspaceID, ProposalID: proposalID, Actor: actor, Reason: request.Reason, IdempotencyKey: request.IdempotencyKey})
-	if validUUID(value.Release.ID) {
+	if value.DecisionRecorded && !value.Replayed {
 		h.metrics.RecordProposalAccepted()
 	}
 	if err != nil {
@@ -246,7 +246,9 @@ func (h *HTTP) publish(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	h.metrics.RecordPublication(false)
+	if !value.Replayed && value.Release.Outcome == string(ReleaseOutcomeSucceeded) {
+		h.metrics.RecordPublication(false)
+	}
 	proposal := proposalResponse(value.Proposal)
 	writeEvolutionJSON(w, http.StatusOK, publicationDTO{Proposal: &proposal, Release: releaseResponse(value.Release)})
 }
@@ -277,7 +279,9 @@ func (h *HTTP) rollback(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	h.metrics.RecordPublication(true)
+	if !value.Replayed && value.Release.Outcome == string(ReleaseOutcomeSucceeded) {
+		h.metrics.RecordPublication(true)
+	}
 	writeEvolutionJSON(w, http.StatusOK, publicationDTO{Release: releaseResponse(value.Release)})
 }
 

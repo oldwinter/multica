@@ -223,6 +223,7 @@ func scheduledEvolutionNoop(err error) bool {
 		errors.Is(err, ErrEvolutionPaused) ||
 		errors.Is(err, ErrEvolutionObserveOnly) ||
 		errors.Is(err, ErrEvolutionCooldown) ||
+		errors.Is(err, ErrInsufficientSignals) ||
 		errors.Is(err, ErrGenerationActive) ||
 		errors.Is(err, ErrPersistenceNotFound) ||
 		errors.Is(err, ErrWorkspaceSkillNotFound)
