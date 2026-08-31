@@ -18,7 +18,7 @@ import type { TwinWorkspaceTab } from "./twin-workspace-tabs";
 
 export type { TwinWorkspaceTab } from "./twin-workspace-tabs";
 
-const readinessSectionClassName = "min-h-52 border-y border-border/70 py-4";
+const readinessSectionClassName = "min-h-72 border-y border-border/70 py-4 lg:min-h-52";
 
 export function TwinActivationReadiness({
   wsId,
