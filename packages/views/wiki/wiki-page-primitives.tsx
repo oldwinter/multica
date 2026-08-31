@@ -69,6 +69,7 @@ export function WikiEditor({
     <div className="space-y-3">
       <label className="block space-y-1.5 text-caption text-muted-foreground">
         <span>{t(($) => $.fields.path)}</span>
+        {/* eslint-disable-next-line no-restricted-syntax -- fixed Markdown filename example, not localized copy */}
         <Input value={path} onChange={(event) => onPathChange(event.target.value)} placeholder="index.md" autoFocus />
         <span className="block break-words">{t(($) => $.fields.path_hint)}</span>
       </label>

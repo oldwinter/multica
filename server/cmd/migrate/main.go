@@ -352,6 +352,7 @@ var concurrentIndexCleanups = map[string]string{
 	"438_agent_runtime_online_last_seen_index":                  "idx_agent_runtime_online_last_seen",
 	"439_agent_runtime_offline_last_seen_index":                 "idx_agent_runtime_offline_last_seen",
 	"440_github_pr_head_sha_index":                              "idx_github_pull_request_head_sha",
+	"443_issue_project_status_index":                            "idx_issue_project_status",
 	"483_agent_task_queue_manual_rerun_index":                   "idx_agent_task_queue_manual_rerun_source",
 	"484_skill_evolution_loop_id_index":                         "skill_evolution_loop_id_uidx",
 	"485_skill_evolution_revision_id_index":                     "skill_evolution_revision_id_uidx",
@@ -418,6 +419,7 @@ var preMigrationHooks = func() map[string]preMigrationHook {
 	hooks := map[string]preMigrationHook{
 		"103_drop_legacy_daily_rollups":                         runTaskUsageHourlyHook,
 		"198_agent_task_attribution_strict_constraint_validate": runAttributionStrictHook,
+		"422_channel_chat_route_history":                        applyChannelChatRouteHistoryHook,
 		"431_chat_explicit_origin_backfill":                     runChatOriginBackfillHook,
 	}
 	for version, index := range concurrentIndexCleanups {
@@ -583,6 +585,32 @@ var upMigrationConditions = map[string]migrationCondition{
 	// fallback only after proving the preferred index has the exact usable shape;
 	// pg_bigm-less self-hosted databases keep trgm and record 371 as a no-op.
 	"371_comment_content_search_index_strategy": whenIndexUsable(commentContentBigramIndex),
+	// The schema-qualified hook applies the published 422 DDL without letting
+	// its unqualified DROP INDEX fall through to a later search_path schema.
+	"422_channel_chat_route_history": migrationAppliedByHook("schema-qualified route-history cleanup"),
+}
+
+func migrationAppliedByHook(reason string) migrationCondition {
+	return func(context.Context, *pgxpool.Conn) (bool, string, error) {
+		return false, reason, nil
+	}
+}
+
+func applyChannelChatRouteHistoryHook(ctx context.Context, pool *pgxpool.Pool) error {
+	var schema string
+	if err := pool.QueryRow(ctx, "SELECT current_schema()").Scan(&schema); err != nil {
+		return fmt.Errorf("read channel chat route schema: %w", err)
+	}
+	tableName := pgx.Identifier{schema, "channel_chat_session_binding"}.Sanitize()
+	constraintName := pgx.Identifier{"channel_chat_session_binding_installation_id_channel_chat_i_key"}.Sanitize()
+	indexName := pgx.Identifier{schema, "channel_chat_session_binding_installation_id_channel_chat_i_key"}.Sanitize()
+	if _, err := pool.Exec(ctx, "ALTER TABLE "+tableName+" DROP CONSTRAINT IF EXISTS "+constraintName); err != nil {
+		return fmt.Errorf("drop channel chat route uniqueness constraint: %w", err)
+	}
+	if _, err := pool.Exec(ctx, "DROP INDEX IF EXISTS "+indexName); err != nil {
+		return fmt.Errorf("drop channel chat route uniqueness index: %w", err)
+	}
+	return nil
 }
 
 // legacyMigrationVersionAliases preserves the schema_migrations identities of

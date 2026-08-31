@@ -174,9 +174,9 @@ func (s *Service) evaluatePreflight(ctx context.Context, queries *db.Queries, ro
 			result.Allowed = false
 		}
 		if roomRow.CapabilityVersion >= 2 {
-			status.Ready, err = roomAgentReadyForCapability(ctx, queries, agent, result.RequiredDaemonCapability)
+			status.Ready, err = s.roomAgentReadyForCapability(ctx, queries, agent, result.RequiredDaemonCapability)
 		} else {
-			status.Ready, err = roomAgentReady(ctx, queries, agent)
+			status.Ready, err = s.roomAgentReady(ctx, queries, agent)
 		}
 		if err != nil {
 			return evaluatedPreflight{}, fmt.Errorf("check Room Agent readiness: %w", err)
@@ -187,7 +187,7 @@ func (s *Service) evaluatePreflight(ctx context.Context, queries *db.Queries, ro
 			result.CapabilityReady = false
 		}
 		if status.Ready && status.Reason == "" && roomRow.MaxCostTicks.Valid {
-			costReady, costErr := roomAgentReadyForCapability(ctx, queries, agent, protocol.DaemonCapabilityRoomCostLimitsV1)
+			costReady, costErr := s.roomAgentReadyForCapability(ctx, queries, agent, protocol.DaemonCapabilityRoomCostLimitsV1)
 			if costErr != nil {
 				return evaluatedPreflight{}, fmt.Errorf("check Room Agent spend-limit support: %w", costErr)
 			}

@@ -890,22 +890,22 @@ func roomStringList(raw []byte) []string {
 	return values
 }
 
-func roomAgentReady(ctx context.Context, queries *db.Queries, agent db.Agent) (bool, error) {
+func (s *Service) roomAgentReady(ctx context.Context, queries *db.Queries, agent db.Agent) (bool, error) {
 	if agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
 		return false, nil
 	}
-	runtimeRow, err := queries.GetAgentRuntime(ctx, agent.RuntimeID)
+	runtimeRow, err := s.tasks.LookupRoomRuntime(ctx, queries, agent.RuntimeID)
 	if err != nil {
 		return false, err
 	}
 	return runtimeRow.Status == "online", nil
 }
 
-func roomAgentReadyForCapability(ctx context.Context, queries *db.Queries, agent db.Agent, capability string) (bool, error) {
+func (s *Service) roomAgentReadyForCapability(ctx context.Context, queries *db.Queries, agent db.Agent, capability string) (bool, error) {
 	if agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
 		return false, nil
 	}
-	runtimeRow, err := queries.GetAgentRuntime(ctx, agent.RuntimeID)
+	runtimeRow, err := s.tasks.LookupRoomRuntime(ctx, queries, agent.RuntimeID)
 	if err != nil {
 		return false, err
 	}

@@ -85,6 +85,10 @@ func (n *recordingNotifier) EnqueueRoomTurn(ctx context.Context, queries *db.Que
 	})
 }
 
+func (n *recordingNotifier) LookupRoomRuntime(ctx context.Context, queries *db.Queries, runtimeID pgtype.UUID) (db.AgentRuntime, error) {
+	return queries.GetAgentRuntime(ctx, runtimeID)
+}
+
 func (n *recordingNotifier) count() int {
 	n.mu.Lock()
 	defer n.mu.Unlock()

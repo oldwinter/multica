@@ -339,13 +339,13 @@ export function applyChatDoneToCache(
   // `=== true` — older servers omit the field entirely.
   qc.setQueryData<ChatQuickActionsPendingState | null>(
     chatKeys.quickActionsPending(sessionId),
-    payload.quick_actions_pending === true && messageId
+    () => (payload.quick_actions_pending === true && messageId
       ? {
           message_id: messageId,
           task_id: taskId,
           expires_at: Date.now() + QUICK_ACTIONS_PENDING_TIMEOUT_MS,
         }
-      : null,
+      : null),
   );
   // Authoritative refetch reconciles redaction / migrations / clients
   // that took the fallback branch above.
@@ -428,7 +428,7 @@ export async function applyChatQuickActionsToCache(
   if (payload.failed === true) {
     qc.setQueryData<ChatQuickActionsFailureState | null>(
       chatKeys.quickActionsFailure(sessionId),
-      { message_id: payload.message_id, at: Date.now() },
+      () => ({ message_id: payload.message_id, at: Date.now() }),
     );
   }
 }

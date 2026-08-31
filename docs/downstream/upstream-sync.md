@@ -7,6 +7,44 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-08-31 v0.4.37 Sync
+
+- Downstream start: `f6a669702465cd64a023476fff52ea1328b04895`.
+- Merge base: `64ec7f54163d918d5d7fd4dcae857f241b7842d0`.
+- Upstream target: `79559ebb92c48746d716db30a85acdc8c3cef8ec`
+  (`v0.4.37`).
+- Divergence before merge: 175 downstream-only commits and 28 upstream-only
+  commits.
+- Textual conflict files: 5.
+
+The package-manifest conflict retained the downstream `pixi.js` and Vitest
+coverage dependencies while accepting upstream's ESLint parser and direct
+ESLint dependency. `pnpm-lock.yaml` was regenerated from that combined source
+instead of being hand-merged.
+
+The migration cleanup registry kept every published downstream identity from
+483 through 527 and appended upstream's independent
+`443_issue_project_status_index` entry. The duplicate numeric prefix with the
+published downstream `443_twin_proposal_replacement_index` remains legal
+because the migrator keys the complete filename stem; neither published
+identity was renamed or rewritten. The published upstream 422 route-history
+SQL also remains byte-identical. A schema-qualified pre-migration hook applies
+its constraint/index retirement before the runner records the original file as
+handled, so a throwaway schema cannot fall through to a same-named `public`
+constraint index after dropping its own.
+
+Upstream deliberately removed the database-backed business sampler and the
+seat-capacity metric collector. The resolution accepted that lifecycle change
+rather than resurrecting deleted collectors, while reattaching the downstream
+Skill Evolution module through its two thin composition hooks:
+`RegistryOptions.ExtraCollectors` and `RouterOptions.RegisterSkillEvolution`.
+The server composition also retained upstream's WeCom cross-replica sender and
+relay injection and adopted `newMainHTTPServer` as the single production
+timeout constructor, removing the now-redundant downstream constructor and
+test. Room runtime checks now use upstream's attributed `RuntimeLookup`
+boundary with a bounded `room` source label instead of bypassing the new
+observability contract through direct sqlc calls.
+
 ## 2026-08-29 Skill Evolution Final-Fix Audit
 
 - Audited upstream tip: `64ec7f54163d918d5d7fd4dcae857f241b7842d0`.
