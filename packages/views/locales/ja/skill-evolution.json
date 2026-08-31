@@ -190,6 +190,7 @@
     "rejected": "提案を却下しました",
     "published": "提案を公開しました",
     "rolled_back": "ロールバックを公開しました",
+    "publication_unknown": "公開結果が不明です。公開履歴を確認してください。",
     "forked": "ワークスペース skill を作成しました",
     "failed": "操作に失敗しました"
   }

@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  canRequestSkillEvolutionProposal,
   isProposalActionable,
   isProposalPending,
+  isProposalPublicationUnknown,
+  isPublicationUnknown,
   normalizeLoopMode,
   proposalStatusTone,
   releaseStatusTone,
@@ -30,5 +33,25 @@ describe("skill evolution status presentation", () => {
     expect(isProposalActionable("ready")).toBe(true);
     expect(isProposalActionable("stale")).toBe(false);
     expect(isProposalActionable("unknown")).toBe(false);
+  });
+
+  it("only enables proposal requests for enabled propose loops", () => {
+    expect(canRequestSkillEvolutionProposal(null)).toBe(false);
+    expect(canRequestSkillEvolutionProposal({ enabled: false, mode: "propose" })).toBe(false);
+    expect(canRequestSkillEvolutionProposal({ enabled: true, mode: "observe" })).toBe(false);
+    expect(canRequestSkillEvolutionProposal({ enabled: true, mode: "propose" })).toBe(true);
+    expect(canRequestSkillEvolutionProposal({ enabled: true, mode: "unknown" })).toBe(false);
+  });
+
+  it("identifies publication outcomes that require inspection", () => {
+    expect(isPublicationUnknown({ outcome: "publication_unknown" })).toBe(true);
+    expect(isPublicationUnknown({ outcome: "unknown" })).toBe(true);
+    expect(isPublicationUnknown({ outcome: "succeeded" })).toBe(false);
+  });
+
+  it("keeps proposal publication uncertainty explicit", () => {
+    expect(isProposalPublicationUnknown("publication_unknown")).toBe(true);
+    expect(isProposalPublicationUnknown("proposal_publication_unknown")).toBe(true);
+    expect(isProposalPublicationUnknown("proposal_published")).toBe(false);
   });
 });

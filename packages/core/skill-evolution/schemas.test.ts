@@ -81,9 +81,10 @@ describe("Skill evolution response schemas", () => {
       loop: { mode: "continuous" },
       proposals: [{ state: "awaiting_policy", id: "proposal-1" }],
       releases: [{ kind: "canary", outcome: "reconciled" }],
+      permissions: { can_configure: true, can_publish: true, can_fork: true },
     });
 
-    expect(overview.skill).toMatchObject({ ownership: "unknown", forkRequired: false });
+    expect(overview.skill).toMatchObject({ ownership: "unknown", forkRequired: true });
     expect(overview.loop).toMatchObject({ mode: "unknown", lastObservedAt: null });
     expect(overview.proposals[0]).toMatchObject({
       state: "unknown",
@@ -178,5 +179,7 @@ describe("Skill evolution response schemas", () => {
     });
     expect(SkillEvolutionProposalRequestSchema.parse({ state: "future_workflow" }))
       .toEqual({ state: "unknown", roomId: null, proposal: null });
+    expect(SkillEvolutionProposalRequestSchema.parse({ state: "proposal_publication_unknown" }))
+      .toEqual({ state: "proposal_publication_unknown", roomId: null, proposal: null });
   });
 });

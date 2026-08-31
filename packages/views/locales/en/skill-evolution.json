@@ -190,6 +190,7 @@
     "rejected": "Proposal rejected",
     "published": "Proposal published",
     "rolled_back": "Rollback published",
+    "publication_unknown": "Publication outcome is unknown; inspect the release history.",
     "forked": "Workspace Skill created",
     "failed": "Action failed"
   }

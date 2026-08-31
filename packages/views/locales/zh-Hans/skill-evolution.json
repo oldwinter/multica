@@ -190,6 +190,7 @@
     "rejected": "已拒绝提案",
     "published": "已发布提案",
     "rolled_back": "已发布回滚",
+    "publication_unknown": "发布结果未知，请检查发布历史。",
     "forked": "已创建工作区 skill",
     "failed": "操作失败"
   }
