@@ -2433,6 +2433,17 @@ export const UserSchema = UserWireSchema.transform(
   }),
 );
 
+export const LoginResponseSchema = z
+  .object({
+    token: z.string().min(1),
+    user: UserSchema,
+  })
+  .loose()
+  .refine(({ user }) => user.id.length > 0, {
+    path: ["user", "id"],
+    message: "Authenticated user id must not be empty",
+  });
+
 export const EMPTY_USER: User = {
   id: "",
   name: "",
