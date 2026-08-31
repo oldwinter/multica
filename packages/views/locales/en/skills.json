@@ -67,6 +67,9 @@
   "actions": {
     "row_menu": "Actions",
     "add_to_agent": "Add to agent",
+    "copy_reference": "Copy reference",
+    "reference_copied_toast": "Skill reference copied",
+    "reference_copy_failed_toast": "Failed to copy skill reference",
     "refresh": "Update from source",
     "my_agents": "My agents",
     "other_agents": "Other agents",

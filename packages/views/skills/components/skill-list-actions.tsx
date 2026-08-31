@@ -54,6 +54,7 @@ import { useT } from "../../i18n";
 import { useIntentNavigate } from "../../navigation";
 import { isRefreshableOrigin, readOrigin } from "../lib/origin";
 import { RefreshSkillDialog } from "./refresh-skill-dialog";
+import { SkillReferenceMenuItem } from "./skill-reference-copy";
 import type { SkillRow } from "./skills-page";
 
 // Shared context the row kebab and the batch toolbar both need. Assembled
@@ -701,6 +702,7 @@ export function SkillRowActions({
             <ExternalLink className="size-3.5" />
             {tCommon(($) => $.navigation.open_in_new_tab)}
           </DropdownMenuItem>
+          <SkillReferenceMenuItem skill={row.skill} />
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setAddOpen(true)}>
             <Plus className="size-3.5" />
