@@ -571,12 +571,17 @@ export function reconcileAppearancePreferences(
   if (!server) {
     const resolved = withResolvedAppearance(local!, systemAppearance);
     const shouldSyncServer = resolved.source === "local";
+    const shouldSettleDefault =
+      resolved.source === "default" &&
+      resolved.syncState.status !== "local-only";
     return {
       preferences: shouldSyncServer
         ? { ...resolved, syncState: { status: "pending" } }
-        : resolved,
+        : shouldSettleDefault
+          ? { ...resolved, syncState: { status: "local-only" } }
+          : resolved,
       winner: "local",
-      shouldPersistLocal: false,
+      shouldPersistLocal: shouldSettleDefault,
       shouldSyncServer,
     };
   }

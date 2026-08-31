@@ -419,4 +419,21 @@ describe("reconcileAppearancePreferences", () => {
       ).shouldSyncServer,
     ).toBe(false);
   });
+
+  it("clears a stale failure when neither side has an explicit choice", () => {
+    const local = markAppearanceSyncFailed(
+      createDefaultAppearancePreferences("dark"),
+      "server",
+    );
+
+    expect(reconcileAppearancePreferences(local, null, "dark")).toEqual({
+      preferences: {
+        ...local,
+        syncState: { status: "local-only" },
+      },
+      winner: "local",
+      shouldPersistLocal: true,
+      shouldSyncServer: false,
+    });
+  });
 });

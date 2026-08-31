@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APPEARANCE_PREFERENCES_VERSION,
   APPEARANCE_TOKEN_CONTRACT_VERSION,
+  createDefaultAppearancePreferences,
+  markAppearanceSyncFailed,
   type AppearanceAdapterEvent,
   type AppearanceEnvironment,
   type AppearancePreferenceAdapter,
@@ -797,6 +799,36 @@ describe("AppearanceSyncBridge", () => {
         expect.objectContaining({
           skin: "tension",
           requestedAppearance: "system",
+        }),
+      ),
+    );
+    expect(mockUpdateMe).not.toHaveBeenCalled();
+  });
+
+  it("heals a failed default cache when the account has no server tuple", async () => {
+    userRef.current = serverUser({ id: "account-b" });
+    const failedDefault = markAppearanceSyncFailed(
+      createDefaultAppearancePreferences("dark"),
+      "server",
+    );
+    const harness = createAdapter(failedDefault);
+    const persistForAccount = vi.fn(async (_accountId, next) => {
+      await harness.adapter.persist(next);
+    });
+    harness.adapter.loadForAccount = () => failedDefault;
+    harness.adapter.persistForAccount = persistForAccount;
+
+    renderBridge(harness.adapter);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("sync")).toHaveTextContent("local-only"),
+    );
+    await waitFor(() =>
+      expect(persistForAccount).toHaveBeenCalledWith(
+        "account-b",
+        expect.objectContaining({
+          source: "default",
+          syncState: { status: "local-only" },
         }),
       ),
     );
