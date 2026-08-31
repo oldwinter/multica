@@ -86,6 +86,9 @@
     "sign_off": "签署提案",
     "reject_proposal": "拒绝提案",
     "saving": "正在保存决定",
+    "copy_summary": "复制摘要",
+    "summary_copied": "Twin 摘要已复制",
+    "summary_copy_failed": "复制 Twin 摘要失败",
     "dismiss": "关闭",
     "cancel": "取消"
   },
