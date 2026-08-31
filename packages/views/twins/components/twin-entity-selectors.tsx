@@ -61,7 +61,7 @@ export function TwinAgentSelector({ wsId, value, onChange, disabled, ariaLabel }
         <><Bot className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /><span className="truncate text-muted-foreground">{t(($) => $.use.select_agent)}</span></>
       )}
     >
-      {agentsQuery.isError ? <SelectorError onRetry={() => void agentsQuery.refetch()} /> : filtered.length === 0 ? <PickerEmpty /> : filtered.map((agent) => (
+      {agentsQuery.isError ? <SelectorError onRetry={() => void agentsQuery.refetch()} /> : agentsQuery.isPending ? <SelectorLoading /> : filtered.length === 0 ? <PickerEmpty /> : filtered.map((agent) => (
         <PickerItem
           key={agent.id}
           selected={agent.id === value?.id}
@@ -114,7 +114,7 @@ export function TwinProjectSelector({ wsId, value, onChange, disabled, optional,
           <span className="text-muted-foreground">{t(($) => $.use.no_project)}</span>
         </PickerItem>
       ) : null}
-      {projectsQuery.isError ? <SelectorError onRetry={() => void projectsQuery.refetch()} /> : filtered.length === 0 ? <PickerEmpty /> : filtered.map((project) => (
+      {projectsQuery.isError ? <SelectorError onRetry={() => void projectsQuery.refetch()} /> : projectsQuery.isPending ? <SelectorLoading /> : filtered.length === 0 ? <PickerEmpty /> : filtered.map((project) => (
         <PickerItem
           key={project.id}
           selected={project.id === value?.id}
@@ -200,4 +200,9 @@ function SelectorError({ onRetry }: { onRetry: () => void }) {
       <Button variant="outline" size="sm" onClick={onRetry}>{t(($) => $.use.entity_retry)}</Button>
     </div>
   );
+}
+
+function SelectorLoading() {
+  const { t } = useT("twins");
+  return <p role="status" className="px-2 py-3 text-center text-body text-muted-foreground">{t(($) => $.use.searching)}</p>;
 }

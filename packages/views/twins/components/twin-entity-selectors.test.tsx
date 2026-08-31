@@ -24,13 +24,14 @@ const ISSUES = [
 ];
 
 const selectorErrors = vi.hoisted(() => ({ agents: false, projects: false, issues: false }));
+const selectorPending = vi.hoisted(() => ({ agents: false, projects: false, issues: false }));
 const selectorRefetch = vi.hoisted(() => vi.fn());
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: readonly string[] }) => {
-    if (queryKey[0] === "twin-agents") return { data: selectorErrors.agents ? undefined : AGENTS, isError: selectorErrors.agents, refetch: selectorRefetch };
-    if (queryKey[0] === "twin-projects") return { data: selectorErrors.projects ? undefined : PROJECTS, isError: selectorErrors.projects, refetch: selectorRefetch };
-    if (queryKey[0] === "twin-issues") return { data: selectorErrors.issues ? undefined : (queryKey[1] ? ISSUES : []), isError: selectorErrors.issues, isFetching: false, refetch: selectorRefetch };
+    if (queryKey[0] === "twin-agents") return { data: selectorErrors.agents || selectorPending.agents ? undefined : AGENTS, isError: selectorErrors.agents, isPending: selectorPending.agents, refetch: selectorRefetch };
+    if (queryKey[0] === "twin-projects") return { data: selectorErrors.projects || selectorPending.projects ? undefined : PROJECTS, isError: selectorErrors.projects, isPending: selectorPending.projects, refetch: selectorRefetch };
+    if (queryKey[0] === "twin-issues") return { data: selectorErrors.issues ? undefined : (queryKey[1] ? ISSUES : []), isError: selectorErrors.issues, isFetching: selectorPending.issues, isPending: selectorPending.issues, refetch: selectorRefetch };
     return { data: [], isFetching: false };
   },
 }));
@@ -60,6 +61,9 @@ afterEach(() => {
   selectorErrors.agents = false;
   selectorErrors.projects = false;
   selectorErrors.issues = false;
+  selectorPending.agents = false;
+  selectorPending.projects = false;
+  selectorPending.issues = false;
   selectorRefetch.mockReset();
 });
 
@@ -120,5 +124,22 @@ describe("Twin entity selectors", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load options.");
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(selectorRefetch).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["agents", "Agent"],
+    ["projects", "Project"],
+  ] as const)("shows loading feedback while %s are pending", async (kind, label) => {
+    selectorPending[kind] = true;
+    const user = userEvent.setup();
+    render(withI18n(
+      kind === "agents"
+        ? <TwinAgentSelector wsId="workspace-id" value={null} onChange={vi.fn()} ariaLabel={label} />
+        : <TwinProjectSelector wsId="workspace-id" value={null} onChange={vi.fn()} ariaLabel={label} />,
+    ));
+
+    await user.click(screen.getByRole("button", { name: label }));
+    expect(screen.getByRole("status")).toHaveTextContent("Searching");
+    expect(screen.queryByText("No options")).not.toBeInTheDocument();
   });
 });
