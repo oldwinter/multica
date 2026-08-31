@@ -10,15 +10,25 @@ import enTwins from "../../locales/en/twins.json";
 import enUi from "../../locales/en/ui.json";
 import { TwinWorkspaceView } from "./twin-workspace-view";
 import { lifecycleFixture } from "./twin-workspace-view.test-fixture";
+import type { NavigationAdapter } from "../../navigation";
+
+const navigationHarness = vi.hoisted(() => ({
+  current: null as NavigationAdapter | null,
+}));
 
 vi.mock("../../navigation", () => ({
   AppLink: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
     <a href={href} {...props}>{children}</a>
   ),
+  useOptionalNavigation: () => navigationHarness.current,
 }));
 
 vi.mock("./twin-activation-readiness", () => ({
   TwinActivationReadiness: () => null,
+}));
+
+vi.mock("./twin-use-panel", () => ({
+  TwinUsePanel: () => null,
 }));
 
 const resources = { en: { common: enCommon, twins: enTwins, ui: enUi } };
@@ -36,7 +46,58 @@ function renderView(overrides = {}) {
   );
 }
 
+function makeNavigation(search = "", hash = "#comment-7"): NavigationAdapter {
+  return {
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    pathname: "/acme/twins",
+    searchParams: new URLSearchParams(search),
+    hash,
+    getShareableUrl: (path) => `https://multica.test${path}`,
+  };
+}
+
 describe("TwinWorkspaceView", () => {
+  it("restores the selected tab from the navigation URL", () => {
+    navigationHarness.current = makeNavigation("tab=use");
+    try {
+      renderView();
+      expect(screen.getByRole("tab", { name: "Use" })).toHaveAttribute("aria-selected", "true");
+    } finally {
+      navigationHarness.current = null;
+    }
+  });
+
+  it("replaces the URL when a tab changes and preserves unrelated location state", () => {
+    const navigation = makeNavigation("view=activity&filter=open", "#evidence-7");
+    navigationHarness.current = navigation;
+    try {
+      renderView();
+      fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+
+      expect(navigation.replace).toHaveBeenCalledWith(
+        "/acme/twins?view=activity&filter=open&tab=twin#evidence-7",
+      );
+      expect(navigation.push).not.toHaveBeenCalled();
+      expect(navigation.searchParams.toString()).toBe("view=activity&filter=open");
+    } finally {
+      navigationHarness.current = null;
+    }
+  });
+
+  it("fails closed to LM Wiki for an unknown URL tab without rewriting it", () => {
+    const navigation = makeNavigation("tab=unknown");
+    navigationHarness.current = navigation;
+    try {
+      renderView();
+      expect(screen.getByRole("tab", { name: "LM Wiki" })).toHaveAttribute("aria-selected", "true");
+      expect(navigation.replace).not.toHaveBeenCalled();
+    } finally {
+      navigationHarness.current = null;
+    }
+  });
+
   it("uses the shared mobile page header and reserves localized workspace clearance", () => {
     renderView();
 
@@ -45,6 +106,11 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByRole("main").firstElementChild).toHaveClass("border-b");
     expect(screen.getByTestId("twin-workspace-content")).toHaveClass("pb-chat-launcher");
     expect(screen.getByTestId("twin-workspace-content")).not.toHaveClass("pe-chat-launcher");
+  });
+
+  it("keeps the main landmark configurable for a dashboard shell", () => {
+    const { container } = renderView({ rootElement: "div" });
+    expect(container.querySelector("[data-twin-workspace]")?.tagName).toBe("DIV");
   });
 
   it.each([
@@ -199,6 +265,40 @@ describe("TwinWorkspaceView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
     expect(screen.getByText("rejected")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Build proposal" })).not.toBeInTheDocument();
+  });
+
+  it("fails closed when a Wiki review decision is unknown", () => {
+    const fixture = lifecycleFixture();
+    const unknownRevision = {
+      ...fixture.wiki.pending_revision!,
+      review: {
+        id: "review-future",
+        decision: "deferred_by_policy",
+        reviewer_id: "member-1",
+        reason: "Held by a newer policy",
+        created_at: "2026-08-11T08:10:00Z",
+      },
+    };
+    renderView({
+      wiki: { ...fixture.wiki, pending_revision: unknownRevision, latest_revision: unknownRevision, revisions: [unknownRevision] },
+      wikiDetail: { ...fixture.wikiDetail, revision: unknownRevision },
+    });
+
+    expect(screen.getByText("Unknown review state")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept revision" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject revision" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer Twin sign-off for an unknown proposal kind", () => {
+    const fixture = lifecycleFixture();
+    const unknownProposal = { ...fixture.twin.proposals[0], kind: "future_kind" };
+    renderView({
+      twin: { ...fixture.twin, pending_proposal: unknownProposal, proposals: [unknownProposal] },
+      proposalDetail: { ...fixture.proposalDetail, proposal: unknownProposal },
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    expect(screen.queryByRole("button", { name: "Sign off proposal" })).not.toBeInTheDocument();
   });
 
   it("keeps history readable for members while hiding lifecycle mutations", () => {

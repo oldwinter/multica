@@ -11,14 +11,25 @@ import type {
 
 export type TwinViewState = "ready" | "loading" | "error";
 
+export type TwinDetailState =
+  | { readonly kind: "none" }
+  | { readonly kind: "loading" }
+  | { readonly kind: "ready" }
+  | { readonly kind: "stale" }
+  | { readonly kind: "error" };
+
 export interface TwinWorkspaceProps {
   wsId: string;
   state: TwinViewState;
+  overviewStale: boolean;
   wiki: LMWikiOverview;
   wikiDetail: LMWikiDetail | null;
+  wikiDetailState: TwinDetailState;
   twin: TwinOverview;
   proposalDetail: TwinProposalDetail | null;
+  proposalDetailState: TwinDetailState;
   versionDetail: TwinVersionDetail | null;
+  versionDetailState: TwinDetailState;
   reviewSteps: readonly TwinReviewStep[];
   selectedRevisionId: string;
   selectedProposalId: string;
@@ -33,6 +44,9 @@ export interface TwinWorkspaceProps {
   onSelectRevision: (id: string) => void;
   onSelectProposal: (id: string) => void;
   onSelectVersion: (id: string) => void;
+  onRetryWikiDetail: () => void;
+  onRetryProposalDetail: () => void;
+  onRetryVersionDetail: () => void;
   onRefreshWiki: () => void;
   onAcceptWiki: (id: string) => Promise<void>;
   onRejectWiki: (id: string, reason: string) => Promise<void>;

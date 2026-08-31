@@ -291,6 +291,8 @@ function Sidebar({
   className,
   children,
   dir,
+  role = "navigation",
+  "aria-label": ariaLabel,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right"
@@ -303,6 +305,8 @@ function Sidebar({
     return (
       <div
         data-slot="sidebar"
+        role={role}
+        aria-label={ariaLabel}
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
           className
@@ -334,7 +338,13 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <div
+            className="flex h-full w-full flex-col"
+            role={role}
+            aria-label={ariaLabel}
+          >
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
@@ -347,6 +357,8 @@ function Sidebar({
   return (
     <div
       className="group peer hidden text-sidebar-foreground lg:block"
+      role={role}
+      aria-label={ariaLabel}
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}
@@ -569,9 +581,12 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 }
 
 function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+  const { isCompact, openMobile } = useSidebar()
+
   return (
     <main
       data-slot="sidebar-inset"
+      inert={isCompact && openMobile ? true : undefined}
       className={cn(
         "relative flex w-full flex-1 flex-col bg-page-canvas lg:peer-data-[variant=inset]:m-2 lg:peer-data-[variant=inset]:ml-0 lg:peer-data-[variant=inset]:rounded-xl lg:peer-data-[variant=inset]:ring-1 lg:peer-data-[variant=inset]:ring-surface-border lg:peer-data-[variant=inset]:shadow-[var(--surface-shadow)] lg:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className

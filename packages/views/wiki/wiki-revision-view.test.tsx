@@ -73,4 +73,9 @@ describe("ImmutableWikiRevision", () => {
     expect(screen.getByText("personal_wiki_revision:revision-2")).toBeInTheDocument();
     expect(screen.getByText(/permanently excluded/)).toBeInTheDocument();
   });
+
+  it("allows a dashboard shell to own the main landmark", () => {
+    renderRevision({ rootElement: "div" });
+    expect(screen.getByTestId("wiki-revision-page").tagName).toBe("DIV");
+  });
 });

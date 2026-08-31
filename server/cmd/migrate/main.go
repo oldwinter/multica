@@ -352,6 +352,7 @@ var concurrentIndexCleanups = map[string]string{
 	"438_agent_runtime_online_last_seen_index":                  "idx_agent_runtime_online_last_seen",
 	"439_agent_runtime_offline_last_seen_index":                 "idx_agent_runtime_offline_last_seen",
 	"440_github_pr_head_sha_index":                              "idx_github_pull_request_head_sha",
+	"443_issue_project_status_index":                            "idx_issue_project_status",
 	"483_agent_task_queue_manual_rerun_index":                   "idx_agent_task_queue_manual_rerun_source",
 	"484_skill_evolution_loop_id_index":                         "skill_evolution_loop_id_uidx",
 	"485_skill_evolution_revision_id_index":                     "skill_evolution_revision_id_uidx",

@@ -5,24 +5,43 @@ import { BookOpenText, BrainCircuit, SlidersHorizontal } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { useT } from "../../i18n";
 import { PageHeader } from "../../layout/page-header";
+import { useOptionalNavigation } from "../../navigation";
 import { TwinPanel } from "./twin-panel";
-import { TwinActivationReadiness, type TwinWorkspaceTab } from "./twin-activation-readiness";
+import { TwinActivationReadiness } from "./twin-activation-readiness";
 import { TwinUsePanel } from "./twin-use-panel";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
+import {
+  buildTwinWorkspaceTabPath,
+  DEFAULT_TWIN_WORKSPACE_TAB,
+  isTwinWorkspaceTab,
+  parseTwinWorkspaceTab,
+  TWIN_WORKSPACE_TAB_QUERY_KEY,
+  type TwinWorkspaceTab,
+} from "./twin-workspace-tabs";
 import { WikiPanel } from "./wiki-panel";
-import { ReadOnlyNotice, WorkspaceState } from "./workspace-state";
+import { ReadOnlyNotice, WorkspaceStaleState, WorkspaceState } from "./workspace-state";
 
-function isWorkspaceTab(value: unknown): value is TwinWorkspaceTab {
-  return value === "wiki" || value === "twin" || value === "use";
-}
+export type { TwinDetailState, TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
 
-export type { TwinViewState, TwinWorkspaceProps } from "./twin-workspace-types";
+type TwinWorkspaceViewProps = TwinWorkspaceProps & { rootElement?: "main" | "div" };
 
-export function TwinWorkspaceView(props: TwinWorkspaceProps) {
+export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorkspaceViewProps) {
   const { t } = useT("twins");
-  const [tab, setTab] = useState<TwinWorkspaceTab>("wiki");
+  const navigation = useOptionalNavigation();
+  const Root = rootElement;
+  const [fallbackTab, setFallbackTab] = useState<TwinWorkspaceTab>(DEFAULT_TWIN_WORKSPACE_TAB);
+  const tab = navigation
+    ? parseTwinWorkspaceTab(navigation.searchParams.get(TWIN_WORKSPACE_TAB_QUERY_KEY))
+    : fallbackTab;
+  const navigateTab = (next: TwinWorkspaceTab) => {
+    if (navigation) {
+      navigation.replace(buildTwinWorkspaceTabPath(navigation, next));
+    } else {
+      setFallbackTab(next);
+    }
+  };
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-twin-copy data-twin-workspace>
+    <Root className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-twin-copy data-twin-workspace>
       <PageHeader className="gap-2 bg-page-canvas">
         <BrainCircuit className="size-4 text-muted-foreground" aria-hidden="true" />
         <h1 className="min-w-0 truncate text-title font-medium text-foreground">{t(($) => $.page.title)}</h1>
@@ -41,11 +60,12 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
 
         {props.actionError ? <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-body text-destructive">{props.actionError}</div> : null}
         {!props.canManageWiki || !props.canManageTwin ? <ReadOnlyNotice /> : null}
+        {props.state === "ready" && props.overviewStale ? <WorkspaceStaleState onRetry={props.onRetry} /> : null}
 
         {props.state === "ready" ? (
           <>
-            <TwinActivationReadiness wsId={props.wsId} onNavigate={setTab} />
-            <Tabs value={tab} onValueChange={(value) => isWorkspaceTab(value) && setTab(value)} className="gap-5">
+            <TwinActivationReadiness wsId={props.wsId} onNavigate={navigateTab} />
+            <Tabs value={tab} onValueChange={(value) => isTwinWorkspaceTab(value) && navigateTab(value)} className="gap-5">
               <TabsList variant="line" className="w-full justify-start">
                 <TabsTrigger value="wiki"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
                 <TabsTrigger value="twin"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
@@ -59,13 +79,13 @@ export function TwinWorkspaceView(props: TwinWorkspaceProps) {
                   versions={props.twin.versions}
                   currentVersionId={props.twin.current_version?.id ?? ""}
                   canManage={props.canManageTwin}
-                  onNavigate={setTab}
+                  onNavigate={navigateTab}
                 />
               </TabsContent>
             </Tabs>
           </>
         ) : <WorkspaceState state={props.state} onRetry={props.onRetry} />}
       </div>
-    </main>
+    </Root>
   );
 }

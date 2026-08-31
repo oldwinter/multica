@@ -10,9 +10,19 @@ import {
   twinActivationReadinessOptions, twinBindingsOptions, twinExecutionMetricsOptions,
   useDeleteTwinBinding, usePauseTwinExecution, usePreviewTwinBriefing, useUpsertTwinBinding,
   type TwinBinding, type TwinBindingScope, type TwinBindingState, type TwinEffectivenessCohort,
-  type TwinEffectivenessMetrics, type TwinMaintenanceItem, type TwinVersion,
+  type TwinBriefingPreviewInput, type TwinEffectivenessMetrics, type TwinMaintenanceItem, type TwinVersion,
 } from "@multica/core/twins";
 import { Alert, AlertDescription, AlertTitle } from "@multica/ui/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@multica/ui/components/ui/alert-dialog";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
@@ -26,10 +36,51 @@ import {
   TwinAgentSelector, TwinIssueSelector, TwinProjectSelector,
   type TwinAgentSelection, type TwinIssueSelection, type TwinProjectSelection,
 } from "./twin-entity-selectors";
-import type { TwinWorkspaceTab } from "./twin-activation-readiness";
+import type { TwinWorkspaceTab } from "./twin-workspace-tabs";
 
 const LONG_LIVED_SCOPES: readonly TwinBindingScope[] = ["workspace", "agent", "project", "issue"];
 const BINDING_STATES: readonly TwinBindingState[] = ["off", "preview", "enabled"];
+
+type PreviewKeyInput = {
+  readonly workspaceId: string;
+  readonly scopeType: TwinBindingScope;
+  readonly scopeAgentId: string;
+  readonly scopeProjectId: string;
+  readonly scopeIssueId: string;
+  readonly state: TwinBindingState;
+  readonly versionId: string;
+  readonly currentVersionId: string;
+  readonly previewInput: TwinBriefingPreviewInput | null;
+};
+
+function previewKey(input: PreviewKeyInput): string {
+  return JSON.stringify(input);
+}
+
+function normalizePreviewInput({
+  agentId,
+  projectId,
+  issueId,
+  runId,
+  request,
+  tags,
+}: {
+  agentId: string;
+  projectId?: string;
+  issueId?: string;
+  runId: string;
+  request: string;
+  tags: string;
+}): TwinBriefingPreviewInput {
+  return {
+    agentId,
+    projectId,
+    issueId,
+    runId: runId.trim() || undefined,
+    request: request.trim(),
+    tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+  };
+}
 
 function metric(value: number): string { return new Intl.NumberFormat().format(value); }
 function percentage(value: number): string {
@@ -66,6 +117,27 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
   const [request, setRequest] = useState("");
   const [tags, setTags] = useState("");
   const [confirmPause, setConfirmPause] = useState(false);
+  const [deleteBindingId, setDeleteBindingId] = useState<string | null>(null);
+  const currentPreviewInput = previewAgent ? normalizePreviewInput({
+    agentId: previewAgent.id,
+    projectId: previewProject?.id,
+    issueId: previewIssue?.id,
+    runId,
+    request,
+    tags,
+  }) : null;
+  const currentPreviewKey = previewKey({
+    workspaceId: wsId,
+    scopeType,
+    scopeAgentId: scopeAgent?.id ?? "",
+    scopeProjectId: scopeProject?.id ?? "",
+    scopeIssueId: scopeIssue?.id ?? "",
+    state,
+    versionId,
+    currentVersionId,
+    previewInput: currentPreviewInput,
+  });
+  const [submittedPreviewKey, setSubmittedPreviewKey] = useState<string | null>(null);
 
   const bindings = useMemo(() => bindingsQuery.data?.bindings ?? [], [bindingsQuery.data?.bindings]);
   const issueBindingIds = useMemo(
@@ -105,7 +177,11 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
   const loading = bindingsQuery.isPending || metricsQuery.isPending || activationQuery.isPending;
   const failed = (bindingsQuery.isError && !bindingsQuery.data) || (metricsQuery.isError && !metricsQuery.data) || (activationQuery.isError && !activationQuery.data);
   const mutationError = upsertBinding.isError || deleteBinding.isError || pauseExecution.isError;
-  const preview = previewBriefing.data;
+  const previewIsCurrent = submittedPreviewKey === currentPreviewKey
+    && previewBriefing.isSuccess
+    && !previewBriefing.isPending;
+  const preview = previewIsCurrent ? previewBriefing.data : undefined;
+  const previewIsOutOfDate = Boolean(previewBriefing.data) && submittedPreviewKey !== currentPreviewKey;
   const entityLabel = (binding: TwinBinding): string => {
     if (binding.scopeType === "workspace") return t(($) => $.use.workspace_default);
     if (binding.scopeType === "agent") return agentsById.get(binding.scopeId) ?? `${t(($) => $.use.unavailable_agent)} (${binding.scopeId})`;
@@ -113,6 +189,9 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
     if (binding.scopeType === "issue") return issuesById.get(binding.scopeId) ?? (scopeIssue?.id === binding.scopeId ? `${scopeIssue.identifier} ${scopeIssue.title}` : `${t(($) => $.use.unavailable_issue)} (${binding.scopeId})`);
     return t(($) => $.use.unavailable_target);
   };
+  const deleteBindingTarget = deleteBindingId
+    ? bindings.find((binding) => binding.id === deleteBindingId) ?? null
+    : null;
 
   if (loading) return <div className="space-y-4" role="status" aria-label={t(($) => $.use.loading)}><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /><Skeleton className="h-36 w-full" /></div>;
   if (failed) return (
@@ -137,15 +216,53 @@ export function TwinUsePanel({ wsId, versions, currentVersionId, canManage, onNa
         <Button disabled={!mayManage || !effectiveScopeId || !versionId || upsertBinding.isPending} onClick={() => upsertBinding.mutate({ scopeType, scopeId: effectiveScopeId, state, twinVersionId: versionId })}><Save data-icon="inline-start" />{upsertBinding.isPending ? t(($) => $.use.saving_binding) : t(($) => $.use.save_binding)}</Button>
       </section>
 
-      <section className="space-y-3" aria-labelledby="configured-bindings-title"><h3 id="configured-bindings-title" className="text-title font-medium text-foreground">{t(($) => $.use.configured_title)}</h3>{bindings.length === 0 ? <p className="text-body text-muted-foreground">{t(($) => $.use.configured_empty)}</p> : <div className="divide-y divide-border/70">{bindings.map((binding) => <div key={binding.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"><Badge variant="outline">{scopeLabel(binding.scopeType)}</Badge><span className="min-w-0 flex-1 truncate text-body text-foreground">{entityLabel(binding)}</span><span className="text-caption text-muted-foreground">{versionsById.get(binding.twinVersionId) ?? t(($) => $.use.unavailable_version)}</span><Badge variant={binding.state === "enabled" ? "default" : "secondary"}>{stateLabel(binding.state)}</Badge>{mayManage ? <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t(($) => $.use.delete_binding)} />} onClick={() => deleteBinding.mutate(binding.id)} disabled={deleteBinding.isPending}><Trash2 aria-hidden="true" /></TooltipTrigger><TooltipContent>{t(($) => $.use.delete_binding)}</TooltipContent></Tooltip> : null}</div>)}</div>}</section>
+      <section className="space-y-3" aria-labelledby="configured-bindings-title"><h3 id="configured-bindings-title" className="text-title font-medium text-foreground">{t(($) => $.use.configured_title)}</h3>{bindings.length === 0 ? <p className="text-body text-muted-foreground">{t(($) => $.use.configured_empty)}</p> : <div className="divide-y divide-border/70">{bindings.map((binding) => <div key={binding.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"><Badge variant="outline">{scopeLabel(binding.scopeType)}</Badge><span className="min-w-0 flex-1 truncate text-body text-foreground">{entityLabel(binding)}</span><span className="text-caption text-muted-foreground">{versionsById.get(binding.twinVersionId) ?? t(($) => $.use.unavailable_version)}</span><Badge variant={binding.state === "enabled" ? "default" : "secondary"}>{stateLabel(binding.state)}</Badge>{mayManage ? <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t(($) => $.use.delete_binding)} />} onClick={() => { deleteBinding.reset(); setDeleteBindingId(binding.id); }} disabled={deleteBinding.isPending}><Trash2 aria-hidden="true" /></TooltipTrigger><TooltipContent>{t(($) => $.use.delete_binding)}</TooltipContent></Tooltip> : null}</div>)}</div>}</section>
+
+      <AlertDialog
+        open={deleteBindingId !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBinding.isPending) setDeleteBindingId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.use.delete_binding_title)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(($) => $.use.delete_binding_description, {
+                target: deleteBindingTarget ? entityLabel(deleteBindingTarget) : t(($) => $.use.unavailable_target),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBinding.isPending}>{t(($) => $.actions.cancel)}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteBinding.isPending || deleteBindingId === null}
+              onClick={() => {
+                if (!deleteBindingId) return;
+                deleteBinding.mutate(deleteBindingId, {
+                  onSuccess: () => setDeleteBindingId(null),
+                });
+              }}
+            >
+              {deleteBinding.isPending ? t(($) => $.use.deleting_binding) : t(($) => $.use.confirm_delete_binding)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <section className="space-y-4 border-y border-border/70 py-5" aria-labelledby="twin-preview-title">
         <div className="space-y-1"><div className="flex items-center gap-2"><FileSearch className="size-4 text-muted-foreground" aria-hidden="true" /><h3 id="twin-preview-title" className="text-title font-medium text-foreground">{t(($) => $.use.preview_title)}</h3></div><p className="text-body text-muted-foreground">{t(($) => $.use.preview_description)}</p></div>
         <div className="grid gap-3 md:grid-cols-2"><SelectorField label={t(($) => $.use.agent)}><TwinAgentSelector wsId={wsId} value={previewAgent} onChange={setPreviewAgent} ariaLabel={t(($) => $.use.agent)} /></SelectorField><SelectorField label={t(($) => $.use.project_optional)}><TwinProjectSelector wsId={wsId} value={previewProject} optional onChange={(project) => { setPreviewProject(project); if (previewIssue && project?.id !== previewIssue.project_id) setPreviewIssue(null); }} ariaLabel={t(($) => $.use.project_optional)} /></SelectorField><SelectorField label={t(($) => $.use.issue_optional)}><TwinIssueSelector wsId={wsId} value={previewIssue} optional onChange={(issue) => { setPreviewIssue(issue); if (issue?.project_id) { const project = (projectsQuery.data ?? []).find((candidate) => candidate.id === issue.project_id); if (project) setPreviewProject({ id: project.id, title: project.title, status: project.status, icon: project.icon }); } }} ariaLabel={t(($) => $.use.issue_optional)} /></SelectorField></div>
         <label className="grid gap-2 text-label font-medium">{t(($) => $.use.request)}<Textarea value={request} maxLength={4000} rows={3} placeholder={t(($) => $.use.request_placeholder)} onChange={(event) => setRequest(event.target.value)} /></label>
         <details className="group text-body"><summary className="cursor-pointer text-label font-medium text-muted-foreground">{t(($) => $.use.advanced_context)}</summary><div className="mt-3 grid gap-3 md:grid-cols-2"><LabeledInput label={t(($) => $.use.run_id)} value={runId} onChange={setRunId} /><LabeledInput label={t(($) => $.use.tags)} value={tags} onChange={setTags} /></div></details>
-        {previewBriefing.isError ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_failed)}</p> : null}
-        <Button variant="outline" disabled={!previewAgent || !request.trim() || previewBriefing.isPending} onClick={() => previewAgent && previewBriefing.mutate({ agentId: previewAgent.id, projectId: previewProject?.id, issueId: previewIssue?.id, runId: runId.trim() || undefined, request: request.trim(), tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean) })}><Braces data-icon="inline-start" />{previewBriefing.isPending ? t(($) => $.use.previewing) : t(($) => $.use.preview_action)}</Button>
+        {previewBriefing.isError ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_failed)}</p> : previewIsOutOfDate ? <p role="alert" className="text-body text-destructive">{t(($) => $.use.preview_stale)}</p> : null}
+        <Button variant="outline" disabled={!previewAgent || !request.trim() || previewBriefing.isPending} onClick={() => {
+          if (!currentPreviewInput) return;
+          const input = currentPreviewInput;
+          setSubmittedPreviewKey(currentPreviewKey);
+          previewBriefing.mutate(input);
+        }}><Braces data-icon="inline-start" />{previewBriefing.isPending ? t(($) => $.use.previewing) : t(($) => $.use.preview_action)}</Button>
         {preview ? <div className="space-y-4 rounded-lg bg-muted/35 p-4" aria-live="polite"><div className="flex flex-wrap items-center gap-2"><Badge variant={preview.policy.state === "enabled" ? "default" : "secondary"}>{stateLabel(preview.policy.state)}</Badge><span className="text-body text-muted-foreground">{t(($) => $.use.effective_source)}:</span><span className="truncate text-body text-foreground">{previewSourceLabel(preview.policy.scopeType, preview.policy.scopeId, { workspace: t(($) => $.use.workspace_default), agent: previewAgent, project: previewProject, issue: previewIssue, unavailable: t(($) => $.use.unavailable_target), none: t(($) => $.use.no_effective_source) })}</span></div><dl className="grid gap-3 text-caption sm:grid-cols-2"><div><dt className="text-muted-foreground">{t(($) => $.use.compiler)}</dt><dd className="break-all font-mono text-foreground">{preview.compilerVersion || "-"}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.use.version)}</dt><dd className="text-foreground">{preview.twinVersion ? `v${preview.twinVersion.versionNumber}` : "-"}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.use.effective_policy)}</dt><dd className="text-foreground">{preview.policy.reason}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.use.exclusions)}</dt><dd className="break-words text-foreground">{[...preview.exclusionReasons, ...preview.policy.exclusions.map((item) => item.code)].join(", ") || "-"}</dd></div></dl><div className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-label font-medium">{t(($) => $.use.exact_briefing)}</span><span className="text-caption text-muted-foreground">{t(($) => $.use.budget, { bytes: preview.byteCount, tokens: preview.tokenCount })}</span></div>{preview.briefing ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 font-mono text-caption text-foreground">{preview.briefing}</pre> : <p className="text-body text-muted-foreground">{t(($) => $.use.empty_briefing)}</p>}</div></div> : null}
       </section>
 
@@ -234,7 +351,17 @@ function Effectiveness({
           ? t(($) => $.use.comparison_ready, { control: metrics.comparison.controlState ?? "off" })
           : t(($) => $.use.comparison_waiting)}
       </p>
-      <div className="overflow-x-auto">
+      <div
+        role="region"
+        aria-label={t(($) => $.use.cohort)}
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+          event.preventDefault();
+          event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 240 : -240;
+        }}
+        className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
         <table className="w-full min-w-[1040px] border-collapse text-left text-caption">
           <thead>
             <tr className="border-b border-border text-muted-foreground">

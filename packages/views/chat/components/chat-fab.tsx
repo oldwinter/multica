@@ -1,5 +1,6 @@
 "use client";
 
+import type { Ref } from "react";
 import { MessageCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
@@ -22,7 +23,7 @@ import { useT } from "../../i18n";
 
 const logger = createLogger("chat.ui");
 
-export function ChatFab() {
+export function ChatFab({ triggerRef }: { triggerRef?: Ref<HTMLButtonElement> }) {
   const { t } = useT("chat");
   const wsId = useWorkspaceId();
   const isOpen = useChatStore((s) => s.isOpen);
@@ -62,6 +63,7 @@ export function ChatFab() {
   return (
     <Tooltip>
       <TooltipTrigger
+        ref={triggerRef}
         onClick={handleClick}
         aria-label={tooltip}
         className={cn(

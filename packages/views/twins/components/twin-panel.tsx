@@ -14,6 +14,9 @@ import { ReviewDialog } from "./review-dialog";
 import { TwinReviewSpine } from "./twin-review-spine";
 import { TwinTopics } from "./twin-topics";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
+import { DetailStateNotice } from "./workspace-state";
+
+const KNOWN_PROPOSAL_KINDS = ["initial", "evolution", "correction", "deposition"] as const;
 
 export function TwinPanel(props: TwinWorkspaceProps) {
   const { t } = useT("twins");
@@ -23,7 +26,10 @@ export function TwinPanel(props: TwinWorkspaceProps) {
   const currentVersion = props.twin.current_version;
   const selectedVersionIsCurrent = !props.selectedVersionId || props.selectedVersionId === currentVersion?.id;
   const selectedVersion = props.versionDetail?.version ?? (selectedVersionIsCurrent ? currentVersion : null);
-  const proposalPending = proposal !== null && proposal.review === null && proposal.signed_version === null;
+  const proposalPending = proposal !== null
+    && KNOWN_PROPOSAL_KINDS.includes(proposal.kind as (typeof KNOWN_PROPOSAL_KINDS)[number])
+    && proposal.review === null
+    && proposal.signed_version === null;
   const acceptedWikiId = props.wiki.accepted_revision?.id ?? "";
   const acceptedWikiHasProposal = props.twin.proposals.some(
     (item) => item.source_wiki_revision_id === acceptedWikiId,
@@ -71,6 +77,8 @@ export function TwinPanel(props: TwinWorkspaceProps) {
         onVersionChange={props.onSelectVersion}
         disabled={props.detailLoading}
       />
+
+      <DetailStateNotice state={props.proposalDetailState} onRetry={props.onRetryProposalDetail} />
 
       {proposal ? (
         <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
@@ -136,14 +144,15 @@ export function TwinPanel(props: TwinWorkspaceProps) {
             </>
           ) : null}
         </section>
-      ) : (
+      ) : props.proposalDetailState.kind === "none" || props.proposalDetailState.kind === "ready" ? (
         <p className="text-body text-muted-foreground">
           {acceptedWikiId
             ? t(($) => $.twin.no_proposal)
             : t(($) => $.twin.awaiting_wiki)}
         </p>
-      )}
+      ) : null}
 
+      <DetailStateNotice state={props.versionDetailState} onRetry={props.onRetryVersionDetail} />
       {selectedVersion ? (
         <section className="space-y-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
           <div className="flex items-center gap-2">

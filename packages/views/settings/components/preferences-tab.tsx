@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -44,8 +44,6 @@ import {
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
 import {
-  DEFAULT_LOCALE,
-  SUPPORTED_LOCALES,
   type SupportedLocale,
 } from "@multica/core/i18n";
 import { useLocaleAdapter } from "@multica/core/i18n/react";
@@ -61,6 +59,7 @@ import {
   SettingsSection,
   SettingsTab,
 } from "./settings-layout";
+import { resolveSettingsLocale } from "./preferences-locale";
 
 export function PreferencesTab() {
   const {
@@ -77,11 +76,18 @@ export function PreferencesTab() {
     acknowledgeRecoveryNotice,
   } = useAppearancePreferences();
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const localeReloadTimerRef = useRef<number | null>(null);
   const skin = preferences.skin;
   const theme = preferences.requestedAppearance;
   const { t, i18n } = useT("settings");
   const localeAdapter = useLocaleAdapter();
   const user = useAuthStore((s) => s.user);
+
+  useEffect(() => () => {
+    if (localeReloadTimerRef.current !== null) {
+      window.clearTimeout(localeReloadTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (!recoveryNoticePending) return;
@@ -127,13 +133,9 @@ export function PreferencesTab() {
   };
 
   // i18next.language can be a region-tagged BCP-47 string (e.g. "en-US",
-  // "zh-Hans-CN") returned by intl-localematcher. Normalize to a supported
-  // locale before comparing — otherwise the radio shows neither option active.
-  const currentLocale: SupportedLocale = SUPPORTED_LOCALES.includes(
-    i18n.language as SupportedLocale,
-  )
-    ? (i18n.language as SupportedLocale)
-    : DEFAULT_LOCALE;
+  // "zh-Hans-CN") returned by intl-localematcher. Normalize it before
+  // comparing so the picker always exposes the actual selected option.
+  const currentLocale: SupportedLocale = resolveSettingsLocale(i18n.language);
 
   const themeOptions = [
     {
@@ -192,14 +194,20 @@ export function PreferencesTab() {
     if (syncFailed) {
       toast.warning(t(($) => $.preferences.language.sync_failed));
       // Give the toast 2.5s of visible time before navigating away.
-      setTimeout(() => window.location.reload(), 2500);
+      localeReloadTimerRef.current = window.setTimeout(() => {
+        localeReloadTimerRef.current = null;
+        window.location.reload();
+      }, 2500);
       return;
     }
     toast.success(t(($) => $.auto_save.toast_saved), {
       id: "settings-auto-save",
     });
     // Keep the confirmation visible before the locale reload replaces the UI.
-    setTimeout(() => window.location.reload(), 900);
+    localeReloadTimerRef.current = window.setTimeout(() => {
+      localeReloadTimerRef.current = null;
+      window.location.reload();
+    }, 900);
   };
 
   return (
@@ -340,10 +348,10 @@ export function PreferencesTab() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 text-warning"
+                className="h-8 px-2 text-foreground"
                 onClick={retryAppearanceSync}
               >
-                <RefreshCw className="size-3.5" aria-hidden="true" />
+                <RefreshCw className="size-3.5 text-warning" aria-hidden="true" />
                 {t(($) => $.preferences.appearance_sync.retry)}
               </Button>
             )}

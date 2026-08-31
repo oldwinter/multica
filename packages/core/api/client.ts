@@ -486,6 +486,7 @@ import {
   SquadMemberStatusListResponseSchema,
   SubscribersListSchema,
   TimelineEntriesSchema,
+  LoginResponseSchema,
   UserSchema,
   WebhookDeliveryResponseSchema,
   BillingBalanceSchema,
@@ -660,6 +661,17 @@ export interface ClientUsageRequest {
 export interface LoginResponse {
   token: string;
   user: User;
+}
+
+function parseLoginResponse(raw: unknown, endpoint: string): LoginResponse {
+  const parsed = parseWithFallback<LoginResponse | null>(
+    raw,
+    LoginResponseSchema,
+    null,
+    { endpoint },
+  );
+  if (!parsed) throw new Error("Invalid authentication response");
+  return parsed;
 }
 
 export class ApiError extends Error {
@@ -970,17 +982,19 @@ export class ApiClient {
   }
 
   async verifyCode(email: string, code: string): Promise<LoginResponse> {
-    return this.fetch("/auth/verify-code", {
+    const raw = await this.fetch<unknown>("/auth/verify-code", {
       method: "POST",
       body: JSON.stringify({ email, code }),
     });
+    return parseLoginResponse(raw, "POST /auth/verify-code");
   }
 
   async googleLogin(code: string, redirectUri: string): Promise<LoginResponse> {
-    return this.fetch("/auth/google", {
+    const raw = await this.fetch<unknown>("/auth/google", {
       method: "POST",
       body: JSON.stringify({ code, redirect_uri: redirectUri }),
     });
+    return parseLoginResponse(raw, "POST /auth/google");
   }
 
   async logout(): Promise<void> {

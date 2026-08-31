@@ -9,13 +9,19 @@
     "loading": "正在加载 LM Wiki 与 Twin",
     "loading_description": "正在获取最新审阅历史。",
     "error_title": "审阅工作台不可用",
-    "error_description": "无法加载最新生命周期数据。"
+    "error_description": "无法加载最新生命周期数据。",
+    "stale_title": "正在显示上次获取的审阅工作台",
+    "stale_description": "无法刷新最新生命周期数据。现有历史仍可查看；请重试以检查更新。",
+    "detail_error_title": "所选内容不可用",
+    "detail_error_description": "无法加载所选内容，请重试。",
+    "detail_stale_title": "正在显示上次获取的所选内容",
+    "detail_stale_description": "无法刷新最新所选内容。现有内容仍会显示。"
   },
   "permissions": {
     "read_only": "只读访问",
     "read_only_description": "你可以检查历史和引用。工作区 owner 和 admin 可以作出审阅决定。"
   },
-  "status": { "pending": "等待审阅", "accepted": "已接受", "rejected": "已拒绝" },
+  "status": { "pending": "等待审阅", "accepted": "已接受", "rejected": "已拒绝", "unknown": "未知审核状态" },
   "wiki": {
     "title": "工作区知识",
     "description": "从当前工作区收集的规范源材料。",
@@ -39,16 +45,17 @@
   "deposition": { "evidence_title": "已脱敏的运行证据", "task": "任务", "base_version": "基础 Twin 版本", "status": "运行状态", "completed": "完成时间", "feedback": "运行反馈", "evidence_digest": "证据摘要", "sanitized_notice": "这里只保留审计元数据，不包含原始输出和本地路径。", "edit_action": "编辑沉淀", "edit_title": "编辑沉淀论断", "edit_description": "保存后会创建替换提案，当前提案保持不变。", "edit_label": "论断 JSON", "edit_invalid_json": "请输入有效的 JSON。", "edit_array_required": "请提供论断数组；使用 [] 可删除全部论断。", "edit_assertion_required": "每条论断都需要非空的 id 和 text。", "edit_duplicate_id": "论断 id 不能重复。", "edit_no_changes": "请先修改内容再创建替换提案。", "edit_ready": "改动已可提交审核。", "edit_submit": "创建替换提案", "edit_saving": "正在创建替换提案" },
   "correction": { "edit_action": "编辑提案", "edit_title": "编辑提案论断", "edit_description": "保存后会创建经过校验的修正提案；当前提案和已签署版本保持不变。", "edit_label": "论断 JSON", "edit_no_changes": "请先修改内容再创建修正提案。", "edit_ready": "改动已可提交校验。", "edit_submit": "创建修正提案", "edit_saving": "正在创建修正提案" },
   "use": {
+    "entity_load_error": "无法加载选项。", "entity_retry": "重试",
     "title": "Twin 执行策略", "description": "明确选择已签署 Twin 可以预览或影响智能体运行的范围。新范围保存前始终为关闭。",
     "loading": "正在加载 Twin 执行策略", "error_title": "执行策略不可用", "error_description": "无法加载最新绑定和指标。", "stale_title": "正在显示上次已知策略", "stale_description": "暂时无法获取最新策略；变更前请先确认这份缓存状态。", "try_again": "重试",
     "kill_switch_title": "Twin 执行已暂停", "kill_switch_fallback": "运维人员已停用 Twin 执行，现有审计历史仍可查看。", "read_only": "你可以查看策略和预览；绑定由 owner 或 admin 管理。",
     "binding_title": "策略绑定", "binding_description": "更具体的范围会覆盖较宽范围；每个绑定都固定到一个不可变的已签署版本。",
     "scope": "范围", "scope_workspace": "工作区", "scope_agent": "智能体", "scope_project": "项目", "scope_issue": "任务", "scope_id": "范围 ID", "scope_id_placeholder": "所选范围的 UUID", "version": "已签署版本", "state": "模式",
     "state_off": "关闭", "state_preview": "预览", "state_enabled": "启用", "state_off_description": "不会注入 briefing。", "state_preview_description": "只编译和检查，briefing 字节不会离开控制面。", "state_enabled_description": "向符合条件的运行注入受限且已签署的 briefing。", "default_off": "默认：关闭",
-    "save_binding": "保存绑定", "saving_binding": "正在保存绑定", "configured_title": "已配置绑定", "configured_empty": "还没有显式绑定，Twin 执行默认关闭。", "delete_binding": "删除绑定",
+    "save_binding": "保存绑定", "saving_binding": "正在保存绑定", "configured_title": "已配置绑定", "configured_empty": "还没有显式绑定，Twin 执行默认关闭。", "delete_binding": "删除绑定", "delete_binding_title": "删除此绑定？", "delete_binding_description": "这会移除 {{target}} 策略绑定；已签署版本和审计历史仍会保留。", "confirm_delete_binding": "删除绑定", "deleting_binding": "正在删除绑定",
     "preview_title": "Briefing 预览", "preview_description": "启用前解析优先级，并编译最终会使用的受限 briefing。", "agent_id": "智能体 ID", "project_id": "项目 ID（可选）", "issue_id": "任务 ID（可选）", "run_id": "单次运行 ID（可选）", "request": "运行请求", "request_placeholder": "描述这次运行要完成的工作", "tags": "标签（逗号分隔）", "preview_action": "编译预览", "previewing": "正在编译预览",
     "effective_policy": "生效策略", "effective_source": "生效来源", "no_effective_source": "没有显式绑定", "exclusions": "排除原因", "exact_briefing": "最终 briefing", "empty_briefing": "此策略不会注入任何 briefing 字节。", "compiler": "编译器", "budget": "{{bytes}} 字节 · {{tokens}} token",
-    "metrics_title": "执行反馈", "attributed_runs": "已归因运行", "helpfulness": "有用率", "feedback": "反馈", "depositions": "沉淀", "bindings": "绑定", "feedback_summary": "共 {{total}} 条 · {{helped}} 条有帮助", "deposition_summary": "共 {{total}} 条 · {{pending}} 条待处理", "not_available": "反馈数据还不足", "mutation_failed": "无法保存策略变更，请重试。", "preview_failed": "无法编译 briefing 预览，请检查所选上下文后重试。",
+    "metrics_title": "执行反馈", "attributed_runs": "已归因运行", "helpfulness": "有用率", "feedback": "反馈", "depositions": "沉淀", "bindings": "绑定", "feedback_summary": "共 {{total}} 条 · {{helped}} 条有帮助", "deposition_summary": "共 {{total}} 条 · {{pending}} 条待处理", "not_available": "反馈数据还不足", "mutation_failed": "无法保存策略变更，请重试。", "preview_failed": "无法编译 briefing 预览，请检查所选上下文后重试。", "preview_stale": "此预览已不是最新状态。请重新编译以检查当前输入。",
     "activation_loading": "正在加载激活准备状态", "activation_unavailable": "无法加载激活准备状态。", "activation_retry": "重试", "next_action_title": "下一项安全操作", "activation_ready": "已就绪", "activation_in_progress": "进行中", "activation_stages": "激活阶段", "inspection_links": "查看激活证据", "inspect_evidence": "证据历史", "inspect_twin": "Twin 历史", "inspect_execution": "执行证据",
     "action_inspect_disabled": "查看已暂停执行", "action_configure_source": "配置来源", "action_review_evidence": "审核证据", "action_refresh_evidence": "刷新证据", "action_review_twin": "审核 Twin", "action_generate_twin": "构建 Twin", "action_compile_preview": "编译预览", "action_configure_binding": "配置绑定", "action_run_with_twin": "使用 Twin 运行", "action_review_run": "审核运行", "action_review_deposition": "审核沉淀", "action_monitor_effectiveness": "查看效果",
     "reason_inspect_disabled": "操作员已停用 Twin 执行，历史记录仍可查看。", "reason_configure_source": "选择可提供证据的工作区来源。", "reason_review_evidence": "生成的证据修订正在等待人工审核。", "reason_refresh_evidence": "从已配置来源编译可审核的证据修订。", "reason_review_twin": "Twin 提案正在等待明确签署。", "reason_generate_twin": "根据最新已接受证据构建提案。", "reason_compile_preview": "启用前，使用真实运行上下文编译当前已签署 Twin。", "reason_configure_binding": "选择允许使用已预览 Twin 的范围。", "reason_run_with_twin": "按已配置策略完成一次明确归因的运行。", "reason_review_run": "记录 Twin 上下文是否有帮助、无关或不匹配。", "reason_review_deposition": "在影响未来 Twin 前审核待处理的执行证据。", "reason_monitor_effectiveness": "引导闭环已完成，请先比较已声明队列再继续使用。",

@@ -175,8 +175,8 @@ export function PersonalWikiPageView({
   };
 
   return (
-    <main className="min-h-0 flex-1 overflow-hidden bg-page-canvas" data-testid="personal-wiki-page">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
+    <main className="min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden" data-testid="personal-wiki-page">
+      <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-2">
             <Button
@@ -260,7 +260,7 @@ export function PersonalWikiPageView({
               <WikiPageList
                 pages={visiblePages}
                 activePageId={pageId}
-                onSelect={(id) => nav.push(routePaths.page(id))}
+                onSelect={(page) => nav.push(routePaths.page(page.id))}
               />
             )}
           </aside>

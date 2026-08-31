@@ -32,6 +32,7 @@ import {
   type PromoteRoomArtifactInput,
   type Room,
   type RoomArtifact,
+  type RoomDetailTab,
   type RoomDetail,
   type RoomSynthesis,
 } from "@multica/core/rooms";
@@ -52,7 +53,22 @@ const EMPTY_AGENTS: readonly Agent[] = [];
 const EMPTY_MEMBERS: readonly MemberWithUser[] = [];
 const EMPTY_SQUADS: readonly Squad[] = [];
 
-export function RoomsPage() {
+export function isLinkedRoomMissing(
+  linkedRoomId: string,
+  rooms: readonly Pick<Room, "id">[],
+  listLoaded: boolean,
+): boolean {
+  return Boolean(linkedRoomId) && listLoaded && !rooms.some((room) => room.id === linkedRoomId);
+}
+
+export function detailTabAfterRoomSelection(
+  currentTab: RoomDetailTab,
+  linkedRoomMissing: boolean,
+): RoomDetailTab {
+  return linkedRoomMissing ? "transcript" : currentTab;
+}
+
+export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "div" } = {}) {
   const { t } = useT("rooms");
   const workspaceId = useWorkspaceId();
   const paths = useWorkspacePaths();
@@ -73,7 +89,12 @@ export function RoomsPage() {
   const membersQuery = useQuery(memberListOptions(workspaceId));
   const squadsQuery = useQuery(squadListOptions(workspaceId));
   const rooms = roomsQuery.data ?? EMPTY_ROOMS;
-  const activeRoomId = selectedRoomId || rooms[0]?.id || "";
+  const roomsLoaded = roomsQuery.data !== undefined
+    && !roomsQuery.isPending
+    && !roomsQuery.isFetching
+    && !roomsQuery.isError;
+  const linkedRoomMissing = isLinkedRoomMissing(linkedRoomId, rooms, roomsLoaded);
+  const activeRoomId = linkedRoomMissing ? "" : selectedRoomId || rooms[0]?.id || "";
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
   const preflightQuery = useQuery(roomPreflightOptions(workspaceId, activeRoomId));
   const scheduledPreflightQuery = useQuery({
@@ -96,13 +117,14 @@ export function RoomsPage() {
   }, [currentUser?.id, members]);
 
   useEffect(() => {
-    if (linkedRoomId && rooms.some((room) => room.id === linkedRoomId)) {
-      setSelectedRoomId(linkedRoomId);
+    if (linkedRoomId) {
+      if (!roomsLoaded) return;
+      if (rooms.some((room) => room.id === linkedRoomId)) setSelectedRoomId(linkedRoomId);
       return;
     }
     if (selectedRoomId && rooms.some((room) => room.id === selectedRoomId)) return;
     setSelectedRoomId(rooms[0]?.id ?? "");
-  }, [linkedRoomId, rooms, selectedRoomId]);
+  }, [linkedRoomId, rooms, roomsLoaded, selectedRoomId]);
 
   useEffect(() => {
     if (linkedRoomId && nav.searchParams.get("tab") === "outcome") {
@@ -116,6 +138,8 @@ export function RoomsPage() {
   };
 
   const selectRoom = (roomId: string) => {
+    const nextDetailTab = detailTabAfterRoomSelection(detailTab, linkedRoomMissing);
+    if (nextDetailTab !== detailTab) setDetailTab(nextDetailTab);
     setSelectedRoomId(roomId);
     nav.replace(paths.roomDetail(roomId));
   };
@@ -150,6 +174,8 @@ export function RoomsPage() {
     toast.error(error?.message || fallback);
   };
 
+  const Root = rootElement;
+
   const create = (
     input: CreateRoomInput,
     onSuccess: (detail: RoomDetail) => void,
@@ -178,7 +204,7 @@ export function RoomsPage() {
   };
 
   return (
-    <main
+    <Root
       data-room-workspace
       className="pe-chat-launcher flex min-h-0 flex-1 overflow-hidden bg-page-canvas"
     >
@@ -199,6 +225,18 @@ export function RoomsPage() {
             description={latestError?.message || t(($) => $.states.error_description)}
             actionLabel={t(($) => $.actions.retry)}
             onAction={() => roomsQuery.refetch()}
+          />
+        ) : linkedRoomMissing ? (
+          <WorkspaceState
+            icon={AlertTriangle}
+            title={t(($) => $.states.no_room_title)}
+            description={t(($) => $.states.no_room_description)}
+            actionLabel={t(($) => $.actions.new_room)}
+            onAction={() => {
+              setSelectedRoomId("");
+              nav.replace(paths.rooms());
+              openCreate();
+            }}
           />
         ) : !activeRoomId ? (
           <WorkspaceState
@@ -426,7 +464,7 @@ export function RoomsPage() {
           }}
         />
       ) : null}
-    </main>
+    </Root>
   );
 }
 
@@ -451,11 +489,12 @@ function reportRoomFailure(fallback: string, error: Error | null, t: RoomsT): vo
   }
 }
 
-function roomMessageWasPersisted(error: unknown): boolean {
+export function roomMessageWasPersisted(error: unknown): boolean {
   switch (errorCode(error)) {
     case "room_paused":
     case "room_archived":
     case "budget_exhausted":
+    case "spend_limit_unsupported":
     case "active_cycle":
     case "agent_unavailable":
       return true;

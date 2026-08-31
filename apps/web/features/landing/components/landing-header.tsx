@@ -5,13 +5,6 @@ import Link from "next/link";
 import { Menu, Monitor, Moon, Palette, Sun, X } from "lucide-react";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import {
-  SKIN_IDS,
-  parseSkin,
-  useSkin,
-  useTheme,
-  type Skin,
-} from "@multica/ui/components/common/theme-provider";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -24,6 +17,13 @@ import {
 } from "@multica/ui/components/ui/dropdown-menu";
 import { cn } from "@multica/ui/lib/utils";
 import { useAuthStore } from "@multica/core/auth";
+import {
+  APPEARANCE_IDS,
+  SKIN_IDS,
+  type RequestedAppearance,
+  type SkinId,
+} from "@multica/core/appearance";
+import { useAppearancePreferences } from "@multica/views/appearance";
 import { docsHrefForLocale, useLocale, type Locale } from "../i18n";
 import { useDashboardCtaHref } from "../utils/use-dashboard-cta";
 import { formatStarCount, useGithubStars } from "../utils/use-github-stars";
@@ -184,7 +184,7 @@ const APPEARANCE_COPY: Record<
     title: string;
     skin: string;
     mode: string;
-    skins: Record<Skin, string>;
+    skins: Record<SkinId, string>;
     modes: Record<"system" | "light" | "dark", string>;
   }
 > = {
@@ -224,6 +224,14 @@ const APPEARANCE_MODES = [
   { value: "dark" as const, icon: Moon },
 ];
 
+function parseSkinId(value: unknown): SkinId {
+  return SKIN_IDS.find((option) => option === value) ?? "tension";
+}
+
+function parseRequestedAppearance(value: unknown): RequestedAppearance {
+  return APPEARANCE_IDS.find((option) => option === value) ?? "system";
+}
+
 function AppearancePicker({
   locale,
   variant,
@@ -231,8 +239,9 @@ function AppearancePicker({
   locale: Locale;
   variant: "dark" | "light";
 }) {
-  const { skin, setSkin } = useSkin();
-  const { theme, setTheme } = useTheme();
+  const { preferences, selectSkin, selectAppearance } =
+    useAppearancePreferences();
+  const { skin, requestedAppearance: theme } = preferences;
   const copy = APPEARANCE_COPY[locale];
 
   return (
@@ -257,7 +266,7 @@ function AppearancePicker({
           <DropdownMenuLabel>{copy.skin}</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={skin}
-            onValueChange={(value) => setSkin(parseSkin(value))}
+            onValueChange={(value) => selectSkin(parseSkinId(value))}
           >
             {SKIN_IDS.map((option) => (
               <DropdownMenuRadioItem
@@ -274,8 +283,10 @@ function AppearancePicker({
         <DropdownMenuGroup>
           <DropdownMenuLabel>{copy.mode}</DropdownMenuLabel>
           <DropdownMenuRadioGroup
-            value={theme ?? "system"}
-            onValueChange={(value) => setTheme(value)}
+            value={theme}
+            onValueChange={(value) =>
+              selectAppearance(parseRequestedAppearance(value))
+            }
           >
             {APPEARANCE_MODES.map((option) => {
               const Icon = option.icon;

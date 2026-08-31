@@ -7,6 +7,61 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-01 v0.4.37 Sync
+
+- Downstream start: `1f08aaa508b50d6fb8494480746e21b63aac6070`.
+- Merge base: `64ec7f54163d918d5d7fd4dcae857f241b7842d0`.
+- Upstream ahead: 30 commits through
+  `11861145abc59a0d39c8c8f24ad837d4584e664f`
+  (`v0.4.37-2-g11861145a`).
+- Local unique commits: 205.
+- Predicted and actual conflict files: 5.
+- Upstream merge commit: `43cc9a99914ee0344dfffe2d47fd61138b1c48d0`.
+- Fork-remote reconciliation: 8 commits, no textual conflicts, merge
+  `949b9d417ca11f75dd974e88e6258a2922b560f7`.
+
+The five conflicts were `packages/views/package.json`, `pnpm-lock.yaml`,
+`server/cmd/migrate/main.go`, `server/cmd/server/main.go`, and
+`server/internal/metrics/registry.go`. The package manifest keeps the
+downstream Vitest coverage dependency and the upstream parser and ESLint
+changes. A YAML-aware reconciliation script rebuilt the lockfile closure from
+the merged workspace manifests. The resulting lockfile passed both an offline
+frozen lockfile install and a full frozen install from the local package store.
+
+The server resolution keeps upstream WeCom relay registration and graceful
+shutdown. It also keeps the downstream Skill Evolution jobs, Room listeners,
+and extra metric collectors. Upstream retired the old business-sampler and
+seat-capacity collectors, so the merge does not restore them. The migration
+cleanup registry contains both histories.
+
+Both published migration histories use prefixes 441 through 443. Upstream owns
+`runtime_profile_add_codearts`, `vcs_reference_only_repair`, and
+`issue_project_status_index`. Downstream owns
+`twin_deposition_edit_digest`, `twin_proposal_correction`, and
+`twin_proposal_replacement_index`. Every filename identity remains unchanged,
+and `migrations_lint_test.go` freezes the exact duplicate sets. A fresh
+database and a clone of the existing downstream database both reached 634
+migration identities after fork migration 527. Both histories produced the
+same version set, retained all six 441-443 identities, created the expected
+upstream and downstream indexes, and made a second `migrate up` a no-op.
+
+Upstream also replaced direct runtime reads with `service.RuntimeLookup`.
+Rooms now receive a required `AgentRuntimeLookupFactory` that binds the lookup
+to the exact operation transaction. This preserves upstream authorization and
+metrics without adding a Room-to-service import cycle or falling back to a
+pool query outside the transaction. Source tests reject new direct
+`GetAgentRuntime` calls in the Room package.
+
+Validation found one additional frontend integration defect: the Wiki path
+field still had a hard-coded `index.md` placeholder. The placeholder now uses
+the Wiki locale contract in English, Japanese, Korean, and Simplified Chinese.
+The final TypeScript tests passed all 6 workspace tasks, including 472 Views
+files and 5,358 Views tests. Typecheck passed 9/9 tasks, lint passed 6/6 with
+zero errors, and production build passed 5/5 tasks. Targeted Go verification
+passed the migration, Room, service, metrics, handler, server, and Skill
+Evolution packages. `sqlc` 1.31.1 regeneration produced no diff. This sync did
+not run deployment, production, Desktop display, or human acceptance checks.
+
 ## 2026-08-29 Skill Evolution Final-Fix Audit
 
 - Audited upstream tip: `64ec7f54163d918d5d7fd4dcae857f241b7842d0`.

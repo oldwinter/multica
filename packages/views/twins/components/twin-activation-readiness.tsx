@@ -14,7 +14,11 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useT } from "../../i18n";
 
-export type TwinWorkspaceTab = "wiki" | "twin" | "use";
+import type { TwinWorkspaceTab } from "./twin-workspace-tabs";
+
+export type { TwinWorkspaceTab } from "./twin-workspace-tabs";
+
+const readinessSectionClassName = "min-h-72 border-y border-border/70 py-4 lg:min-h-52";
 
 export function TwinActivationReadiness({
   wsId,
@@ -27,12 +31,32 @@ export function TwinActivationReadiness({
   const readiness = useQuery(twinActivationReadinessOptions(wsId));
 
   if (readiness.isPending) {
-    return <Skeleton className="h-28 w-full" aria-label={t(($) => $.use.activation_loading)} />;
+    return (
+      <section
+        className={`${readinessSectionClassName} space-y-3`}
+        aria-labelledby="twin-next-action-title"
+        aria-busy="true"
+        data-testid="twin-activation-readiness"
+      >
+        <h2 id="twin-next-action-title" className="text-title font-medium text-foreground">
+          {t(($) => $.use.next_action_title)}
+        </h2>
+        <div className="space-y-3" role="status">
+          <span className="sr-only">{t(($) => $.use.activation_loading)}</span>
+          <div className="space-y-2" aria-hidden="true">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-8 w-28" />
+          </div>
+        </div>
+      </section>
+    );
   }
   if (readiness.isError || !readiness.data) {
     return (
       <section
-        className="border-y border-border/70 py-4"
+        className={readinessSectionClassName}
         aria-labelledby="twin-next-action-title"
         data-testid="twin-activation-readiness"
       >
@@ -57,7 +81,7 @@ export function TwinActivationReadiness({
 
   const action = readiness.data.nextAction;
   return (
-    <section className="border-y border-border/70 py-4" aria-labelledby="twin-next-action-title" data-testid="twin-activation-readiness">
+    <section className={readinessSectionClassName} aria-labelledby="twin-next-action-title" data-testid="twin-activation-readiness">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">

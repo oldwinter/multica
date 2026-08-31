@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpenText, Check, Copy, FileClock, FileDiff, History, Plus, Search, Trash2, X } from "lucide-react";
+import { ApiError } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { paths as appPaths, useWorkspacePaths } from "@multica/core/paths";
 import { projectListOptions } from "@multica/core/projects/queries";
@@ -45,21 +46,27 @@ import { WikiProposalsPanel } from "./wiki-proposals-panel";
 import { WikiEditor, WikiPageList } from "./wiki-page-primitives";
 import { wikiConflict } from "./wiki-conflict";
 import { WorkspaceWikiKnowledgeActivation } from "./wiki-knowledge-activation";
+import {
+  buildWikiScopePath,
+  parseWikiScopeSelection,
+  type WikiScopeSelection,
+} from "./wiki-scope-url";
 
 export function WikiPageView({
   pageId,
   personalWikiPath = appPaths.personalWiki(),
+  rootElement = "main",
 }: {
   pageId?: string;
   personalWikiPath?: string;
+  rootElement?: "main" | "div";
 }) {
   const { t } = useT("wiki");
   const wsId = useWorkspaceId();
   const paths = useWorkspacePaths();
   const nav = useNavigation();
+  const Root = rootElement;
 
-  const [scope, setScope] = useState<WikiScope>("workspace");
-  const [projectId, setProjectId] = useState("");
   const [searchText, setSearchText] = useState("");
   const [creating, setCreating] = useState(false);
   const [draftPath, setDraftPath] = useState("index.md");
@@ -79,15 +86,38 @@ export function WikiPageView({
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [citationCopied, setCitationCopied] = useState(false);
 
+  const urlSelection = parseWikiScopeSelection(nav.searchParams);
   const projectsQuery = useQuery(projectListOptions(wsId));
-  const listQuery = useQuery(wikiPageListOptions(wsId, {
-    scope,
-    projectId: scope === "project" ? projectId || undefined : undefined,
-  }));
   const detailQuery = useQuery(wikiPageDetailOptions(wsId, pageId ?? ""));
-  const revisionsQuery = useQuery(wikiRevisionListOptions(wsId, pageId ?? ""));
-  const proposalsQuery = useQuery(wikiProposalListOptions(wsId, pageId ?? ""));
+  const selected = detailQuery.data?.id ? detailQuery.data : undefined;
+  const detailSelection: WikiScopeSelection | null = selected?.scope === "project"
+    ? { scope: "project", projectId: selected.projectId }
+    : selected?.scope === "workspace"
+      ? { scope: "workspace", projectId: null }
+      : null;
+  const selection = pageId && detailSelection ? detailSelection : urlSelection;
+  const scope = selection.scope;
+  const projectId = selection.projectId;
+  const requiresProjectSelection = scope === "project" && !projectId;
+  const listOptions = wikiPageListOptions(wsId, {
+    scope,
+    projectId: scope === "project" ? projectId ?? undefined : undefined,
+  });
+  const listQuery = useQuery({
+    ...listOptions,
+    enabled: listOptions.enabled && (!pageId || detailQuery.isError || Boolean(selected)),
+  });
+  const revisionsQuery = useQuery({
+    ...wikiRevisionListOptions(wsId, pageId ?? ""),
+    enabled: Boolean(wsId && pageId && selected),
+  });
+  const proposalsQuery = useQuery({
+    ...wikiProposalListOptions(wsId, pageId ?? ""),
+    enabled: Boolean(wsId && pageId && selected),
+  });
   const searchQuery = useQuery(wikiSearchOptions(wsId, { q: searchText }));
+  const detailUnavailable = detailQuery.error instanceof ApiError
+    && (detailQuery.error.status === 403 || detailQuery.error.status === 404);
 
   const createMutation = useCreateWikiPage(wsId);
   const updateMutation = useUpdateWikiPage(wsId, pageId ?? "");
@@ -96,19 +126,11 @@ export function WikiPageView({
   const acceptProposalMutation = useAcceptWikiProposal(wsId, pageId ?? "");
   const rejectProposalMutation = useRejectWikiProposal(wsId, pageId ?? "");
 
-  const selected = detailQuery.data?.id ? detailQuery.data : undefined;
   const pages = listQuery.data ?? [];
   const normalizedSearch = searchText.trim();
   const isSearching = normalizedSearch.length >= 2;
-  const searchResults = searchQuery.data ?? [];
   const pendingProposalCount = (proposalsQuery.data ?? []).filter((proposal) => proposal.status === "pending").length;
   const citationKey = selected ? `wiki_page_revision:${selected.currentRevisionId}` : "";
-
-  useEffect(() => {
-    if (!selected) return;
-    setScope(selected.scope);
-    setProjectId(selected.scope === "project" ? selected.projectId ?? "" : "");
-  }, [selected?.id, selected?.scope, selected?.projectId]);
 
   useEffect(() => {
     setCreating(false);
@@ -129,11 +151,12 @@ export function WikiPageView({
     () => projectOptions.map((project) => ({ value: project.id, label: project.title || project.id })),
     [projectOptions],
   );
+  const personalWikiPagePath = (id: string) => `${personalWikiPath.replace(/\/$/, "")}/${encodeURIComponent(id)}`;
   const groupedSearchResults = useMemo(() => {
     const groups: Record<WikiScope, WikiPageSummary[]> = { workspace: [], project: [], user: [] };
-    for (const page of searchResults) groups[page.scope].push(page);
+    for (const page of searchQuery.data ?? []) groups[page.scope].push(page);
     return groups;
-  }, [searchResults]);
+  }, [searchQuery.data]);
 
   const startEdit = () => {
     if (!selected) return;
@@ -194,7 +217,7 @@ export function WikiPageView({
     setActionError(null);
     createMutation.mutate({
       scope,
-      projectId: scope === "project" ? projectId : undefined,
+      projectId: scope === "project" ? projectId ?? undefined : undefined,
       path: draftPath,
       title: draftTitle || undefined,
       content: draftContent,
@@ -210,9 +233,37 @@ export function WikiPageView({
     });
   };
 
+  const changeCollectionScope = (next: string) => {
+    if (next === "user") {
+      nav.push(personalWikiPath);
+      return;
+    }
+    if (next !== "workspace" && next !== "project") return;
+
+    const nextSelection: WikiScopeSelection = next === "project"
+      ? { scope: "project", projectId }
+      : { scope: "workspace", projectId: null };
+    const destination = pageId
+      ? { ...nav, pathname: paths.wiki(), hash: "" }
+      : nav;
+    const nextPath = buildWikiScopePath(destination, nextSelection);
+    setCreating(false);
+    if (pageId) nav.push(nextPath);
+    else nav.replace(nextPath);
+  };
+
+  const changeProject = (next: string | null) => {
+    const destination = pageId
+      ? { ...nav, pathname: paths.wiki(), hash: "" }
+      : nav;
+    const nextPath = buildWikiScopePath(destination, { scope: "project", projectId: next });
+    if (pageId) nav.push(nextPath);
+    else nav.replace(nextPath);
+  };
+
   return (
-    <main className="pe-chat-launcher min-h-0 flex-1 overflow-hidden bg-page-canvas" data-testid="wiki-page">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
+    <Root className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden" data-testid="wiki-page">
+      <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-caption text-muted-foreground">
@@ -222,7 +273,7 @@ export function WikiPageView({
             <h1 className="break-words text-display-sm font-medium text-foreground">{t(($) => $.page.title)}</h1>
             <p className="max-w-2xl break-words text-body text-muted-foreground">{t(($) => $.page.description)}</p>
           </div>
-          <Button onClick={() => setCreating(true)} disabled={scope === "project" && !projectId}>
+          <Button onClick={() => setCreating(true)} disabled={requiresProjectSelection}>
             <Plus data-icon="inline-start" />
             {t(($) => $.actions.new_page)}
           </Button>
@@ -231,15 +282,7 @@ export function WikiPageView({
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <Tabs
             value={scope}
-            onValueChange={(value) => {
-              if (value === "user") {
-                nav.push(personalWikiPath);
-                return;
-              }
-              setScope(value as WikiScope);
-              setCreating(false);
-              if (pageId) nav.push(paths.wiki());
-            }}
+            onValueChange={changeCollectionScope}
           >
             <TabsList variant="line" className="max-w-full overflow-x-auto">
               <TabsTrigger value="workspace">{t(($) => $.scopes.workspace)}</TabsTrigger>
@@ -267,12 +310,11 @@ export function WikiPageView({
           </div>
         </div>
 
-        {scope === "user" ? <p className="text-caption text-muted-foreground">{t(($) => $.scope_hints.user)}</p> : null}
         {scope === "project" ? (
           <label className="max-w-sm space-y-1.5 text-caption text-muted-foreground">
             <span>{t(($) => $.fields.project)}</span>
-            <Select items={projectSelectItems} value={projectId || null} onValueChange={(value) => setProjectId(value ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder={t(($) => $.empty.pick_project)} /></SelectTrigger>
+            <Select items={projectSelectItems} value={projectId} onValueChange={(value) => changeProject(value ?? null)}>
+              <SelectTrigger className="w-full" aria-label={t(($) => $.fields.project)}><SelectValue placeholder={t(($) => $.empty.pick_project)} /></SelectTrigger>
               <SelectContent>
                 {projectSelectItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
               </SelectContent>
@@ -285,19 +327,25 @@ export function WikiPageView({
             {normalizedSearch.length === 1 ? (
               <p className="px-1 py-4 text-body text-muted-foreground">{t(($) => $.search.minimum)}</p>
             ) : isSearching ? (
-              <WikiSearchResults groups={groupedSearchResults} isLoading={searchQuery.isPending} isError={searchQuery.isError} activePageId={pageId} onSelect={(id) => nav.push(paths.wikiPage(id))} />
+              <WikiSearchResults
+                groups={groupedSearchResults}
+                isLoading={searchQuery.isPending}
+                isError={searchQuery.isError}
+                activePageId={pageId}
+                onSelect={(page) => nav.push(page.scope === "user" ? personalWikiPagePath(page.id) : paths.wikiPage(page.id))}
+              />
             ) : listQuery.isLoading ? (
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.states.loading)}</p>
             ) : listQuery.isError ? (
               <p className="text-body text-destructive" role="alert">{t(($) => $.states.error)}</p>
-            ) : scope === "project" && !projectId ? (
+            ) : requiresProjectSelection ? (
               <p className="text-body text-muted-foreground">{t(($) => $.empty.pick_project)}</p>
             ) : pages.length === 0 ? (
               <div className="space-y-1 px-1 py-4">
                 <p className="text-body font-medium text-foreground">{t(($) => $.empty.title)}</p>
                 <p className="text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
               </div>
-            ) : <WikiPageList pages={pages} activePageId={pageId} onSelect={(id) => nav.push(paths.wikiPage(id))} />}
+            ) : <WikiPageList pages={pages} activePageId={pageId} onSelect={(page) => nav.push(paths.wikiPage(page.id))} />}
           </aside>
 
           <section className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
@@ -305,15 +353,40 @@ export function WikiPageView({
               <WikiEditor path={draftPath} title={draftTitle} content={draftContent} onPathChange={setDraftPath} onTitleChange={setDraftTitle} onContentChange={setDraftContent} onSave={createPage} onCancel={() => setCreating(false)} pending={createMutation.isPending} create error={actionError} />
             ) : !pageId ? (
               <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center">
-                <p className="text-body font-medium text-foreground">{t(($) => $.empty.title)}</p>
-                <p className="max-w-md text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
+                <p className="text-body font-medium text-foreground">
+                  {requiresProjectSelection ? t(($) => $.empty.pick_project) : t(($) => $.empty.title)}
+                </p>
+                {!requiresProjectSelection ? (
+                  <p className="max-w-md text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
+                ) : null}
               </div>
             ) : detailQuery.isLoading ? (
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.states.loading)}</p>
             ) : detailQuery.isError || !selected ? (
               <div className="space-y-3">
-                <p className="text-body text-destructive" role="alert">{t(($) => $.states.error)}</p>
-                <Button variant="outline" onClick={() => detailQuery.refetch()}>{t(($) => $.actions.retry)}</Button>
+                <div className="space-y-1">
+                  <p className="text-body font-medium text-destructive" role="alert">
+                    {detailUnavailable
+                      ? t(($) => $.states.unavailable_title)
+                      : t(($) => $.states.detail_error)}
+                  </p>
+                  {detailUnavailable ? (
+                    <p className="text-caption text-muted-foreground">
+                      {t(($) => $.states.unavailable_description)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!detailUnavailable ? (
+                    <Button onClick={() => void detailQuery.refetch()}>{t(($) => $.actions.retry)}</Button>
+                  ) : null}
+                  <Button
+                    variant={detailUnavailable ? "default" : "outline"}
+                    onClick={() => nav.push(paths.wiki())}
+                  >
+                    {t(($) => $.actions.back_to_wiki)}
+                  </Button>
+                </div>
               </div>
             ) : editMode ? (
               <div className="space-y-4">
@@ -473,11 +546,11 @@ export function WikiPageView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </Root>
   );
 }
 
-function WikiSearchResults({ groups, isLoading, isError, activePageId, onSelect }: { groups: Record<WikiScope, WikiPageSummary[]>; isLoading: boolean; isError: boolean; activePageId?: string; onSelect: (id: string) => void }) {
+function WikiSearchResults({ groups, isLoading, isError, activePageId, onSelect }: { groups: Record<WikiScope, WikiPageSummary[]>; isLoading: boolean; isError: boolean; activePageId?: string; onSelect: (page: WikiPageSummary) => void }) {
   const { t } = useT("wiki");
   if (isLoading) return <p className="text-body text-muted-foreground" role="status">{t(($) => $.search.loading)}</p>;
   if (isError) return <p className="text-body text-destructive" role="alert">{t(($) => $.search.error)}</p>;

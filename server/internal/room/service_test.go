@@ -29,6 +29,14 @@ type recordingNotifier struct {
 
 type testArtifactTargets struct{}
 
+type testAgentRuntimeLookup struct {
+	queries *db.Queries
+}
+
+func (l testAgentRuntimeLookup) Get(ctx context.Context, id pgtype.UUID) (db.AgentRuntime, error) {
+	return l.queries.GetAgentRuntime(ctx, id)
+}
+
 func (*testArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, _ pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
 	switch artifact.Kind {
 	case "issue", "implementation_defect":
@@ -197,7 +205,16 @@ func newServiceFixture(t *testing.T) serviceFixture {
 	}
 
 	fixture.events = &recordingEvents{}
-	fixture.service = NewService(db.New(pool), pool, fixture.notifier, &testArtifactTargets{}, fixture.events)
+	fixture.service = NewService(
+		db.New(pool),
+		pool,
+		func(queries *db.Queries) AgentRuntimeLookup {
+			return testAgentRuntimeLookup{queries: queries}
+		},
+		fixture.notifier,
+		&testArtifactTargets{},
+		fixture.events,
+	)
 	t.Cleanup(func() {
 		pool.Exec(context.Background(), `DELETE FROM inbox_item WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE room_turn_id IN (SELECT id FROM room_turn WHERE workspace_id = $1)`, fixture.workspaceID)

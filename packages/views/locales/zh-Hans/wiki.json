@@ -21,10 +21,12 @@
     "cancel": "取消",
     "create": "创建",
     "retry": "重试",
-    "back": "返回"
+    "back": "返回",
+    "back_to_wiki": "返回 Wiki"
   },
   "fields": {
     "path": "路径",
+    "path_placeholder": "index.md",
     "path_hint": "相对 .md 路径，例如 index.md 或 concepts/agents.md",
     "title": "标题",
     "content": "内容",
@@ -38,6 +40,9 @@
   "states": {
     "loading": "正在加载 Wiki...",
     "error": "无法加载 Wiki 页面。",
+    "detail_error": "无法加载此 Wiki 页面。",
+    "unavailable_title": "此 Wiki 页面不可用",
+    "unavailable_description": "它可能已被删除、移动，或你已无权访问。",
     "saving": "保存中...",
     "saved": "已保存",
     "action_error": "操作未完成，请重试。"

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/events"
+	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	roomdomain "github.com/multica-ai/multica/server/internal/room"
 	"github.com/multica-ai/multica/server/internal/scheduler"
 	"github.com/multica-ai/multica/server/internal/service"
@@ -20,7 +21,16 @@ func TestRoomMaintenanceSchedulerDispatchesOnce(t *testing.T) {
 	bus := events.New()
 	taskService := service.NewTaskService(queries, testPool, nil, bus)
 	issueService := service.NewIssueService(queries, testPool, bus, nil, taskService)
-	roomService := roomdomain.NewService(queries, testPool, taskService, service.NewRoomArtifactTargets(issueService), bus)
+	roomService := roomdomain.NewService(
+		queries,
+		testPool,
+		func(q *db.Queries) roomdomain.AgentRuntimeLookup {
+			return service.RuntimeLookup{Queries: q, Source: obsmetrics.RuntimeLookupSourceRoom}
+		},
+		taskService,
+		service.NewRoomArtifactTargets(issueService),
+		bus,
+	)
 	var facilitatorID string
 	if err := testPool.QueryRow(ctx, `
 		SELECT id::text FROM agent WHERE workspace_id = $1 ORDER BY created_at LIMIT 1

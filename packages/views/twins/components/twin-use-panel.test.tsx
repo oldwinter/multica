@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setApiInstance } from "@multica/core/api";
@@ -186,6 +186,19 @@ describe("TwinUsePanel", () => {
     qc.clear();
   });
 
+  it("makes the wide effectiveness table keyboard reachable", async () => {
+    renderPanel(qc);
+
+    const tableRegion = await screen.findByRole("region", { name: "Policy cohort" });
+    expect(tableRegion).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(tableRegion, { key: "ArrowRight" });
+    expect(tableRegion.scrollLeft).toBe(240);
+
+    fireEvent.keyDown(tableRegion, { key: "ArrowLeft" });
+    expect(tableRegion.scrollLeft).toBe(0);
+  });
+
   it("makes the default-off policy explicit and saves the exact workspace binding", async () => {
     renderPanel(qc);
 
@@ -222,6 +235,37 @@ describe("TwinUsePanel", () => {
     expect(await screen.findByText("Keep the review decision explicit.")).toBeInTheDocument();
     expect(screen.getByText("34 bytes · 8 tokens")).toBeInTheDocument();
     expect(screen.queryByText("agent-1")).not.toBeInTheDocument();
+  });
+
+  it("marks a compiled preview out of date when the run request changes", async () => {
+    renderPanel(qc);
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compile preview" }));
+
+    expect(await screen.findByText("Keep the review decision explicit.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth and document the result" } });
+
+    expect(screen.queryByText("Keep the review decision explicit.")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This preview is out of date. Compile it again to inspect the current inputs.",
+    );
+  });
+
+  it("keeps a compiled preview current when request and tag whitespace changes", async () => {
+    renderPanel(qc);
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "Review auth" } });
+    fireEvent.click(screen.getByText("Advanced run context"));
+    fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: "security,auth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Compile preview" }));
+
+    expect(await screen.findByText("Keep the review decision explicit.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Run request"), { target: { value: "  Review auth  " } });
+    fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: " security, auth " } });
+
+    expect(screen.getByText("Keep the review decision explicit.")).toBeInTheDocument();
+    expect(screen.queryByText("This preview is out of date. Compile it again to inspect the current inputs.")).not.toBeInTheDocument();
   });
 
   it("pauses every future scope only after confirmation and keeps history copy visible", async () => {
@@ -262,6 +306,28 @@ describe("TwinUsePanel", () => {
 
     expect(await screen.findByText("MUL-42 Review auth")).toBeInTheDocument();
     expect(screen.queryByText("issue-1")).not.toBeInTheDocument();
+  });
+
+  it("requires confirmation before deleting a binding", async () => {
+    const row = {
+      id: "binding-1",
+      scopeType: "workspace" as const,
+      scopeId: wsId,
+      state: "enabled" as const,
+      twinVersionId: "version-1",
+      createdAt: "2026-08-26T10:00:00Z",
+      updatedAt: "2026-08-26T10:00:00Z",
+    };
+    qc.setQueryData(twinExecutionKeys.bindings(wsId), bindings(enabledKillSwitch, true, [row]));
+    getTwinBindings.mockResolvedValue(bindings(enabledKillSwitch, true, [row]));
+    renderPanel(qc);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete binding" }));
+    expect(deleteTwinBinding).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Delete this binding?");
+
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete binding" }));
+    await waitFor(() => expect(deleteTwinBinding).toHaveBeenCalledWith("binding-1"));
   });
 
   it("disables every policy mutation when the kill switch is off", () => {

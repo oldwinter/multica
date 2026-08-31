@@ -122,8 +122,34 @@ describe("PersonalWikiPageView", () => {
     fireEvent.click(screen.getByRole("button", { name: "New page" }));
     fireEvent.change(screen.getByLabelText(/^Path/), { target: { value: "secret.md" } });
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Secret" } });
+    fireEvent.change(screen.getByLabelText("Content"), { target: { value: "A private secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(harness.push).toHaveBeenCalledWith("/personal-wiki/page-1");
+  });
+
+  it("keeps personal Wiki creation disabled until the title and content are meaningful", () => {
+    renderPersonal();
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    const create = screen.getByRole("button", { name: "Create" });
+    const title = screen.getByLabelText("Title");
+    const content = screen.getByLabelText("Content");
+
+    expect(create).toBeDisabled();
+    fireEvent.change(title, { target: { value: "Private notes" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: " \n\t" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "# " } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "A private note" } });
+    expect(create).toBeEnabled();
+    fireEvent.change(title, { target: { value: "  " } });
+    expect(create).toBeDisabled();
+  });
+
+  it("lets the short mobile Personal Wiki shell scroll to detail actions", () => {
+    renderPersonal();
+    expect(screen.getByTestId("personal-wiki-page")).toHaveClass("overflow-y-auto", "lg:overflow-hidden");
   });
 
   it("preserves the local draft and advances the CAS base for manual merge", async () => {

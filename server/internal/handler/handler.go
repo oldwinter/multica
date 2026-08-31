@@ -180,8 +180,9 @@ type WorkspaceSetRefreshNotifier interface {
 }
 
 // DaemonPendingWorkNotifier pushes a runtime-scoped "heartbeat now" hint to the
-// daemon so a queued heartbeat-carried request (model discovery) is picked up
-// immediately instead of on the daemon's next scheduled tick (MUL-5444).
+// daemon so a queued heartbeat-carried request (model discovery, capability
+// discovery, or local-skill import) is picked up immediately instead of on the
+// daemon's next scheduled tick (MUL-5444).
 // Satisfied by both *daemonws.Hub (single-node) and *daemonws.RelayNotifier
 // (multi-node, fans out through Redis).
 type DaemonPendingWorkNotifier interface {
@@ -484,7 +485,20 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	roomTargets.SetWikiPagePublisher(func(ctx context.Context, pageID pgtype.UUID, actorType string, actorID pgtype.UUID) error {
 		return wikiKnowledge.PublishCreatedPage(ctx, queries, pageID, actorType, actorID)
 	})
-	roomService := roomdomain.NewService(queries, txStarter, taskSvc, roomTargets, bus)
+	roomService := roomdomain.NewService(
+		queries,
+		txStarter,
+		func(q *db.Queries) roomdomain.AgentRuntimeLookup {
+			return service.RuntimeLookup{
+				Queries: q,
+				Metrics: taskSvc.Metrics,
+				Source:  obsmetrics.RuntimeLookupSourceRoom,
+			}
+		},
+		taskSvc,
+		roomTargets,
+		bus,
+	)
 	twinSvc := service.NewProductionTwinService(queries, txStarter, llmClient)
 	wikiSvc := service.NewWikiService(queries, lmWikiTxStarter{txStarter: txStarter})
 	wikiSvc.Events = bus

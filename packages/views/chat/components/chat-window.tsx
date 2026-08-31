@@ -96,7 +96,7 @@ const apiLogger = createLogger("chat.api");
 const CHAT_VIRTUOSO_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 
 
-export function ChatWindow() {
+export function ChatWindow({ onMinimize }: { onMinimize: () => void }) {
   const { t } = useT("chat");
   const wsId = useWorkspaceId();
   const isOpen = useChatStore((s) => s.isOpen);
@@ -112,7 +112,6 @@ export function ChatWindow() {
   const regenerateQuickActions = useRegenerateChatQuickActions();
   const selectedAgentId = useChatStore((s) => s.selectedAgentId);
   const selectedProjectId = useChatStore((s) => s.selectedProjectId);
-  const setOpen = useChatStore((s) => s.setOpen);
   const setActiveSession = useChatStore((s) => s.setActiveSession);
   const setSelectedAgentId = useChatStore((s) => s.setSelectedAgentId);
   const setSelectedProjectId = useChatStore((s) => s.setSelectedProjectId);
@@ -751,8 +750,8 @@ export function ChatWindow() {
       activeSessionId,
       pendingTaskId,
     });
-    setOpen(false);
-  }, [activeSessionId, pendingTaskId, setOpen]);
+    onMinimize();
+  }, [activeSessionId, onMinimize, pendingTaskId]);
 
   const isExpanded = useChatStore((s) => s.isExpanded);
 
@@ -833,6 +832,8 @@ export function ChatWindow() {
       ref={windowRef}
       className={containerClass}
       style={containerStyle}
+      aria-hidden={isVisible ? undefined : true}
+      inert={isVisible ? undefined : true}
       initial={{ opacity: 0, scale: 0.95, ...motionSize }}
       animate={{
         opacity: isVisible ? 1 : 0,
@@ -857,6 +858,7 @@ export function ChatWindow() {
                   variant="ghost"
                   size="icon-sm"
                   className="rounded-full text-muted-foreground"
+                  aria-label={t(($) => $.window.new_chat_tooltip)}
                   onClick={handleNewChat}
                 />
               }
@@ -883,6 +885,7 @@ export function ChatWindow() {
                     variant="ghost"
                     size="icon-sm"
                     className="text-muted-foreground"
+                    aria-label={isExpanded || isAtMax ? t(($) => $.window.restore_tooltip) : t(($) => $.window.expand_tooltip)}
                     onClick={toggleExpand}
                   />
                 }
@@ -901,6 +904,7 @@ export function ChatWindow() {
                   variant="ghost"
                   size="icon-sm"
                   className="text-muted-foreground"
+                  aria-label={t(($) => $.window.minimize_tooltip)}
                   onClick={handleMinimize}
                 />
               }
@@ -1103,6 +1107,7 @@ export function AgentDropdown({
             size="md"
             enableHoverCard
             showStatusDot
+            profileLink={false}
           />
           <span className="text-caption font-medium max-w-28 truncate">{activeAgent.name}</span>
           <ChevronDown className="size-3 text-muted-foreground shrink-0" />
@@ -1169,6 +1174,7 @@ function AgentPickerItem({
         size="md"
         enableHoverCard
         showStatusDot
+        profileLink={false}
       />
       <span className="truncate flex-1">{agent.name}</span>
       {!runtimeBound && (
@@ -1452,6 +1458,7 @@ function SessionDropdown({
             size="md"
             enableHoverCard
             showStatusDot
+            profileLink={false}
           />
         ) : (
           <span className="size-6 shrink-0" />
@@ -1583,6 +1590,7 @@ function SessionDropdown({
                 size="md"
                 enableHoverCard
                 showStatusDot
+                profileLink={false}
               />
             )}
             <span className="min-w-0 truncate text-body font-medium">{title}</span>

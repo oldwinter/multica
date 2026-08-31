@@ -126,7 +126,7 @@ describe("ActorAvatar profile link", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
 
     renderAvatar(makeAdapter({ push }));
-    fireEvent.click(screen.getByRole("link"));
+    fireEvent.click(screen.getByRole("link", { name: "Ada Lovelace" }));
 
     expect(push).toHaveBeenCalledWith(HREF);
     expect(open).not.toHaveBeenCalled();

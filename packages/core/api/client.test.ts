@@ -73,6 +73,87 @@ describe("ApiClient appearance boundary", () => {
   });
 });
 
+describe("ApiClient login boundary", () => {
+  const loginCases = [
+    {
+      name: "verification code",
+      invoke: (client: ApiClient) =>
+        client.verifyCode("ada@example.com", "123456"),
+    },
+    {
+      name: "Google",
+      invoke: (client: ApiClient) =>
+        client.googleLogin("oauth-code", "https://app.example.test/callback"),
+    },
+  ];
+
+  it.each(loginCases)("normalizes the $name user response", async ({ invoke }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            token: "token-1",
+            user: {
+              id: "user-1",
+              name: "Ada",
+              email: "ada@example.com",
+              skin: "field",
+              appearance: "system",
+              appearance_updated_at: "2026-08-23T10:00:00.123456Z",
+              appearance_token_version: 1,
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      ),
+    );
+
+    const result = await invoke(new ApiClient("https://api.example.test"));
+
+    expect(result).toMatchObject({
+      token: "token-1",
+      user: {
+        id: "user-1",
+        skin: "field",
+        appearance: "system",
+        appearanceUpdatedAt: "2026-08-23T10:00:00.123456Z",
+        appearanceTokenVersion: 1,
+      },
+    });
+    expect(result.user).not.toHaveProperty("appearance_updated_at");
+    expect(result.user).not.toHaveProperty("appearance_token_version");
+  });
+
+  it("rejects a malformed successful login response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ token: 42, user: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    const warn = vi.fn();
+    setSchemaLogger({ ...noopLogger, warn });
+
+    await expect(
+      new ApiClient("https://api.example.test").verifyCode(
+        "ada@example.com",
+        "123456",
+      ),
+    ).rejects.toThrow("Invalid authentication response");
+    expect(warn).toHaveBeenCalledWith(
+      "API response failed schema validation: POST /auth/verify-code",
+      expect.objectContaining({ endpoint: "POST /auth/verify-code" }),
+    );
+  });
+});
+
 describe("ApiClient agent conversation-starter compatibility", () => {
   const prompt = {
     label: "Review a PR",

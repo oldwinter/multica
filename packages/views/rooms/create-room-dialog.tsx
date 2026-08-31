@@ -107,7 +107,7 @@ export function CreateRoomDialog({
         if (!pending || next) onOpenChange(next);
       }}
     >
-      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-hidden sm:max-w-2xl">
+      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-y-auto sm:overflow-hidden sm:max-w-2xl">
         {open ? (
           <CreateRoomForm
             agents={agents}
@@ -295,6 +295,7 @@ function CreateRoomForm({
 
   const facilitatorOptions =
     facilitatorMode === "agent" ? activeAgents : activeSquads;
+  const facilitatorUnavailable = facilitatorOptions.length === 0;
   const targetAgentIds = new Set(participantAgentIds);
   if (facilitatorMode === "agent" && facilitatorId) targetAgentIds.add(facilitatorId);
   const synthesisRequired = facilitatorMode === "squad" || targetAgentIds.size > 1;
@@ -304,7 +305,7 @@ function CreateRoomForm({
   const canSubmit =
     title.trim().length > 0 &&
     fields.objective.trim().length > 0 &&
-    facilitatorId.length > 0 &&
+    Boolean(facilitator) &&
     !pending;
 
   return (
@@ -322,7 +323,7 @@ function CreateRoomForm({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto" data-testid="room-create-scroll">
+      <div className="space-y-5 sm:min-h-0 sm:flex-1 sm:overflow-y-auto" data-testid="room-create-scroll">
         <section aria-labelledby="room-create-template-label">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2
@@ -433,7 +434,14 @@ function CreateRoomForm({
               value={facilitatorId || null}
               onValueChange={(value) => setFacilitatorId(value ?? "")}
             >
-              <SelectTrigger className="mt-2 w-full" aria-label={t(($) => $.create.fields.facilitator)}>
+              <SelectTrigger
+                className="mt-2 w-full"
+                aria-label={t(($) => $.create.fields.facilitator)}
+                aria-describedby={
+                  facilitatorUnavailable ? "room-create-facilitator-empty" : undefined
+                }
+                disabled={facilitatorUnavailable}
+              >
                 <SelectValue
                   placeholder={
                     facilitatorMode === "agent"
@@ -450,6 +458,15 @@ function CreateRoomForm({
                 ))}
               </SelectContent>
             </Select>
+            {facilitatorUnavailable ? (
+              <p
+                id="room-create-facilitator-empty"
+                role="status"
+                className="mt-2 text-caption font-normal leading-5 text-muted-foreground"
+              >
+                {t(($) => $.create.facilitator_empty[facilitatorMode])}
+              </p>
+            ) : null}
           </Field>
 
           <div

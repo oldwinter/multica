@@ -21,10 +21,12 @@
     "cancel": "キャンセル",
     "create": "作成",
     "retry": "再試行",
-    "back": "戻る"
+    "back": "戻る",
+    "back_to_wiki": "Wiki に戻る"
   },
   "fields": {
     "path": "パス",
+    "path_placeholder": "index.md",
     "path_hint": "index.md や concepts/agents.md などの相対 .md パス",
     "title": "タイトル",
     "content": "内容",
@@ -38,6 +40,9 @@
   "states": {
     "loading": "Wiki を読み込み中…",
     "error": "Wiki ページを読み込めませんでした。",
+    "detail_error": "この Wiki ページを読み込めませんでした。",
+    "unavailable_title": "Wiki ページを利用できません",
+    "unavailable_description": "削除または移動されたか、アクセス権がなくなった可能性があります。",
     "saving": "保存中…",
     "saved": "保存しました",
     "action_error": "操作を完了できませんでした。再試行してください。"

@@ -12,6 +12,7 @@
     "placeholders": { "title": "研究议事厅", "objective": "写下本房间要产出的结果", "one_per_line": "每行一项", "instructions": "写下问题、约束和预期产出", "select_agent": "选择智能体", "select_squad": "选择小队", "optional": "可选" },
     "hints": { "daily_turn_limit": "留空表示不限轮次。", "schedule_interval": "最少 5 分钟；留空表示手动运行。" },
     "facilitator_modes": { "agent": "智能体", "squad": "小队" },
+    "facilitator_empty": { "agent": "没有可用的活跃智能体。请先创建或恢复一个智能体，再创建房间。", "squad": "没有可用的活跃小队。请先创建或恢复一个小队，或切换到智能体。" },
     "templates": {
       "research": { "label": "研究", "outcome": "明确不确定性的可引用答案。", "example": "例如：评估市场或技术路径", "objective": "用可追溯证据回答研究问题，并明确标注不确定性。", "success_criteria": "结论引用支持条目\n重要不确定性清晰可见", "stop_conditions": "必要来源均已评估\n新证据不再改变结论" },
       "planning": { "label": "规划", "outcome": "包含负责人、依赖和风险的有序计划。", "example": "例如：把目标拆成下一步行动", "objective": "形成有顺序、可分派的执行计划。", "success_criteria": "依赖和风险清晰\n每项行动都有明确结果", "stop_conditions": "下一项可执行动作明确\n剩余问题均有负责人" },
