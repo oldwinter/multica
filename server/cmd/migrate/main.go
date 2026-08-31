@@ -385,6 +385,7 @@ var concurrentIndexCleanups = map[string]string{
 	"517_skill_evolution_task_dispatch_snapshot_identity_index": "skill_evolution_task_dispatch_snapshot_identity_uidx",
 	"521_wiki_page_room_proposal_idempotency_index":             "wiki_page_edit_proposal_room_idempotency_uidx",
 	"524_task_run_review_idempotency_index":                     "task_run_review_idempotency_uidx",
+	"527_skill_evolution_loop_schedule_index_is_enabled":        "skill_evolution_loop_schedule_is_enabled_idx",
 }
 
 // concurrentDownIndexCleanups covers every migration whose down direction
