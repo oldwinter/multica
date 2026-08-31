@@ -64,7 +64,10 @@ import { LoopConfiguration } from "./loop-configuration";
 import { ProposalReview } from "./proposal-review";
 import { ReleaseHistory } from "./release-history";
 import {
+  canRequestSkillEvolutionProposal,
   isProposalPending,
+  isProposalPublicationUnknown,
+  isPublicationUnknown,
   normalizeLoopMode,
   proposalStatusTone,
 } from "./status";
@@ -396,7 +399,11 @@ export function SkillEvolutionPage({
           requestKeyRef.current = "";
           if (result.proposal) {
             setSelectedProposalId(result.proposal.id);
-            toast.success(t(($) => $.toast.requested));
+            if (isProposalPublicationUnknown(result.state) || result.proposal.state === "publication_unknown") {
+              toast.error(t(($) => $.toast.publication_unknown));
+            } else {
+              toast.success(t(($) => $.toast.requested));
+            }
           } else if (result.state === "improvement_room_queued" && result.roomId) {
             toast.success(t(($) => $.toast.room_queued));
             setQueuedRoom({
@@ -444,8 +451,13 @@ export function SkillEvolutionPage({
     publish.mutate(
       { idempotencyKey: publishKey },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setPublishOpen(false);
+          if (!result?.release || isPublicationUnknown(result.release)) {
+            toast.error(t(($) => $.toast.publication_unknown));
+            void overviewQuery.refetch();
+            return;
+          }
           toast.success(t(($) => $.toast.published));
         },
         onError: reportError,
@@ -463,8 +475,13 @@ export function SkillEvolutionPage({
     rollback.mutate(
       { releaseId: rollbackRelease.id, idempotencyKey: rollbackKey },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setRollbackRelease(null);
+          if (!result?.release || isPublicationUnknown(result.release)) {
+            toast.error(t(($) => $.toast.publication_unknown));
+            void overviewQuery.refetch();
+            return;
+          }
           toast.success(t(($) => $.toast.rolled_back));
         },
         onError: reportError,
@@ -570,7 +587,7 @@ export function SkillEvolutionPage({
               <Button
                 type="button"
                 size="xs"
-                disabled={!canConfigure || !overview.loop || overview.loop.mode === "paused" || requestProposal.isPending}
+                disabled={!canConfigure || !canRequestSkillEvolutionProposal(overview.loop) || requestProposal.isPending}
                 onClick={requestNow}
                 title={!canConfigure ? t(($) => $.permissions.configure_required) : undefined}
               >

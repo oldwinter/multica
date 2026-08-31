@@ -39,7 +39,7 @@ export const SkillEvolutionProposalRequestStateSchema =
   compatibleEnum<SkillEvolutionProposalRequestState>([
     "improvement_room_queued", "proposal_queued", "proposal_running", "proposal_ready",
     "proposal_failed", "proposal_rejected", "proposal_stale", "proposal_publishing",
-    "proposal_published",
+    "proposal_published", "proposal_publication_unknown",
   ]);
 export const SkillEvolutionReleaseKindSchema = compatibleEnum<SkillEvolutionReleaseKind>([
   "publish", "rollback",
@@ -79,7 +79,7 @@ export const SkillEvolutionSkillIdentitySchema = SkillIdentityWireSchema.transfo
     bundleHash: wire.bundle_hash,
     ownership: wire.ownership,
     ownershipReason: wire.ownership_reason,
-    forkRequired: wire.fork_required,
+    forkRequired: wire.fork_required || wire.ownership === "unknown",
   }),
 );
 
@@ -233,11 +233,13 @@ export const SkillEvolutionOverviewSchema = OverviewWireSchema.transform(
     revisions: wire.revisions,
     proposals: wire.proposals,
     releases: wire.releases,
-    permissions: {
-      canConfigure: wire.permissions.can_configure,
-      canPublish: wire.permissions.can_publish,
-      canFork: wire.permissions.can_fork,
-    },
+    permissions: wire.skill.ownership === "unknown" || wire.skill.id.trim() === ""
+      ? { canConfigure: false, canPublish: false, canFork: false }
+      : {
+          canConfigure: wire.permissions.can_configure,
+          canPublish: wire.permissions.can_publish,
+          canFork: wire.permissions.can_fork,
+        },
   }),
 );
 

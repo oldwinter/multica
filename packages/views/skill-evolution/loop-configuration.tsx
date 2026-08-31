@@ -54,6 +54,15 @@ function formatDate(value: string | null | undefined, locale: string, fallback: 
   }).format(date);
 }
 
+function validLoopDraft(draft: LoopDraft): boolean {
+  return Number.isInteger(draft.cooldownSeconds) && draft.cooldownSeconds >= 60 && draft.cooldownSeconds <= 2_592_000 &&
+    Number.isInteger(draft.minimumSignals) && draft.minimumSignals >= 1 && draft.minimumSignals <= 100 &&
+    Number.isInteger(draft.maxEvidenceRefs) && draft.maxEvidenceRefs >= draft.minimumSignals && draft.maxEvidenceRefs <= 100 &&
+    Number.isInteger(draft.maxReplaySamples) && draft.maxReplaySamples >= 1 && draft.maxReplaySamples <= 32 &&
+    Number.isInteger(draft.maxCostUsdTicks) && draft.maxCostUsdTicks >= 0 && draft.maxCostUsdTicks <= 1_000_000_000 &&
+    draft.policyVersion.trim().length > 0 && draft.policyVersion.trim().length <= 80;
+}
+
 function NumberField({
   id,
   label,
@@ -120,6 +129,7 @@ export function LoopConfiguration({
 
   const persisted = useMemo(() => draftFromLoop(loop), [loop]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(persisted);
+  const valid = validLoopDraft(draft);
   const disabled = !canConfigure || forkRequired || saving || pausing;
   const update = <K extends keyof LoopDraft>(key: K, value: LoopDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -207,7 +217,7 @@ export function LoopConfiguration({
             id="evolution-replay"
             label={t(($) => $.loop.replay_limit)}
             value={draft.maxReplaySamples}
-            min={0}
+            min={1}
             max={32}
             disabled={disabled}
             onChange={(value) => update("maxReplaySamples", value)}
@@ -259,7 +269,7 @@ export function LoopConfiguration({
         <Button
           type="button"
           size="sm"
-          disabled={disabled || !dirty || draft.policyVersion.trim().length === 0}
+          disabled={disabled || !dirty || !valid}
           onClick={() => onSave({ ...draft, policyVersion: draft.policyVersion.trim() })}
           title={!canConfigure ? t(($) => $.permissions.configure_required) : undefined}
         >

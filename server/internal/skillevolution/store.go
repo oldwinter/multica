@@ -431,28 +431,34 @@ type ReviewInput struct {
 }
 
 func (s *Store) RecordReview(ctx context.Context, input ReviewInput) (db.SkillEvolutionReview, error) {
+	row, _, err := s.RecordReviewWithStatus(ctx, input)
+	return row, err
+}
+
+func (s *Store) RecordReviewWithStatus(ctx context.Context, input ReviewInput) (db.SkillEvolutionReview, bool, error) {
 	if !validUUID(input.WorkspaceID) || !validUUID(input.ProposalID) || !validUUID(input.CandidateRevisionID) ||
 		!validUUID(input.ActorID) || (input.Decision != "rejected" && input.Decision != "publish") ||
 		len([]rune(input.Reason)) > MaxReviewReasonRunes || !boundedToken(input.IdempotencyKey, MaxIdempotencyKeyBytes) {
-		return db.SkillEvolutionReview{}, ErrPersistenceInvalidInput
+		return db.SkillEvolutionReview{}, false, ErrPersistenceInvalidInput
 	}
 	params := db.CreateSkillEvolutionReviewParams{
 		WorkspaceID: input.WorkspaceID, ProposalID: input.ProposalID, CandidateRevisionID: input.CandidateRevisionID,
 		Decision: input.Decision, ActorID: input.ActorID, Reason: optionalText(input.Reason), IdempotencyKey: input.IdempotencyKey,
 	}
 	row, err := s.queries.CreateSkillEvolutionReview(ctx, params)
+	inserted := err == nil
 	if errors.Is(err, pgx.ErrNoRows) {
 		row, err = s.queries.GetSkillEvolutionReviewByIdempotencyKey(ctx, db.GetSkillEvolutionReviewByIdempotencyKeyParams{
 			WorkspaceID: input.WorkspaceID, ProposalID: input.ProposalID, IdempotencyKey: input.IdempotencyKey,
 		})
 	}
 	if err != nil {
-		return db.SkillEvolutionReview{}, persistenceError(err)
+		return db.SkillEvolutionReview{}, false, persistenceError(err)
 	}
 	if row.CandidateRevisionID != input.CandidateRevisionID || row.Decision != input.Decision || row.ActorID != input.ActorID || row.Reason != optionalText(input.Reason) {
-		return db.SkillEvolutionReview{}, ErrPersistenceConflict
+		return db.SkillEvolutionReview{}, false, ErrPersistenceConflict
 	}
-	return row, nil
+	return row, inserted, nil
 }
 
 type ReleaseInput struct {

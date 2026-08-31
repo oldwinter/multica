@@ -192,6 +192,29 @@ func TestSkillEvolutionScheduledHandlerValidatesRunnerOutcomeAndRetriesInfrastru
 	}
 }
 
+func TestSkillEvolutionScheduledHandlerTreatsInsufficientSignalsAsSkip(t *testing.T) {
+	workspaceID := scheduledUUID("10000000-0000-4000-8000-000000000051")
+	loop := scheduledLoop(workspaceID,
+		scheduledUUID("20000000-0000-4000-8000-000000000051"),
+		scheduledUUID("30000000-0000-4000-8000-000000000051"), LoopModePropose, true,
+	)
+	job := SkillEvolutionJob(&scheduledLoopRepository{loops: []db.SkillEvolutionLoop{loop}}, &scheduledLoopRunnerFake{
+		run: func(context.Context, db.SkillEvolutionLoop, string) (ScheduledLoopOutcome, error) {
+			return ScheduledLoopOutcome{}, ErrInsufficientSignals
+		},
+	}, nil)
+
+	result, err := job.Handler(context.Background(), scheduler.HandlerInput{
+		Scope: scheduler.Scope{Kind: scheduler.ScopeKindWorkspace, ID: uuid.UUID(workspaceID.Bytes).String()},
+	})
+	if err != nil {
+		t.Fatalf("handler error = %v, want successful skip", err)
+	}
+	if result.RowsAffected != 0 || result.Result["skipped"] != 1 {
+		t.Fatalf("handler result = %+v, want one skipped loop", result)
+	}
+}
+
 type scheduledLoopRepository struct {
 	loops []db.SkillEvolutionLoop
 	err   error

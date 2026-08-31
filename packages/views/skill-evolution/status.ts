@@ -1,3 +1,8 @@
+import type {
+  SkillEvolutionLoop,
+  SkillEvolutionRelease,
+} from "@multica/core/skill-evolution";
+
 export type EvolutionStatusTone =
   | "neutral"
   | "info"
@@ -59,4 +64,20 @@ export function isProposalPending(value: string): boolean {
 
 export function isProposalActionable(value: string): boolean {
   return value === "ready";
+}
+
+export function canRequestSkillEvolutionProposal(
+  loop: Pick<SkillEvolutionLoop, "enabled" | "mode"> | null | undefined,
+): boolean {
+  return loop?.enabled === true && loop.mode === "propose";
+}
+
+export function isPublicationUnknown(
+  release: Pick<SkillEvolutionRelease, "outcome">,
+): boolean {
+  return release.outcome === "publication_unknown" || release.outcome === "unknown";
+}
+
+export function isProposalPublicationUnknown(value: string): boolean {
+  return value === "publication_unknown" || value === "proposal_publication_unknown";
 }

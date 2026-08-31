@@ -67,6 +67,9 @@
   "actions": {
     "row_menu": "操作",
     "add_to_agent": "エージェントに追加",
+    "copy_reference": "参照をコピー",
+    "reference_copied_toast": "スキルの参照をコピーしました",
+    "reference_copy_failed_toast": "スキルの参照をコピーできませんでした",
     "refresh": "ソースから更新",
     "my_agents": "自分のエージェント",
     "other_agents": "その他のエージェント",

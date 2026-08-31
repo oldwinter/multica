@@ -230,13 +230,16 @@ func TestStorePersistenceIsolationIdempotencyAndAppendOnlyHistory(t *testing.T) 
 		WorkspaceID: workspaceA, ProposalID: proposal.ID, CandidateRevisionID: candidate.Revision.ID,
 		Decision: "rejected", ActorID: userA, Reason: "needs more proof", IdempotencyKey: "review-rejected",
 	}
-	review, err := store.RecordReview(ctx, reviewInput)
+	review, reviewInserted, err := store.RecordReviewWithStatus(ctx, reviewInput)
 	if err != nil {
 		t.Fatalf("RecordReview: %v", err)
 	}
-	replayedReview, err := store.RecordReview(ctx, reviewInput)
-	if err != nil || replayedReview.ID != review.ID {
-		t.Fatalf("idempotent review = (%v, %v), want same id", replayedReview.ID, err)
+	if !reviewInserted {
+		t.Fatal("first review write reported a replay")
+	}
+	replayedReview, replayInserted, err := store.RecordReviewWithStatus(ctx, reviewInput)
+	if err != nil || replayedReview.ID != review.ID || replayInserted {
+		t.Fatalf("idempotent review = (%v, inserted=%v, %v), want same id and no insert", replayedReview.ID, replayInserted, err)
 	}
 	changedReview := reviewInput
 	changedReview.Decision = "publish"

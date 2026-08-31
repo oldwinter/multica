@@ -85,6 +85,7 @@ import {
   type SkillActionsContext,
 } from "./skill-list-actions";
 import { RefreshSkillDialog } from "./refresh-skill-dialog";
+import { SkillReferenceButton } from "./skill-reference-copy";
 import { useT } from "../../i18n";
 import { ResourceLabelPicker } from "../../labels/resource-label-picker";
 
@@ -1187,6 +1188,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
                 </TooltipContent>
               </Tooltip>
             )}
+            <SkillReferenceButton skill={skill} />
             <Tooltip>
               <TooltipTrigger
                 render={

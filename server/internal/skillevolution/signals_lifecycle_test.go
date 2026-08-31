@@ -56,6 +56,12 @@ func TestSignalAdaptersKeepDiscoveryContentFreeAndRevalidateLoad(t *testing.T) {
 	if _, err := drifted.Load(context.Background(), query, ref); !errors.Is(err, ErrSignalSourceDrift) {
 		t.Fatalf("drift error = %v, want source drift", err)
 	}
+
+	crossWorkspace := query
+	crossWorkspace.WorkspaceID = testUUID()
+	if _, err := adapter.Load(context.Background(), crossWorkspace, ref); !errors.Is(err, ErrSignalSourceInvalid) {
+		t.Fatalf("cross-workspace load error = %v, want invalid source", err)
+	}
 }
 
 func TestCandidatePolicyAndBoundedReplayFailClosed(t *testing.T) {
