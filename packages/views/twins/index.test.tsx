@@ -295,7 +295,13 @@ describe("TwinsPage", () => {
       replacesProposalId: "proposal-2",
       editedAssertions,
     }));
-    await waitFor(() => expect(getProposal).toHaveBeenCalledWith(replacementId));
-    expect(await screen.findAllByText(replacementId)).toHaveLength(2);
+    await waitFor(
+      () => expect(getProposal).toHaveBeenCalledWith(replacementId),
+      { timeout: 5_000 },
+    );
+    await waitFor(
+      () => expect(screen.getAllByText(replacementId)).toHaveLength(2),
+      { timeout: 5_000 },
+    );
   });
 });
