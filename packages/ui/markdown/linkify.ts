@@ -1,4 +1,4 @@
-import LinkifyIt from 'linkify-it'
+import { linkifyit } from 'linkify-it'
 
 /**
  * Linkify - URL and file path detection for markdown preprocessing
@@ -9,7 +9,7 @@ import LinkifyIt from 'linkify-it'
 
 // Keep fuzzy detection enabled so linkify-it can recognize `www.` URLs.
 // collectLinkifyMatches applies the stricter shared product policy below.
-const linkify = new LinkifyIt()
+const linkify = linkifyit({ fuzzyLink: true })
 
 // Common source/config file extensions used by the file-path detector.
 const FILE_EXTENSIONS =
@@ -351,7 +351,7 @@ export function detectLinks(text: string): DetectedLink[] {
  */
 export function preprocessLinks(text: string): string {
   // Quick check - if no potential links, return early
-  if (!linkify.pretest(text) && !/[~/.]\//.test(text)) {
+  if (!linkify.test(text) && !/[~/.]\//.test(text)) {
     return text
   }
 
@@ -395,5 +395,5 @@ export function preprocessLinks(text: string): string {
  * Useful for optimization - skip preprocessing if no links present
  */
 export function hasLinks(text: string): boolean {
-  return linkify.pretest(text) || /[~/.]\/[\w]/.test(text)
+  return linkify.test(text) || /[~/.]\/[\w]/.test(text)
 }

@@ -3,42 +3,43 @@ packages:
   - packages/*
 
 catalog:
-  '@formatjs/intl-localematcher': ^0.8.4
-  '@tailwindcss/postcss': ^4
-  '@tailwindcss/vite': ^4
-  '@tanstack/react-query': ^5.96.2
+  '@formatjs/intl-localematcher': ^0.8.13
+  '@tailwindcss/postcss': ^4.3.3
+  '@tailwindcss/vite': ^4.3.3
+  '@tanstack/react-query': ^5.102.8
   '@tanstack/react-table': ^8.21.3
-  '@tanstack/react-virtual': ^3.13.0
-  '@testing-library/jest-dom': ^6.9.1
-  '@testing-library/react': ^16.3.2
-  '@testing-library/user-event': ^14.6.1
-  '@types/node': ^25.0.10
-  '@types/react': ^19.2.0
-  '@types/react-dom': ^19.2.0
-  '@vitejs/plugin-react': ^6.0.1
+  '@tanstack/react-virtual': ^3.14.10
+  '@testing-library/jest-dom': ^7.0.1
+  '@testing-library/react': ^16.3.3
+  '@testing-library/user-event': ^14.6.6
+  '@types/node': ^26.4.0
+  '@types/react': ^19.2.18
+  '@types/react-dom': ^19.2.5
+  '@vitejs/plugin-react': ^5.2.0
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
-  eslint-plugin-i18next: ^6.1.4
-  i18next: ^26.0.8
-  jsdom: ^29.0.1
-  katex: ^0.16.45
-  lucide-react: ^1.0.1
-  mermaid: ^11.14.0
+  eslint-plugin-i18next: ^6.1.5
+  i18next: ^26.4.0
+  jsdom: ^30.0.1
+  katex: ^0.18.4
+  lucide-react: ^1.38.0
+  mermaid: ^11.17.2
   pixi.js: ^8.20.1
   postcss: ^8
-  posthog-js: ^1.176.1
-  react: 19.2.3
-  react-dom: 19.2.3
-  react-i18next: ^17.0.6
-  react-qr-code: ^2.0.18
-  react-virtuoso: ^4.14.0
+  posthog-js: ^1.422.5
+  react: ^19.2.3
+  react-dom: ^19.2.3
+  react-i18next: ^17.0.12
+  react-qr-code: ^2.2.0
+  react-virtuoso: ^4.18.12
   rehype-katex: ^7.0.1
   remark-math: ^6.0.0
-  tailwind-merge: ^3.4.0
-  tailwindcss: ^4
-  typescript: ^5.9.3
+  tailwind-merge: ^3.6.0
+  tailwindcss: ^4.3.3
+  typescript: ^6.0.3
   unicode-animations: ^1.0.3
-  vitest: ^4.1.0
-  yaml: ^2.6.0
-  zod: ^4.1.5
-  zustand: ^5.0.0
+  vite: ^7.3.6
+  vitest: ^4.1.11
+  yaml: ^2.9.0
+  zod: ^4.5.4
+  zustand: ^5.0.15

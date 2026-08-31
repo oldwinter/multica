@@ -31,7 +31,7 @@
     "generate:reserved-slugs": "node scripts/generate-reserved-slugs.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   },
   "packageManager": "pnpm@10.28.2",
   "pnpm": {
@@ -54,12 +54,12 @@
     }
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.62.1",
     "@types/node": "catalog:",
-    "@types/pg": "^8.20.0",
-    "knip": "^6.32.2",
-    "pg": "^8.20.0",
-    "turbo": "^2.5.4",
+    "@types/pg": "^8.23.1",
+    "knip": "^6.33.0",
+    "pg": "^8.23.0",
+    "turbo": "^2.10.12",
     "typescript": "catalog:"
   }
 }

@@ -79,7 +79,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size, focused }) => (
               <Image
                 source={focused ? "sf:tray.fill" : "sf:tray"}
-                tintColor={color}
+                tintColor={color as string}
                 style={{ width: size, height: size }}
               />
             ),
@@ -92,7 +92,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size, focused }) => (
               <Image
                 source={focused ? "sf:checklist" : "sf:checklist.unchecked"}
-                tintColor={color}
+                tintColor={color as string}
                 style={{ width: size, height: size }}
               />
             ),
@@ -107,7 +107,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size, focused }) => (
               <Image
                 source={focused ? "sf:bubble.left.fill" : "sf:bubble.left"}
-                tintColor={color}
+                tintColor={color as string}
                 style={{ width: size, height: size }}
               />
             ),
@@ -120,7 +120,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => (
               <Image
                 source="sf:ellipsis"
-                tintColor={color}
+                tintColor={color as string}
                 style={{ width: size, height: size }}
               />
             ),

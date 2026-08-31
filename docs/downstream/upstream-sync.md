@@ -17,6 +17,16 @@ Use this page when merging `upstream/main`. The short pointer lives in
   commits.
 - Textual conflict files: 5.
 
+The post-merge stack refresh moves the repository to Node 26, pnpm 10.28.2,
+Go 1.27, Electron 44, Expo 57, Next.js 16.3, React 19.2.3, TypeScript 6,
+Vitest 4, and the current compatible Go module graph. Workspace dependencies
+were upgraded to their latest stable releases where the active framework peer
+contracts allow it. The deliberate ceilings are Vite 7 for electron-vite 5,
+TypeScript 6 and Babel 7 for Expo 57, React Table 8 for the existing table API,
+ESLint 9, React plugin 5, and Tailwind 3 in the NativeWind 4 mobile surface.
+The Expo-managed React Native packages remain on Expo Doctor's SDK 57 matrix
+instead of independently advancing past it.
+
 The package-manifest conflict retained the downstream `pixi.js` and Vitest
 coverage dependencies while accepting upstream's ESLint parser and direct
 ESLint dependency. `pnpm-lock.yaml` was regenerated from that combined source
@@ -44,6 +54,20 @@ timeout constructor, removing the now-redundant downstream constructor and
 test. Room runtime checks now use upstream's attributed `RuntimeLookup`
 boundary with a bounded `room` source label instead of bypassing the new
 observability contract through direct sqlc calls.
+
+Validation passed the frozen pnpm install, workspace typecheck, lint with no
+errors, Core (1,941), Views (5,273), Web (256), Docs (17), Desktop (576), and
+Mobile (207) tests, Expo Doctor's 21 checks, and production builds for Web,
+Docs, and Desktop. A fresh PostgreSQL database applied all 634 migration
+identities through 527 twice, with the second pass a no-op. The merged-history
+lint freezes the published duplicate identities at 441-443; neither side was
+renumbered.
+The Go all-package run passed the application packages and exposed only
+environment-sensitive aggregate failures: the handler briefing and pkg/agent
+packages passed when rerun in isolation, while three repo-cache partial-clone
+fixtures consistently fail because the local Git test server rejects requests
+for unadvertised promisor objects. The repo-cache sidecar-exclusion behavior
+passes; no production cache path was changed for the fixture limitation.
 
 ## 2026-08-29 Skill Evolution Final-Fix Audit
 

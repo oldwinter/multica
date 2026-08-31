@@ -21,7 +21,7 @@ const maxLegacyMigrationPrefix = 148
 // listed and is deliberately absent again — the later of the two migrations
 // was renumbered to 376, which its idempotent DDL made safe.
 //
-// Prefixes 251–309, 403–432, and 437–440 record merges of already-published
+// Prefixes 251–309, 403–432, and 437–443 record merges of already-published
 // upstream and downstream histories. Renaming either side changes its
 // schema_migrations identity and can re-run DDL on existing installations, so
 // their exact stems stay frozen. The migration runner carries explicit aliases
@@ -147,6 +147,9 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"438": {"438_agent_runtime_online_last_seen_index", "438_drop_twin_proposal_identity_index"},
 	"439": {"439_agent_runtime_offline_last_seen_index", "439_twin_proposal_identity_partial_index"},
 	"440": {"440_github_pr_head_sha_index", "440_twin_deposition_request_index"},
+	"441": {"441_runtime_profile_add_codearts", "441_twin_deposition_edit_digest"},
+	"442": {"442_twin_proposal_correction", "442_vcs_reference_only_repair"},
+	"443": {"443_issue_project_status_index", "443_twin_proposal_replacement_index"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)

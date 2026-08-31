@@ -104,6 +104,7 @@ class IntersectionObserverHarness {
       unobserve: () => {},
       root: null,
       rootMargin: "0px",
+      scrollMargin: "0px",
       thresholds: [0],
     };
   };
