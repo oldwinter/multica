@@ -165,6 +165,9 @@ describe("SkillDetailPage tabs", () => {
   it("links to the skill evolution workflow from the compact header action", async () => {
     const { push } = renderPage();
 
+    expect(
+      await screen.findByRole("button", { name: "Copy reference" }),
+    ).toBeTruthy();
     const evolution = await screen.findByRole("button", { name: "Evolution" });
     expect(evolution.getAttribute("href")).toBe("/acme/skills/skill-1/evolution");
     await userEvent.click(evolution);
