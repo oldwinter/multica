@@ -12,6 +12,7 @@
     "placeholders": { "title": "리서치 협의회", "objective": "이 룸이 만들 결과를 입력하세요", "one_per_line": "한 줄에 한 항목", "instructions": "질문, 제약, 기대 결과를 입력하세요", "select_agent": "에이전트 선택", "select_squad": "스쿼드 선택", "optional": "선택 사항" },
     "hints": { "daily_turn_limit": "비워 두면 턴이 무제한입니다.", "schedule_interval": "최소 5분. 비워 두면 수동 실행입니다." },
     "facilitator_modes": { "agent": "에이전트", "squad": "스쿼드" },
+    "facilitator_empty": { "agent": "사용 가능한 에이전트가 없습니다. 룸을 만들기 전에 에이전트를 만들거나 복원하세요.", "squad": "사용 가능한 스쿼드가 없습니다. 스쿼드를 만들거나 복원하거나 에이전트로 전환하세요." },
     "templates": {
       "research": { "label": "리서치", "outcome": "불확실성을 명시한 인용 가능한 답변.", "example": "예: 시장 또는 기술 접근 방식 평가", "objective": "인용 가능한 근거와 명시된 불확실성으로 질문에 답합니다.", "success_criteria": "결론에 근거 항목이 인용됨\n중요한 불확실성이 표시됨", "stop_conditions": "필요한 출처를 모두 평가함\n새 근거가 결론을 바꾸지 않음" },
       "planning": { "label": "계획", "outcome": "담당자, 의존성, 위험이 포함된 순서 있는 계획.", "example": "예: 목표를 다음 실행 단계로 전환", "objective": "순서와 담당이 명확한 실행 계획을 만듭니다.", "success_criteria": "의존성과 위험이 명확함\n각 행동의 결과가 명확함", "stop_conditions": "다음 실행 가능한 행동이 명확함" },

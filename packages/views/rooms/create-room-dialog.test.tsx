@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { CreateRoomInput, RoomDetail } from "@multica/core/rooms";
+import type { Agent } from "@multica/core/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import enRooms from "../locales/en/rooms.json";
 import { CreateRoomDialog } from "./create-room-dialog";
@@ -16,6 +17,7 @@ vi.mock("../common/actor-avatar", () => ({
 afterEach(cleanup);
 
 function renderDialog(input?: {
+  readonly agents?: readonly Agent[];
   readonly initialInput?: CreateRoomInput;
   readonly mode?: "create" | "duplicate";
 }) {
@@ -26,7 +28,7 @@ function renderDialog(input?: {
     <I18nProvider locale="en" resources={TEST_RESOURCES}>
       <CreateRoomDialog
         open
-        agents={[]}
+        agents={input?.agents ?? []}
         squads={[]}
         members={[]}
         pending={false}
@@ -91,6 +93,22 @@ describe("CreateRoomDialog", () => {
     expect(view.getByTestId("room-create-submit")).toBeInTheDocument();
   });
 
+  it("explains an empty facilitator directory instead of opening a blank menu", () => {
+    const view = renderDialog();
+    const facilitator = view.getByRole("combobox", { name: "Facilitator" });
+
+    expect(facilitator).toBeDisabled();
+    expect(view.getByRole("status")).toHaveTextContent(
+      "No active Agents. Create or restore an Agent before creating a Room.",
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Squad" }));
+
+    expect(view.getByRole("status")).toHaveTextContent(
+      "No active Squads. Create or restore a Squad, or switch to Agent.",
+    );
+  });
+
   it("keeps mobile form content and footer actions in the bounded dialog scroller", () => {
     const view = renderDialog();
     const dialog = view.getByRole("dialog");
@@ -111,18 +129,12 @@ describe("CreateRoomDialog", () => {
   });
 
   it("submits a scheduled duplicate as a paused fresh Room", () => {
-    const initialInput: CreateRoomInput = {
-      title: "Weekly review",
-      template_id: "planning",
-      objective: "Review the week",
-      success_criteria: ["Priorities are ordered"],
-      stop_conditions: ["Owners are assigned"],
-      facilitator_agent_id: "agent-1",
-      daily_turn_limit: 8,
-      max_cost_ticks: 40,
-      schedule_interval_minutes: 1440,
-    };
-    const view = renderDialog({ initialInput, mode: "duplicate" });
+    const initialInput = scheduledDuplicateInput("agent-1");
+    const view = renderDialog({
+      agents: [makeAgent({ id: "agent-1", name: "Facilitator" })],
+      initialInput,
+      mode: "duplicate",
+    });
 
     expect(view.getByText(/scheduled copy will be created paused/i)).toBeTruthy();
     fireEvent.click(view.getByTestId("room-create-submit"));
@@ -141,4 +153,56 @@ describe("CreateRoomDialog", () => {
       expect.any(Function),
     );
   });
+
+  it("blocks a copied facilitator that is absent from the active directory", () => {
+    const view = renderDialog({
+      agents: [makeAgent({ id: "agent-2", name: "Available facilitator" })],
+      initialInput: scheduledDuplicateInput("agent-1"),
+      mode: "duplicate",
+    });
+
+    expect(view.getByRole("combobox", { name: "Facilitator" })).toBeEnabled();
+    expect(view.getByTestId("room-create-submit")).toBeDisabled();
+  });
 });
+
+function scheduledDuplicateInput(facilitatorAgentId: string): CreateRoomInput {
+  return {
+    title: "Weekly review",
+    template_id: "planning",
+    objective: "Review the week",
+    success_criteria: ["Priorities are ordered"],
+    stop_conditions: ["Owners are assigned"],
+    facilitator_agent_id: facilitatorAgentId,
+    daily_turn_limit: 8,
+    max_cost_ticks: 40,
+    schedule_interval_minutes: 1440,
+  };
+}
+
+function makeAgent(overrides: Pick<Agent, "id" | "name">): Agent {
+  return {
+    id: overrides.id,
+    workspace_id: "ws-1",
+    runtime_id: "runtime-1",
+    name: overrides.name,
+    description: "",
+    instructions: "",
+    avatar_url: null,
+    runtime_mode: "local",
+    runtime_config: {},
+    custom_args: [],
+    visibility: "private",
+    permission_mode: "private",
+    invocation_targets: [],
+    status: "idle",
+    max_concurrent_tasks: 1,
+    model: "",
+    owner_id: "user-1",
+    skills: [],
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    archived_at: null,
+    archived_by: null,
+  };
+}
