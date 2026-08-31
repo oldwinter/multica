@@ -36,7 +36,7 @@ import {
   TwinAgentSelector, TwinIssueSelector, TwinProjectSelector,
   type TwinAgentSelection, type TwinIssueSelection, type TwinProjectSelection,
 } from "./twin-entity-selectors";
-import type { TwinWorkspaceTab } from "./twin-activation-readiness";
+import type { TwinWorkspaceTab } from "./twin-workspace-tabs";
 
 const LONG_LIVED_SCOPES: readonly TwinBindingScope[] = ["workspace", "agent", "project", "issue"];
 const BINDING_STATES: readonly TwinBindingState[] = ["off", "preview", "enabled"];
@@ -351,7 +351,17 @@ function Effectiveness({
           ? t(($) => $.use.comparison_ready, { control: metrics.comparison.controlState ?? "off" })
           : t(($) => $.use.comparison_waiting)}
       </p>
-      <div className="overflow-x-auto">
+      <div
+        role="region"
+        aria-label={t(($) => $.use.cohort)}
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+          event.preventDefault();
+          event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 240 : -240;
+        }}
+        className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
         <table className="w-full min-w-[1040px] border-collapse text-left text-caption">
           <thead>
             <tr className="border-b border-border text-muted-foreground">

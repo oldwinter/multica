@@ -15,6 +15,7 @@ vi.mock("../../navigation", () => ({
   AppLink: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
     <a href={href} {...props}>{children}</a>
   ),
+  useOptionalNavigation: () => null,
 }));
 
 vi.mock("./twin-activation-readiness", () => ({

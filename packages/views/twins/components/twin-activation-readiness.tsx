@@ -14,7 +14,9 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useT } from "../../i18n";
 
-export type TwinWorkspaceTab = "wiki" | "twin" | "use";
+import type { TwinWorkspaceTab } from "./twin-workspace-tabs";
+
+export type { TwinWorkspaceTab } from "./twin-workspace-tabs";
 
 export function TwinActivationReadiness({
   wsId,

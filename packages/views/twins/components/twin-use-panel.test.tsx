@@ -186,6 +186,19 @@ describe("TwinUsePanel", () => {
     qc.clear();
   });
 
+  it("makes the wide effectiveness table keyboard reachable", async () => {
+    renderPanel(qc);
+
+    const tableRegion = await screen.findByRole("region", { name: "Policy cohort" });
+    expect(tableRegion).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(tableRegion, { key: "ArrowRight" });
+    expect(tableRegion.scrollLeft).toBe(240);
+
+    fireEvent.keyDown(tableRegion, { key: "ArrowLeft" });
+    expect(tableRegion.scrollLeft).toBe(0);
+  });
+
   it("makes the default-off policy explicit and saves the exact workspace binding", async () => {
     renderPanel(qc);
 

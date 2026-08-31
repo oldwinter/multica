@@ -25,6 +25,7 @@ vi.mock("../navigation", () => ({
     <a href={href} {...props}>{children}</a>
   ),
   useNavigation: () => ({ push: vi.fn() }),
+  useOptionalNavigation: () => null,
 }));
 vi.mock("./components/twin-activation-readiness", () => ({
   TwinActivationReadiness: () => null,
