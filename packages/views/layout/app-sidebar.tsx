@@ -606,7 +606,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   const createIssueShortcut = useShortcut("createIssue");
 
   return (
-      <Sidebar variant="inset">
+      <Sidebar
+        variant="inset"
+        aria-label={t(($) => $.sidebar.navigation_label)}
+      >
         {topSlot}
         {/* Workspace Switcher */}
         <SidebarHeader className={cn("py-3", headerClassName)} style={headerStyle}>

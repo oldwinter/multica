@@ -45,6 +45,7 @@
     "loading_named_prefix": "Loading"
   },
   "sidebar": {
+    "navigation_label": "Primary navigation",
     "unpin_tooltip": "Unpin",
     "workspaces_label": "Workspaces",
     "create_workspace": "Create workspace",
