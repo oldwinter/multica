@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { GitHubMark } from "./github-mark";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@multica/ui/components/ui/tabs";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { useIsMobile } from "@multica/ui/hooks/use-mobile";
 import { useCurrentWorkspace } from "@multica/core/paths";
 import { useFeatureEnabled } from "@multica/core/config";
@@ -180,6 +181,19 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
   const activeTab =
     candidateTab && validTabs.has(candidateTab) ? candidateTab : DEFAULT_TAB;
 
+  const mobileAccountItems = [
+    ...ACCOUNT_TAB_KEYS.map((key) => ({
+      value: key,
+      label: t(($) => $.page.tabs[key]),
+    })),
+    ...(extraAccountTabs?.map((tab) => ({ value: tab.value, label: tab.label })) ?? []),
+  ];
+  const mobileWorkspaceItems = visibleWorkspaceTabKeys.map((key) => ({
+    value: WORKSPACE_TAB_VALUES[key],
+    label: t(($) => $.page.tabs[key]),
+  }));
+  const mobileTabItems = [...mobileAccountItems, ...mobileWorkspaceItems];
+
   // replace (not push) so settings tab switches don't pollute browser history.
   // Preserve any other query params the page may carry.
   const handleTabChange = (next: string) => {
@@ -199,7 +213,7 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
           Stays on the content surface color (no shell tint): the desktop's active
           tab merges into the card top, and a tinted panel under the first tabs
           breaks that seam (MUL-4439). Zoning comes from the divider instead. */}
-      <div className="shrink-0 overflow-x-auto border-b border-surface-border p-2 md:w-56 md:overflow-y-auto md:border-b-0 md:border-r md:p-4">
+      <div className="shrink-0 border-b border-surface-border p-2 md:w-56 md:overflow-y-auto md:border-b-0 md:border-r md:p-4">
         {/* This page builds its own chrome instead of a PageHeader, so it has
             to supply the nav trigger itself — below `xl` the nav is a sheet or
             auto-collapsed, and settings has no other way back to it. */}
@@ -210,9 +224,38 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
           <CollapsedNavTrigger />
           <h1 className="sr-only text-body font-semibold md:not-sr-only md:px-2">{t(($) => $.page.title)}</h1>
         </div>
+        {isMobile ? (
+          <div data-testid="settings-mobile-tab-select" className="md:hidden">
+            <Select
+              items={mobileTabItems}
+              value={activeTab}
+              onValueChange={(next) => {
+                if (typeof next === "string" && validTabs.has(next)) handleTabChange(next);
+              }}
+            >
+              <SelectTrigger className="data-[size=default]:h-11 w-full" aria-label={t(($) => $.page.title)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start" className="max-h-[min(70vh,28rem)]">
+                <SelectGroup>
+                  <SelectLabel>{t(($) => $.page.my_account)}</SelectLabel>
+                  {mobileAccountItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>{workspaceName ?? t(($) => $.page.workspace_fallback)}</SelectLabel>
+                  {mobileWorkspaceItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <TabsList
           variant="line"
-          className="flex w-max min-w-full flex-row items-center gap-1 p-0 md:w-full md:flex-col md:items-stretch"
+          className="hidden w-max min-w-full flex-row items-center gap-1 p-0 md:flex md:w-full md:flex-col md:items-stretch"
         >
           {/* My Account group */}
           <span className="hidden px-2 pb-1 pt-2 text-caption font-medium text-muted-foreground md:block">

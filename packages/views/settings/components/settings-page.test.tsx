@@ -1,4 +1,5 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SidebarProvider, useSidebar } from "@multica/ui/components/ui/sidebar";
@@ -114,6 +115,39 @@ describe("SettingsPage nav trigger", () => {
       screen.queryByRole("button", { name: "Toggle left sidebar" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage mobile section navigation", () => {
+  it("exposes every settings section through an accessible mobile selector", () => {
+    renderWithI18n(<SettingsPage />);
+
+    expect(screen.getByRole("combobox", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByTestId("settings-mobile-tab-select")).toHaveClass("md:hidden");
+    expect(screen.getByRole("tablist")).toHaveClass("hidden");
+  });
+
+  it("keeps the full tab list on desktop", () => {
+    layout.compact = false;
+
+    renderWithI18n(<SettingsPage />);
+
+    expect(screen.queryByRole("combobox", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist")).toHaveClass("md:flex");
+  });
+
+  it("routes from the mobile selector while preserving existing query state", async () => {
+    navigationState.search = "view=activity";
+    const user = userEvent.setup();
+
+    renderWithI18n(<SettingsPage />);
+
+    await user.click(screen.getByRole("combobox", { name: "Settings" }));
+    await user.click(await screen.findByRole("option", { name: "Integrations" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(
+      "/acme/settings?view=activity&tab=integrations",
+    ));
   });
 });
 
