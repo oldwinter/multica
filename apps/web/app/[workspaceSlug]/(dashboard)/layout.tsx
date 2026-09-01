@@ -1,8 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { DashboardLayout } from "@multica/views/layout";
-import { WorkspaceLoader } from "@multica/views/layout";
+import { DashboardLayout, WorkspaceLoader } from "@multica/views/layout";
 import { SearchCommand, SearchTrigger } from "@multica/views/search";
 import { FloatingChat } from "@multica/views/chat";
 import { WebNotificationBridge } from "@/components/web-notification-bridge";
