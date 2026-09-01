@@ -1,6 +1,8 @@
 import { Suspense, type ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { I18nProvider } from "@multica/core/i18n/react";
+import enLayout from "@multica/views/locales/en/layout.json";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -89,7 +91,9 @@ function renderTree(node: ReactNode) {
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <I18nProvider locale="en" resources={{ en: { layout: enLayout } }}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </I18nProvider>
   );
   const result = render(
     <Suspense fallback={<div data-testid="route-loading" />}>{node}</Suspense>,
@@ -132,6 +136,17 @@ describe("WorkspaceLayout", () => {
     });
     expect(screen.queryByTestId("no-access")).toBeNull();
     expect(screen.getByTestId("workspace-loading")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Loading workspace");
+  });
+
+  it("names the auth bootstrap gate before any workspace child mounts", () => {
+    state.isAuthLoading = true;
+    renderLayout();
+
+    expect(screen.queryByTestId("workspace-content")).toBeNull();
+    expect(screen.getByRole("main")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Loading workspace");
   });
 
   it("shows NoAccess only after an authoritative list omits the slug", async () => {

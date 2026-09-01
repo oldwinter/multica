@@ -98,14 +98,26 @@ describe("TwinWorkspaceView", () => {
     }
   });
 
-  it("uses the shared mobile page header and reserves localized workspace clearance", () => {
+  it("uses the shared mobile page header and owns narrow interaction plus launcher clearance", () => {
     renderView();
 
     expect(screen.getByRole("button", { name: "Toggle left sidebar" })).toHaveClass("xl:hidden");
-    expect(screen.getByRole("main")).toHaveAttribute("data-twin-copy");
-    expect(screen.getByRole("main").firstElementChild).toHaveClass("border-b");
-    expect(screen.getByTestId("twin-workspace-content")).toHaveClass("pb-chat-launcher");
-    expect(screen.getByTestId("twin-workspace-content")).not.toHaveClass("pe-chat-launcher");
+    const root = screen.getByRole("main");
+    const content = screen.getByTestId("twin-workspace-content");
+    expect(root).toHaveAttribute("data-twin-copy");
+    expect(root).toHaveClass("pe-chat-launcher", "overflow-y-auto");
+    expect(root.firstElementChild).toHaveClass("border-b");
+    expect(content).toHaveAttribute("data-twin-interaction-region");
+    expect(content).toHaveClass(
+      "pb-chat-launcher",
+      "max-lg:[&_button:not([data-slot=switch]):not([data-slot=checkbox])]:min-h-11",
+      "max-lg:[&_button:not([data-slot=switch]):not([data-slot=checkbox])]:min-w-11",
+      "max-lg:[&_[data-slot=input]]:min-h-11",
+      "max-lg:[&_[data-slot=select-trigger]]:min-h-11",
+      "max-lg:[&_[data-slot=tabs-list]]:min-h-11",
+      "max-lg:[&_[data-slot=switch]]:after:-inset-y-[13px]",
+    );
+    expect(content).not.toHaveClass("pe-chat-launcher");
   });
 
   it("keeps the main landmark configurable for a dashboard shell", () => {
@@ -164,7 +176,7 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByRole("combobox", { name: "Twin proposal" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Twin version" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Twin version" }).closest("label")?.parentElement)
-      .toHaveClass("pe-chat-launcher", "sm:pe-0");
+      .not.toHaveClass("pe-chat-launcher", "sm:pe-0");
     expect(screen.getByText(/^Added assertions/)).toBeInTheDocument();
     expect(screen.getAllByText("assertion-new")).toHaveLength(2);
     expect(screen.getByText(/^Removed assertions/)).toBeInTheDocument();
@@ -370,6 +382,25 @@ describe("TwinWorkspaceView", () => {
     expect(screen.queryByRole("combobox", { name: "Twin proposal" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Twin version" })).not.toBeInTheDocument();
     expect(screen.getByText("Accept a Wiki revision to start Twin Builder.")).toBeInTheDocument();
+  });
+
+  it("marks stable Wiki and Twin destinations as programmatically focusable", () => {
+    renderView({ sourcePolicyPanel: <p>Source policy controls</p> });
+
+    for (const destination of [
+      "wiki-overview",
+      "wiki-source-policy",
+      "wiki-evidence",
+    ]) {
+      expect(document.querySelector(`[data-twin-destination="${destination}"]`))
+        .toHaveAttribute("tabindex", "-1");
+    }
+
+    fireEvent.click(screen.getByRole("tab", { name: "Twin Builder" }));
+    for (const destination of ["twin-overview", "twin-history"]) {
+      expect(document.querySelector(`[data-twin-destination="${destination}"]`))
+        .toHaveAttribute("tabindex", "-1");
+    }
   });
 
   it("shows only sanitized deposition evidence and never renders raw metadata", () => {

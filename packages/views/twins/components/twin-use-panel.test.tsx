@@ -12,6 +12,7 @@ import {
   type TwinExecutionMetrics,
   type TwinKillSwitch,
 } from "@multica/core/twins";
+import type { SupportedLocale } from "@multica/core/i18n";
 import { renderWithI18n } from "../../test/i18n";
 import { lifecycleFixture } from "./twin-workspace-view.test-fixture";
 import { TwinUsePanel } from "./twin-use-panel";
@@ -105,7 +106,7 @@ function bindings(
   return { bindings: rows, canManage, killSwitch };
 }
 
-function renderPanel(qc: QueryClient) {
+function renderPanel(qc: QueryClient, locale: SupportedLocale = "en") {
   return renderWithI18n(
     <QueryClientProvider client={qc}>
       <TwinUsePanel
@@ -113,9 +114,10 @@ function renderPanel(qc: QueryClient) {
         versions={fixture.twin.versions}
         currentVersionId={fixture.twin.current_version!.id}
         canManage
-        onNavigate={() => undefined}
+        onGuide={() => undefined}
       />
     </QueryClientProvider>,
+    { locale },
   );
 }
 
@@ -352,5 +354,41 @@ describe("TwinUsePanel", () => {
     expect(screen.getByTestId("twin-use-panel")).toBeInTheDocument();
     expect(screen.getByText("Default: off")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save binding" })).toBeDisabled();
+  });
+
+  it("projects fixed effectiveness evidence and policy states into Simplified Chinese", () => {
+    renderPanel(qc, "zh-Hans");
+
+    expect(screen.getByText("智能体")).toBeInTheDocument();
+    expect(screen.getAllByText("关闭").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("预览").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("启用").length).toBeGreaterThan(0);
+    expect(screen.getByText(
+      "队列：在选定时间窗口内，按已持久化 Twin 策略状态分组的工作区任务。",
+    )).toBeInTheDocument();
+    expect(screen.getByText(
+      "人工重跑通过同一任务后续已归因运行估算，不代表因果归因。成本仅包含供应商报告的数值；覆盖率同时披露已计费和未计费运行。",
+    )).toBeInTheDocument();
+    expect(screen.getByText(/可将启用队列与关闭队列作描述性比较/)).toBeInTheDocument();
+    expect(screen.queryByText("Agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("off")).not.toBeInTheDocument();
+    expect(screen.queryByText("preview")).not.toBeInTheDocument();
+    expect(screen.queryByText("enabled")).not.toBeInTheDocument();
+    expect(screen.queryByText(metrics().effectiveness.cohortDefinition)).not.toBeInTheDocument();
+    expect(screen.queryByText(
+      `${metrics().effectiveness.revisionMeasure}. ${metrics().effectiveness.costMeasure}.`,
+    )).not.toBeInTheDocument();
+  });
+
+  it("keeps the destructive execution-policy Retry command on a readable neutral foreground", async () => {
+    qc.clear();
+    getTwinBindings.mockRejectedValue(new Error("offline"));
+    getTwinExecutionMetrics.mockRejectedValue(new Error("offline"));
+    getTwinActivationReadiness.mockRejectedValue(new Error("offline"));
+    renderPanel(qc);
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByRole("button", { name: "Try again" }))
+      .toHaveClass("text-foreground");
   });
 });
