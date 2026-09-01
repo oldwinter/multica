@@ -287,6 +287,10 @@ jobs:
       - name: Build, type check, and lint
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         env:
+          # Next 16's webpack build now exceeds Node 22's default ~2 GB old-space
+          # limit on a cold self-hosted run; keep Turbo serial and raise only
+          # the per-process JavaScript heap ceiling.
+          NODE_OPTIONS: --max-old-space-size=4096
           TURBO_CONCURRENCY: ${{ runner.environment == 'self-hosted' && '1' || '100%' }}
         # Mobile lives in a parallel mobile-verify workflow (path-filtered
         # to apps/mobile/** + packages/core/**) so it doesn't add
