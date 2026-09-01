@@ -63,7 +63,7 @@ export function RoomList({
           type="button"
           size="icon-sm"
           variant="ghost"
-          className="max-md:size-11"
+          className="max-lg:size-11"
           aria-label={t(($) => $.actions.new_room)}
           data-testid="room-create-open"
           onClick={onCreate}
@@ -84,7 +84,7 @@ export function RoomList({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t(($) => $.list.search)}
             aria-label={t(($) => $.list.search)}
-            className="pl-7 max-md:h-11"
+            className="pl-7 max-lg:h-11"
           />
         </div>
       ) : null}
@@ -100,7 +100,7 @@ export function RoomList({
                 <button
                   type="button"
                   aria-current={room.id === selectedId ? "true" : undefined}
-                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-lg:min-h-11"
                   onClick={() => onSelect(room.id)}
                 >
                   <span className="min-w-0 flex-1 truncate text-caption font-medium text-foreground">
@@ -140,7 +140,7 @@ export function RoomList({
             <p className="mt-1 text-caption leading-5 text-muted-foreground">
               {t(($) => $.states.empty_description)}
             </p>
-            <Button className="mt-4 max-md:min-h-11" size="sm" onClick={onCreate}>
+            <Button className="mt-4 max-lg:min-h-11" size="sm" onClick={onCreate}>
               <Plus data-icon="inline-start" aria-hidden="true" />
               {t(($) => $.actions.new_room)}
             </Button>

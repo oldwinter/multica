@@ -107,7 +107,7 @@ export function CreateRoomDialog({
         if (!pending || next) onOpenChange(next);
       }}
     >
-      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-y-auto sm:overflow-hidden sm:max-w-2xl max-md:[&_[data-slot=dialog-close]]:size-11">
+      <DialogContent className="flex max-h-[min(48rem,calc(100dvh-2rem))] flex-col overflow-y-auto sm:overflow-hidden sm:max-w-2xl max-lg:[&_[data-slot=dialog-close]]:size-11">
         {open ? (
           <CreateRoomForm
             agents={agents}
@@ -336,7 +336,7 @@ function CreateRoomForm({
               type="button"
               size="xs"
               variant="ghost"
-              className="max-md:min-h-11"
+              className="max-lg:min-h-11"
               onClick={resetTemplateDefaults}
             >
               <RotateCcw aria-hidden="true" />
@@ -384,7 +384,7 @@ function CreateRoomForm({
           <Field label={t(($) => $.create.fields.title)}>
             <Input
               value={title}
-              className="max-md:h-11"
+              className="max-lg:h-11"
               maxLength={160}
               autoFocus
               aria-label={t(($) => $.create.fields.title)}
@@ -415,7 +415,7 @@ function CreateRoomForm({
                     type="button"
                     aria-pressed={facilitatorMode === value}
                     className={cn(
-                      "flex h-7 items-center justify-center gap-1.5 rounded-md text-caption font-medium transition-colors max-md:h-11",
+                      "flex h-7 items-center justify-center gap-1.5 rounded-md text-caption font-medium transition-colors max-lg:h-11",
                       facilitatorMode === value
                         ? "bg-surface text-foreground shadow-[var(--surface-shadow)]"
                         : "text-muted-foreground hover:text-foreground",
@@ -442,7 +442,7 @@ function CreateRoomForm({
               onValueChange={(value) => setFacilitatorId(value ?? "")}
             >
               <SelectTrigger
-                className="mt-2 w-full max-md:data-[size=default]:h-11"
+                className="mt-2 w-full max-lg:data-[size=default]:h-11"
                 aria-label={t(($) => $.create.fields.facilitator)}
                 aria-describedby={
                   facilitatorUnavailable ? "room-create-facilitator-empty" : undefined
@@ -459,7 +459,7 @@ function CreateRoomForm({
               </SelectTrigger>
               <SelectContent>
                 {facilitatorOptions.map((option) => (
-                  <SelectItem className="max-md:min-h-11" key={option.id} value={option.id}>
+                  <SelectItem className="max-lg:min-h-11" key={option.id} value={option.id}>
                     {option.name}
                   </SelectItem>
                 ))}
@@ -527,14 +527,14 @@ function CreateRoomForm({
                 }
               >
                 <SelectTrigger
-                  className="w-full max-md:data-[size=default]:h-11"
+                  className="w-full max-lg:data-[size=default]:h-11"
                   aria-label={t(($) => $.create.fields.daily_turn_limit)}
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {turnLimitItems(fields.dailyTurnLimit, t).map((item) => (
-                    <SelectItem className="max-md:min-h-11" key={item.value} value={item.value}>
+                    <SelectItem className="max-lg:min-h-11" key={item.value} value={item.value}>
                       {item.label}
                     </SelectItem>
                   ))}
@@ -551,14 +551,14 @@ function CreateRoomForm({
                 onValueChange={(value) => setField("scheduleMinutes", value ?? "0")}
               >
                 <SelectTrigger
-                  className="w-full max-md:data-[size=default]:h-11"
+                  className="w-full max-lg:data-[size=default]:h-11"
                   aria-label={t(($) => $.create.fields.schedule_interval)}
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {SCHEDULE_VALUES.map((minutes) => (
-                    <SelectItem className="max-md:min-h-11" key={minutes} value={String(minutes)}>
+                    <SelectItem className="max-lg:min-h-11" key={minutes} value={String(minutes)}>
                       {scheduleLabel(t, minutes)}
                     </SelectItem>
                   ))}
@@ -569,7 +569,7 @@ function CreateRoomForm({
         </section>
 
         <Collapsible>
-          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md px-1 py-1 text-caption font-medium text-foreground outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
+          <CollapsibleTrigger className="group flex items-center gap-1 rounded-md px-1 py-1 text-caption font-medium text-foreground outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-lg:min-h-11">
             <ChevronRight className="size-3.5 transition-transform group-data-[panel-open]:rotate-90" />
             {t(($) => $.create.advanced)}
           </CollapsibleTrigger>
@@ -605,7 +605,7 @@ function CreateRoomForm({
               <Field label={t(($) => $.create.fields.max_cost_ticks)}>
                 <Input
                   type="number"
-                  className="max-md:h-11"
+                  className="max-lg:h-11"
                   min={1}
                   inputMode="numeric"
                   value={fields.maxCostTicks}
@@ -671,7 +671,7 @@ function CreateRoomForm({
         <Button
           type="button"
           variant="outline"
-          className="max-md:h-11"
+          className="max-lg:h-11"
           disabled={pending}
           onClick={onCancel}
         >
@@ -679,7 +679,7 @@ function CreateRoomForm({
         </Button>
         <Button
           type="button"
-          className="max-md:h-11"
+          className="max-lg:h-11"
           disabled={!canSubmit}
           data-testid="room-create-submit"
           onClick={submit}
@@ -789,7 +789,7 @@ function ParticipantOption({
       role="checkbox"
       aria-checked={checked}
       aria-label={name}
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-foreground outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-foreground outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-lg:min-h-11"
       onClick={onToggle}
     >
       <ActorAvatar actorType={type} actorId={id} size="sm" profileLink={false} />

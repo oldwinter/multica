@@ -116,7 +116,7 @@ export function RoomDetail({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-surface-border bg-surface px-3 py-2 sm:px-4">
-        <div className="min-w-0 flex-1 max-md:basis-full">
+        <div className="min-w-0 flex-1 max-lg:basis-full">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-body font-medium text-foreground">{room.title}</h1>
             <Badge variant="secondary" className={cn("border-0", roomStatusClass(room.status))}>
@@ -132,7 +132,7 @@ export function RoomDetail({
             type="button"
             size="sm"
             variant="outline"
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-lg:min-h-11 max-lg:min-w-11"
             disabled={statusPending}
             aria-label={room.status === "paused" ? t(($) => $.actions.resume) : t(($) => $.actions.pause)}
             data-testid="room-status-toggle"
@@ -155,7 +155,7 @@ export function RoomDetail({
             type="button"
             size="sm"
             variant="outline"
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-lg:min-h-11 max-lg:min-w-11"
             disabled={cancelPending}
             aria-label={t(($) => $.actions.cancel_cycle)}
             data-testid="room-cancel-cycle"
@@ -171,7 +171,7 @@ export function RoomDetail({
 					type="button"
 					size="icon-sm"
 					variant="ghost"
-					className="max-md:size-11"
+					className="max-lg:size-11"
 					aria-label={t(($) => $.actions.duplicate)}
 					data-testid="room-duplicate"
 					onClick={onDuplicate}
@@ -188,7 +188,7 @@ export function RoomDetail({
 						type="button"
 						size="icon-sm"
 						variant="ghost"
-						className="max-md:size-11"
+						className="max-lg:size-11"
 						aria-label={t(($) => $.budget.manage)}
 						data-testid="room-manage-budget"
 						onClick={onManageBudget}
@@ -206,7 +206,7 @@ export function RoomDetail({
                 <Button
                   type="button"
                   size="sm"
-                  className="max-md:min-h-11 max-md:min-w-11"
+                  className="max-lg:min-h-11 max-lg:min-w-11"
                   disabled={!canRunAgain && !canWake && !canRetryPreflight}
                   aria-label={repeatEligible
                     ? t(($) => $.actions.run_again)
@@ -251,7 +251,7 @@ export function RoomDetail({
                 type="button"
                 size="icon-sm"
                 variant="ghost"
-                className="max-md:size-11"
+                className="max-lg:size-11"
                 disabled={statusPending || outcomeState.canCancel}
                 aria-label={t(($) => $.actions.archive)}
                 data-testid="room-archive"
@@ -276,15 +276,15 @@ export function RoomDetail({
       >
         <TabsList
           variant="line"
-          className="grid h-9 w-full grid-cols-3 max-md:p-0 max-md:group-data-horizontal/tabs:h-11"
+          className="grid h-9 w-full grid-cols-3 max-lg:p-0 max-lg:group-data-horizontal/tabs:h-11"
         >
-          <TabsTrigger className="max-md:min-h-11" value="transcript">
+          <TabsTrigger className="max-lg:min-h-11" value="transcript">
             {t(($) => $.detail.transcript)}
           </TabsTrigger>
-          <TabsTrigger className="max-md:min-h-11" value="outcome">
+          <TabsTrigger className="max-lg:min-h-11" value="outcome">
             {t(($) => $.outcome.title)}
           </TabsTrigger>
-          <TabsTrigger className="max-md:min-h-11" value="activity">
+          <TabsTrigger className="max-lg:min-h-11" value="activity">
             {t(($) => $.detail.activity)}
           </TabsTrigger>
         </TabsList>

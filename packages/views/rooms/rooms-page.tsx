@@ -61,6 +61,13 @@ export function isLinkedRoomMissing(
   return Boolean(linkedRoomId) && listLoaded && !rooms.some((room) => room.id === linkedRoomId);
 }
 
+export function isStandaloneMobileRoomList(
+  rooms: readonly Pick<Room, "id">[] | undefined,
+  listError: boolean,
+): boolean {
+  return rooms !== undefined && !listError && rooms.length === 0;
+}
+
 export function detailTabAfterRoomSelection(
   currentTab: RoomDetailTab,
   linkedRoomMissing: boolean,
@@ -95,7 +102,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
     && !roomsQuery.isError;
   const linkedRoomMissing = isLinkedRoomMissing(linkedRoomId, rooms, roomsLoaded);
   const activeRoomId = linkedRoomMissing ? "" : selectedRoomId || rooms[0]?.id || "";
-  const mobileStandaloneList = roomsLoaded && rooms.length === 0;
+  const mobileStandaloneList = isStandaloneMobileRoomList(roomsQuery.data, roomsQuery.isError);
   const mobileDetailStateClass = mobileStandaloneList ? "max-lg:hidden" : undefined;
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
   const preflightQuery = useQuery(roomPreflightOptions(workspaceId, activeRoomId));
@@ -536,7 +543,7 @@ function WorkspaceState({
             type="button"
             size="sm"
             variant="outline"
-            className="mt-4 max-md:min-h-11"
+            className="mt-4 max-lg:min-h-11"
             onClick={onAction}
           >
             {actionLabel}
