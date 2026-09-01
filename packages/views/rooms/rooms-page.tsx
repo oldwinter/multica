@@ -96,6 +96,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
   const linkedRoomMissing = isLinkedRoomMissing(linkedRoomId, rooms, roomsLoaded);
   const activeRoomId = linkedRoomMissing ? "" : selectedRoomId || rooms[0]?.id || "";
   const mobileStandaloneList = roomsLoaded && rooms.length === 0;
+  const mobileDetailStateClass = mobileStandaloneList ? "max-lg:hidden" : undefined;
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
   const preflightQuery = useQuery(roomPreflightOptions(workspaceId, activeRoomId));
   const scheduledPreflightQuery = useQuery({
@@ -230,6 +231,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
           />
         ) : linkedRoomMissing ? (
           <WorkspaceState
+            className={mobileDetailStateClass}
             icon={AlertTriangle}
             title={t(($) => $.states.no_room_title)}
             description={t(($) => $.states.no_room_description)}
@@ -242,7 +244,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
           />
         ) : !activeRoomId ? (
           <WorkspaceState
-            className={mobileStandaloneList ? "max-lg:hidden" : undefined}
+            className={mobileDetailStateClass}
             icon={MessageSquareText}
             title={t(($) => $.states.no_room_title)}
             description={t(($) => $.states.no_room_description)}
