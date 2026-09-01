@@ -101,7 +101,7 @@ export function WorkspaceWikiKnowledgeActivation({
       <SourceStateBadge source={source} loading={readinessQuery.isPending} error={readinessQuery.isError} />
       <Button
         type="button"
-        variant={canPin ? "brand" : "outline"}
+        variant={canPin ? "default" : "outline"}
         size="sm"
         className="max-w-full whitespace-normal text-left"
         disabled={!canPin || pinRevision.isPending}
@@ -219,7 +219,7 @@ export function WorkspaceWikiKnowledgeActivation({
             <Button type="button" variant="outline" disabled={pinRevision.isPending} onClick={() => setOpen(false)}>
               {t(($) => $.actions.cancel)}
             </Button>
-            <Button type="button" variant="brand" disabled={!readiness || !source || pinRevision.isPending || Boolean(staleConflict)} onClick={confirmPin}>
+            <Button type="button" disabled={!readiness || !source || pinRevision.isPending || Boolean(staleConflict)} onClick={confirmPin}>
               <BookCheck data-icon="inline-start" />
               {pinRevision.isPending ? t(($) => $.activation.pinning) : t(($) => $.activation.confirm)}
             </Button>
