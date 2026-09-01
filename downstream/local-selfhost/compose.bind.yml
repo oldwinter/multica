@@ -1,0 +1,11 @@
+# Overlay on docker-compose.selfhost.yml.
+# Upstream publishes 127.0.0.1 only. Compose merges `ports` by appending, so
+# this file must replace the list (!override, Compose 2.24+) or both binds
+# would fight for the same host port.
+services:
+  backend:
+    ports: !override
+      - "${MULTICA_BIND_ADDR:-0.0.0.0}:${BACKEND_PORT:-${API_PORT:-${SERVER_PORT:-${PORT:-8180}}}}:8080"
+  frontend:
+    ports: !override
+      - "${MULTICA_BIND_ADDR:-0.0.0.0}:${FRONTEND_PORT:-3100}:3000"
