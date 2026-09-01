@@ -496,6 +496,7 @@ Use this to decide who wins a conflict:
 | Local Rooms | `server/internal/room/`, `server/pkg/db/queries/room.sql`, `packages/core/rooms/`, `packages/views/rooms/`, `apps/*/rooms` |
 | Local Twin / Wiki | `server/internal/service/twin*`, `lm_wiki*`, `wiki*`, `packages/core/twins/`, `packages/core/wiki/`, `packages/views/twins/`, `packages/views/wiki/` |
 | Local skins / search extras | theme tokens, `data-twin-copy`, search commands `copy_page_link` / `surprise_issue` |
+| Local ops overlay | `downstream/` (LAN self-host scripts, compose bind override, extra docs). Do not patch upstream `Makefile` / `docker-compose.selfhost.yml` for this. |
 | Upstream | onboarding shell, auth recovery, plugins, share links, custom issue statuses, chat/task event contract, sqlc output |
 
 When a conflict is inside an upstream-owned shell, take upstream and

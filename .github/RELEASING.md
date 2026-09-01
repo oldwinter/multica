@@ -3,9 +3,10 @@
 ## Normal release
 
 Release from a reviewed commit on `main` by creating and pushing a new semantic
-version tag such as `v0.18.4`. The Release workflow intentionally has no manual
-trigger: a tag push is the only event that can publish binaries, Homebrew
-formulae, and container images.
+version tag such as `v0.18.4`. Upstream publishes from that tag push. A GitHub
+UI dispatch is accepted only so the downstream auto-tagger can start a release
+after it creates a tag with `GITHUB_TOKEN` (token-created tag pushes do not
+retrigger workflows). Dispatching a branch still fails the tag-name check.
 
 The canonical `multica-ai/multica` repository publishes its Homebrew formula to
 `multica-ai/homebrew-tap`. Forks do not need that token: they publish CLI
@@ -14,6 +15,12 @@ container images to their own GitHub repository/package namespace, while the
 Homebrew upload is skipped. Use a clearly downstream tag such as
 `v0.18.4-oldwinter.1` so it remains distinct from upstream releases and is
 classified as a prerelease.
+
+On `oldwinter/multica`, every push to `main` runs `.github/workflows/auto-tag-main.yml`.
+That workflow computes the next `vX.Y.Z-oldwinter.N` tag from the newest stable
+`vX.Y.Z` ancestor, pushes it, and dispatches Release for that tag. Manual
+`git tag` / `git push --tags` still works and still publishes through the tag
+push event.
 
 The Desktop jobs use the tag workflow's built-in `GITHUB_TOKEN` and the
 `GITHUB_REPOSITORY` identity supplied by Actions. No personal access token is
