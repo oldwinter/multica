@@ -10,6 +10,7 @@ import { diffWikiContent, projectWikiContent } from "./content-projection";
 import { AssertionDiff, CitationList, ContentList } from "./lifecycle-detail";
 import { WikiRevisionSelector } from "./lifecycle-selectors";
 import { ReviewDialog } from "./review-dialog";
+import { TwinDestination } from "./twin-guided-navigation";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import { DetailStateNotice } from "./workspace-state";
 
@@ -32,11 +33,15 @@ export function WikiPanel(props: TwinWorkspaceProps) {
 
   return (
     <div className="space-y-6">
-      <section className="flex flex-col gap-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:flex-row sm:items-start sm:justify-between">
+      <TwinDestination
+        destination="wiki-overview"
+        className="flex flex-col gap-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:flex-row sm:items-start sm:justify-between"
+        aria-labelledby="twin-wiki-overview-title"
+      >
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <StateIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-            <h2 className="text-title font-medium text-foreground">{t(($) => $.wiki.title)}</h2>
+            <h2 id="twin-wiki-overview-title" className="text-title font-medium text-foreground">{t(($) => $.wiki.title)}</h2>
             {revision ? <Badge variant="outline">{t(($) => $.status[state])}</Badge> : null}
           </div>
           <p className="text-body text-muted-foreground">{t(($) => $.wiki.description)}</p>
@@ -48,50 +53,61 @@ export function WikiPanel(props: TwinWorkspaceProps) {
             {props.wikiMutationPending ? t(($) => $.actions.refreshing) : t(($) => $.actions.refresh_wiki)}
           </Button>
         ) : null}
-      </section>
+      </TwinDestination>
 
       {props.sourcePolicyPanel ? (
-        <section className="border-t border-surface-border pt-6" data-testid="lm-wiki-source-policy-slot">
+        <TwinDestination
+          destination="wiki-source-policy"
+          className="border-t border-surface-border pt-6"
+          data-testid="lm-wiki-source-policy-slot"
+          aria-label={t(($) => $.use.action_configure_source)}
+        >
           {props.sourcePolicyPanel}
-        </section>
+        </TwinDestination>
       ) : null}
 
-      {props.wiki.revisions.length > 0 ? (
-        <WikiRevisionSelector revisions={props.wiki.revisions} value={props.selectedRevisionId} onChange={props.onSelectRevision} disabled={props.detailLoading} />
-      ) : (
-        <p className="text-body text-muted-foreground">
-          {props.canManageWiki
-            ? t(($) => $.wiki.first_run_manager)
-            : t(($) => $.wiki.first_run_member)}
-        </p>
-      )}
+      <TwinDestination
+        destination="wiki-evidence"
+        className="space-y-6"
+        aria-label={t(($) => $.use.inspect_evidence)}
+      >
+        {props.wiki.revisions.length > 0 ? (
+          <WikiRevisionSelector revisions={props.wiki.revisions} value={props.selectedRevisionId} onChange={props.onSelectRevision} disabled={props.detailLoading} />
+        ) : (
+          <p className="text-body text-muted-foreground">
+            {props.canManageWiki
+              ? t(($) => $.wiki.first_run_manager)
+              : t(($) => $.wiki.first_run_member)}
+          </p>
+        )}
 
-      <DetailStateNotice state={props.wikiDetailState} onRetry={props.onRetryWikiDetail} />
+        <DetailStateNotice state={props.wikiDetailState} onRetry={props.onRetryWikiDetail} />
 
-      {revision ? (
-        <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <h3 className="text-title font-medium text-foreground">{t(($) => $.wiki.revision_title, { number: revision.revision_number })}</h3>
-              <p className="break-words text-caption text-muted-foreground">{revision.created_at}</p>
-            </div>
-            {props.canManageWiki && state === "pending" ? (
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" disabled={props.wikiMutationPending} onClick={() => setDialog("reject-wiki")}>{t(($) => $.actions.reject_revision)}</Button>
-                <Button variant="brand" disabled={props.wikiMutationPending} onClick={() => setDialog("accept-wiki")}>
-                  {props.wikiMutationPending ? t(($) => $.actions.saving) : t(($) => $.actions.accept_revision)}
-                </Button>
+        {revision ? (
+          <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h3 className="text-title font-medium text-foreground">{t(($) => $.wiki.revision_title, { number: revision.revision_number })}</h3>
+                <p className="break-words text-caption text-muted-foreground">{revision.created_at}</p>
               </div>
-            ) : null}
-          </div>
-          <Separator />
-          <ContentList items={items} emptyLabel={t(($) => $.wiki.empty_content)} />
-          <Separator />
-          <AssertionDiff diff={diff} />
-          <Separator />
-          <CitationList citations={props.wikiDetail?.citations ?? []} />
-        </section>
-      ) : null}
+              {props.canManageWiki && state === "pending" ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" disabled={props.wikiMutationPending} onClick={() => setDialog("reject-wiki")}>{t(($) => $.actions.reject_revision)}</Button>
+                  <Button variant="brand" disabled={props.wikiMutationPending} onClick={() => setDialog("accept-wiki")}>
+                    {props.wikiMutationPending ? t(($) => $.actions.saving) : t(($) => $.actions.accept_revision)}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            <Separator />
+            <ContentList items={items} emptyLabel={t(($) => $.wiki.empty_content)} />
+            <Separator />
+            <AssertionDiff diff={diff} />
+            <Separator />
+            <CitationList citations={props.wikiDetail?.citations ?? []} />
+          </section>
+        ) : null}
+      </TwinDestination>
 
       <ReviewDialog open={dialog !== null} kind={dialog ?? "accept-wiki"} pending={props.wikiMutationPending} onOpenChange={(open) => !open && setDialog(null)} onConfirm={(reason) => {
         if (!revision) return Promise.resolve();

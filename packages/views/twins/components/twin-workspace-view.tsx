@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { BookOpenText, BrainCircuit, SlidersHorizontal } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
 import { PageHeader } from "../../layout/page-header";
 import { useOptionalNavigation } from "../../navigation";
 import { TwinPanel } from "./twin-panel";
 import { TwinActivationReadiness } from "./twin-activation-readiness";
+import { useTwinGuidedNavigation } from "./twin-guided-navigation";
 import { TwinUsePanel } from "./twin-use-panel";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import {
@@ -25,30 +27,54 @@ export type { TwinDetailState, TwinViewState, TwinWorkspaceProps } from "./twin-
 
 type TwinWorkspaceViewProps = TwinWorkspaceProps & { rootElement?: "main" | "div" };
 
+const twinInteractionRegionClassName = [
+  "max-lg:[&_button:not([data-slot=switch]):not([data-slot=checkbox])]:min-h-11",
+  "max-lg:[&_button:not([data-slot=switch]):not([data-slot=checkbox])]:min-w-11",
+  "max-lg:[&_[data-slot=input]]:min-h-11",
+  "max-lg:[&_[data-slot=select-trigger]]:min-h-11",
+  "max-lg:[&_[data-slot=tabs-list]]:min-h-11",
+  "max-lg:[&_[data-slot=switch]]:after:-inset-y-[13px]",
+].join(" ");
+
 export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorkspaceViewProps) {
   const { t } = useT("twins");
   const navigation = useOptionalNavigation();
   const Root = rootElement;
+  const rootRef = useRef<HTMLElement | null>(null);
   const [fallbackTab, setFallbackTab] = useState<TwinWorkspaceTab>(DEFAULT_TWIN_WORKSPACE_TAB);
   const tab = navigation
     ? parseTwinWorkspaceTab(navigation.searchParams.get(TWIN_WORKSPACE_TAB_QUERY_KEY))
     : fallbackTab;
-  const navigateTab = (next: TwinWorkspaceTab) => {
+  const commitTab = useCallback((next: TwinWorkspaceTab) => {
     if (navigation) {
       navigation.replace(buildTwinWorkspaceTabPath(navigation, next));
     } else {
       setFallbackTab(next);
     }
-  };
+  }, [navigation]);
+  const workspaceNavigation = useTwinGuidedNavigation({
+    activeTab: tab,
+    rootRef,
+    commitTab,
+  });
   return (
-    <Root className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-twin-copy data-twin-workspace>
+    <Root
+      ref={rootRef}
+      className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas"
+      data-twin-copy
+      data-twin-workspace
+    >
       <PageHeader className="gap-2 bg-page-canvas">
         <BrainCircuit className="size-4 text-muted-foreground" aria-hidden="true" />
         <h1 className="min-w-0 truncate text-title font-medium text-foreground">{t(($) => $.page.title)}</h1>
       </PageHeader>
       <div
-        className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pt-6 pb-chat-launcher sm:px-6 lg:px-8"
+        className={cn(
+          "mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pt-6 pb-chat-launcher sm:px-6 lg:px-8",
+          twinInteractionRegionClassName,
+        )}
         data-testid="twin-workspace-content"
+        data-twin-interaction-region
       >
         <header className="min-w-0 space-y-2">
           <div className="flex items-center gap-2 text-caption text-muted-foreground">
@@ -64,8 +90,8 @@ export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorksp
 
         {props.state === "ready" ? (
           <>
-            <TwinActivationReadiness wsId={props.wsId} onNavigate={navigateTab} />
-            <Tabs value={tab} onValueChange={(value) => isTwinWorkspaceTab(value) && navigateTab(value)} className="gap-5">
+            <TwinActivationReadiness wsId={props.wsId} onGuide={workspaceNavigation.guide} />
+            <Tabs value={tab} onValueChange={(value) => isTwinWorkspaceTab(value) && workspaceNavigation.selectTab(value)} className="gap-5">
               <TabsList variant="line" className="w-full justify-start">
                 <TabsTrigger value="wiki"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
                 <TabsTrigger value="twin"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
@@ -79,7 +105,7 @@ export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorksp
                   versions={props.twin.versions}
                   currentVersionId={props.twin.current_version?.id ?? ""}
                   canManage={props.canManageTwin}
-                  onNavigate={navigateTab}
+                  onGuide={workspaceNavigation.guide}
                 />
               </TabsContent>
             </Tabs>

@@ -359,15 +359,27 @@ describe("TwinUsePanel", () => {
   it("projects fixed effectiveness evidence and policy states into Simplified Chinese", () => {
     renderPanel(qc, "zh-Hans");
 
+    for (const destination of [
+      "use-status",
+      "use-binding",
+      "use-preview",
+      "use-effectiveness",
+    ]) {
+      expect(document.querySelector(`[data-twin-destination="${destination}"]`))
+        .toHaveAttribute("tabindex", "-1");
+    }
     expect(screen.getByText("智能体")).toBeInTheDocument();
     expect(screen.getAllByText("关闭").length).toBeGreaterThan(0);
     expect(screen.getAllByText("预览").length).toBeGreaterThan(0);
     expect(screen.getAllByText("启用").length).toBeGreaterThan(0);
     expect(screen.getByText(
-      "队列：在选定时间窗口内，按已持久化 Twin 策略状态分组的工作区任务。",
+      "队列：选定时间窗口内工作区任务的智能体运行，按调度时持久化的 Twin 策略状态分组。",
     )).toBeInTheDocument();
     expect(screen.getByText(
-      "人工重跑通过同一任务后续已归因运行估算，不代表因果归因。成本仅包含供应商报告的数值；覆盖率同时披露已计费和未计费运行。",
+      "人工重跑以同一任务后续已归因运行作为估算指标，不代表因果关系。",
+    )).toBeInTheDocument();
+    expect(screen.getByText(
+      "成本仅包含供应商报告的数值；覆盖率同时显示已计费和未计费运行。",
     )).toBeInTheDocument();
     expect(screen.getByText(/可将启用队列与关闭队列作描述性比较/)).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();

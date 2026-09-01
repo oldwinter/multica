@@ -68,7 +68,7 @@ export function TwinHistorySelectors({
   const versionItems = versions.map((version) => ({ value: version.id, label: versionLabel(version) }));
   if (proposalItems.length === 0 && versionItems.length === 0) return null;
   return (
-    <div className={`${proposalItems.length > 0 && versionItems.length > 0 ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"} pe-chat-launcher sm:pe-0`}>
+    <div className={proposalItems.length > 0 && versionItems.length > 0 ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
       {proposalItems.length > 0 ? (
         <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
           {t(($) => $.selectors.twin_proposal)}

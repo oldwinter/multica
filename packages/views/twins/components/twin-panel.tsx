@@ -12,6 +12,7 @@ import { assertionsForDepositionEdit, DepositionEditDialog } from "./deposition-
 import { TwinHistorySelectors } from "./lifecycle-selectors";
 import { ReviewDialog } from "./review-dialog";
 import { TwinReviewSpine } from "./twin-review-spine";
+import { TwinDestination } from "./twin-guided-navigation";
 import { TwinTopics } from "./twin-topics";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
 import { DetailStateNotice } from "./workspace-state";
@@ -48,11 +49,15 @@ export function TwinPanel(props: TwinWorkspaceProps) {
     <div className="space-y-6">
       <TwinReviewSpine steps={props.reviewSteps} />
 
-      <section className="flex flex-col gap-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:flex-row sm:items-start sm:justify-between">
+      <TwinDestination
+        destination="twin-overview"
+        className="flex flex-col gap-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:flex-row sm:items-start sm:justify-between"
+        aria-labelledby="twin-overview-title"
+      >
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <ShieldCheck className="size-4 text-success" aria-hidden="true" />
-            <h2 className="text-title font-medium text-foreground">
+            <h2 id="twin-overview-title" className="text-title font-medium text-foreground">
               {currentVersion ? t(($) => $.twin.current_title, { number: currentVersion.version_number }) : t(($) => $.twin.no_current)}
             </h2>
             {proposalPending ? <Badge variant="outline">{t(($) => $.status.pending)}</Badge> : null}
@@ -66,17 +71,22 @@ export function TwinPanel(props: TwinWorkspaceProps) {
             {props.twinMutationPending ? t(($) => $.actions.building) : t(($) => $.actions.build_proposal)}
           </Button>
         ) : null}
-      </section>
+      </TwinDestination>
 
-      <TwinHistorySelectors
-        proposals={props.twin.proposals}
-        versions={props.twin.versions}
-        proposalId={props.selectedProposalId}
-        versionId={props.selectedVersionId}
-        onProposalChange={props.onSelectProposal}
-        onVersionChange={props.onSelectVersion}
-        disabled={props.detailLoading}
-      />
+      <TwinDestination
+        destination="twin-history"
+        aria-label={t(($) => $.use.inspect_twin)}
+      >
+        <TwinHistorySelectors
+          proposals={props.twin.proposals}
+          versions={props.twin.versions}
+          proposalId={props.selectedProposalId}
+          versionId={props.selectedVersionId}
+          onProposalChange={props.onSelectProposal}
+          onVersionChange={props.onSelectVersion}
+          disabled={props.detailLoading}
+        />
+      </TwinDestination>
 
       <DetailStateNotice state={props.proposalDetailState} onRetry={props.onRetryProposalDetail} />
 
