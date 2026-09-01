@@ -22,7 +22,11 @@ function makeRoom(overrides: Partial<Room> = {}): Room {
   };
 }
 
-function renderRoomList(rooms: readonly Room[], selectedId: string) {
+function renderRoomList(
+  rooms: readonly Room[],
+  selectedId: string,
+  options: { readonly mobileStandalone?: boolean } = {},
+) {
   const onSelect = vi.fn();
   const view = render(
     <I18nProvider locale="en" resources={{ en: { common: enCommon, rooms: enRooms } }}>
@@ -31,6 +35,7 @@ function renderRoomList(rooms: readonly Room[], selectedId: string) {
         selectedId={selectedId}
         loading={false}
         showValueReview={false}
+        mobileStandalone={options.mobileStandalone ?? false}
         onSelect={onSelect}
         onCreate={vi.fn()}
       />
@@ -50,6 +55,24 @@ afterEach(() => {
 });
 
 describe("RoomList", () => {
+  it("owns the stacked mobile workspace when the Room directory is empty", () => {
+    const view = renderRoomList([], "", { mobileStandalone: true });
+
+    expect(view.getByTestId("room-list")).toHaveClass(
+      "max-lg:row-span-2",
+      "max-lg:max-h-none",
+    );
+    expect(view.getByTestId("room-list-scroll")).toHaveClass(
+      "max-lg:flex",
+      "max-lg:flex-1",
+      "max-lg:items-center",
+    );
+    expect(view.getByTestId("room-create-open")).toHaveClass("max-md:size-11");
+    expect(view.getAllByRole("button", { name: /new room/i })[1]).toHaveClass(
+      "max-md:min-h-11",
+    );
+  });
+
   it("marks the selected room as the current list item", () => {
     const view = renderRoomList(
       [makeRoom(), makeRoom({ id: "room-2", title: "Planning council" })],
@@ -73,6 +96,9 @@ describe("RoomList", () => {
 
     expect(view.getByTestId("room-list-item-room-1")).toHaveTextContent("Next in 5m");
     expect(view.getByTestId("room-list-item-room-1")).not.toHaveTextContent("Next just now");
+    expect(view.getByRole("searchbox", { name: "Search Rooms" })).toHaveClass(
+      "max-md:h-11",
+    );
   });
 
   it.each(["paused", "archived"] as const)(

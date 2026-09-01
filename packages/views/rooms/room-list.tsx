@@ -15,6 +15,7 @@ interface RoomListProps {
   readonly selectedId: string;
   readonly loading: boolean;
   readonly showValueReview: boolean;
+  readonly mobileStandalone: boolean;
   readonly onSelect: (roomId: string) => void;
   readonly onCreate: () => void;
 }
@@ -24,6 +25,7 @@ export function RoomList({
   selectedId,
   loading,
   showValueReview,
+  mobileStandalone,
   onSelect,
   onCreate,
 }: RoomListProps) {
@@ -40,7 +42,10 @@ export function RoomList({
   return (
     <aside
       data-testid="room-list"
-      className="flex max-h-[30dvh] min-h-0 flex-col border-b border-surface-border bg-surface lg:max-h-none lg:border-r lg:border-b-0"
+      className={cn(
+        "flex max-h-[30dvh] min-h-0 flex-col border-b border-surface-border bg-surface lg:max-h-none lg:border-r lg:border-b-0",
+        mobileStandalone && "max-lg:row-span-2 max-lg:max-h-none",
+      )}
     >
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-surface-border px-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -58,6 +63,7 @@ export function RoomList({
           type="button"
           size="icon-sm"
           variant="ghost"
+          className="max-md:size-11"
           aria-label={t(($) => $.actions.new_room)}
           data-testid="room-create-open"
           onClick={onCreate}
@@ -78,7 +84,7 @@ export function RoomList({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t(($) => $.list.search)}
             aria-label={t(($) => $.list.search)}
-            className="pl-7"
+            className="pl-7 max-md:h-11"
           />
         </div>
       ) : null}
@@ -94,7 +100,7 @@ export function RoomList({
                 <button
                   type="button"
                   aria-current={room.id === selectedId ? "true" : undefined}
-                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
                   onClick={() => onSelect(room.id)}
                 >
                   <span className="min-w-0 flex-1 truncate text-caption font-medium text-foreground">
@@ -113,7 +119,13 @@ export function RoomList({
         </section>
       ) : null}
 
-      <div data-testid="room-list-scroll" className="min-h-0 overflow-y-auto p-2">
+      <div
+        data-testid="room-list-scroll"
+        className={cn(
+          "min-h-0 overflow-y-auto p-2",
+          mobileStandalone && "max-lg:flex max-lg:flex-1 max-lg:items-center",
+        )}
+      >
         {loading ? (
           <div className="space-y-2 p-1" aria-label={t(($) => $.states.loading)}>
             {[0, 1, 2].map((item) => (
@@ -121,14 +133,14 @@ export function RoomList({
             ))}
           </div>
         ) : rooms.length === 0 ? (
-          <div className="px-3 py-8 text-center">
+          <div className={cn("px-3 py-8 text-center", mobileStandalone && "max-lg:w-full")}>
             <p className="text-body font-medium text-foreground">
               {t(($) => $.states.empty_title)}
             </p>
             <p className="mt-1 text-caption leading-5 text-muted-foreground">
               {t(($) => $.states.empty_description)}
             </p>
-            <Button className="mt-4" size="sm" onClick={onCreate}>
+            <Button className="mt-4 max-md:min-h-11" size="sm" onClick={onCreate}>
               <Plus data-icon="inline-start" aria-hidden="true" />
               {t(($) => $.actions.new_room)}
             </Button>
