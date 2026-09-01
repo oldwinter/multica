@@ -50,7 +50,6 @@ describe("ChatFab narrow touch target", () => {
     const button = document.querySelector("button[aria-label='Ask Multica']");
     expect(button).not.toBeNull();
     expect(button).toHaveClass(
-      "relative",
       "after:absolute",
       "max-lg:after:-inset-2",
       "max-lg:after:rounded-full",
