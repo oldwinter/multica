@@ -134,18 +134,18 @@ describe("CreateRoomDialog", () => {
     });
 
     expect(view.getByRole("dialog")).toHaveClass(
-      "max-md:[&_[data-slot=dialog-close]]:size-11",
+      "max-lg:[&_[data-slot=dialog-close]]:size-11",
     );
-    expect(view.getByRole("textbox", { name: "Name" })).toHaveClass("max-md:h-11");
+    expect(view.getByRole("textbox", { name: "Name" })).toHaveClass("max-lg:h-11");
     for (const select of view.getAllByRole("combobox")) {
-      expect(select).toHaveClass("max-md:data-[size=default]:h-11");
+      expect(select).toHaveClass("max-lg:data-[size=default]:h-11");
     }
-    expect(view.getByRole("button", { name: "Agent" })).toHaveClass("max-md:h-11");
+    expect(view.getByRole("button", { name: "Agent" })).toHaveClass("max-lg:h-11");
     expect(view.getByRole("button", { name: "Advanced configuration" })).toHaveClass(
-      "max-md:min-h-11",
+      "max-lg:min-h-11",
     );
-    expect(view.getByRole("button", { name: "Cancel" })).toHaveClass("max-md:h-11");
-    expect(view.getByTestId("room-create-submit")).toHaveClass("max-md:h-11");
+    expect(view.getByRole("button", { name: "Cancel" })).toHaveClass("max-lg:h-11");
+    expect(view.getByTestId("room-create-submit")).toHaveClass("max-lg:h-11");
   });
 
   it("submits a scheduled duplicate as a paused fresh Room", () => {

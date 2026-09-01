@@ -24,12 +24,14 @@ describe("RoomBudgetDialog", () => {
     );
 
     expect(view.getByRole("dialog")).toHaveClass(
-      "max-md:[&_[data-slot=dialog-close]]:size-11",
+      "max-h-[calc(100dvh-2rem)]",
+      "overflow-y-auto",
+      "max-lg:[&_[data-slot=dialog-close]]:size-11",
     );
     for (const input of view.getAllByRole("spinbutton")) {
-      expect(input).toHaveClass("max-md:h-11");
+      expect(input).toHaveClass("max-lg:h-11");
     }
-    expect(view.getByRole("button", { name: "Cancel" })).toHaveClass("max-md:h-11");
-    expect(view.getByRole("button", { name: "Save budget" })).toHaveClass("max-md:h-11");
+    expect(view.getByRole("button", { name: "Cancel" })).toHaveClass("max-lg:h-11");
+    expect(view.getByRole("button", { name: "Save budget" })).toHaveClass("max-lg:h-11");
   });
 });

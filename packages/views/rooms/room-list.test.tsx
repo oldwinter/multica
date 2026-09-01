@@ -67,9 +67,9 @@ describe("RoomList", () => {
       "max-lg:flex-1",
       "max-lg:items-center",
     );
-    expect(view.getByTestId("room-create-open")).toHaveClass("max-md:size-11");
+    expect(view.getByTestId("room-create-open")).toHaveClass("max-lg:size-11");
     expect(view.getAllByRole("button", { name: /new room/i })[1]).toHaveClass(
-      "max-md:min-h-11",
+      "max-lg:min-h-11",
     );
   });
 
@@ -97,7 +97,7 @@ describe("RoomList", () => {
     expect(view.getByTestId("room-list-item-room-1")).toHaveTextContent("Next in 5m");
     expect(view.getByTestId("room-list-item-room-1")).not.toHaveTextContent("Next just now");
     expect(view.getByRole("searchbox", { name: "Search Rooms" })).toHaveClass(
-      "max-md:h-11",
+      "max-lg:h-11",
     );
   });
 
