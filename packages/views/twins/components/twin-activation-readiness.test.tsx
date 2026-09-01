@@ -81,6 +81,11 @@ describe("TwinActivationReadiness", () => {
       kind: "inspection",
       key: "evidence_history",
     });
+    fireEvent.click(screen.getByRole("button", { name: "Execution evidence" }));
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "inspection",
+      key: "execution_evidence",
+    });
     queryClient.clear();
   });
 

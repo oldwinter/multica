@@ -434,6 +434,7 @@ function bindingStateLabel(state: TwinBindingState, t: Translate): string {
     case "off": return t(($) => $.use.state_off);
     case "preview": return t(($) => $.use.state_preview);
     case "enabled": return t(($) => $.use.state_enabled);
+    default: return t(($) => $.use.state_unknown);
   }
 }
 
