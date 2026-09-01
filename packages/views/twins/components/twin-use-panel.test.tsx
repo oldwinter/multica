@@ -14,8 +14,9 @@ import {
 } from "@multica/core/twins";
 import type { SupportedLocale } from "@multica/core/i18n";
 import { renderWithI18n } from "../../test/i18n";
+import { useT } from "../../i18n";
 import { lifecycleFixture } from "./twin-workspace-view.test-fixture";
-import { TwinUsePanel } from "./twin-use-panel";
+import { bindingStateLabel, TwinUsePanel } from "./twin-use-panel";
 
 vi.mock("./twin-entity-selectors", () => ({
   TwinAgentSelector: ({ onChange, ariaLabel }: { onChange: (value: unknown) => void; ariaLabel: string }) => (
@@ -402,5 +403,15 @@ describe("TwinUsePanel", () => {
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByRole("button", { name: "Try again" }))
       .toHaveClass("text-foreground");
+  });
+
+  it("localizes a future policy state through the defensive fallback", () => {
+    function Probe() {
+      const { t } = useT("twins");
+      return <span>{bindingStateLabel("future_state", t)}</span>;
+    }
+
+    renderWithI18n(<Probe />, { locale: "zh-Hans" });
+    expect(screen.getByText("未知")).toBeInTheDocument();
   });
 });

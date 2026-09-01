@@ -429,7 +429,7 @@ function previewSourceLabel(scopeType: TwinBindingScope | null, scopeId: string 
 }
 
 type Translate = ReturnType<typeof useT<"twins">>["t"];
-function bindingStateLabel(state: TwinBindingState, t: Translate): string {
+export function bindingStateLabel(state: string, t: Translate): string {
   switch (state) {
     case "off": return t(($) => $.use.state_off);
     case "preview": return t(($) => $.use.state_preview);
