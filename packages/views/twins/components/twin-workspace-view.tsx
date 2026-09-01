@@ -43,6 +43,9 @@ export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorksp
   const navigation = useOptionalNavigation();
   const Root = rootElement;
   const rootRef = useRef<HTMLElement | null>(null);
+  const setRootRef = useCallback((node: HTMLElement | null) => {
+    rootRef.current = node;
+  }, []);
   const [fallbackTab, setFallbackTab] = useState<TwinWorkspaceTab>(DEFAULT_TWIN_WORKSPACE_TAB);
   const tab = navigation
     ? parseTwinWorkspaceTab(navigation.searchParams.get(TWIN_WORKSPACE_TAB_QUERY_KEY))
@@ -61,7 +64,7 @@ export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorksp
   });
   return (
     <Root
-      ref={rootRef}
+      ref={setRootRef}
       className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas"
       data-twin-copy
       data-twin-workspace

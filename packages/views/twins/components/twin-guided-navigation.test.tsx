@@ -199,4 +199,45 @@ describe("Twin guided navigation", () => {
     })).not.toHaveFocus();
     expect(rootScrollTo).not.toHaveBeenCalled();
   });
+
+  it("lets the newest guided request win when two actions arrive before the tab commits", async () => {
+    const commitTab = vi.fn();
+    const view = render(
+      <Harness activeTab="wiki" commitTab={commitTab} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Execution evidence" }));
+    expect(commitTab).toHaveBeenLastCalledWith("use");
+
+    view.rerender(
+      <Harness
+        activeTab="use"
+        destinations={["wiki-source-policy", "use-effectiveness"]}
+        commitTab={commitTab}
+      />,
+    );
+
+    const execution = screen.getByRole("region", {
+      name: "use-effectiveness",
+    });
+    await waitFor(() => expect(execution).toHaveFocus());
+    expect(screen.getByRole("region", {
+      name: "wiki-source-policy",
+    })).not.toHaveFocus();
+    expect(rootScrollTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the pending observer when the workspace unmounts", async () => {
+    const commitTab = vi.fn();
+    const view = render(
+      <Harness activeTab="wiki" commitTab={commitTab} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Execution evidence" }));
+    view.unmount();
+    await Promise.resolve();
+
+    expect(rootScrollTo).not.toHaveBeenCalled();
+  });
 });

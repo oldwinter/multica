@@ -92,7 +92,7 @@ export function resolveTwinGuide(request: TwinGuideRequest): TwinGuidePlan {
   };
 }
 
-type TwinDestinationProps = Omit<ComponentProps<"section">, "tabIndex"> & {
+type TwinDestinationProps = Omit<ComponentProps<"section">, "ref" | "tabIndex"> & {
   readonly destination: TwinGuideDestination;
 };
 
