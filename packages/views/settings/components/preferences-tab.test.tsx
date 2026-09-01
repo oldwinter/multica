@@ -254,6 +254,14 @@ describe("PreferencesTab — Language switcher", () => {
     );
   });
 
+  it("keeps the general settings card clear of the chat launcher on compact screens", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(screen.getByRole("heading", { name: "General" }).closest("section")).toHaveClass(
+      "max-md:pe-chat-launcher",
+    );
+  });
+
   it("does nothing when clicking the current locale", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
