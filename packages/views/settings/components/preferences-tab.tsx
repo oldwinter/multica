@@ -406,7 +406,10 @@ export function PreferencesTab() {
         </AlertDialog>
       </SettingsSection>
 
-      <SettingsSection title={t(($) => $.preferences.general_title)}>
+      <SettingsSection
+        title={t(($) => $.preferences.general_title)}
+        className="max-md:pe-chat-launcher"
+      >
         <SettingsCard>
           <SettingsRow
             label={t(($) => $.preferences.language.title)}
