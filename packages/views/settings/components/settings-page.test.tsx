@@ -119,6 +119,14 @@ describe("SettingsPage nav trigger", () => {
 });
 
 describe("SettingsPage mobile section navigation", () => {
+  it("reserves the floating chat corner on the compact content surface", () => {
+    renderWithI18n(<SettingsPage />);
+
+    expect(document.querySelector("[class*='max-md:pe-chat-launcher']")).toHaveClass(
+      "max-md:pe-chat-launcher",
+    );
+  });
+
   it("exposes every settings section through an accessible mobile selector", () => {
     renderWithI18n(<SettingsPage />);
 
