@@ -25,7 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@multica/ui/components/ui/dialog";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import { wikiInteractionRegionClassName } from "./wiki-ui-contract";
 
 export interface WikiKnowledgeActivationTarget {
   pageId: string;
@@ -123,7 +125,13 @@ export function WorkspaceWikiKnowledgeActivation({
         setOpen(next);
         if (!next) setStaleConflict(null);
       }}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg sm:max-w-xl">
+        <DialogContent
+          className={cn(
+            "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg sm:max-w-xl",
+            wikiInteractionRegionClassName,
+          )}
+          data-wiki-interaction-region
+        >
           <DialogHeader className="pr-8">
             <DialogTitle>{t(($) => $.activation.confirm_title)}</DialogTitle>
             <DialogDescription>{t(($) => $.activation.confirm_description)}</DialogDescription>

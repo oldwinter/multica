@@ -89,6 +89,11 @@ describe("WikiKnowledgeActivation", () => {
 
     expect(screen.getByText("Eligible, not pinned")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Use as LM Wiki evidence" }));
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_[data-slot=dialog-header]]:pr-12",
+    );
     expect(screen.getByRole("dialog")).toHaveTextContent("Release policy");
     expect(screen.getByRole("dialog")).toHaveTextContent("operations/release.md");
     expect(screen.getByRole("dialog")).toHaveTextContent("sha256:revision-4");

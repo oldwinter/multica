@@ -42,9 +42,19 @@ function renderHistory(onRestore = vi.fn()) {
 describe("WikiHistoryDialog", () => {
   it("compares immutable content and restores an older revision as a new write", () => {
     const onRestore = renderHistory();
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "grid-cols-[minmax(0,1fr)]",
+      "max-lg:[&_button]:min-h-11",
+    );
     expect(screen.getByText("current")).toBeInTheDocument();
     expect(screen.getByText("old")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: enWiki.history.timeline })).toBeInTheDocument();
+    expect(screen.getByText("sha256:2")).toHaveClass("break-all");
+    expect(screen.getByText("sha256:1")).toHaveClass("break-all");
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("alertdialog")).toHaveClass("max-lg:[&_button]:min-h-11");
     expect(screen.getByRole("alertdialog")).toHaveTextContent("Revision 1 will become a new revision");
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
     expect(onRestore).toHaveBeenCalledWith("revision-1");

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { WikiProposal } from "@multica/core/wiki";
@@ -72,6 +72,13 @@ describe("WikiProposalsPanel", () => {
   it("records an optional human rejection reason", () => {
     const { onReject } = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("data-wiki-interaction-region");
+    expect(dialog).toHaveClass("max-lg:[&_button]:min-h-11");
+    expect(within(dialog).getByRole("button", { name: "Reject" })).toHaveClass(
+      "bg-destructive",
+      "text-destructive-foreground",
+    );
     fireEvent.change(screen.getByRole("textbox", { name: "Reason (optional)" }), { target: { value: "Unsupported" } });
     fireEvent.click(screen.getByRole("button", { name: "Reject" }));
     expect(onReject).toHaveBeenCalledWith("proposal-1", "Unsupported");
