@@ -34,6 +34,8 @@ const twinInteractionRegionClassName = [
   "max-lg:[&_[data-slot=select-trigger]]:min-h-11",
   "max-lg:[&_[data-slot=tabs-list]]:min-h-11",
   "max-lg:[&_[data-slot=switch]]:after:-inset-y-[13px]",
+  "max-lg:[&_[data-slot=checkbox]]:after:-inset-x-[14px]",
+  "max-lg:[&_[data-slot=checkbox]]:after:-inset-y-[14px]",
 ].join(" ");
 
 export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorkspaceViewProps) {
