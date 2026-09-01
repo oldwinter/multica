@@ -253,6 +253,14 @@ describe("OfficePage", () => {
     }
   });
 
+  it("reserves the floating chat corner on the narrow roster", () => {
+    renderOffice();
+
+    expect(screen.getByTestId("office-roster")).toHaveClass(
+      "max-md:pe-chat-launcher",
+    );
+  });
+
   it("persists a world only after the scene confirms installation", async () => {
     const user = userEvent.setup();
     renderWithI18n(
