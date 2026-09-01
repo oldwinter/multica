@@ -39,17 +39,22 @@ export interface TwinGuidePlan {
   readonly fallback?: TwinGuideDestination;
 }
 
-const destinationTabs = {
-  "wiki-source-policy": "wiki",
-  "wiki-overview": "wiki",
-  "wiki-evidence": "wiki",
-  "twin-overview": "twin",
-  "twin-history": "twin",
-  "use-status": "use",
-  "use-binding": "use",
-  "use-preview": "use",
-  "use-effectiveness": "use",
-} as const satisfies Record<TwinGuideDestination, TwinWorkspaceTab>;
+interface TwinGuideDestinationSpec {
+  readonly tab: TwinWorkspaceTab;
+  readonly fallback: TwinGuideDestination | null;
+}
+
+const destinationSpecs = {
+  "wiki-source-policy": { tab: "wiki", fallback: null },
+  "wiki-overview": { tab: "wiki", fallback: null },
+  "wiki-evidence": { tab: "wiki", fallback: null },
+  "twin-overview": { tab: "twin", fallback: null },
+  "twin-history": { tab: "twin", fallback: null },
+  "use-status": { tab: "use", fallback: null },
+  "use-binding": { tab: "use", fallback: "use-status" },
+  "use-preview": { tab: "use", fallback: "use-status" },
+  "use-effectiveness": { tab: "use", fallback: "use-status" },
+} as const satisfies Record<TwinGuideDestination, TwinGuideDestinationSpec>;
 
 const actionDestinations = {
   inspect_disabled: "use-status",
@@ -75,30 +80,15 @@ const inspectionDestinations = {
   TwinGuideDestination
 >;
 
-const destinationFallbacks = {
-  "wiki-source-policy": null,
-  "wiki-overview": null,
-  "wiki-evidence": null,
-  "twin-overview": null,
-  "twin-history": null,
-  "use-status": null,
-  "use-binding": "use-status",
-  "use-preview": "use-status",
-  "use-effectiveness": "use-status",
-} as const satisfies Record<
-  TwinGuideDestination,
-  TwinGuideDestination | null
->;
-
 export function resolveTwinGuide(request: TwinGuideRequest): TwinGuidePlan {
   const destination = request.kind === "action"
     ? actionDestinations[request.key]
     : inspectionDestinations[request.key];
-  const fallback = destinationFallbacks[destination];
+  const spec = destinationSpecs[destination];
   return {
     destination,
-    tab: destinationTabs[destination],
-    ...(fallback ? { fallback } : {}),
+    tab: spec.tab,
+    ...(spec.fallback ? { fallback: spec.fallback } : {}),
   };
 }
 

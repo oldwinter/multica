@@ -13,7 +13,10 @@ import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useT } from "../../i18n";
-import type { TwinGuideRequest } from "./twin-guided-navigation";
+import {
+  resolveTwinGuide,
+  type TwinGuideRequest,
+} from "./twin-guided-navigation";
 
 const readinessSectionClassName = "min-h-72 border-y border-border/70 py-4 lg:min-h-52";
 
@@ -113,7 +116,10 @@ export function TwinActivationReadiness({
             ))}
           </ol>
           <nav className="flex flex-wrap gap-1" aria-label={t(($) => $.use.inspection_links)}>
-            {readiness.data.inspectionLinks.filter((link) => link.target !== action.target).map((link) => (
+            {readiness.data.inspectionLinks.filter((link) => (
+              resolveTwinGuide({ kind: "inspection", key: link.key }).destination
+                !== resolveTwinGuide({ kind: "action", key: action.key }).destination
+            )).map((link) => (
               <Button
                 key={link.key}
                 variant="ghost"
