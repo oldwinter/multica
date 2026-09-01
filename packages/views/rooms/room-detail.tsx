@@ -116,7 +116,7 @@ export function RoomDetail({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-surface-border bg-surface px-3 py-2 sm:px-4">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-md:basis-full">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-body font-medium text-foreground">{room.title}</h1>
             <Badge variant="secondary" className={cn("border-0", roomStatusClass(room.status))}>
@@ -132,7 +132,7 @@ export function RoomDetail({
             type="button"
             size="sm"
             variant="outline"
-            className="max-md:min-h-11"
+            className="max-md:min-h-11 max-md:min-w-11"
             disabled={statusPending}
             aria-label={room.status === "paused" ? t(($) => $.actions.resume) : t(($) => $.actions.pause)}
             data-testid="room-status-toggle"
@@ -155,7 +155,7 @@ export function RoomDetail({
             type="button"
             size="sm"
             variant="outline"
-            className="max-md:min-h-11"
+            className="max-md:min-h-11 max-md:min-w-11"
             disabled={cancelPending}
             aria-label={t(($) => $.actions.cancel_cycle)}
             data-testid="room-cancel-cycle"
@@ -206,7 +206,7 @@ export function RoomDetail({
                 <Button
                   type="button"
                   size="sm"
-                  className="max-md:min-h-11"
+                  className="max-md:min-h-11 max-md:min-w-11"
                   disabled={!canRunAgain && !canWake && !canRetryPreflight}
                   aria-label={repeatEligible
                     ? t(($) => $.actions.run_again)
