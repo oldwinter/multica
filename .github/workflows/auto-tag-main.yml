@@ -1,0 +1,78 @@
+name: Auto tag main
+
+# Downstream-only: every push to main gets the next vX.Y.Z-oldwinter.N tag,
+# then starts Release. GITHUB_TOKEN tag pushes do not retrigger workflows, so
+# this job dispatches release.yml against the new tag instead of relying on
+# the tag push event.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    if: github.repository == 'oldwinter/multica'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch tags
+        run: git fetch --tags --force origin
+
+      - name: Prove tag calculator
+        run: bash scripts/next-downstream-tag.test.sh
+
+      - name: Compute downstream tag
+        id: meta
+        run: |
+          tag="$(bash scripts/next-downstream-tag.sh)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git tag --points-at HEAD | grep -Fxq "$tag"; then
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "HEAD will use $tag"
+
+      - name: Create annotated tag
+        if: steps.meta.outputs.created == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.meta.outputs.tag }}" -m "Oldwinter downstream release ${{ steps.meta.outputs.tag }}"
+          git push origin "refs/tags/${{ steps.meta.outputs.tag }}"
+
+      - name: Start Release for the tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "GitHub Release $tag already exists; skipping dispatch"
+            exit 0
+          fi
+          # The tag push is visible to git immediately, but the Actions ref
+          # can lag for a few seconds. Retry the dispatch rather than failing
+          # the auto-tagger after the tag already exists.
+          for attempt in 1 2 3 4 5 6; do
+            if gh workflow run release.yml --ref "$tag"; then
+              exit 0
+            fi
+            echo "dispatch attempt $attempt failed; retrying"
+            sleep 5
+          done
+          echo "::error::Could not dispatch Release for $tag"
+          exit 1
