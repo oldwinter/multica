@@ -13,19 +13,19 @@ import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useT } from "../../i18n";
-
-import type { TwinWorkspaceTab } from "./twin-workspace-tabs";
-
-export type { TwinWorkspaceTab } from "./twin-workspace-tabs";
+import {
+  resolveTwinGuide,
+  type TwinGuideRequest,
+} from "./twin-guided-navigation";
 
 const readinessSectionClassName = "min-h-72 border-y border-border/70 py-4 lg:min-h-52";
 
 export function TwinActivationReadiness({
   wsId,
-  onNavigate,
+  onGuide,
 }: {
   wsId: string;
-  onNavigate: (target: TwinWorkspaceTab) => void;
+  onGuide: (request: TwinGuideRequest) => void;
 }) {
   const { t } = useT("twins");
   const readiness = useQuery(twinActivationReadinessOptions(wsId));
@@ -116,8 +116,17 @@ export function TwinActivationReadiness({
             ))}
           </ol>
           <nav className="flex flex-wrap gap-1" aria-label={t(($) => $.use.inspection_links)}>
-            {readiness.data.inspectionLinks.filter((link) => link.target !== action.target).map((link) => (
-              <Button key={link.key} variant="ghost" size="sm" className="h-7 px-2" onClick={() => onNavigate(link.target)}>
+            {readiness.data.inspectionLinks.filter((link) => (
+              resolveTwinGuide({ kind: "inspection", key: link.key }).destination
+                !== resolveTwinGuide({ kind: "action", key: action.key }).destination
+            )).map((link) => (
+              <Button
+                key={link.key}
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => onGuide({ kind: "inspection", key: link.key })}
+              >
                 {inspectionLinkLabel(link, t)}
               </Button>
             ))}
@@ -127,7 +136,7 @@ export function TwinActivationReadiness({
           data-testid="twin-primary-action"
           className="shrink-0 self-start lg:self-center"
           disabled={!action.canAct}
-          onClick={() => onNavigate(action.target)}
+          onClick={() => onGuide({ kind: "action", key: action.key })}
         >
           {activationActionLabel(action.key, t)}
           <ArrowRight data-icon="inline-end" aria-hidden="true" />

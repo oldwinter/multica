@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { ApiError } from "@multica/core/api";
@@ -178,6 +178,15 @@ describe("WikiPageView", () => {
     expect(document.querySelector('[data-testid="wiki-page"]')?.tagName).toBe("DIV");
   });
 
+  it("hides only the redundant empty detail pane on narrow screens", () => {
+    renderWiki();
+
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "collection-echo",
+    );
+  });
+
   it("routes an unavailable deep link back to the Wiki collection", () => {
     harness.detail = {
       isLoading: false,
@@ -188,6 +197,10 @@ describe("WikiPageView", () => {
     };
     renderWiki("missing-page");
 
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("Wiki page unavailable");
     expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back to Wiki" }));
@@ -205,6 +218,10 @@ describe("WikiPageView", () => {
     };
     renderWiki("page-1");
 
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("This Wiki page could not be loaded.");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(refetch).toHaveBeenCalledOnce();
@@ -221,6 +238,10 @@ describe("WikiPageView", () => {
       refetch: vi.fn(),
     };
     renderWiki("page-1");
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Open stable revision" }));
     expect(harness.push).toHaveBeenCalledWith("/acme/wiki/revisions/revision-4");
   });
@@ -237,6 +258,10 @@ describe("WikiPageView", () => {
     };
     renderWiki();
     fireEvent.change(screen.getByRole("textbox", { name: "Search Wiki" }), { target: { value: "guide" } });
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "collection-echo",
+    );
     expect(screen.getByRole("heading", { name: "Workspace" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Project" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Personal" })).toBeInTheDocument();
@@ -285,7 +310,11 @@ describe("WikiPageView", () => {
     renderWiki();
 
     await user.click(screen.getByRole("combobox"));
-    await user.click(await screen.findByRole("option", { name: "Roadmap" }));
+    const option = await screen.findByRole("option", { name: "Roadmap" });
+    expect(option.closest('[data-slot="select-content"]')).toHaveClass(
+      "max-lg:[&_[data-slot=select-item]]:min-h-11",
+    );
+    await user.click(option);
 
     expect(harness.replace).toHaveBeenCalledWith(
       "/acme/wiki?scope=project&view=grid&project_id=project-1",
@@ -299,6 +328,10 @@ describe("WikiPageView", () => {
     expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("combobox")).toHaveTextContent("Select a project");
     expect(screen.getByRole("button", { name: "New page" })).toBeDisabled();
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     expect(screen.queryByText(enWiki.empty.title)).not.toBeInTheDocument();
     expect(screen.queryByText(enWiki.empty.description)).not.toBeInTheDocument();
   });
@@ -331,6 +364,10 @@ describe("WikiPageView", () => {
   it("labels a new page action as create instead of save", () => {
     renderWiki();
     fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   });
@@ -359,7 +396,17 @@ describe("WikiPageView", () => {
 
   it("lets the short mobile Wiki shell scroll to detail actions", () => {
     renderWiki();
-    expect(screen.getByTestId("wiki-page")).toHaveClass("overflow-y-auto", "lg:overflow-hidden");
+    const root = screen.getByTestId("wiki-page");
+    expect(root).toHaveClass("overflow-y-auto", "lg:overflow-hidden");
+    expect(root).toHaveAttribute("data-wiki-interaction-region");
+    expect(root).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_button]:min-w-11",
+      "max-lg:[&_[data-slot=input]]:min-h-11",
+      "max-lg:[&_[data-slot=tabs-list]]:min-h-11",
+      "max-lg:[&_[data-slot=select-trigger]]:min-h-11",
+    );
+    expect(screen.getByRole("textbox", { name: "Search Wiki" })).toHaveClass("max-lg:pr-12");
   });
 
   it("sends expectedRevisionNumber with direct edits", () => {
@@ -396,6 +443,8 @@ describe("WikiPageView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByDisplayValue("# Shared guide"), { target: { value: "# My draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("alertdialog")).toHaveClass("max-lg:[&_button]:min-h-11");
     expect(screen.getByRole("alertdialog")).toHaveTextContent("This page changed while you were editing");
     fireEvent.click(screen.getByRole("button", { name: "Merge my draft" }));
     await waitFor(() => expect(screen.getByDisplayValue("# My draft")).toBeInTheDocument());
@@ -407,8 +456,13 @@ describe("WikiPageView", () => {
     harness.remove.mutate.mockImplementation((_id, options) => options.onError(new Error("failed")));
     renderWiki("page-1");
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(screen.getByRole("alertdialog")).toHaveTextContent("Delete this Wiki page?");
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveAttribute("data-wiki-interaction-region");
+    expect(dialog).toHaveClass("max-lg:[&_button]:min-h-11");
+    expect(dialog).toHaveTextContent("Delete this Wiki page?");
+    const confirm = within(dialog).getByRole("button", { name: "Delete" });
+    expect(confirm).toHaveClass("bg-destructive", "text-destructive-foreground");
+    fireEvent.click(confirm);
     expect(screen.getByRole("alert")).toHaveTextContent("The action could not be completed");
   });
 });

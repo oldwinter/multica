@@ -38,6 +38,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
 import { RichContent } from "../rich-content";
@@ -46,6 +47,13 @@ import { WikiProposalsPanel } from "./wiki-proposals-panel";
 import { WikiEditor, WikiPageList } from "./wiki-page-primitives";
 import { wikiConflict } from "./wiki-conflict";
 import { WorkspaceWikiKnowledgeActivation } from "./wiki-knowledge-activation";
+import {
+  WikiMasterDetail,
+  wikiDestructiveActionClassName,
+  wikiInteractionRegionClassName,
+  wikiSelectContentClassName,
+  type WikiNarrowDetailRole,
+} from "./wiki-ui-contract";
 import {
   buildWikiScopePath,
   parseWikiScopeSelection,
@@ -261,8 +269,20 @@ export function WikiPageView({
     else nav.replace(nextPath);
   };
 
+  const narrowDetailRole: WikiNarrowDetailRole =
+    !creating && !pageId && !requiresProjectSelection
+      ? "collection-echo"
+      : "required";
+
   return (
-    <Root className="pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden" data-testid="wiki-page">
+    <Root
+      className={cn(
+        "pe-chat-launcher min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden",
+        wikiInteractionRegionClassName,
+      )}
+      data-testid="wiki-page"
+      data-wiki-interaction-region
+    >
       <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
@@ -299,7 +319,7 @@ export function WikiPageView({
               onKeyDown={(event) => event.key === "Escape" && setSearchText("")}
               aria-label={t(($) => $.search.label)}
               placeholder={t(($) => $.search.placeholder)}
-              className="pl-9 pr-9"
+              className="pl-9 pr-9 max-lg:pr-12"
             />
             {searchText ? (
               <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1/2 -translate-y-1/2" onClick={() => setSearchText("")}>
@@ -315,16 +335,20 @@ export function WikiPageView({
             <span>{t(($) => $.fields.project)}</span>
             <Select items={projectSelectItems} value={projectId} onValueChange={(value) => changeProject(value ?? null)}>
               <SelectTrigger className="w-full" aria-label={t(($) => $.fields.project)}><SelectValue placeholder={t(($) => $.empty.pick_project)} /></SelectTrigger>
-              <SelectContent>
+              <SelectContent
+                className={wikiSelectContentClassName}
+                data-wiki-interaction-region
+              >
                 {projectSelectItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </label>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,35dvh)_minmax(20rem,1fr)] gap-4 lg:grid-cols-[minmax(14rem,18rem)_minmax(0,1fr)] lg:grid-rows-1">
-          <aside className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-3 shadow-[var(--surface-shadow)]">
-            {normalizedSearch.length === 1 ? (
+        <WikiMasterDetail
+          detailRole={narrowDetailRole}
+          collection={
+            normalizedSearch.length === 1 ? (
               <p className="px-1 py-4 text-body text-muted-foreground">{t(($) => $.search.minimum)}</p>
             ) : isSearching ? (
               <WikiSearchResults
@@ -345,11 +369,10 @@ export function WikiPageView({
                 <p className="text-body font-medium text-foreground">{t(($) => $.empty.title)}</p>
                 <p className="text-caption text-muted-foreground">{t(($) => $.empty.description)}</p>
               </div>
-            ) : <WikiPageList pages={pages} activePageId={pageId} onSelect={(page) => nav.push(paths.wikiPage(page.id))} />}
-          </aside>
-
-          <section className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
-            {creating ? (
+            ) : <WikiPageList pages={pages} activePageId={pageId} onSelect={(page) => nav.push(paths.wikiPage(page.id))} />
+          }
+          detail={
+            creating ? (
               <WikiEditor path={draftPath} title={draftTitle} content={draftContent} onPathChange={setDraftPath} onTitleChange={setDraftTitle} onContentChange={setDraftContent} onSave={createPage} onCancel={() => setCreating(false)} pending={createMutation.isPending} create error={actionError} />
             ) : !pageId ? (
               <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center">
@@ -499,9 +522,9 @@ export function WikiPageView({
                   </TabsContent>
                 </Tabs>
               </div>
-            )}
-          </section>
-        </div>
+            )
+          }
+        />
       </div>
 
       <WikiHistoryDialog
@@ -524,12 +547,15 @@ export function WikiPageView({
       />
 
       <AlertDialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (open) setActionError(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className={wikiInteractionRegionClassName}
+          data-wiki-interaction-region
+        >
           <AlertDialogHeader><AlertDialogTitle>{t(($) => $.delete_dialog.title)}</AlertDialogTitle><AlertDialogDescription>{t(($) => $.delete_dialog.description)}</AlertDialogDescription></AlertDialogHeader>
           {actionError ? <p className="text-body text-destructive" role="alert">{actionError}</p> : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>{t(($) => $.actions.cancel)}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={deleteMutation.isPending || !pageId} onClick={() => {
+            <AlertDialogAction className={wikiDestructiveActionClassName} variant="destructive" disabled={deleteMutation.isPending || !pageId} onClick={() => {
               if (!pageId) return;
               deleteMutation.mutate(pageId, { onSuccess: () => nav.push(paths.wiki()), onError: () => setActionError(t(($) => $.states.action_error)) });
             }}>{t(($) => $.actions.delete)}</AlertDialogAction>
@@ -538,7 +564,10 @@ export function WikiPageView({
       </AlertDialog>
 
       <AlertDialog open={Boolean(conflict)} onOpenChange={(open) => !open && setConflict(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className={wikiInteractionRegionClassName}
+          data-wiki-interaction-region
+        >
           <AlertDialogHeader><AlertDialogTitle>{t(($) => $.conflict.title)}</AlertDialogTitle><AlertDialogDescription>{t(($) => $.conflict.description, { number: conflict?.currentRevisionNumber ?? 0 })}</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => void beginMerge()}>{t(($) => $.conflict.merge)}</AlertDialogCancel>

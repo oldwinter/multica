@@ -12,6 +12,7 @@ import {
 } from "@multica/core/wiki";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
 import { RichContent } from "../rich-content";
@@ -20,6 +21,7 @@ import {
   PersonalWikiKnowledgeActivation,
   WorkspaceWikiKnowledgeActivation,
 } from "./wiki-knowledge-activation";
+import { wikiInteractionRegionClassName } from "./wiki-ui-contract";
 
 interface ImmutableWikiRevisionProps {
   revision?: WikiRevision;
@@ -55,7 +57,14 @@ export function ImmutableWikiRevision({
   const Root = rootElement;
 
   return (
-    <Root className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-testid="wiki-revision-page">
+    <Root
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto bg-page-canvas",
+        wikiInteractionRegionClassName,
+      )}
+      data-testid="wiki-revision-page"
+      data-wiki-interaction-region
+    >
       <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         <header className="flex min-w-0 items-start gap-2 border-b border-surface-border pb-4">
           <Button

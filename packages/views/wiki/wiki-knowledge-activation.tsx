@@ -25,7 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@multica/ui/components/ui/dialog";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import { wikiInteractionRegionClassName } from "./wiki-ui-contract";
 
 export interface WikiKnowledgeActivationTarget {
   pageId: string;
@@ -99,7 +101,7 @@ export function WorkspaceWikiKnowledgeActivation({
       <SourceStateBadge source={source} loading={readinessQuery.isPending} error={readinessQuery.isError} />
       <Button
         type="button"
-        variant={canPin ? "brand" : "outline"}
+        variant={canPin ? "default" : "outline"}
         size="sm"
         className="max-w-full whitespace-normal text-left"
         disabled={!canPin || pinRevision.isPending}
@@ -123,7 +125,13 @@ export function WorkspaceWikiKnowledgeActivation({
         setOpen(next);
         if (!next) setStaleConflict(null);
       }}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg sm:max-w-xl">
+        <DialogContent
+          className={cn(
+            "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg sm:max-w-xl",
+            wikiInteractionRegionClassName,
+          )}
+          data-wiki-interaction-region
+        >
           <DialogHeader className="pr-8">
             <DialogTitle>{t(($) => $.activation.confirm_title)}</DialogTitle>
             <DialogDescription>{t(($) => $.activation.confirm_description)}</DialogDescription>
@@ -211,7 +219,7 @@ export function WorkspaceWikiKnowledgeActivation({
             <Button type="button" variant="outline" disabled={pinRevision.isPending} onClick={() => setOpen(false)}>
               {t(($) => $.actions.cancel)}
             </Button>
-            <Button type="button" variant="brand" disabled={!readiness || !source || pinRevision.isPending || Boolean(staleConflict)} onClick={confirmPin}>
+            <Button type="button" disabled={!readiness || !source || pinRevision.isPending || Boolean(staleConflict)} onClick={confirmPin}>
               <BookCheck data-icon="inline-start" />
               {pinRevision.isPending ? t(($) => $.activation.pinning) : t(($) => $.activation.confirm)}
             </Button>

@@ -24,15 +24,15 @@ import { TwinActivationReadiness } from "./twin-activation-readiness";
 
 const wsId = "00000000-0000-4000-8000-000000000001";
 
-function renderReadiness(readiness: Readiness, onNavigate = vi.fn()) {
+function renderReadiness(readiness: Readiness, onGuide = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   queryClient.setQueryData(twinExecutionKeys.activation(wsId), readiness);
   const rendered = renderWithI18n(
     <QueryClientProvider client={queryClient}>
-      <TwinActivationReadiness wsId={wsId} onNavigate={onNavigate} />
+      <TwinActivationReadiness wsId={wsId} onGuide={onGuide} />
     </QueryClientProvider>,
   );
-  return { ...rendered, queryClient, onNavigate };
+  return { ...rendered, queryClient, onGuide };
 }
 
 afterEach(cleanup);
@@ -43,7 +43,7 @@ describe("TwinActivationReadiness", () => {
   });
 
   it("renders one deterministic primary action and navigates to its owned surface", () => {
-    const { onNavigate, queryClient } = renderReadiness({
+    const { onGuide, queryClient } = renderReadiness({
       contractVersion: 1,
       ready: false,
       canManage: true,
@@ -72,7 +72,20 @@ describe("TwinActivationReadiness", () => {
     const action = screen.getByRole("button", { name: "Compile preview" });
     expect(screen.getByTestId("twin-primary-action")).toBe(action);
     fireEvent.click(action);
-    expect(onNavigate).toHaveBeenCalledWith("use");
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "action",
+      key: "compile_preview",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Evidence history" }));
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "inspection",
+      key: "evidence_history",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Execution evidence" }));
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "inspection",
+      key: "execution_evidence",
+    });
     queryClient.clear();
   });
 
@@ -110,7 +123,7 @@ describe("TwinActivationReadiness", () => {
     });
     renderWithI18n(
       <QueryClientProvider client={queryClient}>
-        <TwinActivationReadiness wsId={wsId} onNavigate={vi.fn()} />
+        <TwinActivationReadiness wsId={wsId} onGuide={vi.fn()} />
       </QueryClientProvider>,
     );
 
@@ -128,7 +141,7 @@ describe("TwinActivationReadiness", () => {
     });
     renderWithI18n(
       <QueryClientProvider client={queryClient}>
-        <TwinActivationReadiness wsId={wsId} onNavigate={vi.fn()} />
+        <TwinActivationReadiness wsId={wsId} onGuide={vi.fn()} />
       </QueryClientProvider>,
     );
 
