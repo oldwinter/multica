@@ -7,6 +7,70 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-03 v0.4.38 Sync
+
+- Downstream start: `7f7ae0f9bb0796035bc58a3b657ce93b616b3c6d`.
+- Merge base: `11861145abc59a0d39c8c8f24ad837d4584e664f`.
+- Upstream ahead: 28 commits through
+  `d4a712abf3880dfbd3daeac5daac1bd4bfb39b6f`
+  (`v0.4.38-3-gd4a712abf`).
+- Local unique commits: 250.
+- Predicted and actual conflict files: 14.
+- Upstream merge commit: `02378bc1380799195363170d871fe89437be17d4`.
+- Fork-remote reconciliation: not performed; `origin/main` still pointed at
+  the downstream start during this local sync.
+
+The conflicts were:
+
+| Class | Conflict paths |
+| --- | --- |
+| Mobile Inbox and API | `apps/mobile/app/(app)/[workspace]/(tabs)/inbox.tsx`, `apps/mobile/components/inbox/detail-label.tsx`, `apps/mobile/data/api.ts` |
+| Core contracts | `packages/core/modals/index.ts`, `packages/core/types/inbox.ts` |
+| Shared Views | `packages/views/common/actor-avatar.tsx`, `packages/views/inbox/components/inbox-detail-label.tsx`, `packages/views/inbox/components/inbox-page.tsx`, `packages/views/issues/components/comment-card.tsx` |
+| Inbox locales | `packages/views/locales/en/inbox.json`, `packages/views/locales/ja/inbox.json`, `packages/views/locales/ko/inbox.json`, `packages/views/locales/zh-Hans/inbox.json` |
+| Migration runner | `server/cmd/migrate/main.go` |
+
+The Inbox resolution keeps downstream Room identity, deduplication, and review
+navigation beside upstream issue-less autopilot notices and quota recovery.
+Mobile routes both behaviors through one navigation helper, with regression
+tests for Room context, ordinary issues, and issue-less notices. The API keeps
+the downstream appearance preference transport while adopting upstream's
+canonical `getConfig` method and workspace subscription summary. Core and
+Views retain the downstream quick-create command and accessible avatar profile
+label while adopting upstream issue-limit recovery types, departed-actor
+identity, localized dates, and quota notice UI.
+
+Both published histories use migration prefixes 444 through 449. Upstream owns
+comment recovery, delegated-failure and issue-property indexes, autopilot quota
+notification, and trigger-creator identities. Downstream owns the Room turn,
+lifecycle, synthesis, capability, and recommendation identities. Every
+filename identity remains unchanged, and `migrations_lint_test.go` freezes the
+exact duplicate pairs. The migration runner keeps both concurrent-index cleanup
+registries and treats the optional `pg_bigm` property index as a recorded no-op
+when its operator class is unavailable.
+
+A fresh database reached 640 migration identities and made a second `migrate
+up` a no-op. A clone of the pre-merge downstream database advanced from 634 to
+640, retained all twelve 444-449 identities, created the upstream columns and
+delegated-failure index, retained the Room tables and indexes, reported no
+invalid or unready indexes, and also made a second migration run a no-op. The
+clone was removed after verification; the source database was not modified.
+`sqlc` 1.31.1 regeneration produced no diff.
+
+Frontend verification passed all six test tasks; Views passed 481 files and
+5,443 tests, and the Office asset contract passed all seven checks. Typecheck
+passed 9/9 tasks, lint passed with zero errors (32 existing non-Mobile warnings
+and seven existing Mobile warnings), and production build passed 5/5 tasks.
+Database-backed Go verification passed the migration, Room, service, and
+handler packages. The wider `make test` race run passed the remaining packages
+except four daemon executable-discovery tests and three repo-cache fixture
+tests; the same seven failures reproduce on the pre-merge downstream start.
+The repo-cache fixtures reuse all-zero UUID tails even though branch identity
+uses the random UUID tail. The full run also hit one 150 ms daemon polling
+timeout under load; the daemon package's isolated rerun did not reproduce it.
+This sync did not run deployment, production, Desktop display, Mobile device,
+or human acceptance checks.
+
 ## 2026-09-01 v0.4.37 Sync
 
 - Downstream start: `1f08aaa508b50d6fb8494480746e21b63aac6070`.
