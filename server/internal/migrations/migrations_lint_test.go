@@ -21,7 +21,7 @@ const maxLegacyMigrationPrefix = 148
 // listed and is deliberately absent again — the later of the two migrations
 // was renumbered to 376, which its idempotent DDL made safe.
 //
-// Prefixes 251–309, 403–432, and 437–440 record merges of already-published
+// Prefixes 251–309, 403–432, and 437–449 record merges of already-published
 // upstream and downstream histories. Renaming either side changes its
 // schema_migrations identity and can re-run DDL on existing installations, so
 // their exact stems stay frozen. The migration runner carries explicit aliases
@@ -150,6 +150,12 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"441": {"441_runtime_profile_add_codearts", "441_twin_deposition_edit_digest"},
 	"442": {"442_twin_proposal_correction", "442_vcs_reference_only_repair"},
 	"443": {"443_issue_project_status_index", "443_twin_proposal_replacement_index"},
+	"444": {"444_comment_recovery_settled_at", "444_room_turn_identity_index_drop"},
+	"445": {"445_comment_delegated_failure_unsettled_index", "445_room_turn_kind_attempt_index"},
+	"446": {"446_issue_properties_bigm_index", "446_room_lifecycle_idempotency"},
+	"447": {"447_issue_properties_bigm_index_statistics", "447_room_synthesis_retry_key_index"},
+	"448": {"448_autopilot_quota_rejection_notified_at", "448_room_capability_rollout"},
+	"449": {"449_autopilot_trigger_created_by", "449_room_artifact_recommendation_key"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)

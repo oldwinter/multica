@@ -23,7 +23,7 @@ import {
 async function refreshAppearanceAnalyticsConfig(): Promise<void> {
   try {
     configureMobileAppearanceAnalytics(
-      await api.getAppearanceAnalyticsConfig(),
+      await api.getConfig(),
     );
   } catch {
     // Configuration is opportunistic; appearance behavior never waits on it.

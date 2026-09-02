@@ -27,7 +27,10 @@ import {
 } from "@/data/mutations/inbox";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { deduplicateInboxItems } from "@/lib/inbox-display";
+import {
+  deduplicateInboxItems,
+  getInboxNavigationTarget,
+} from "@/lib/inbox-display";
 
 export default function Inbox() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -57,31 +60,8 @@ export default function Inbox() {
       // snapshot for the native stack push transition.
       markRead.mutate(item.id);
     }
-		if (item.room_id && wsSlug) {
-			router.push({
-				pathname: "/[workspace]/room/[id]",
-				params: {
-					workspace: wsSlug,
-					id: item.room_id,
-					focus: item.details?.focus,
-					cycleId: item.room_cycle_id ?? item.details?.cycle_id,
-					memoryRevisionId: item.details?.memory_revision_id,
-					recommendationKey: item.room_review_identity ?? item.details?.recommendation_key,
-				},
-			});
-			return;
-		}
-    if (item.issue_id && wsSlug) {
-      router.push({
-        pathname: "/[workspace]/issue/[id]",
-        params: {
-          workspace: wsSlug,
-          id: item.issue_id,
-          highlight: item.details?.comment_id,
-          h: String(Date.now()),
-        },
-      });
-    }
+    const target = getInboxNavigationTarget(item, wsSlug, String(Date.now()));
+    if (target) router.push(target);
   };
 
   // Trailing batch menu — mirrors web's dropdown

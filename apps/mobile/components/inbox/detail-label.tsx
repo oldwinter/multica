@@ -58,6 +58,8 @@ const TYPE_LABEL: Record<InboxItemType, string> = {
   room_recommendation_review_required: "Room recommendation review",
   room_cycle_failed: "Room cycle failed",
   room_cycle_blocked: "Room run blocked",
+  autopilot_paused: "Autopilot paused",
+  autopilot_quota_exceeded: "Autopilot run limit reached",
 };
 
 // due_date is a calendar day — format timezone-safely (no offset day shift).
@@ -154,6 +156,8 @@ export function InboxDetailLabel({
         const detail = singleLine(details.error) || singleLine(item.body);
         return detail || TYPE_LABEL[item.type];
       }
+      case "autopilot_quota_exceeded":
+        return "Run blocked because the limit was reached";
       default:
         return TYPE_LABEL[item.type] ?? item.type;
     }

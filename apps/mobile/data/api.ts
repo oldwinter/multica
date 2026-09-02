@@ -57,6 +57,7 @@ import type {
   UpdateProjectRequest,
   User,
   Workspace,
+  WorkspaceSubscriptionSummary,
 } from "@multica/core/types";
 import {
   AppConfigSchema,
@@ -68,8 +69,9 @@ import {
   ListIssuesResponseSchema,
   ListIssueStatusesResponseSchema,
   TimelineEntriesSchema,
-  type AppConfigResponse,
+  WorkspaceSubscriptionSummarySchema,
 } from "@multica/core/api/schemas";
+import type { AppConfigResponse } from "@multica/core/api/schemas";
 import {
   ActiveTasksResponseSchema,
   AgentListSchema,
@@ -463,14 +465,23 @@ class ApiClient {
     );
   }
 
-  async getAppearanceAnalyticsConfig(opts?: {
-    signal?: AbortSignal;
-  }): Promise<AppConfigResponse> {
-    return this.fetchValidated(
+  async getConfig(opts?: { signal?: AbortSignal }): Promise<AppConfigResponse> {
+    return this.fetchValidated<AppConfigResponse>(
       "/api/config",
       AppConfigSchema,
       EMPTY_APP_CONFIG,
-      { ...opts, endpoint: "getAppearanceAnalyticsConfig" },
+      { ...opts, endpoint: "getConfig" },
+    );
+  }
+
+  async getWorkspaceSubscriptionSummary(opts?: {
+    signal?: AbortSignal;
+  }): Promise<WorkspaceSubscriptionSummary | null> {
+    return this.fetchValidated<WorkspaceSubscriptionSummary | null>(
+      "/api/cloud-subscriptions/summary",
+      WorkspaceSubscriptionSummarySchema,
+      null,
+      { ...opts, endpoint: "getWorkspaceSubscriptionSummary" },
     );
   }
 
