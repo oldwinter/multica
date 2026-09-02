@@ -7,6 +7,11 @@ on:
       # tags broadly at the trigger layer, then enforce strict semver below.
       - "v*.*.*"
       - "!v*-dirty*"
+  # auto-tag-main creates tags with GITHUB_TOKEN, which does not retrigger
+  # workflows on the tag push. Dispatching against the tag keeps
+  # github.ref_name equal to the release tag. A UI dispatch on a branch
+  # fails the tag-name check below.
+  workflow_dispatch:
 
 permissions:
   contents: write

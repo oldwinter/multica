@@ -364,6 +364,7 @@ test("runs a durable Room outcome loop from paused message through reviewed prom
     await page.getByTestId("room-create-open").click();
     await page.getByLabel("Name").fill(roomTitle);
     await page.getByLabel("Objective").fill("Produce a cited rollout decision with dissent preserved.");
+    await page.getByRole("button", { name: "Advanced configuration" }).click();
     await page.getByLabel("Success criteria").fill("Every conclusion is cited\nThe owner can accept or correct the result");
     await page.getByLabel("Stop conditions").fill("A reviewed decision is promoted");
     await page.getByLabel("Instructions").fill("Compare evidence and preserve durable decisions.");

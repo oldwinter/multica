@@ -40,7 +40,11 @@
     "just_now": "just now",
     "minutes_ago": "{{count}}m ago",
     "hours_ago": "{{count}}h ago",
-    "days_ago": "{{count}}d ago"
+    "days_ago": "{{count}}d ago",
+    "soon": "soon",
+    "minutes_until": "in {{count}}m",
+    "hours_until": "in {{count}}h",
+    "days_until": "in {{count}}d"
   },
   "lark_bind": {
     "page_title": "Bind your Lark account",

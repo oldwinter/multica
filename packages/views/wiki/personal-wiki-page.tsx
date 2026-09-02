@@ -36,12 +36,19 @@ import {
 } from "@multica/ui/components/ui/alert-dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
 import { RichContent } from "../rich-content";
 import { wikiConflict } from "./wiki-conflict";
 import { WikiHistoryDialog } from "./wiki-history-dialog";
 import { WikiEditor, WikiPageList } from "./wiki-page-primitives";
+import {
+  WikiMasterDetail,
+  wikiDestructiveActionClassName,
+  wikiInteractionRegionClassName,
+  type WikiNarrowDetailRole,
+} from "./wiki-ui-contract";
 
 export interface PersonalWikiRoutePaths {
   list: () => string;
@@ -174,9 +181,19 @@ export function PersonalWikiPageView({
     });
   };
 
+  const narrowDetailRole: WikiNarrowDetailRole =
+    !creating && !pageId ? "collection-echo" : "required";
+
   return (
-    <main className="min-h-0 flex-1 overflow-hidden bg-page-canvas" data-testid="personal-wiki-page">
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
+    <main
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto bg-page-canvas lg:overflow-hidden",
+        wikiInteractionRegionClassName,
+      )}
+      data-testid="personal-wiki-page"
+      data-wiki-interaction-region
+    >
+      <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-2">
             <Button
@@ -217,7 +234,7 @@ export function PersonalWikiPageView({
             onKeyDown={(event) => event.key === "Escape" && setSearchText("")}
             aria-label={t(($) => $.personal.search_label)}
             placeholder={t(($) => $.personal.search_placeholder)}
-            className="pl-9 pr-9"
+            className="pl-9 pr-9 max-lg:pr-12"
           />
           {searchText ? (
             <Button
@@ -233,9 +250,10 @@ export function PersonalWikiPageView({
           ) : null}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,35dvh)_minmax(20rem,1fr)] gap-4 lg:grid-cols-[minmax(14rem,18rem)_minmax(0,1fr)] lg:grid-rows-1">
-          <aside className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-3 shadow-[var(--surface-shadow)]">
-            {normalizedSearch.length === 1 ? (
+        <WikiMasterDetail
+          detailRole={narrowDetailRole}
+          collection={
+            normalizedSearch.length === 1 ? (
               <p className="px-1 py-4 text-body text-muted-foreground">{t(($) => $.search.minimum)}</p>
             ) : isSearching && searchQuery.isPending ? (
               <p className="text-body text-muted-foreground" role="status">{t(($) => $.search.loading)}</p>
@@ -260,12 +278,12 @@ export function PersonalWikiPageView({
               <WikiPageList
                 pages={visiblePages}
                 activePageId={pageId}
-                onSelect={(id) => nav.push(routePaths.page(id))}
+                onSelect={(page) => nav.push(routePaths.page(page.id))}
               />
-            )}
-          </aside>
-
-          <section className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
+            )
+          }
+          detail={
+            <>
             {actionError && !editMode ? (
               <p className="mb-3 break-words text-body text-destructive" role="alert">{actionError}</p>
             ) : null}
@@ -355,8 +373,9 @@ export function PersonalWikiPageView({
                 />
               </div>
             )}
-          </section>
-        </div>
+            </>
+          }
+        />
       </div>
 
       <WikiHistoryDialog
@@ -387,7 +406,10 @@ export function PersonalWikiPageView({
       />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className={wikiInteractionRegionClassName}
+          data-wiki-interaction-region
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>{t(($) => $.delete_dialog.title)}</AlertDialogTitle>
             <AlertDialogDescription>{t(($) => $.personal.delete_description)}</AlertDialogDescription>
@@ -398,6 +420,7 @@ export function PersonalWikiPageView({
           <AlertDialogFooter>
             <AlertDialogCancel>{t(($) => $.actions.cancel)}</AlertDialogCancel>
             <AlertDialogAction
+              className={wikiDestructiveActionClassName}
               variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => {
@@ -416,7 +439,10 @@ export function PersonalWikiPageView({
       </AlertDialog>
 
       <AlertDialog open={Boolean(conflict)} onOpenChange={(open) => !open && setConflict(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className={wikiInteractionRegionClassName}
+          data-wiki-interaction-region
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>{t(($) => $.conflict.title)}</AlertDialogTitle>
             <AlertDialogDescription>

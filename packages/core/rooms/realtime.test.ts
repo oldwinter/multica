@@ -50,6 +50,13 @@ const contracts = [
   ["room:artifact", RoomArtifactPayloadSchema, applyRoomArtifactEvent],
 ] as const;
 
+const listInvalidatingContracts = [
+  ["room:cycle", applyRoomCycleEvent],
+  ["room:turn", applyRoomTurnEvent],
+  ["room:memory_revision", applyRoomMemoryRevisionEvent],
+  ["room:artifact", applyRoomArtifactEvent],
+] as const;
+
 describe("Room realtime wire contract", () => {
   it.each(contracts)("parses and targets the server %s fixture", (name, schema, apply) => {
     const queryClient = new QueryClient();
@@ -63,6 +70,19 @@ describe("Room realtime wire contract", () => {
         : roomKeys.detail(workspaceId, roomId),
     });
   });
+
+  it.each(listInvalidatingContracts)(
+    "refreshes the Room list for %s events",
+    (name, apply) => {
+      const queryClient = new QueryClient();
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+      expect(apply(queryClient, workspaceId, fixtures[name])).toBe("invalidated");
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: roomKeys.list(workspaceId),
+      });
+    },
+  );
 
   it("invalidates the Room tree when a future payload has no usable identity", () => {
     const queryClient = new QueryClient();

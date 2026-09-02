@@ -7,67 +7,174 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
-## 2026-08-31 v0.4.37 Sync
+## 2026-09-03 PR #17 Reconciliation
 
-- Downstream start: `f6a669702465cd64a023476fff52ea1328b04895`.
+- PR head: `581ef157d46f5fbbd031893d38dd3739370c6655`.
+- Current downstream main: `c6eb0098e73367d6db736541f364b7460837e1f6`.
+- Textual conflict files: 12.
+- Remote update: not performed; this reconciliation is local only.
+
+The conflicts covered the Mobile and Views package manifests,
+`pnpm-lock.yaml`, this log, the Wiki page primitives, the migration runner and
+lint ledger, the runtime-lookup metric label, and four Room/task-service files.
+The resolution keeps the PR's Node 26, Go 1.27, Electron 44, Expo 57,
+React Native 0.86, Next.js 16.3, TypeScript 6, Vite 7, and Vitest 4 stack while
+adopting the current main implementation. The lockfile was regenerated from
+the resolved manifests instead of hand-edited. Expo Doctor also identified 11
+SDK 57 packages that were one or two patch releases behind; those declarations
+now match the SDK matrix.
+
+Room runtime checks keep main's transaction-bound `AgentRuntimeLookupFactory`.
+The obsolete `TaskEnqueuer.LookupRoomRuntime` method from the PR branch had
+auto-merged outside the textual conflicts; it and its test stub were removed
+instead of widening `TaskService` to support both architectures. The migration
+runner keeps both independent protections: PR #17's schema-qualified migration
+422 cleanup and main's optional `pg_bigm` operator-class gate for migration
+446. Published migration filenames and the duplicate 444-449 ledger remain
+unchanged.
+
+Vitest 4 exposed a pre-existing test isolation error: the use-case locale test
+mocked `@/.source`, while production imports `@/.source/server`. Before the
+fix, Vite parsed generated MDX as JavaScript and failed the suite; after the
+mock target was corrected, the focused five-test suite and the full Web suite
+passed.
+
+Verification passed the frozen pnpm install, 9/9 typecheck tasks, all six
+frontend test tasks, and all five production build tasks. Views passed 481
+files and 5,443 tests, Desktop passed 59 files and 578 tests, Web passed 34
+files and 258 tests, and Mobile passed 36 files and 222 tests plus the iOS run
+script assertions. Lint reported zero errors; Mobile retained seven existing
+warnings. Expo Doctor passed 21/21 checks. A fresh temporary database ran the
+complete migration graph, the second run skipped all 640 identities, and no
+invalid or unready indexes remained before the database was removed.
+
+Targeted Go verification passed migration, Room, service, handler, server, and
+Skill Evolution packages. The full race run passed every other package and
+retained the current-main baseline: four local agent-executable discovery
+tests and three repo-cache fixed-branch fixtures fail in this environment. One
+150 ms daemon watcher assertion also timed out under aggregate load and passed
+immediately when rerun alone with the race detector. This reconciliation did
+not run deployment, production, Desktop display, Mobile device, or human
+acceptance checks.
+
+## 2026-09-03 v0.4.38 Sync
+
+- Downstream start: `7f7ae0f9bb0796035bc58a3b657ce93b616b3c6d`.
+- Merge base: `11861145abc59a0d39c8c8f24ad837d4584e664f`.
+- Upstream ahead: 28 commits through
+  `d4a712abf3880dfbd3daeac5daac1bd4bfb39b6f`
+  (`v0.4.38-3-gd4a712abf`).
+- Local unique commits: 250.
+- Predicted and actual conflict files: 14.
+- Upstream merge commit: `02378bc1380799195363170d871fe89437be17d4`.
+- Fork-remote reconciliation: not performed; `origin/main` still pointed at
+  the downstream start during this local sync.
+
+The conflicts were:
+
+| Class | Conflict paths |
+| --- | --- |
+| Mobile Inbox and API | `apps/mobile/app/(app)/[workspace]/(tabs)/inbox.tsx`, `apps/mobile/components/inbox/detail-label.tsx`, `apps/mobile/data/api.ts` |
+| Core contracts | `packages/core/modals/index.ts`, `packages/core/types/inbox.ts` |
+| Shared Views | `packages/views/common/actor-avatar.tsx`, `packages/views/inbox/components/inbox-detail-label.tsx`, `packages/views/inbox/components/inbox-page.tsx`, `packages/views/issues/components/comment-card.tsx` |
+| Inbox locales | `packages/views/locales/en/inbox.json`, `packages/views/locales/ja/inbox.json`, `packages/views/locales/ko/inbox.json`, `packages/views/locales/zh-Hans/inbox.json` |
+| Migration runner | `server/cmd/migrate/main.go` |
+
+The Inbox resolution keeps downstream Room identity, deduplication, and review
+navigation beside upstream issue-less autopilot notices and quota recovery.
+Mobile routes both behaviors through one navigation helper, with regression
+tests for Room context, ordinary issues, and issue-less notices. The API keeps
+the downstream appearance preference transport while adopting upstream's
+canonical `getConfig` method and workspace subscription summary. Core and
+Views retain the downstream quick-create command and accessible avatar profile
+label while adopting upstream issue-limit recovery types, departed-actor
+identity, localized dates, and quota notice UI.
+
+Both published histories use migration prefixes 444 through 449. Upstream owns
+comment recovery, delegated-failure and issue-property indexes, autopilot quota
+notification, and trigger-creator identities. Downstream owns the Room turn,
+lifecycle, synthesis, capability, and recommendation identities. Every
+filename identity remains unchanged, and `migrations_lint_test.go` freezes the
+exact duplicate pairs. The migration runner keeps both concurrent-index cleanup
+registries and treats the optional `pg_bigm` property index as a recorded no-op
+when its operator class is unavailable.
+
+A fresh database reached 640 migration identities and made a second `migrate
+up` a no-op. A clone of the pre-merge downstream database advanced from 634 to
+640, retained all twelve 444-449 identities, created the upstream columns and
+delegated-failure index, retained the Room tables and indexes, reported no
+invalid or unready indexes, and also made a second migration run a no-op. The
+clone was removed after verification; the source database was not modified.
+`sqlc` 1.31.1 regeneration produced no diff.
+
+Frontend verification passed all six test tasks; Views passed 481 files and
+5,443 tests, and the Office asset contract passed all seven checks. Typecheck
+passed 9/9 tasks, lint passed with zero errors (32 existing non-Mobile warnings
+and seven existing Mobile warnings), and production build passed 5/5 tasks.
+Database-backed Go verification passed the migration, Room, service, and
+handler packages. The wider `make test` race run passed the remaining packages
+except four daemon executable-discovery tests and three repo-cache fixture
+tests; the same seven failures reproduce on the pre-merge downstream start.
+The repo-cache fixtures reuse all-zero UUID tails even though branch identity
+uses the random UUID tail. The full run also hit one 150 ms daemon polling
+timeout under load; the daemon package's isolated rerun did not reproduce it.
+This sync did not run deployment, production, Desktop display, Mobile device,
+or human acceptance checks.
+
+## 2026-09-01 v0.4.37 Sync
+
+- Downstream start: `1f08aaa508b50d6fb8494480746e21b63aac6070`.
 - Merge base: `64ec7f54163d918d5d7fd4dcae857f241b7842d0`.
-- Upstream target: `79559ebb92c48746d716db30a85acdc8c3cef8ec`
-  (`v0.4.37`).
-- Divergence before merge: 175 downstream-only commits and 28 upstream-only
-  commits.
-- Textual conflict files: 5.
+- Upstream ahead: 30 commits through
+  `11861145abc59a0d39c8c8f24ad837d4584e664f`
+  (`v0.4.37-2-g11861145a`).
+- Local unique commits: 205.
+- Predicted and actual conflict files: 5.
+- Upstream merge commit: `43cc9a99914ee0344dfffe2d47fd61138b1c48d0`.
+- Fork-remote reconciliation: 8 commits, no textual conflicts, merge
+  `949b9d417ca11f75dd974e88e6258a2922b560f7`.
 
-The post-merge stack refresh moves the repository to Node 26, pnpm 10.28.2,
-Go 1.27, Electron 44, Expo 57, Next.js 16.3, React 19.2.3, TypeScript 6,
-Vitest 4, and the current compatible Go module graph. Workspace dependencies
-were upgraded to their latest stable releases where the active framework peer
-contracts allow it. The deliberate ceilings are Vite 7 for electron-vite 5,
-TypeScript 6 and Babel 7 for Expo 57, React Table 8 for the existing table API,
-ESLint 9, React plugin 5, and Tailwind 3 in the NativeWind 4 mobile surface.
-The Expo-managed React Native packages remain on Expo Doctor's SDK 57 matrix
-instead of independently advancing past it.
+The five conflicts were `packages/views/package.json`, `pnpm-lock.yaml`,
+`server/cmd/migrate/main.go`, `server/cmd/server/main.go`, and
+`server/internal/metrics/registry.go`. The package manifest keeps the
+downstream Vitest coverage dependency and the upstream parser and ESLint
+changes. A YAML-aware reconciliation script rebuilt the lockfile closure from
+the merged workspace manifests. The resulting lockfile passed both an offline
+frozen lockfile install and a full frozen install from the local package store.
 
-The package-manifest conflict retained the downstream `pixi.js` and Vitest
-coverage dependencies while accepting upstream's ESLint parser and direct
-ESLint dependency. `pnpm-lock.yaml` was regenerated from that combined source
-instead of being hand-merged.
+The server resolution keeps upstream WeCom relay registration and graceful
+shutdown. It also keeps the downstream Skill Evolution jobs, Room listeners,
+and extra metric collectors. Upstream retired the old business-sampler and
+seat-capacity collectors, so the merge does not restore them. The migration
+cleanup registry contains both histories.
 
-The migration cleanup registry kept every published downstream identity from
-483 through 527 and appended upstream's independent
-`443_issue_project_status_index` entry. The duplicate numeric prefix with the
-published downstream `443_twin_proposal_replacement_index` remains legal
-because the migrator keys the complete filename stem; neither published
-identity was renamed or rewritten. The published upstream 422 route-history
-SQL also remains byte-identical. A schema-qualified pre-migration hook applies
-its constraint/index retirement before the runner records the original file as
-handled, so a throwaway schema cannot fall through to a same-named `public`
-constraint index after dropping its own.
+Both published migration histories use prefixes 441 through 443. Upstream owns
+`runtime_profile_add_codearts`, `vcs_reference_only_repair`, and
+`issue_project_status_index`. Downstream owns
+`twin_deposition_edit_digest`, `twin_proposal_correction`, and
+`twin_proposal_replacement_index`. Every filename identity remains unchanged,
+and `migrations_lint_test.go` freezes the exact duplicate sets. A fresh
+database and a clone of the existing downstream database both reached 634
+migration identities after fork migration 527. Both histories produced the
+same version set, retained all six 441-443 identities, created the expected
+upstream and downstream indexes, and made a second `migrate up` a no-op.
 
-Upstream deliberately removed the database-backed business sampler and the
-seat-capacity metric collector. The resolution accepted that lifecycle change
-rather than resurrecting deleted collectors, while reattaching the downstream
-Skill Evolution module through its two thin composition hooks:
-`RegistryOptions.ExtraCollectors` and `RouterOptions.RegisterSkillEvolution`.
-The server composition also retained upstream's WeCom cross-replica sender and
-relay injection and adopted `newMainHTTPServer` as the single production
-timeout constructor, removing the now-redundant downstream constructor and
-test. Room runtime checks now use upstream's attributed `RuntimeLookup`
-boundary with a bounded `room` source label instead of bypassing the new
-observability contract through direct sqlc calls.
+Upstream also replaced direct runtime reads with `service.RuntimeLookup`.
+Rooms now receive a required `AgentRuntimeLookupFactory` that binds the lookup
+to the exact operation transaction. This preserves upstream authorization and
+metrics without adding a Room-to-service import cycle or falling back to a
+pool query outside the transaction. Source tests reject new direct
+`GetAgentRuntime` calls in the Room package.
 
-Validation passed the frozen pnpm install, workspace typecheck, lint with no
-errors, Core (1,941), Views (5,273), Web (256), Docs (17), Desktop (576), and
-Mobile (207) tests, Expo Doctor's 21 checks, and production builds for Web,
-Docs, and Desktop. A fresh PostgreSQL database applied all 634 migration
-identities through 527 twice, with the second pass a no-op. The merged-history
-lint freezes the published duplicate identities at 441-443; neither side was
-renumbered.
-The Go all-package run passed the application packages and exposed only
-environment-sensitive aggregate failures: the handler briefing and pkg/agent
-packages passed when rerun in isolation, while three repo-cache partial-clone
-fixtures consistently fail because the local Git test server rejects requests
-for unadvertised promisor objects. The repo-cache sidecar-exclusion behavior
-passes; no production cache path was changed for the fixture limitation.
+Validation found one additional frontend integration defect: the Wiki path
+field still had a hard-coded `index.md` placeholder. The placeholder now uses
+the Wiki locale contract in English, Japanese, Korean, and Simplified Chinese.
+The final TypeScript tests passed all 6 workspace tasks, including 472 Views
+files and 5,358 Views tests. Typecheck passed 9/9 tasks, lint passed 6/6 with
+zero errors, and production build passed 5/5 tasks. Targeted Go verification
+passed the migration, Room, service, metrics, handler, server, and Skill
+Evolution packages. `sqlc` 1.31.1 regeneration produced no diff. This sync did
+not run deployment, production, Desktop display, or human acceptance checks.
 
 ## 2026-08-29 Skill Evolution Final-Fix Audit
 
@@ -503,6 +610,7 @@ Use this to decide who wins a conflict:
 | Local Rooms | `server/internal/room/`, `server/pkg/db/queries/room.sql`, `packages/core/rooms/`, `packages/views/rooms/`, `apps/*/rooms` |
 | Local Twin / Wiki | `server/internal/service/twin*`, `lm_wiki*`, `wiki*`, `packages/core/twins/`, `packages/core/wiki/`, `packages/views/twins/`, `packages/views/wiki/` |
 | Local skins / search extras | theme tokens, `data-twin-copy`, search commands `copy_page_link` / `surprise_issue` |
+| Local ops overlay | `downstream/` (LAN self-host scripts, compose bind override, extra docs). Do not patch upstream `Makefile` / `docker-compose.selfhost.yml` for this. |
 | Upstream | onboarding shell, auth recovery, plugins, share links, custom issue statuses, chat/task event contract, sqlc output |
 
 When a conflict is inside an upstream-owned shell, take upstream and

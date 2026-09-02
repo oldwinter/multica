@@ -152,6 +152,10 @@
       "agent": "Agent",
       "squad": "Squad"
     },
+    "facilitator_empty": {
+      "agent": "No active Agents. Create or restore an Agent before creating a Room.",
+      "squad": "No active Squads. Create or restore a Squad, or switch to Agent."
+    },
     "templates": {
       "research": { "label": "Research", "outcome": "A cited answer with uncertainty made explicit.", "example": "Example: assess a market or technical approach", "objective": "Answer the research question with cited evidence and explicit uncertainty.", "success_criteria": "The conclusion cites supporting entries\nMaterial uncertainty is visible", "stop_conditions": "Required sources have been assessed\nNo new evidence changes the conclusion" },
       "planning": { "label": "Planning", "outcome": "An ordered plan with owners, dependencies, and risks.", "example": "Example: turn a goal into the next executable steps", "objective": "Produce an ordered, owner-ready execution plan.", "success_criteria": "Dependencies and risks are explicit\nEvery action has a clear result", "stop_conditions": "The next executable action is clear\nRemaining questions have owners" },

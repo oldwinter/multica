@@ -18,6 +18,10 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { RichContent } from "../rich-content";
+import {
+  wikiDestructiveActionClassName,
+  wikiInteractionRegionClassName,
+} from "./wiki-ui-contract";
 
 interface ProposalReviewInput {
   proposalId: string;
@@ -198,7 +202,10 @@ export function WikiProposalsPanel({
       ) : null}
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
+        <DialogContent
+          className={wikiInteractionRegionClassName}
+          data-wiki-interaction-region
+        >
           <DialogHeader>
             <DialogTitle>{t(($) => $.proposals.reject_title)}</DialogTitle>
             <DialogDescription>{t(($) => $.proposals.reject_description)}</DialogDescription>
@@ -210,6 +217,7 @@ export function WikiProposalsPanel({
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectOpen(false)}>{t(($) => $.actions.cancel)}</Button>
             <Button
+              className={wikiDestructiveActionClassName}
               variant="destructive"
               disabled={isPending}
               onClick={() => {

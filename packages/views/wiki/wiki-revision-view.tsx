@@ -12,6 +12,7 @@ import {
 } from "@multica/core/wiki";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
 import { RichContent } from "../rich-content";
@@ -20,6 +21,7 @@ import {
   PersonalWikiKnowledgeActivation,
   WorkspaceWikiKnowledgeActivation,
 } from "./wiki-knowledge-activation";
+import { wikiInteractionRegionClassName } from "./wiki-ui-contract";
 
 interface ImmutableWikiRevisionProps {
   revision?: WikiRevision;
@@ -30,6 +32,7 @@ interface ImmutableWikiRevisionProps {
   citationPrefix: "wiki_page_revision" | "personal_wiki_revision";
   personal: boolean;
   activation?: ReactNode;
+  rootElement?: "main" | "div";
 }
 
 export function ImmutableWikiRevision({
@@ -41,6 +44,7 @@ export function ImmutableWikiRevision({
   citationPrefix,
   personal,
   activation,
+  rootElement = "main",
 }: ImmutableWikiRevisionProps) {
   const { t } = useT("wiki");
   const [copied, setCopied] = useState(false);
@@ -50,9 +54,17 @@ export function ImmutableWikiRevision({
   const createdAtLabel = createdAt && !Number.isNaN(createdAt.getTime())
     ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(createdAt)
     : revision?.createdAt ?? "";
+  const Root = rootElement;
 
   return (
-    <main className="min-h-0 flex-1 overflow-y-auto bg-page-canvas" data-testid="wiki-revision-page">
+    <Root
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto bg-page-canvas",
+        wikiInteractionRegionClassName,
+      )}
+      data-testid="wiki-revision-page"
+      data-wiki-interaction-region
+    >
       <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         <header className="flex min-w-0 items-start gap-2 border-b border-surface-border pb-4">
           <Button
@@ -153,11 +165,11 @@ export function ImmutableWikiRevision({
           </div>
         )}
       </div>
-    </main>
+    </Root>
   );
 }
 
-export function WorkspaceWikiRevisionView({ revisionId }: { revisionId: string }) {
+export function WorkspaceWikiRevisionView({ revisionId, rootElement = "main" }: { revisionId: string; rootElement?: "main" | "div" }) {
   const wsId = useWorkspaceId();
   const workspacePaths = useWorkspacePaths();
   const query = useQuery(wikiRevisionDetailOptions(wsId, revisionId));
@@ -171,6 +183,7 @@ export function WorkspaceWikiRevisionView({ revisionId }: { revisionId: string }
       onBack={() => nav.push(workspacePaths.wiki())}
       citationPrefix="wiki_page_revision"
       personal={false}
+      rootElement={rootElement}
       activation={query.data ? (
         <WorkspaceWikiKnowledgeActivation target={activationTargetFromRevision(query.data)} />
       ) : undefined}

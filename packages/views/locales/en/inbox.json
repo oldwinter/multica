@@ -50,6 +50,8 @@
     "original_input": "Original input",
     "retry_with_context": "Retry with context",
     "edit_advanced": "Edit as advanced form",
+    "autopilot_quota_exceeded_body": "This workspace has reached its limit of {{limit}} autopilot runs for the current period. Further autopilot runs will not start until the allowance resets {{resetAt}}.",
+    "autopilot_quota_upgrade": "View upgrade options",
     "archive": "Archive",
     "unarchive": "Unarchive"
   },
@@ -76,7 +78,9 @@
     "room_outcome_review_required": "Room outcome review",
     "room_recommendation_review_required": "Room recommendation review",
     "room_cycle_failed": "Room cycle failed",
-    "room_cycle_blocked": "Room run blocked"
+    "room_cycle_blocked": "Room run blocked",
+    "autopilot_paused": "Autopilot paused",
+    "autopilot_quota_exceeded": "Autopilot run limit reached"
   },
   "labels": {
     "set_status_to": "Set status to",
@@ -89,7 +93,8 @@
     "removed_due_date": "Removed due date",
     "reacted_to_comment": "Reacted {{emoji}} to your comment",
     "created_with_agent": "Created with agent: {{identifier}}",
-    "failed_with_detail": "Failed: {{detail}}"
+    "failed_with_detail": "Failed: {{detail}}",
+    "autopilot_quota_blocked": "Run blocked because the limit was reached"
   },
   "toasts": {
     "source_context_retry_started": "Retry started with the original context",

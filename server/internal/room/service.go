@@ -24,6 +24,12 @@ type TxStarter interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
 
+type AgentRuntimeLookup interface {
+	Get(context.Context, pgtype.UUID) (db.AgentRuntime, error)
+}
+
+type AgentRuntimeLookupFactory func(*db.Queries) AgentRuntimeLookup
+
 type TaskNotifier interface {
 	NotifyTaskEnqueued(context.Context, db.AgentTaskQueue)
 }
@@ -33,17 +39,21 @@ type EventSink interface {
 }
 
 type Service struct {
-	queries   *db.Queries
-	tx        TxStarter
-	tasks     TaskEnqueuer
-	targets   ArtifactTargetCreator
-	events    EventSink
-	analytics roomAnalyticsRecorder
-	now       func() time.Time
+	queries       *db.Queries
+	tx            TxStarter
+	runtimeLookup AgentRuntimeLookupFactory
+	tasks         TaskEnqueuer
+	targets       ArtifactTargetCreator
+	events        EventSink
+	analytics     roomAnalyticsRecorder
+	now           func() time.Time
 }
 
-func NewService(queries *db.Queries, tx TxStarter, tasks TaskEnqueuer, targets ArtifactTargetCreator, eventSink EventSink) *Service {
-	return &Service{queries: queries, tx: tx, tasks: tasks, targets: targets, events: eventSink, now: time.Now}
+func NewService(queries *db.Queries, tx TxStarter, runtimeLookup AgentRuntimeLookupFactory, tasks TaskEnqueuer, targets ArtifactTargetCreator, eventSink EventSink) *Service {
+	if runtimeLookup == nil {
+		panic("room: runtime lookup factory is required")
+	}
+	return &Service{queries: queries, tx: tx, runtimeLookup: runtimeLookup, tasks: tasks, targets: targets, events: eventSink, now: time.Now}
 }
 
 func (s *Service) List(ctx context.Context, workspaceID pgtype.UUID) ([]db.Room, error) {
@@ -890,22 +900,22 @@ func roomStringList(raw []byte) []string {
 	return values
 }
 
-func (s *Service) roomAgentReady(ctx context.Context, queries *db.Queries, agent db.Agent) (bool, error) {
+func roomAgentReady(ctx context.Context, lookup AgentRuntimeLookup, agent db.Agent) (bool, error) {
 	if agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
 		return false, nil
 	}
-	runtimeRow, err := s.tasks.LookupRoomRuntime(ctx, queries, agent.RuntimeID)
+	runtimeRow, err := lookup.Get(ctx, agent.RuntimeID)
 	if err != nil {
 		return false, err
 	}
 	return runtimeRow.Status == "online", nil
 }
 
-func (s *Service) roomAgentReadyForCapability(ctx context.Context, queries *db.Queries, agent db.Agent, capability string) (bool, error) {
+func roomAgentReadyForCapability(ctx context.Context, lookup AgentRuntimeLookup, agent db.Agent, capability string) (bool, error) {
 	if agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
 		return false, nil
 	}
-	runtimeRow, err := s.tasks.LookupRoomRuntime(ctx, queries, agent.RuntimeID)
+	runtimeRow, err := lookup.Get(ctx, agent.RuntimeID)
 	if err != nil {
 		return false, err
 	}

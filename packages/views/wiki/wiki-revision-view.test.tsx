@@ -47,6 +47,11 @@ describe("ImmutableWikiRevision", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     renderRevision();
 
+    expect(screen.getByTestId("wiki-revision-page")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByTestId("wiki-revision-page")).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_button]:min-w-11",
+    );
     expect(screen.getByText("Read only")).toBeInTheDocument();
     expect(screen.getByText("sha256:exact-content-digest")).toBeInTheDocument();
     expect(screen.getByText("human by member")).toBeInTheDocument();
@@ -72,5 +77,10 @@ describe("ImmutableWikiRevision", () => {
     expect(screen.getByText("Private evidence")).toBeInTheDocument();
     expect(screen.getByText("personal_wiki_revision:revision-2")).toBeInTheDocument();
     expect(screen.getByText(/permanently excluded/)).toBeInTheDocument();
+  });
+
+  it("allows a dashboard shell to own the main landmark", () => {
+    renderRevision({ rootElement: "div" });
+    expect(screen.getByTestId("wiki-revision-page").tagName).toBe("DIV");
   });
 });

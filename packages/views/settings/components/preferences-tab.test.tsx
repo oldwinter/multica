@@ -221,7 +221,6 @@ function I18nWrapper({ children }: { children: ReactNode }) {
     </I18nProvider>
   );
 }
-
 describe("PreferencesTab — Language switcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -246,6 +245,23 @@ describe("PreferencesTab — Language switcher", () => {
     await user.click(await screen.findByRole("option", { name }));
   }
 
+  it("keeps stacked skins clear of the chat launcher", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(screen.getByRole("radiogroup", { name: "Skin" })).toHaveClass(
+      "pe-chat-launcher",
+      "@xl:pe-0",
+    );
+  });
+
+  it("keeps the general settings card clear of the chat launcher on compact screens", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(screen.getByRole("heading", { name: "General" }).closest("section")).toHaveClass(
+      "max-md:pe-chat-launcher",
+    );
+  });
+
   it("does nothing when clicking the current locale", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
@@ -256,7 +272,6 @@ describe("PreferencesTab — Language switcher", () => {
     expect(mockUpdateMe).not.toHaveBeenCalled();
     expect(mockReload).not.toHaveBeenCalled();
   });
-
   it("shows a confirmation toast when the appearance is saved locally", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
@@ -477,6 +492,17 @@ describe("PreferencesTab — Language switcher", () => {
     act(() => vi.advanceTimersByTime(900));
     expect(mockReload).toHaveBeenCalledTimes(1);
     expect(mockToastWarning).not.toHaveBeenCalled();
+  });
+
+  it("cancels the delayed locale reload when Settings unmounts", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const rendered = render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    await pickLanguage(user, "한국어");
+    rendered.unmount();
+    act(() => vi.advanceTimersByTime(900));
+
+    expect(mockReload).not.toHaveBeenCalled();
   });
 
   it("when logged in + PATCH success: confirms the save before reloading", async () => {

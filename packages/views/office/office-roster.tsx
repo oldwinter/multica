@@ -414,7 +414,10 @@ export function OfficeRoster({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="office-roster">
+    <div
+      className="flex min-h-0 flex-1 flex-col max-md:pe-chat-launcher"
+      data-testid="office-roster"
+    >
       <div
         role="tablist"
         aria-label={t(($) => $.roster.title)}

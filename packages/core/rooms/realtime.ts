@@ -74,7 +74,10 @@ export function applyRoomCycleEvent(
   workspaceId: string | null | undefined,
   payload: unknown,
 ): RoomRealtimeUpdateResult {
-  return roomSignal(queryClient, workspaceId, payload, RoomCyclePayloadSchema, { outcome: true });
+  return roomSignal(queryClient, workspaceId, payload, RoomCyclePayloadSchema, {
+    list: true,
+    outcome: true,
+  });
 }
 
 export function applyRoomTurnEvent(
@@ -82,7 +85,10 @@ export function applyRoomTurnEvent(
   workspaceId: string | null | undefined,
   payload: unknown,
 ): RoomRealtimeUpdateResult {
-  return roomSignal(queryClient, workspaceId, payload, RoomTurnPayloadSchema, { outcome: true });
+  return roomSignal(queryClient, workspaceId, payload, RoomTurnPayloadSchema, {
+    list: true,
+    outcome: true,
+  });
 }
 
 export function applyRoomMemoryRevisionEvent(
@@ -91,6 +97,7 @@ export function applyRoomMemoryRevisionEvent(
   payload: unknown,
 ): RoomRealtimeUpdateResult {
   return roomSignal(queryClient, workspaceId, payload, RoomMemoryRevisionPayloadSchema, {
+    list: true,
     outcome: true,
   });
 }
@@ -119,7 +126,7 @@ export function applyRoomArtifactEvent(
   workspaceId: string | null | undefined,
   payload: unknown,
 ): RoomRealtimeUpdateResult {
-  return roomSignal(queryClient, workspaceId, payload, RoomArtifactPayloadSchema);
+  return roomSignal(queryClient, workspaceId, payload, RoomArtifactPayloadSchema, { list: true });
 }
 
 function directString(payload: unknown, key: string): string | null {

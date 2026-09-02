@@ -13,26 +13,50 @@ import { Badge } from "@multica/ui/components/ui/badge";
 import { Button } from "@multica/ui/components/ui/button";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useT } from "../../i18n";
+import {
+  resolveTwinGuide,
+  type TwinGuideRequest,
+} from "./twin-guided-navigation";
 
-export type TwinWorkspaceTab = "wiki" | "twin" | "use";
+const readinessSectionClassName = "min-h-72 border-y border-border/70 py-4 lg:min-h-52";
 
 export function TwinActivationReadiness({
   wsId,
-  onNavigate,
+  onGuide,
 }: {
   wsId: string;
-  onNavigate: (target: TwinWorkspaceTab) => void;
+  onGuide: (request: TwinGuideRequest) => void;
 }) {
   const { t } = useT("twins");
   const readiness = useQuery(twinActivationReadinessOptions(wsId));
 
   if (readiness.isPending) {
-    return <Skeleton className="h-28 w-full" aria-label={t(($) => $.use.activation_loading)} />;
+    return (
+      <section
+        className={`${readinessSectionClassName} space-y-3`}
+        aria-labelledby="twin-next-action-title"
+        aria-busy="true"
+        data-testid="twin-activation-readiness"
+      >
+        <h2 id="twin-next-action-title" className="text-title font-medium text-foreground">
+          {t(($) => $.use.next_action_title)}
+        </h2>
+        <div className="space-y-3" role="status">
+          <span className="sr-only">{t(($) => $.use.activation_loading)}</span>
+          <div className="space-y-2" aria-hidden="true">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-8 w-28" />
+          </div>
+        </div>
+      </section>
+    );
   }
   if (readiness.isError || !readiness.data) {
     return (
       <section
-        className="border-y border-border/70 py-4"
+        className={readinessSectionClassName}
         aria-labelledby="twin-next-action-title"
         data-testid="twin-activation-readiness"
       >
@@ -57,7 +81,7 @@ export function TwinActivationReadiness({
 
   const action = readiness.data.nextAction;
   return (
-    <section className="border-y border-border/70 py-4" aria-labelledby="twin-next-action-title" data-testid="twin-activation-readiness">
+    <section className={readinessSectionClassName} aria-labelledby="twin-next-action-title" data-testid="twin-activation-readiness">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -92,8 +116,17 @@ export function TwinActivationReadiness({
             ))}
           </ol>
           <nav className="flex flex-wrap gap-1" aria-label={t(($) => $.use.inspection_links)}>
-            {readiness.data.inspectionLinks.filter((link) => link.target !== action.target).map((link) => (
-              <Button key={link.key} variant="ghost" size="sm" className="h-7 px-2" onClick={() => onNavigate(link.target)}>
+            {readiness.data.inspectionLinks.filter((link) => (
+              resolveTwinGuide({ kind: "inspection", key: link.key }).destination
+                !== resolveTwinGuide({ kind: "action", key: action.key }).destination
+            )).map((link) => (
+              <Button
+                key={link.key}
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => onGuide({ kind: "inspection", key: link.key })}
+              >
                 {inspectionLinkLabel(link, t)}
               </Button>
             ))}
@@ -103,7 +136,7 @@ export function TwinActivationReadiness({
           data-testid="twin-primary-action"
           className="shrink-0 self-start lg:self-center"
           disabled={!action.canAct}
-          onClick={() => onNavigate(action.target)}
+          onClick={() => onGuide({ kind: "action", key: action.key })}
         >
           {activationActionLabel(action.key, t)}
           <ArrowRight data-icon="inline-end" aria-hidden="true" />

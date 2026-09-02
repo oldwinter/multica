@@ -12,7 +12,7 @@ interface RoomStatusStyle {
 function roomStatusStyle(status: RoomStatus | string): RoomStatusStyle {
   switch (status) {
     case "active":
-      return { badge: "bg-success/10 text-success", dot: "bg-success" };
+      return { badge: "bg-success/10 text-foreground", dot: "bg-success" };
     case "paused":
       return { badge: "bg-warning/10 text-warning", dot: "bg-warning" };
     case "archived":

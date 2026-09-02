@@ -12,6 +12,7 @@
     "placeholders": { "title": "リサーチ会議", "objective": "このルームが生み出す成果を入力", "one_per_line": "1行に1項目", "instructions": "問い、制約、期待する成果を入力", "select_agent": "エージェントを選択", "select_squad": "スクワッドを選択", "optional": "任意" },
     "hints": { "daily_turn_limit": "空欄の場合は無制限です。", "schedule_interval": "最小5分。空欄の場合は手動実行です。" },
     "facilitator_modes": { "agent": "エージェント", "squad": "スクワッド" },
+    "facilitator_empty": { "agent": "利用可能なエージェントがありません。ルームを作成する前に、エージェントを作成または復元してください。", "squad": "利用可能なスクワッドがありません。スクワッドを作成または復元するか、エージェントに切り替えてください。" },
     "templates": {
       "research": { "label": "リサーチ", "outcome": "不確実性を明示した、引用可能な回答。", "example": "例：市場や技術方針を評価", "objective": "引用可能な証拠と明示された不確実性で問いに答える。", "success_criteria": "結論に根拠となる引用がある\n重要な不確実性が明示される", "stop_conditions": "必要な情報源を評価済み\n新しい証拠で結論が変わらない" },
       "planning": { "label": "計画", "outcome": "担当、依存関係、リスクを含む順序付き計画。", "example": "例：目標を次の実行手順に変換", "objective": "順序と担当が明確な実行計画を作る。", "success_criteria": "依存関係とリスクが明確\n各アクションの成果が明確", "stop_conditions": "次の実行可能なアクションが明確" },

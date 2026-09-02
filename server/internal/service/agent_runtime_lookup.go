@@ -65,8 +65,8 @@ func (s *IssueService) runtimeLookup(q *db.Queries) RuntimeLookup {
 
 // runtimeLookup returns the task-sourced lookup for analytics context and the
 // usage provider backfill.
-func (s *TaskService) runtimeLookup() RuntimeLookup {
-	return RuntimeLookup{Queries: s.Queries, Metrics: s.Metrics, Source: obsmetrics.RuntimeLookupSourceTask}
+func (s *TaskService) runtimeLookup(queries *db.Queries, source string) RuntimeLookup {
+	return RuntimeLookup{Queries: queries, Metrics: s.Metrics, Source: source}
 }
 
 // runtimeLookup returns the autopilot-sourced lookup. AutopilotService holds no

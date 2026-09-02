@@ -45,7 +45,7 @@ export function RoomBudgetDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md max-lg:[&_[data-slot=dialog-close]]:size-11">
         <DialogHeader>
           <DialogTitle>{t(($) => $.budget.title)}</DialogTitle>
           <DialogDescription>{t(($) => $.budget.description)}</DialogDescription>
@@ -56,6 +56,7 @@ export function RoomBudgetDialog({
             <Input
               autoFocus
               type="number"
+              className="max-lg:h-11"
               min={1}
               max={10000}
               inputMode="numeric"
@@ -71,6 +72,7 @@ export function RoomBudgetDialog({
             <span>{t(($) => $.budget.max_cost_ticks)}</span>
             <Input
               type="number"
+              className="max-lg:h-11"
               min={1}
               inputMode="numeric"
               value={costLimit}
@@ -88,11 +90,18 @@ export function RoomBudgetDialog({
           ) : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            className="max-lg:h-11"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
             {t(($) => $.actions.cancel)}
           </Button>
           <Button
             type="button"
+            className="max-lg:h-11"
             disabled={pending || invalid}
             onClick={() => {
               if (dailyValue === undefined || costValue === undefined) return;

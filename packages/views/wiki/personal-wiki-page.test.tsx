@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { ApiError } from "@multica/core/api";
 import enWiki from "../locales/en/wiki.json";
@@ -102,6 +102,10 @@ describe("PersonalWikiPageView", () => {
 
     expect(screen.getByRole("heading", { name: "Personal Wiki" })).toBeInTheDocument();
     expect(screen.queryByText("Proposals")).not.toBeInTheDocument();
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     expect(screen.getByRole("link", { name: "Open workspace issue" })).toHaveAttribute(
       "href",
       "/acme/issues/MUL-1",
@@ -112,6 +116,26 @@ describe("PersonalWikiPageView", () => {
     expect(harness.back).toHaveBeenCalledOnce();
   });
 
+  it("hides only the redundant empty detail pane on narrow screens", () => {
+    renderPersonal();
+
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "collection-echo",
+    );
+  });
+
+  it("keeps a detail failure in the required narrow pane", () => {
+    harness.detail = { isPending: false, isError: true, data: undefined, refetch: vi.fn() };
+    renderPersonal("missing-page");
+
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load wiki pages.");
+  });
+
   it("creates a private page and navigates to its global detail route", () => {
     harness.create.mutate.mockImplementation((input, options) => {
       expect(input).toMatchObject({ path: "secret.md", title: "Secret" });
@@ -120,10 +144,48 @@ describe("PersonalWikiPageView", () => {
     renderPersonal();
 
     fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
     fireEvent.change(screen.getByLabelText(/^Path/), { target: { value: "secret.md" } });
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Secret" } });
+    fireEvent.change(screen.getByLabelText("Content"), { target: { value: "A private secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(harness.push).toHaveBeenCalledWith("/personal-wiki/page-1");
+  });
+
+  it("keeps personal Wiki creation disabled until the title and content are meaningful", () => {
+    renderPersonal();
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    const create = screen.getByRole("button", { name: "Create" });
+    const title = screen.getByLabelText("Title");
+    const content = screen.getByLabelText("Content");
+
+    expect(create).toBeDisabled();
+    fireEvent.change(title, { target: { value: "Private notes" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: " \n\t" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "# " } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "A private note" } });
+    expect(create).toBeEnabled();
+    fireEvent.change(title, { target: { value: "  " } });
+    expect(create).toBeDisabled();
+  });
+
+  it("lets the short mobile Personal Wiki shell scroll to detail actions", () => {
+    renderPersonal();
+    const root = screen.getByTestId("personal-wiki-page");
+    expect(root).toHaveClass("overflow-y-auto", "lg:overflow-hidden");
+    expect(root).toHaveAttribute("data-wiki-interaction-region");
+    expect(root).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_button]:min-w-11",
+      "max-lg:[&_[data-slot=input]]:min-h-11",
+    );
+    expect(screen.getByRole("textbox", { name: "Search Personal Wiki" })).toHaveClass("max-lg:pr-12");
   });
 
   it("preserves the local draft and advances the CAS base for manual merge", async () => {
@@ -144,6 +206,8 @@ describe("PersonalWikiPageView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Content"), { target: { value: "# My draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("alertdialog")).toHaveClass("max-lg:[&_button]:min-h-11");
     expect(screen.getByRole("alertdialog")).toHaveTextContent("revision 3");
     fireEvent.click(screen.getByRole("button", { name: "Merge my draft" }));
 
@@ -158,7 +222,12 @@ describe("PersonalWikiPageView", () => {
     renderPersonal("page-1");
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveAttribute("data-wiki-interaction-region");
+    expect(dialog).toHaveClass("max-lg:[&_button]:min-h-11");
+    const confirm = within(dialog).getByRole("button", { name: "Delete" });
+    expect(confirm).toHaveClass("bg-destructive", "text-destructive-foreground");
+    fireEvent.click(confirm);
     expect(screen.getByRole("alert")).toHaveTextContent("The action could not be completed");
   });
 });

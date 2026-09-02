@@ -21,10 +21,12 @@
     "cancel": "Cancel",
     "create": "Create",
     "retry": "Try again",
-    "back": "Back"
+    "back": "Back",
+    "back_to_wiki": "Back to Wiki"
   },
   "fields": {
     "path": "Path",
+    "path_placeholder": "index.md",
     "path_hint": "Relative .md path, e.g. index.md or concepts/agents.md",
     "title": "Title",
     "content": "Content",
@@ -38,6 +40,9 @@
   "states": {
     "loading": "Loading wiki…",
     "error": "Could not load wiki pages.",
+    "detail_error": "This Wiki page could not be loaded.",
+    "unavailable_title": "Wiki page unavailable",
+    "unavailable_description": "It may have been deleted, moved, or you may no longer have access.",
     "saving": "Saving…",
     "saved": "Saved",
     "action_error": "The action could not be completed. Try again."

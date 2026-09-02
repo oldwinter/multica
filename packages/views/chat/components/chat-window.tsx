@@ -89,14 +89,14 @@ import {
 import { useChatProjectContextSupport } from "./use-chat-project-context-support";
 import { createLogger } from "@multica/core/logger";
 import type { Agent, Attachment, ChatMessage, ChatSession, PendingChatTasksResponse } from "@multica/core/types";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 
 const uiLogger = createLogger("chat.ui");
 const apiLogger = createLogger("chat.api");
 const CHAT_VIRTUOSO_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
 
 
-export function ChatWindow() {
+export function ChatWindow({ onMinimize }: { onMinimize: () => void }) {
   const { t } = useT("chat");
   const wsId = useWorkspaceId();
   const isOpen = useChatStore((s) => s.isOpen);
@@ -112,7 +112,6 @@ export function ChatWindow() {
   const regenerateQuickActions = useRegenerateChatQuickActions();
   const selectedAgentId = useChatStore((s) => s.selectedAgentId);
   const selectedProjectId = useChatStore((s) => s.selectedProjectId);
-  const setOpen = useChatStore((s) => s.setOpen);
   const setActiveSession = useChatStore((s) => s.setActiveSession);
   const setSelectedAgentId = useChatStore((s) => s.setSelectedAgentId);
   const setSelectedProjectId = useChatStore((s) => s.setSelectedProjectId);
@@ -751,8 +750,8 @@ export function ChatWindow() {
       activeSessionId,
       pendingTaskId,
     });
-    setOpen(false);
-  }, [activeSessionId, pendingTaskId, setOpen]);
+    onMinimize();
+  }, [activeSessionId, onMinimize, pendingTaskId]);
 
   const isExpanded = useChatStore((s) => s.isExpanded);
 
@@ -833,6 +832,8 @@ export function ChatWindow() {
       ref={windowRef}
       className={containerClass}
       style={containerStyle}
+      aria-hidden={isVisible ? undefined : true}
+      inert={isVisible ? undefined : true}
       initial={{ opacity: 0, scale: 0.95, ...motionSize }}
       animate={{
         opacity: isVisible ? 1 : 0,
@@ -857,6 +858,7 @@ export function ChatWindow() {
                   variant="ghost"
                   size="icon-sm"
                   className="rounded-full text-muted-foreground"
+                  aria-label={t(($) => $.window.new_chat_tooltip)}
                   onClick={handleNewChat}
                 />
               }
@@ -883,6 +885,7 @@ export function ChatWindow() {
                     variant="ghost"
                     size="icon-sm"
                     className="text-muted-foreground"
+                    aria-label={isExpanded || isAtMax ? t(($) => $.window.restore_tooltip) : t(($) => $.window.expand_tooltip)}
                     onClick={toggleExpand}
                   />
                 }
@@ -901,6 +904,7 @@ export function ChatWindow() {
                   variant="ghost"
                   size="icon-sm"
                   className="text-muted-foreground"
+                  aria-label={t(($) => $.window.minimize_tooltip)}
                   onClick={handleMinimize}
                 />
               }
@@ -1103,6 +1107,7 @@ export function AgentDropdown({
             size="md"
             enableHoverCard
             showStatusDot
+            profileLink={false}
           />
           <span className="text-caption font-medium max-w-28 truncate">{activeAgent.name}</span>
           <ChevronDown className="size-3 text-muted-foreground shrink-0" />
@@ -1169,6 +1174,7 @@ function AgentPickerItem({
         size="md"
         enableHoverCard
         showStatusDot
+        profileLink={false}
       />
       <span className="truncate flex-1">{agent.name}</span>
       {!runtimeBound && (
@@ -1452,6 +1458,7 @@ function SessionDropdown({
             size="md"
             enableHoverCard
             showStatusDot
+            profileLink={false}
           />
         ) : (
           <span className="size-6 shrink-0" />
@@ -1583,6 +1590,7 @@ function SessionDropdown({
                 size="md"
                 enableHoverCard
                 showStatusDot
+                profileLink={false}
               />
             )}
             <span className="min-w-0 truncate text-body font-medium">{title}</span>
@@ -1639,6 +1647,7 @@ function SessionDropdown({
 
 function useFormatTimeAgo(): (dateStr: string) => string {
   const { t } = useT("chat");
+  const locale = useLocale();
   return (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -1651,6 +1660,6 @@ function useFormatTimeAgo(): (dateStr: string) => string {
     if (diffMins < 60) return t(($) => $.session_history.time.minutes, { count: diffMins });
     if (diffHours < 24) return t(($) => $.session_history.time.hours, { count: diffHours });
     if (diffDays < 7) return t(($) => $.session_history.time.days, { count: diffDays });
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(locale);
   };
 }

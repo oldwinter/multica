@@ -96,6 +96,7 @@ export function personalWikiPageDetailOptions(id: string) {
     queryKey: personalWikiKeys.detail(id),
     queryFn: () => api.getPersonalWikiPage(id),
     enabled: Boolean(id),
+    retry: false,
   });
 }
 
@@ -144,5 +145,6 @@ export function wikiPageDetailOptions(wsId: string, id: string) {
     queryKey: wikiKeys.detail(wsId, id),
     queryFn: () => api.getWikiPage(id),
     enabled: Boolean(wsId && id),
+    retry: false,
   });
 }

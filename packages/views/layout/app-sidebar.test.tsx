@@ -45,7 +45,7 @@ vi.mock("@dnd-kit/sortable", () => ({
 }));
 vi.mock("@dnd-kit/utilities", () => ({ CSS: { Transform: { toString: () => undefined } } }));
 vi.mock("@multica/ui/components/ui/sidebar", () => ({
-  Sidebar: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Sidebar: ({ children, role = "navigation", ...props }: { children: React.ReactNode; role?: string; [key: string]: unknown }) => <div role={role} {...props}>{children}</div>,
   SidebarContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SidebarGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -252,6 +252,11 @@ describe("Personal Wiki discoverability", () => {
 });
 
 describe("workspace navigation", () => {
+  it("names the primary navigation landmark", () => {
+    const { container } = render(<AppSidebar />);
+    expect(container.querySelector("[role='navigation']")).toHaveAttribute("aria-label");
+  });
+
   it("places Office after Rooms and before Agents", () => {
     const { container } = render(<AppSidebar />);
     const hrefs = Array.from(

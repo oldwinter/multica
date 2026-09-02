@@ -2,9 +2,11 @@
 
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { twinExecutionKeys, type TwinActivationReadiness as Readiness } from "@multica/core/twins";
 import { renderWithI18n } from "../../test/i18n";
+
+const readinessRequest = vi.hoisted(() => vi.fn<() => Promise<Readiness>>());
 
 vi.mock("@multica/core/twins", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@multica/core/twins")>();
@@ -12,7 +14,7 @@ vi.mock("@multica/core/twins", async (importOriginal) => {
     ...actual,
     twinActivationReadinessOptions: (wsId: string) => ({
       queryKey: actual.twinExecutionKeys.activation(wsId),
-      queryFn: () => Promise.reject(new Error("unavailable")),
+      queryFn: readinessRequest,
       enabled: Boolean(wsId),
     }),
   };
@@ -22,22 +24,26 @@ import { TwinActivationReadiness } from "./twin-activation-readiness";
 
 const wsId = "00000000-0000-4000-8000-000000000001";
 
-function renderReadiness(readiness: Readiness, onNavigate = vi.fn()) {
+function renderReadiness(readiness: Readiness, onGuide = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   queryClient.setQueryData(twinExecutionKeys.activation(wsId), readiness);
   const rendered = renderWithI18n(
     <QueryClientProvider client={queryClient}>
-      <TwinActivationReadiness wsId={wsId} onNavigate={onNavigate} />
+      <TwinActivationReadiness wsId={wsId} onGuide={onGuide} />
     </QueryClientProvider>,
   );
-  return { ...rendered, queryClient, onNavigate };
+  return { ...rendered, queryClient, onGuide };
 }
 
 afterEach(cleanup);
 
 describe("TwinActivationReadiness", () => {
+  beforeEach(() => {
+    readinessRequest.mockReset().mockRejectedValue(new Error("unavailable"));
+  });
+
   it("renders one deterministic primary action and navigates to its owned surface", () => {
-    const { onNavigate, queryClient } = renderReadiness({
+    const { onGuide, queryClient } = renderReadiness({
       contractVersion: 1,
       ready: false,
       canManage: true,
@@ -66,7 +72,20 @@ describe("TwinActivationReadiness", () => {
     const action = screen.getByRole("button", { name: "Compile preview" });
     expect(screen.getByTestId("twin-primary-action")).toBe(action);
     fireEvent.click(action);
-    expect(onNavigate).toHaveBeenCalledWith("use");
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "action",
+      key: "compile_preview",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Evidence history" }));
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "inspection",
+      key: "evidence_history",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Execution evidence" }));
+    expect(onGuide).toHaveBeenCalledWith({
+      kind: "inspection",
+      key: "execution_evidence",
+    });
     queryClient.clear();
   });
 
@@ -104,7 +123,7 @@ describe("TwinActivationReadiness", () => {
     });
     renderWithI18n(
       <QueryClientProvider client={queryClient}>
-        <TwinActivationReadiness wsId={wsId} onNavigate={vi.fn()} />
+        <TwinActivationReadiness wsId={wsId} onGuide={vi.fn()} />
       </QueryClientProvider>,
     );
 
@@ -112,6 +131,23 @@ describe("TwinActivationReadiness", () => {
       "Activation readiness could not be loaded.",
     );
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    queryClient.clear();
+  });
+
+  it("keeps the safety region named while activation readiness loads", () => {
+    readinessRequest.mockImplementation(() => new Promise(() => undefined));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderWithI18n(
+      <QueryClientProvider client={queryClient}>
+        <TwinActivationReadiness wsId={wsId} onGuide={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId("twin-activation-readiness")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("heading", { name: "Next safe action" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading activation readiness");
     queryClient.clear();
   });
 });

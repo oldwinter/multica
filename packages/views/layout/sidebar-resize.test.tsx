@@ -20,6 +20,19 @@ describe("left sidebar resizing", () => {
     vi.unstubAllGlobals();
   });
 
+  it("exposes the sidebar as a navigation landmark", () => {
+    const { container } = renderWithI18n(
+      <SidebarProvider>
+        <Sidebar />
+      </SidebarProvider>,
+    );
+
+    expect(container.querySelector("[data-slot='sidebar']")).toHaveAttribute(
+      "role",
+      "navigation",
+    );
+  });
+
   it("previews width directly and commits only when the pointer is released", () => {
     const stableConsumerRender = vi.fn();
     const setItem = vi.spyOn(Storage.prototype, "setItem");

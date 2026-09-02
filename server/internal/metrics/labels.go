@@ -342,7 +342,7 @@ const (
 	// RuntimeLookupSourceTask covers task analytics context and the usage
 	// provider backfill.
 	RuntimeLookupSourceTask = "task"
-	// RuntimeLookupSourceRoom covers Room preflight, capability, and enqueue
+	// RuntimeLookupSourceRoom covers Room preflight, lifecycle, and enqueue
 	// readiness checks.
 	RuntimeLookupSourceRoom = "room"
 	// RuntimeLookupSourceOther is the catch-all for an unclassified call site.

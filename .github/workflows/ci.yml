@@ -287,6 +287,10 @@ jobs:
       - name: Build, type check, and lint
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         env:
+          # Next 16's webpack build now exceeds Node 22's default ~2 GB old-space
+          # limit on a cold self-hosted run; keep Turbo serial and raise only
+          # the per-process JavaScript heap ceiling.
+          NODE_OPTIONS: --max-old-space-size=4096
           TURBO_CONCURRENCY: ${{ runner.environment == 'self-hosted' && '1' || '100%' }}
         # Mobile lives in a parallel mobile-verify workflow (path-filtered
         # to apps/mobile/** + packages/core/**) so it doesn't add
@@ -694,6 +698,19 @@ jobs:
         # -v so a skip (a -run pattern that stops matching) is visible in the log
         # instead of passing as "ok".
         run: go test ./pkg/agent -v -run '^TestWindowsRunCollect' -count=1 -timeout=5m
+
+      - name: Test Windows Pi session lock leaves the transcript readable
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        working-directory: server
+        # #7840: the session lock claimed the transcript itself, and Windows
+        # byte-range locks are mandatory. Pi's own read of the file we hand it
+        # through --session failed with EBUSY, so every Pi/omp task on Windows
+        # died ~0.5s after launch. Unix flock is advisory and never reproduces
+        # it, which is exactly how the regression shipped; the tests are
+        # windows-tagged and therefore run nowhere else today.
+        # -v so a skip (a -run pattern that stops matching) is visible in the
+        # log instead of passing as "ok".
+        run: go test ./pkg/agent -v -run '^TestPiSessionFileLock' -count=1 -timeout=5m
 
       - name: Test Windows OpenClaw npm shim interpreter resolution
         if: ${{ needs.changes.outputs.backend == 'true' }}

@@ -156,6 +156,7 @@ func (s *Service) evaluatePreflight(ctx context.Context, queries *db.Queries, ro
 	result.Budget.UsedTurns = usedToday
 
 	agents := make([]db.Agent, 0, len(targetIDs))
+	runtimeLookup := s.runtimeLookup(queries)
 	for _, targetID := range targetIDs {
 		status := PreflightAgent{AgentID: targetID}
 		agent, agentErr := queries.GetAgentInWorkspace(ctx, db.GetAgentInWorkspaceParams{ID: targetID, WorkspaceID: roomRow.WorkspaceID})
@@ -174,9 +175,9 @@ func (s *Service) evaluatePreflight(ctx context.Context, queries *db.Queries, ro
 			result.Allowed = false
 		}
 		if roomRow.CapabilityVersion >= 2 {
-			status.Ready, err = s.roomAgentReadyForCapability(ctx, queries, agent, result.RequiredDaemonCapability)
+			status.Ready, err = roomAgentReadyForCapability(ctx, runtimeLookup, agent, result.RequiredDaemonCapability)
 		} else {
-			status.Ready, err = s.roomAgentReady(ctx, queries, agent)
+			status.Ready, err = roomAgentReady(ctx, runtimeLookup, agent)
 		}
 		if err != nil {
 			return evaluatedPreflight{}, fmt.Errorf("check Room Agent readiness: %w", err)
@@ -187,7 +188,7 @@ func (s *Service) evaluatePreflight(ctx context.Context, queries *db.Queries, ro
 			result.CapabilityReady = false
 		}
 		if status.Ready && status.Reason == "" && roomRow.MaxCostTicks.Valid {
-			costReady, costErr := s.roomAgentReadyForCapability(ctx, queries, agent, protocol.DaemonCapabilityRoomCostLimitsV1)
+			costReady, costErr := roomAgentReadyForCapability(ctx, runtimeLookup, agent, protocol.DaemonCapabilityRoomCostLimitsV1)
 			if costErr != nil {
 				return evaluatedPreflight{}, fmt.Errorf("check Room Agent spend-limit support: %w", costErr)
 			}

@@ -14,7 +14,7 @@ export function WikiPageList({
 }: {
   pages: readonly WikiPageSummary[];
   activePageId?: string;
-  onSelect: (id: string) => void;
+  onSelect: (page: WikiPageSummary) => void;
 }) {
   return (
     <ul className="space-y-0.5">
@@ -28,7 +28,7 @@ export function WikiPageList({
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
-            onClick={() => onSelect(page.id)}
+            onClick={() => onSelect(page)}
           >
             <span className="block break-words text-body font-medium">{page.title || page.path}</span>
             <span className="block truncate font-mono text-caption opacity-80">{page.path}</span>
@@ -65,12 +65,12 @@ export function WikiEditor({
   error?: string | null;
 }) {
   const { t } = useT("wiki");
+  const createInvalid = create && (!title.trim() || !hasMeaningfulWikiContent(content));
   return (
     <div className="space-y-3">
       <label className="block space-y-1.5 text-caption text-muted-foreground">
         <span>{t(($) => $.fields.path)}</span>
-        {/* eslint-disable-next-line no-restricted-syntax -- fixed Markdown filename example, not localized copy */}
-        <Input value={path} onChange={(event) => onPathChange(event.target.value)} placeholder="index.md" autoFocus />
+        <Input value={path} onChange={(event) => onPathChange(event.target.value)} placeholder={t(($) => $.fields.path_placeholder)} autoFocus />
         <span className="block break-words">{t(($) => $.fields.path_hint)}</span>
       </label>
       <label className="block space-y-1.5 text-caption text-muted-foreground">
@@ -86,7 +86,7 @@ export function WikiEditor({
         />
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={onSave} disabled={pending || !path.trim()}>
+        <Button onClick={onSave} disabled={pending || !path.trim() || createInvalid}>
           {pending
             ? t(($) => $.states.saving)
             : create
@@ -98,4 +98,9 @@ export function WikiEditor({
       {error ? <p className="text-caption text-destructive" role="alert">{error}</p> : null}
     </div>
   );
+}
+
+function hasMeaningfulWikiContent(content: string): boolean {
+  const normalized = content.trim();
+  return normalized.length > 0 && normalized !== "#";
 }

@@ -12,8 +12,12 @@ import { assertionsForDepositionEdit, DepositionEditDialog } from "./deposition-
 import { TwinHistorySelectors } from "./lifecycle-selectors";
 import { ReviewDialog } from "./review-dialog";
 import { TwinReviewSpine } from "./twin-review-spine";
+import { TwinDestination } from "./twin-guided-navigation";
 import { TwinTopics } from "./twin-topics";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
+import { DetailStateNotice } from "./workspace-state";
+
+const KNOWN_PROPOSAL_KINDS = ["initial", "evolution", "correction", "deposition"] as const;
 
 export function TwinPanel(props: TwinWorkspaceProps) {
   const { t } = useT("twins");
@@ -23,7 +27,10 @@ export function TwinPanel(props: TwinWorkspaceProps) {
   const currentVersion = props.twin.current_version;
   const selectedVersionIsCurrent = !props.selectedVersionId || props.selectedVersionId === currentVersion?.id;
   const selectedVersion = props.versionDetail?.version ?? (selectedVersionIsCurrent ? currentVersion : null);
-  const proposalPending = proposal !== null && proposal.review === null && proposal.signed_version === null;
+  const proposalPending = proposal !== null
+    && KNOWN_PROPOSAL_KINDS.includes(proposal.kind as (typeof KNOWN_PROPOSAL_KINDS)[number])
+    && proposal.review === null
+    && proposal.signed_version === null;
   const acceptedWikiId = props.wiki.accepted_revision?.id ?? "";
   const acceptedWikiHasProposal = props.twin.proposals.some(
     (item) => item.source_wiki_revision_id === acceptedWikiId,
@@ -42,11 +49,15 @@ export function TwinPanel(props: TwinWorkspaceProps) {
     <div className="space-y-6">
       <TwinReviewSpine steps={props.reviewSteps} />
 
-      <section className="flex flex-col gap-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:flex-row sm:items-start sm:justify-between">
+      <TwinDestination
+        destination="twin-overview"
+        className="flex flex-col gap-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:flex-row sm:items-start sm:justify-between"
+        aria-labelledby="twin-overview-title"
+      >
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <ShieldCheck className="size-4 text-success" aria-hidden="true" />
-            <h2 className="text-title font-medium text-foreground">
+            <h2 id="twin-overview-title" className="text-title font-medium text-foreground">
               {currentVersion ? t(($) => $.twin.current_title, { number: currentVersion.version_number }) : t(($) => $.twin.no_current)}
             </h2>
             {proposalPending ? <Badge variant="outline">{t(($) => $.status.pending)}</Badge> : null}
@@ -60,17 +71,24 @@ export function TwinPanel(props: TwinWorkspaceProps) {
             {props.twinMutationPending ? t(($) => $.actions.building) : t(($) => $.actions.build_proposal)}
           </Button>
         ) : null}
-      </section>
+      </TwinDestination>
 
-      <TwinHistorySelectors
-        proposals={props.twin.proposals}
-        versions={props.twin.versions}
-        proposalId={props.selectedProposalId}
-        versionId={props.selectedVersionId}
-        onProposalChange={props.onSelectProposal}
-        onVersionChange={props.onSelectVersion}
-        disabled={props.detailLoading}
-      />
+      <TwinDestination
+        destination="twin-history"
+        aria-label={t(($) => $.use.inspect_twin)}
+      >
+        <TwinHistorySelectors
+          proposals={props.twin.proposals}
+          versions={props.twin.versions}
+          proposalId={props.selectedProposalId}
+          versionId={props.selectedVersionId}
+          onProposalChange={props.onSelectProposal}
+          onVersionChange={props.onSelectVersion}
+          disabled={props.detailLoading}
+        />
+      </TwinDestination>
+
+      <DetailStateNotice state={props.proposalDetailState} onRetry={props.onRetryProposalDetail} />
 
       {proposal ? (
         <section className="space-y-5 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
@@ -136,14 +154,15 @@ export function TwinPanel(props: TwinWorkspaceProps) {
             </>
           ) : null}
         </section>
-      ) : (
+      ) : props.proposalDetailState.kind === "none" || props.proposalDetailState.kind === "ready" ? (
         <p className="text-body text-muted-foreground">
           {acceptedWikiId
             ? t(($) => $.twin.no_proposal)
             : t(($) => $.twin.awaiting_wiki)}
         </p>
-      )}
+      ) : null}
 
+      <DetailStateNotice state={props.versionDetailState} onRetry={props.onRetryVersionDetail} />
       {selectedVersion ? (
         <section className="space-y-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
           <div className="flex items-center gap-2">

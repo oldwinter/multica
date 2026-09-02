@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setApiInstance } from "../api";
 import type { ApiClient } from "../api/client";
+import { twinExecutionKeys } from "../twins/execution-queries";
 import {
   useAcceptWikiProposal,
   useCreateWikiPage,
@@ -121,7 +122,8 @@ describe("Wiki mutations", () => {
     });
 
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: wikiKeys.all("ws-1") }));
-    expect(invalidate).toHaveBeenCalledTimes(7);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: twinExecutionKeys.activation("ws-1") });
+    expect(invalidate).toHaveBeenCalledTimes(9);
     expect(api.updateWikiPage).toHaveBeenCalledWith("page-1", {
       expectedRevisionNumber: 2,
       content: "new",

@@ -28,7 +28,9 @@ export type InboxItemType =
   | "room_outcome_review_required"
   | "room_recommendation_review_required"
   | "room_cycle_failed"
-  | "room_cycle_blocked";
+  | "room_cycle_blocked"
+  | "autopilot_paused"
+  | "autopilot_quota_exceeded";
 
 /**
  * One workspace's unread inbox count in the cross-workspace summary

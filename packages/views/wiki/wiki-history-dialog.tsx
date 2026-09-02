@@ -28,7 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@multica/ui/components/ui/select";
+import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import {
+  wikiInteractionRegionClassName,
+  wikiSelectContentClassName,
+} from "./wiki-ui-contract";
 
 interface WikiHistoryDialogProps {
   open: boolean;
@@ -81,7 +86,13 @@ export function WikiHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-4xl">
+        <DialogContent
+          className={cn(
+            "max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-4xl",
+            wikiInteractionRegionClassName,
+          )}
+          data-wiki-interaction-region
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="size-4" aria-hidden="true" />
@@ -124,7 +135,7 @@ export function WikiHistoryDialog({
                 <RevisionPreview revision={right} />
               </div>
 
-              <div className="space-y-2" aria-label={t(($) => $.history.timeline)}>
+              <section className="space-y-2" aria-label={t(($) => $.history.timeline)}>
                 {ordered.map((revision) => (
                   <div
                     key={revision.id}
@@ -140,7 +151,7 @@ export function WikiHistoryDialog({
                           actor: revision.actorType,
                         })}
                       </p>
-                      <p className="font-mono text-caption text-muted-foreground">{revision.contentDigest}</p>
+                      <p className="break-all font-mono text-caption text-muted-foreground">{revision.contentDigest}</p>
                     </div>
                     {revision.revisionNumber < currentRevisionNumber ? (
                       <Button
@@ -154,14 +165,17 @@ export function WikiHistoryDialog({
                     ) : null}
                   </div>
                 ))}
-              </div>
+              </section>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={Boolean(restoreId)} onOpenChange={(next) => !next && setRestoreId("")}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className={wikiInteractionRegionClassName}
+          data-wiki-interaction-region
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>{t(($) => $.history.restore_title)}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -205,7 +219,10 @@ function RevisionSelect({
       <span>{label}</span>
       <Select items={items} value={value || null} onValueChange={(next) => onValueChange(next ?? "")}>
         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent>
+        <SelectContent
+          className={wikiSelectContentClassName}
+          data-wiki-interaction-region
+        >
           {items.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
         </SelectContent>
       </Select>

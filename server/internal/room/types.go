@@ -15,7 +15,6 @@ const EventTaskLifecycle = "room:task_lifecycle"
 
 type TaskEnqueuer interface {
 	EnqueueRoomTurn(context.Context, *db.Queries, RoomTaskEnqueueInput) (db.AgentTaskQueue, error)
-	LookupRoomRuntime(context.Context, *db.Queries, pgtype.UUID) (db.AgentRuntime, error)
 }
 
 type ArtifactTargetCreator interface {
