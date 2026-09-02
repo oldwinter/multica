@@ -108,7 +108,7 @@ describe("mobile appearance analytics transport", () => {
       { cdn_domain: 42, posthog_key: ["not-a-key"] },
       AppConfigSchema,
       EMPTY_APP_CONFIG,
-      { endpoint: "getAppearanceAnalyticsConfig" },
+      { endpoint: "getConfig" },
     );
 
     expect(parsed).toBe(EMPTY_APP_CONFIG);

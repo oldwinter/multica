@@ -128,6 +128,26 @@ describe("CreateRoomDialog", () => {
     expect(view.getByTestId("room-create-submit")).toBeInTheDocument();
   });
 
+  it("keeps primary creation controls at least 44px tall on mobile", () => {
+    const view = renderDialog({
+      agents: [makeAgent({ id: "agent-1", name: "Facilitator" })],
+    });
+
+    expect(view.getByRole("dialog")).toHaveClass(
+      "max-lg:[&_[data-slot=dialog-close]]:size-11",
+    );
+    expect(view.getByRole("textbox", { name: "Name" })).toHaveClass("max-lg:h-11");
+    for (const select of view.getAllByRole("combobox")) {
+      expect(select).toHaveClass("max-lg:data-[size=default]:h-11");
+    }
+    expect(view.getByRole("button", { name: "Agent" })).toHaveClass("max-lg:h-11");
+    expect(view.getByRole("button", { name: "Advanced configuration" })).toHaveClass(
+      "max-lg:min-h-11",
+    );
+    expect(view.getByRole("button", { name: "Cancel" })).toHaveClass("max-lg:h-11");
+    expect(view.getByTestId("room-create-submit")).toHaveClass("max-lg:h-11");
+  });
+
   it("submits a scheduled duplicate as a paused fresh Room", () => {
     const initialInput = scheduledDuplicateInput("agent-1");
     const view = renderDialog({

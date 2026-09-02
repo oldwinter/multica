@@ -88,7 +88,14 @@ describe("WikiKnowledgeActivation", () => {
     renderWithI18n(<WorkspaceWikiKnowledgeActivation target={target} />);
 
     expect(screen.getByText("Eligible, not pinned")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Use as LM Wiki evidence" }));
+    const open = screen.getByRole("button", { name: "Use as LM Wiki evidence" });
+    expect(open).toHaveClass("bg-primary", "text-primary-foreground");
+    fireEvent.click(open);
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_[data-slot=dialog-header]]:pr-12",
+    );
     expect(screen.getByRole("dialog")).toHaveTextContent("Release policy");
     expect(screen.getByRole("dialog")).toHaveTextContent("operations/release.md");
     expect(screen.getByRole("dialog")).toHaveTextContent("sha256:revision-4");
@@ -97,7 +104,9 @@ describe("WikiKnowledgeActivation", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("Personal Wiki pages");
     expect(screen.getByRole("dialog")).toHaveTextContent("Local-only sources");
 
-    fireEvent.click(screen.getByRole("button", { name: "Pin exact revision" }));
+    const confirm = screen.getByRole("button", { name: "Pin exact revision" });
+    expect(confirm).toHaveClass("bg-primary", "text-primary-foreground");
+    fireEvent.click(confirm);
     expect(harness.pin.mutate).toHaveBeenCalledWith({
       pageId: "page-1",
       revisionId: "revision-4",

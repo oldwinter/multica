@@ -223,7 +223,7 @@ export function PreferencesTab() {
           onValueChange={(value) => {
             showAppearanceSaved(selectSkin(value as SkinId));
           }}
-          className="grid gap-2 @xl:grid-cols-3"
+          className="grid gap-2 pe-chat-launcher @xl:grid-cols-3 @xl:pe-0"
         >
           {skinOptions.map((option) => {
             const selected = option.value === skin;
@@ -406,7 +406,10 @@ export function PreferencesTab() {
         </AlertDialog>
       </SettingsSection>
 
-      <SettingsSection title={t(($) => $.preferences.general_title)}>
+      <SettingsSection
+        title={t(($) => $.preferences.general_title)}
+        className="max-md:pe-chat-launcher"
+      >
         <SettingsCard>
           <SettingsRow
             label={t(($) => $.preferences.language.title)}

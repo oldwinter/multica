@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   detailTabAfterRoomSelection,
   isLinkedRoomMissing,
+  isStandaloneMobileRoomList,
   roomMessageWasPersisted,
 } from "./rooms-page";
 
@@ -35,5 +36,14 @@ describe("detailTabAfterRoomSelection", () => {
 
   it("preserves the chosen tab during ordinary Room switches", () => {
     expect(detailTabAfterRoomSelection("outcome", false)).toBe("outcome");
+  });
+});
+
+describe("isStandaloneMobileRoomList", () => {
+  it("keeps a cached empty directory standalone during background refreshes", () => {
+    expect(isStandaloneMobileRoomList([], false)).toBe(true);
+    expect(isStandaloneMobileRoomList(undefined, false)).toBe(false);
+    expect(isStandaloneMobileRoomList([], true)).toBe(false);
+    expect(isStandaloneMobileRoomList([{ id: "room-a" }], false)).toBe(false);
   });
 });

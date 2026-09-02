@@ -61,6 +61,13 @@ export function isLinkedRoomMissing(
   return Boolean(linkedRoomId) && listLoaded && !rooms.some((room) => room.id === linkedRoomId);
 }
 
+export function isStandaloneMobileRoomList(
+  rooms: readonly Pick<Room, "id">[] | undefined,
+  listError: boolean,
+): boolean {
+  return rooms !== undefined && !listError && rooms.length === 0;
+}
+
 export function detailTabAfterRoomSelection(
   currentTab: RoomDetailTab,
   linkedRoomMissing: boolean,
@@ -95,6 +102,8 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
     && !roomsQuery.isError;
   const linkedRoomMissing = isLinkedRoomMissing(linkedRoomId, rooms, roomsLoaded);
   const activeRoomId = linkedRoomMissing ? "" : selectedRoomId || rooms[0]?.id || "";
+  const mobileStandaloneList = isStandaloneMobileRoomList(roomsQuery.data, roomsQuery.isError);
+  const mobileDetailStateClass = mobileStandaloneList ? "max-lg:hidden" : undefined;
   const detailQuery = useQuery(roomDetailOptions(workspaceId, activeRoomId));
   const preflightQuery = useQuery(roomPreflightOptions(workspaceId, activeRoomId));
   const scheduledPreflightQuery = useQuery({
@@ -214,6 +223,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
           selectedId={activeRoomId}
           loading={roomsQuery.isPending}
           showValueReview={canManageBudget}
+          mobileStandalone={mobileStandaloneList}
           onSelect={selectRoom}
           onCreate={openCreate}
         />
@@ -228,6 +238,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
           />
         ) : linkedRoomMissing ? (
           <WorkspaceState
+            className={mobileDetailStateClass}
             icon={AlertTriangle}
             title={t(($) => $.states.no_room_title)}
             description={t(($) => $.states.no_room_description)}
@@ -240,6 +251,7 @@ export function RoomsPage({ rootElement = "main" }: { rootElement?: "main" | "di
           />
         ) : !activeRoomId ? (
           <WorkspaceState
+            className={mobileDetailStateClass}
             icon={MessageSquareText}
             title={t(($) => $.states.no_room_title)}
             description={t(($) => $.states.no_room_description)}
@@ -504,6 +516,7 @@ export function roomMessageWasPersisted(error: unknown): boolean {
 }
 
 function WorkspaceState({
+  className,
   icon: Icon,
   iconClassName,
   title,
@@ -511,6 +524,7 @@ function WorkspaceState({
   actionLabel,
   onAction,
 }: {
+  readonly className?: string;
   readonly icon: typeof AlertTriangle;
   readonly iconClassName?: string;
   readonly title: string;
@@ -519,13 +533,19 @@ function WorkspaceState({
   readonly onAction?: () => void;
 }) {
   return (
-    <section className="flex min-h-0 items-center justify-center px-6 py-12 text-center">
+    <section className={`flex min-h-0 items-center justify-center px-6 py-12 text-center ${className ?? ""}`}>
       <div className="max-w-sm">
         <Icon className={`mx-auto size-6 text-muted-foreground ${iconClassName ?? ""}`} aria-hidden="true" />
         <h1 className="mt-3 text-title font-medium text-foreground">{title}</h1>
         {description ? <p className="mt-1 text-body text-muted-foreground">{description}</p> : null}
         {actionLabel && onAction ? (
-          <Button type="button" size="sm" variant="outline" className="mt-4" onClick={onAction}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-4 max-lg:min-h-11"
+            onClick={onAction}
+          >
             {actionLabel}
           </Button>
         ) : null}
