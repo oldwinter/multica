@@ -179,6 +179,7 @@ describe("TwinWorkspaceView", () => {
     expect(screen.getByRole("combobox", { name: "Twin version" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Twin version" }).closest("label")?.parentElement)
       .not.toHaveClass("pe-chat-launcher", "sm:pe-0");
+    expect(screen.getByRole("button", { name: "Copy summary" })).toBeInTheDocument();
     expect(screen.getByText(/^Added assertions/)).toBeInTheDocument();
     expect(screen.getAllByText("assertion-new")).toHaveLength(2);
     expect(screen.getByText(/^Removed assertions/)).toBeInTheDocument();

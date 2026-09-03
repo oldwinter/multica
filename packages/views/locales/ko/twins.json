@@ -84,6 +84,9 @@
     "sign_off": "제안 승인",
     "reject_proposal": "제안 거부",
     "saving": "결정 저장 중",
+    "copy_summary": "요약 복사",
+    "summary_copied": "Twin 요약을 복사했습니다",
+    "summary_copy_failed": "Twin 요약을 복사하지 못했습니다",
     "dismiss": "닫기",
     "cancel": "취소"
   },

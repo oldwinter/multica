@@ -84,6 +84,9 @@
     "sign_off": "提案に署名",
     "reject_proposal": "提案を却下",
     "saving": "判断を保存中",
+    "copy_summary": "概要をコピー",
+    "summary_copied": "Twin の概要をコピーしました",
+    "summary_copy_failed": "Twin の概要をコピーできませんでした",
     "dismiss": "閉じる",
     "cancel": "キャンセル"
   },

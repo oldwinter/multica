@@ -12,6 +12,7 @@ import { assertionsForDepositionEdit, DepositionEditDialog } from "./deposition-
 import { TwinHistorySelectors } from "./lifecycle-selectors";
 import { ReviewDialog } from "./review-dialog";
 import { TwinReviewSpine } from "./twin-review-spine";
+import { TwinSummaryCopyButton } from "./twin-summary-copy";
 import { TwinDestination } from "./twin-guided-navigation";
 import { TwinTopics } from "./twin-topics";
 import type { TwinWorkspaceProps } from "./twin-workspace-types";
@@ -165,9 +166,16 @@ export function TwinPanel(props: TwinWorkspaceProps) {
       <DetailStateNotice state={props.versionDetailState} onRetry={props.onRetryVersionDetail} />
       {selectedVersion ? (
         <section className="space-y-4 rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-4 text-success" aria-hidden="true" />
-            <h3 className="text-title font-medium text-foreground">{t(($) => $.twin.version_title, { number: selectedVersion.version_number })}</h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+              <h3 className="min-w-0 break-words text-title font-medium text-foreground">{t(($) => $.twin.version_title, { number: selectedVersion.version_number })}</h3>
+            </div>
+            <TwinSummaryCopyButton
+              heading={t(($) => $.twin.version_title, { number: selectedVersion.version_number })}
+              digest={selectedVersion.content_digest}
+              items={versionItems}
+            />
           </div>
           <ContentList items={versionItems} emptyLabel={t(($) => $.twin.empty_assertions)} />
           <Separator />
