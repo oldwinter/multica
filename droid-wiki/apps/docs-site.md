@@ -13,7 +13,7 @@
 - 输出多语言 sitemap；
 - 复用 Multica 的语义 token、skin 和部分 UI primitive。
 
-Docs Site 当前使用 Next.js `^15.5.16`、Fumadocs Core/UI `^15.5.2` 和 Fumadocs MDX `^12.0.3`，与使用 Next 16 的 Web 应用不是同一个 Next 版本，见 [apps/docs/package.json](../../apps/docs/package.json)。
+Docs Site 当前使用 Next.js `^16.3.3`、Fumadocs Core/UI `^16.15.4` 和 Fumadocs MDX `^15.4.0`，与 Web 应用使用同一 Next 主版本，但保留独立的构建和路由配置，见 [apps/docs/package.json](../../apps/docs/package.json)。
 
 ## 入口
 
@@ -83,7 +83,7 @@ graph LR
 4. **新增 TSX chrome 时补齐四语言 copy。** MDX 正文不应搬进 `apps/docs/lib/translations.ts`；该文件只存搜索、TOC、语言选择等 UI 字符串及首页 TSX copy。
 5. **站内链接使用 locale-aware 组件。** 普通 MDX anchor 已映射为 `LocaleLink`；新增自定义组件时也要保留当前语言。
 6. **新增页面后检查 metadata 与 SEO。** `docsAlternates` 只把真实存在的本地化 MDX 声明成 `hreflang`；不要生成不存在翻译的 URL。
-7. **不要假定 Web 的 Next 配置可直接复制。** Docs 使用 Next 15 和独立 `basePath` middleware，Web 使用 Next 16 proxy 并可反向代理 `/docs`。
+7. **不要假定 Web 的 Next 配置可直接复制。** Docs 和 Web 都使用 Next 16，但 Docs 有独立 `basePath` middleware，Web 使用 proxy 并可反向代理 `/docs`。
 8. **共享样式只消费语义 token。** Docs layout 复用 `@multica/ui` 的 skin/token；文档特有 composition 留在 `apps/docs/components`。
 
 ## 测试与验证

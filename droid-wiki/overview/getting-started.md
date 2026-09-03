@@ -6,9 +6,9 @@
 
 版本来源是 `README.md`、`package.json` 与 `server/go.mod`：
 
-- Node.js 22
+- Node.js 26
 - pnpm 10.28.2
-- Go 1.26.6 或当前 CI 使用的兼容补丁版
+- Go 1.27 或当前 CI 使用的兼容补丁版
 - Docker 与 Docker Compose CLI 插件
 - Git
 

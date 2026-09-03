@@ -144,10 +144,10 @@ make check
 | --- | --- |
 | `changes` | 按路径决定 frontend/backend/sqlc/image 工作 |
 | `sqlc-check` | 运行 `make sqlc` 并检查生成目录无 diff/未跟踪文件 |
-| `frontend-build` | Node 22；build、typecheck、lint；自托管/worktree/生成物 contract |
+| `frontend-build` | Node 26；build、typecheck、lint；自托管/worktree/生成物 contract |
 | `frontend-test` | Web/Core/Desktop 测试 |
 | `frontend-views-test` | `packages/views` 两分片 |
-| `backend-tests` | Go 1.26.x、PostgreSQL 17 + pgvector、Redis 7；build、migration、race tests |
+| `backend-tests` | Go 1.27.x、PostgreSQL 17 + pgvector、Redis 7；build、migration、race tests |
 | `go-vulnerability-scan` | `go tool govulncheck ./...` |
 | `windows-execenv` | Windows 进程树、argv/stdin、junction、checkout 等平台回归 |
 | `image-budget` | PR 位图预算 |

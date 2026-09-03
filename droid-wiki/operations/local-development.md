@@ -4,9 +4,9 @@
 
 ## 前置条件
 
-- Node.js 22（[`.nvmrc`](../../.nvmrc)）
+- Node.js 26（[`.nvmrc`](../../.nvmrc)）
 - pnpm 10.28.2（[`package.json`](../../package.json)）
-- Go 1.26.6；CI 使用最新 1.26.x（[`server/go.mod`](../../server/go.mod)）
+- Go 1.27；CI 使用最新 1.27.x（[`server/go.mod`](../../server/go.mod)）
 - `curl`
 - 本地 PostgreSQL 17，或 Docker + Compose CLI 插件
 - 推荐安装 `psql`、`lsof`；Linux 可用 `ss` 作为端口检查后备

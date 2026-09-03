@@ -36,6 +36,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node.js for repository checks
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Check toolchain consistency
+        run: node scripts/check-toolchain-consistency.mjs
+
       - name: Filter paths
         id: filter
         uses: dorny/paths-filter@v3
@@ -181,9 +189,9 @@ jobs:
 
       - name: Setup Go
         if: ${{ needs.changes.outputs.sqlc == 'true' }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.26.x"
+          go-version: "1.27.x"
           check-latest: true
           cache: ${{ runner.environment != 'self-hosted' }}
           cache-dependency-path: server/go.sum
@@ -230,18 +238,19 @@ jobs:
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
 
       - name: Install dependencies
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         run: pnpm install
 
-      # `node-version: 22` above floats across patch releases, and turbo's
+      # `node-version: 26` above floats across patch releases, and turbo's
       # global hash does not include the interpreter at all (`engines` is null
       # in its dry-run cache inputs). Without the resolved version in the key,
-      # a runner silently moving to another 22.x would restore a cache built by
-      # the old interpreter and report green without executing anything.
+      # a runner silently moving to another patch release would restore a
+      # cache built by the old interpreter and report green without executing
+      # anything.
       - name: Resolve runtime for cache key
         id: runtime
         if: ${{ needs.changes.outputs.frontend == 'true' }}
@@ -287,8 +296,8 @@ jobs:
       - name: Build, type check, and lint
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         env:
-          # Next 16's webpack build now exceeds Node 22's default ~2 GB old-space
-          # limit on a cold self-hosted run; keep Turbo serial and raise only
+          # Next 16's webpack build exceeds Node's default old-space ceiling
+          # on a cold self-hosted run; keep Turbo serial and raise only
           # the per-process JavaScript heap ceiling.
           NODE_OPTIONS: --max-old-space-size=4096
           TURBO_CONCURRENCY: ${{ runner.environment == 'self-hosted' && '1' || '100%' }}
@@ -346,7 +355,7 @@ jobs:
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
 
       - name: Install dependencies
@@ -408,7 +417,7 @@ jobs:
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
 
       - name: Install dependencies
@@ -511,11 +520,11 @@ jobs:
 
       - name: Setup Go
         if: ${{ needs.changes.outputs.backend == 'true' }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # Deliberately independent from the minimum patch in server/go.mod:
-          # CI follows the newest 1.26 patch available to setup-go.
-          go-version: "1.26.x"
+          # CI follows the newest 1.27 patch available to setup-go.
+          go-version: "1.27.x"
           check-latest: true
           cache: ${{ runner.environment != 'self-hosted' }}
           cache-dependency-path: server/go.sum
@@ -568,11 +577,11 @@ jobs:
 
       - name: Setup Go
         if: ${{ needs.changes.outputs.backend == 'true' }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # Deliberately independent from the minimum patch in server/go.mod:
-          # CI follows the newest 1.26 patch available to setup-go.
-          go-version: "1.26.x"
+          # CI follows the newest 1.27 patch available to setup-go.
+          go-version: "1.27.x"
           check-latest: true
           cache: ${{ runner.environment != 'self-hosted' }}
           cache-dependency-path: server/go.sum
@@ -623,11 +632,11 @@ jobs:
 
       - name: Setup Go
         if: ${{ needs.changes.outputs.backend == 'true' }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           # Deliberately independent from the minimum patch in server/go.mod:
-          # CI follows the newest 1.26 patch available to setup-go.
-          go-version: "1.26.x"
+          # CI follows the newest 1.27 patch available to setup-go.
+          go-version: "1.27.x"
           check-latest: true
           cache-dependency-path: server/go.sum
 

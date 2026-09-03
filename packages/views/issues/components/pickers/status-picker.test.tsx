@@ -74,7 +74,7 @@ const READY = entry({
 });
 
 /** StatusIcon's own glyph, told apart from the lucide check mark beside it. */
-const STATUS_ICON = 'svg[viewBox="0 0 14 14"]';
+const STATUS_ICON = "svg[data-status-icon]";
 
 function iconOf(row: Element | null): SVGElement | null {
   return row?.querySelector<SVGElement>(STATUS_ICON) ?? null;

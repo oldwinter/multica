@@ -57,7 +57,7 @@ graph TD
 | 维度 | Web | Desktop | Mobile | Docs Site |
 | --- | --- | --- | --- | --- |
 | Runtime | Browser / Next server | Electron Main + sandboxed preload + renderer | Hermes / React Native | Browser / Next server |
-| Framework | Next 16 | Electron 39 + electron-vite 5 | Expo 55 + RN 0.83.6 | Next 15 + Fumadocs |
+| Framework | Next 16 | Electron 44 + electron-vite 5 | Expo 57 + RN 0.86.3 | Next 16 + Fumadocs |
 | Router | Next App Router | 单一 React Router memory router，投影 active tab session | Expo Router Stack + Tabs | `[lang]` + `[...slug]` |
 | URL 模型 | `/{workspaceSlug}/...` 可分享 URL | 同形 session URL，但无浏览器地址栏 | `/{workspace}/...` deep-linkable native routes | `/docs[/<lang>]/...` |
 | 发布单位 | Web deployment | macOS/Linux/Windows installer | Mobile 独立版本/原生构建 | Docs deployment |

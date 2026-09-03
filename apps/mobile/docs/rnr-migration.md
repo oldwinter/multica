@@ -20,7 +20,7 @@ This doc records why we migrated to RNR, what alternatives we evaluated, and how
 
 ## 2. Alternatives considered
 
-Evaluated against four criteria: (a) fit with our existing stack (NativeWind 4, Tailwind 3.4, Expo SDK 55, React 19), (b) ownership model (lock-in vs copy-paste), (c) bundler/compiler cost, (d) accessibility baseline.
+At the time of the evaluation, the four criteria were: (a) fit with the then-current stack (NativeWind 4, Tailwind 3.4, Expo SDK 55, React 19), (b) ownership model (lock-in vs copy-paste), (c) bundler/compiler cost, (d) accessibility baseline.
 
 | Library | Stack fit | Ownership | Build cost | a11y | Verdict |
 |---|---|---|---|---|---|

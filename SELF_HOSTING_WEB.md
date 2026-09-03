@@ -19,9 +19,9 @@ Multica 可以只运行 Web、后端和 PostgreSQL，不需要安装 Desktop 客
 
 ### 前置依赖
 
-- Node.js 22
+- Node.js 26
 - pnpm 10.28.2
-- Go 1.26
+- Go 1.27
 - Docker 和 Docker Compose
 - `curl`
 

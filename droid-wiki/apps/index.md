@@ -9,9 +9,9 @@ Multica 的应用层由四个可独立运行的 workspace 组成。Web 与 Deskt
 | 应用 | 主要职责 | 当前技术栈 |
 | --- | --- | --- |
 | [Web](web.md) | 公开站点、登录/上手引导、工作区产品界面、集成绑定回跳 | Next.js 16、React、App Router |
-| [Desktop](desktop.md) | Web/Desktop 共享产品界面、原生窗口/通知/更新、本地 daemon 管理 | Electron 39、electron-vite、React Router |
-| [Mobile](mobile.md) | iOS 优先的收件箱、任务、聊天、项目、Room、Wiki 和设置客户端 | Expo SDK 55、React Native、Expo Router |
-| [Docs Site](docs-site.md) | `/docs` 下的多语言文档、搜索、SEO metadata 和 sitemap | Next.js 15、Fumadocs |
+| [Desktop](desktop.md) | Web/Desktop 共享产品界面、原生窗口/通知/更新、本地 daemon 管理 | Electron 44、electron-vite、React Router |
+| [Mobile](mobile.md) | iOS 优先的收件箱、任务、聊天、项目、Room、Wiki 和设置客户端 | Expo SDK 57、React Native、Expo Router |
+| [Docs Site](docs-site.md) | `/docs` 下的多语言文档、搜索、SEO metadata 和 sitemap | Next.js 16、Fumadocs |
 
 具体版本和脚本以各应用的 `package.json` 为准：[apps/web/package.json](../../apps/web/package.json)、[apps/desktop/package.json](../../apps/desktop/package.json)、[apps/mobile/package.json](../../apps/mobile/package.json)、[apps/docs/package.json](../../apps/docs/package.json)。
 
@@ -80,7 +80,7 @@ Web 和 Desktop 都在 [packages/core/platform/core-provider.tsx](../../packages
 3. **以路由作为工作区身份来源。** Web 的 `[workspaceSlug]`、Desktop 的 session URL、Mobile 的 `[workspace]` 先解析 slug，再为 API header 和 cache namespace 镜像 id/slug。
 4. **服务端状态进入 TanStack Query。** Zustand 只保存筛选、草稿、标签页、overlay、偏好等客户端状态。
 5. **修改 Mobile 前执行其强制预检。** 先读 [apps/mobile/CLAUDE.md](../../apps/mobile/CLAUDE.md)，核对 Web/Desktop 语义、提出原生交互方案，并取得明确的执行指令。
-6. **不要假设各应用依赖版本相同。** Web 是 Next 16，Docs 是 Next 15；Mobile 固定自己的 React/React Native/Expo 版本。
+6. **不要假设各应用依赖版本相同。** Web 和 Docs 当前都是 Next 16，但构建配置独立；Mobile 固定自己的 React/React Native/Expo 版本。
 
 ## 测试与验证
 

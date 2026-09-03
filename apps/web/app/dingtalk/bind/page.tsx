@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { DingTalkBindPage } from "@multica/views/dingtalk";
 
 // /dingtalk/bind?token=<raw> is the bot's "link your account" destination.
-// Suspense wraps useSearchParams per Next.js 15's CSR-bailout rule; the loading
+// Suspense wraps useSearchParams per the App Router's CSR-bailout rule; the loading
 // text never paints in practice because the redemption page itself renders the
 // "redeeming…" state immediately.
 function DingTalkBindPageContent() {

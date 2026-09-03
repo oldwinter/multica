@@ -282,7 +282,7 @@ func NewBusinessMetrics() *BusinessMetrics {
 	for _, reason := range []string{RuntimeGCSkipEligibilityChanged, RuntimeGCSkipNonTerminalTask, RuntimeGCSkipWorkspaceMismatch} {
 		m.runtimeGCSkipped.WithLabelValues(reason).Add(0)
 	}
-	// Prewarm the full source x result grid (45 series) so a source that has
+	// Prewarm the full source x result grid so a source that has
 	// not fired since this process started reads as zero rather than as a
 	// missing series — rate() over an absent series returns nothing, which on
 	// a dashboard is indistinguishable from "we never instrumented that path".

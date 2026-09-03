@@ -7,6 +7,64 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-03 PR #17 Reconciliation
+
+- PR head: `581ef157d46f5fbbd031893d38dd3739370c6655`.
+- Current downstream main: `c6eb0098e73367d6db736541f364b7460837e1f6`.
+- Textual conflict files: 12.
+- Conflict-resolution merge: `5b418ba502ed5b3ea0d4983ba8a02b37d23b1d50`, pushed to the PR branch.
+
+The conflicts covered the Mobile and Views package manifests,
+`pnpm-lock.yaml`, this log, the Wiki page primitives, the migration runner and
+lint ledger, the runtime-lookup metric label, and four Room/task-service files.
+The resolution keeps the PR's Node 26, Go 1.27, Electron 44, Expo 57,
+React Native 0.86, Next.js 16.3, TypeScript 6, Vite 7, and Vitest 4 stack while
+adopting the current main implementation. The lockfile was regenerated from
+the resolved manifests instead of hand-edited. Expo Doctor also identified 11
+SDK 57 packages that were one or two patch releases behind; those declarations
+now match the SDK matrix.
+
+Room runtime checks keep main's transaction-bound `AgentRuntimeLookupFactory`.
+The obsolete `TaskEnqueuer.LookupRoomRuntime` method from the PR branch had
+auto-merged outside the textual conflicts; it and its test stub were removed
+instead of widening `TaskService` to support both architectures. The migration
+runner keeps both independent protections: PR #17's schema-qualified migration
+422 cleanup and main's optional `pg_bigm` operator-class gate for migration
+446. Published migration filenames and the duplicate 444-449 ledger remain
+unchanged.
+
+Vitest 4 exposed a pre-existing test isolation error: the use-case locale test
+mocked `@/.source`, while production imports `@/.source/server`. Before the
+fix, Vite parsed generated MDX as JavaScript and failed the suite; after the
+mock target was corrected, the focused five-test suite and the full Web suite
+passed.
+
+Independent shipping verification then found that the dependency and CI
+upgrade had left current runtime surfaces on Node 22 and Go 1.26. The Web and
+server Docker builders, `.nvmrc`, developer prerequisites, Mobile stack notes,
+and generated Droid Wiki pages now derive from or agree with the Node 26,
+Go 1.27, Expo 57, React Native 0.86, Electron 44, and Next.js 16 manifests.
+`scripts/check-toolchain-consistency.mjs` makes those boundaries a build gate
+so future manifest-only upgrades fail before packaging.
+
+Verification passed the frozen pnpm install, 9/9 typecheck tasks, all six
+frontend test tasks, and all five production build tasks. Views passed 481
+files and 5,443 tests, Desktop passed 59 files and 578 tests, Web passed 34
+files and 258 tests, and Mobile passed 36 files and 222 tests plus the iOS run
+script assertions. Lint reported zero errors; Mobile retained seven existing
+warnings. Expo Doctor passed 21/21 checks. A fresh temporary database ran the
+complete migration graph, the second run skipped all 640 identities, and no
+invalid or unready indexes remained before the database was removed.
+
+Targeted Go verification passed migration, Room, service, handler, server, and
+Skill Evolution packages. The full race run passed every other package and
+retained the current-main baseline: four local agent-executable discovery
+tests and three repo-cache fixed-branch fixtures fail in this environment. One
+150 ms daemon watcher assertion also timed out under aggregate load and passed
+immediately when rerun alone with the race detector. This reconciliation did
+not run deployment, production, Desktop display, Mobile device, or human
+acceptance checks.
+
 ## 2026-09-03 v0.4.38 Sync
 
 - Downstream start: `7f7ae0f9bb0796035bc58a3b657ce93b616b3c6d`.

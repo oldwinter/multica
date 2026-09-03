@@ -44,11 +44,11 @@ describe("repairEmptyListItems (real editor)", () => {
     // The draft persisted after typing `1.` in a comment, restored on remount.
     const ed = makeEditor("1. \n\n");
 
-    // Failing-first: @tiptap/markdown parses the empty item into a childless
-    // listItem, and the document is left with no real text cursor.
+    // Failing-first: @tiptap/markdown parses the empty item into a childless,
+    // schema-invalid listItem. Newer ProseMirror releases may still normalize
+    // the selection to a cursor, so schema validity is the durable contract.
     expect(firstItem(ed).childCount).toBe(0);
-    const before = ed.state.selection;
-    expect(before instanceof TextSelection && before.$cursor != null).toBe(false);
+    expect(() => ed.state.doc.check()).toThrow();
 
     repairEmptyListItems(ed);
 
