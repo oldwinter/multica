@@ -36,6 +36,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node.js for repository checks
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Check toolchain consistency
+        run: node scripts/check-toolchain-consistency.mjs
+
       - name: Filter paths
         id: filter
         uses: dorny/paths-filter@v3
@@ -240,8 +248,9 @@ jobs:
       # `node-version: 26` above floats across patch releases, and turbo's
       # global hash does not include the interpreter at all (`engines` is null
       # in its dry-run cache inputs). Without the resolved version in the key,
-      # a runner silently moving to another 22.x would restore a cache built by
-      # the old interpreter and report green without executing anything.
+      # a runner silently moving to another patch release would restore a
+      # cache built by the old interpreter and report green without executing
+      # anything.
       - name: Resolve runtime for cache key
         id: runtime
         if: ${{ needs.changes.outputs.frontend == 'true' }}
@@ -287,8 +296,8 @@ jobs:
       - name: Build, type check, and lint
         if: ${{ needs.changes.outputs.frontend == 'true' }}
         env:
-          # Next 16's webpack build now exceeds Node 22's default ~2 GB old-space
-          # limit on a cold self-hosted run; keep Turbo serial and raise only
+          # Next 16's webpack build exceeds Node's default old-space ceiling
+          # on a cold self-hosted run; keep Turbo serial and raise only
           # the per-process JavaScript heap ceiling.
           NODE_OPTIONS: --max-old-space-size=4096
           TURBO_CONCURRENCY: ${{ runner.environment == 'self-hosted' && '1' || '100%' }}
