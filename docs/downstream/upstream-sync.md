@@ -7,12 +7,18 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
-## 2026-09-03 PR #17 Reconciliation
+## 2026-09-03 PR #17 And #19 Reconciliation
 
-- PR head: `581ef157d46f5fbbd031893d38dd3739370c6655`.
-- Current downstream main: `c6eb0098e73367d6db736541f364b7460837e1f6`.
-- Textual conflict files: 12.
-- Conflict-resolution merge: `5b418ba502ed5b3ea0d4983ba8a02b37d23b1d50`, pushed to the PR branch.
+- Shared sync base: `c6eb0098e73367d6db736541f364b7460837e1f6`.
+- PR #17 started at `581ef157d46f5fbbd031893d38dd3739370c6655`
+  with 12 textual conflicts. Its conflict-resolution merge is
+  `5b418ba502ed5b3ea0d4983ba8a02b37d23b1d50`. Its verified final head is
+  `4f19536dfe03d6c3a6ddf667be502050a6e38616`. GitHub merged it as
+  `bb335e941b4a06fd9a695efda33c3bf2f6eb7982`.
+- PR #19 started at `7f0cf4d599683a79d4f09faa109d4204406332b7`
+  with two textual conflicts. Its conflict-resolution and final head is
+  `6a8250d19b3425cef782a327bfbe0f5affad27b6`. GitHub merged it as
+  `517f06a45bd215c163b6c0d9d09bef2b1acf3b3c`.
 
 The conflicts covered the Mobile and Views package manifests,
 `pnpm-lock.yaml`, this log, the Wiki page primitives, the migration runner and
@@ -38,6 +44,15 @@ mocked `@/.source`, while production imports `@/.source/server`. Before the
 fix, Vite parsed generated MDX as JavaScript and failed the suite; after the
 mock target was corrected, the focused five-test suite and the full Web suite
 passed.
+
+PR #19 conflicted only in `twin-panel.tsx` and
+`twin-workspace-view.test.tsx`. The resolution keeps the PR's signed-version
+copy action beside main's `TwinDestination` navigation contract and preserves
+main's layout-ownership assertion. PR #17 and PR #19 had no changed-path
+overlap. After PR #17 merged, a fresh exact-SHA `merge-tree` proved that PR #19
+still merged cleanly with the new main, so its branch did not need another main
+merge. GitHub briefly reported `UNKNOWN` while recomputing mergeability. The
+merge waited for the clean result and was locked to the verified head SHA.
 
 Independent shipping verification then found that the dependency and CI
 upgrade had left current runtime surfaces on Node 22 and Go 1.26. The Web and
@@ -531,10 +546,12 @@ Also reserved the `rooms` workspace slug during this sync. New
 
 ## How To Sync Next Time
 
-1. `git fetch upstream main --tags`, record both tips and divergence, then
-   preview with `git merge-tree --write-tree main upstream/main`.
-2. Merge with `git merge --no-ff --no-edit upstream/main`; do not rebase
-   published `main`.
+1. `git fetch upstream main --tags`, record both tips and divergence, then run
+   `.agents/skills/multica-upstream-sync/scripts/preview-sync.sh`. Use its
+   overlap list to audit clean auto-merges as well as textual conflicts.
+2. Merge the recorded SHA with
+   `git merge --no-ff --no-commit <upstream-sha>`. Validate before committing,
+   and do not rebase published `main`.
 3. Capture the actual conflict paths, then classify each before editing:
    additive list, hub rewrite,
    glossary, generated, or deleted surface.
@@ -608,6 +625,28 @@ only during a sync.
    the missing schema with a new forward migration and validate the resulting
    columns and constraints on an old database. Never use a ledger alias to
    claim unapplied DDL ran.
+11. **Audit clean auto-merges as semantic conflicts.** Review every path changed
+    on both sides, then search callers, mocks, and fixtures for retired symbols.
+    PR #17's obsolete `TaskEnqueuer.LookupRoomRuntime` API auto-merged even
+    though current main had replaced it with transaction-bound
+    `AgentRuntimeLookupFactory`. A clean index would have preserved both
+    architectures.
+12. **Treat version changes as a consistency graph.** A Node, Go, Expo,
+    Electron, or framework bump must update manifests, lockfiles, CI, Docker
+    builders, local version files, developer checks, and maintained docs. Derive
+    a consistency check from manifests and invoke it directly from CI. Do not
+    match explanatory prose that can change without changing the toolchain.
+13. **Propagate a sync through exact PR heads.** Merge the synchronized
+    `origin/main` into each older in-flight PR with a merge commit. Preserve
+    review history. Do not rebase or force-push old shared branches. After each
+    preceding PR merges, fetch again and rerun `merge-tree` against the next
+    exact head. If the result is clean, keep the head unchanged. If it
+    conflicts, merge the new main and repeat the checks. Wait for the host's
+    mergeability state, and lock an authorized merge to the verified head SHA.
+14. **Resolve locale bundles structurally.** Parse the JSON, retain independent
+    keys from both histories, apply the current glossary, and run the locale
+    parity suite. A textual union can produce valid JSON while dropping a key
+    in one of the four maintained locales.
 
 ## Local Ownership Map
 
