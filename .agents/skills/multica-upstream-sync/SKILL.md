@@ -1,168 +1,208 @@
 ---
 name: multica-upstream-sync
-description: Synchronize oldwinter/multica with multica-ai/multica upstream/main, including divergence preview, ownership-aware conflict resolution, migration-ledger compatibility, generated-file regeneration, and merge validation. Use in this repository when asked to sync or merge upstream or resolve conflicts caused by upstream/main; do not use for ordinary branch merges.
+description: Plan downstream features away from upstream hotspots, synchronize oldwinter/multica with multica-ai/multica upstream/main, and reconcile PR conflicts created by that sync. Use before adding downstream behavior beside upstream, merging upstream/main, or updating in-flight PRs after an upstream sync. Do not use for unrelated branch merges.
 ---
 
-# Multica Upstream Sync
+# Multica upstream sync
 
-Merge the published downstream history. Never rebase it.
+Keep downstream behavior in owned leaves. Merge published history without a
+rebase.
 
-Before acting, read the root `CLAUDE.md` and the complete
-[upstream sync history](../../../docs/downstream/upstream-sync.md). That page is
-the authority for path ownership, generated files, migration history, and prior
-conflict decisions.
+Before acting, read the root `CLAUDE.md`. In the
+[upstream sync history](../../../docs/downstream/upstream-sync.md), always read
+`Rules That Prevent The Next 40-File Merge` and `Local Ownership Map`. For a
+sync, also read the latest two sync records and older entries that match the
+overlapping paths or migration prefixes. For PR propagation, read the latest
+PR reconciliation and its corresponding sync record.
 
-## 1. Establish The Baseline
+Choose the modes that match the request:
 
-Confirm the repository root, current worktree, remotes, current branch, dirty
-state, and `main` versus `origin/main`. Preserve unrelated changes. A dirty
-`main`, unexpected remote, detached HEAD, or divergent unpublished work must be
-accounted for before the merge starts.
+- **Placement mode** applies before a downstream feature chooses its files.
+  Read [feature placement](references/feature-placement.md) and stop there
+  unless the request also includes a sync.
+- **Sync mode** merges `upstream/main` into downstream `main`.
+- **PR propagation mode** updates in-flight PRs after the sync changes `main`.
+  Read [PR propagation](references/pr-propagation.md) after the sync merge is
+  verified.
 
-Record the starting `main`, upstream tip, merge base, tags, and divergence:
+A request to plan, assess, or review does not authorize a fetch, merge,
+commit, generated-file update, or documentation edit. Use cached refs for a
+provisional plan, state their exact SHAs, and mark them as potentially stale.
+Run the mutating steps only when the request asks to perform the sync or build
+the feature.
+
+## Establish the sync baseline
+
+Confirm the repository root, worktree, remotes, branch, dirty state, and
+`main` versus `origin/main`. Preserve unrelated changes. Account for a dirty
+`main`, detached HEAD, unexpected remote, or unpublished divergence before the
+merge starts.
+
+Fetch exact refs, then run the worktree-safe preview helper:
 
 ```bash
 git fetch upstream main --tags
-git rev-parse main upstream/main
-git merge-base main upstream/main
-git rev-list --left-right --count main...upstream/main
-git describe --tags --always upstream/main
+git fetch origin main
+.agents/skills/multica-upstream-sync/scripts/preview-sync.sh \
+  main upstream/main origin/main
 ```
 
-Completion criterion: the exact downstream start and fetched upstream tip are
-known, and the intended merge cannot consume unrelated work.
+The helper prints exact SHAs, divergence, both-side path overlap, migration
+changes, worktree status, and `git merge-tree` output. It leaves refs, the
+index, and the worktree unchanged. Treat `origin/main` as a second
+reconciliation boundary. An upstream ancestor check does not prove that local
+`main` contains every published fork commit.
 
-## 2. Preview The Merge
+Completion criterion: the downstream start, fork tip, upstream tip, merge
+base, divergence, and unrelated work are known by exact identity.
 
-Run the merge machinery without changing the index or worktree:
+## Build the preservation ledger
+
+Classify every overlapping path before editing. Include shared paths that Git
+auto-merges, not only paths that `merge-tree` marks conflicted.
+
+| Path or contract | Upstream intent | Downstream intent | Decision | Proof |
+| --- | --- | --- | --- | --- |
+| `<path>` | `<behavior>` | `<behavior>` | `upstream`, `downstream`, `both`, `superseded`, or `generated` | `<test or comparison>` |
+
+Use `superseded` when the new upstream architecture replaces an old local API.
+Use `generated` only after naming the source that will regenerate the file.
+Inspect migrations separately because Git can merge two sequences cleanly
+while producing an invalid upgrade path:
 
 ```bash
-git merge-tree --write-tree main upstream/main
+merge_base=$(git merge-base <downstream-sha> <upstream-sha>)
+git diff --name-status "$merge_base"..<downstream-sha> -- server/migrations server/cmd/migrate
+git diff --name-status "$merge_base"..<upstream-sha> -- server/migrations server/cmd/migrate
 ```
 
-A non-zero exit is expected when conflicts are predicted. Inspect its staged
-entries and auto-merge messages, then compare paths changed on both sides. Do
-not infer the final conflict count from auto-merge output; capture the unique
-unmerged paths immediately after the real merge.
+The migration ledger key is the complete filename stem. Keep every migration
+that may have reached a database immutable. Preserve duplicate numeric
+prefixes and freeze their exact stem sets in the migration lint.
 
-Preview migration history separately. Git can merge two migration sequences
-without a text conflict even though the resulting upgrade path is invalid:
+Completion criterion: every overlap has an ownership decision and an explicit
+proof before the worktree changes.
 
-```bash
-merge_base=$(git merge-base main upstream/main)
-git diff --name-status "$merge_base"..main -- server/migrations server/cmd/migrate
-git diff --name-status "$merge_base"..upstream/main -- server/migrations server/cmd/migrate
-```
-
-The ledger key is the complete migration filename stem. Treat every migration
-that may have reached a database as immutable: never rename it to solve a
-numeric-prefix collision. A duplicate numeric prefix is safer than replaying
-published DDL; freeze the exact duplicate stem set in the migration lint.
-
-Completion criterion: likely conflict paths and their ownership classes are
-known before editing begins, and both migration sequences have been compared by
-full identity rather than numeric prefix alone.
-
-## 3. Merge And Resolve
+## Merge and resolve
 
 ```bash
-git merge --no-ff --no-edit upstream/main
+git merge --no-ff --no-commit <upstream-sha>
 git diff --name-only --diff-filter=U | sort -u
 ```
 
-If conflicts exist, use the `resolving-merge-conflicts` skill. For each path,
-inspect all three primary sources and the commits that created both intents:
+For every conflict, inspect the merge base, downstream side, upstream side,
+and the commits that created both intents:
 
 ```bash
-git show :1:<path>  # merge base
-git show :2:<path>  # downstream
-git show :3:<path>  # fetched upstream
+git show :1:<path>
+git show :2:<path>
+git show :3:<path>
 git log --all --oneline -- <path>
 ```
 
-Resolve by lifecycle and ownership, not by textual union:
+Resolve by lifecycle and ownership:
 
-- In upstream-owned shells and registries, accept upstream rewrites or retired
-  behavior, then reattach only the still-live downstream registration.
-- In downstream-owned Rooms, Twin, Wiki, and named-skin leaves, preserve the
-  local behavior while adopting upstream type and helper changes.
-- When upstream retires a rollout flag beside a local flag, remove the retired
-  lifecycle completely and preserve the independent local flag. Keeping the
-  whole downstream block can resurrect obsolete behavior.
-- Resolve SQL query sources before running `make sqlc`. Regenerate lockfiles and
-  reserved-slug output from their sources rather than merging generated output.
-- Accept upstream deletion of an upstream-owned surface; move a still-required
-  local hook to the new extension point.
-- If an already-published migration was renamed in an earlier release, add an
-  explicit current-to-legacy identity mapping in the migrator only after
-  proving the `up.sql` contents are identical. Reconcile the ledger without
-  executing SQL; do not scatter `IF NOT EXISTS` across DDL to hide the replay.
-- Do not assume identical current and renamed migration files prove every
-  deployed database has the same schema. Inspect the blob from the actual
-  deployed commit: a migration may have been edited after its first release.
-  If a published migration gained DDL in place, keep it immutable from now on
-  and add a new forward compatibility migration for the missing schema. Never
-  mark that repair as applied through an identity alias.
+- In upstream-owned shells and registries, keep the upstream lifecycle and
+  reattach only the live downstream registration.
+- In downstream-owned leaves, keep local behavior and adopt upstream type,
+  helper, authorization, and transaction changes.
+- Delete a local API when upstream's current architecture supersedes it. Audit
+  its callers and test doubles even when Git auto-merged them.
+- Resolve SQL query sources before `make sqlc`. Resolve workspace manifests
+  before `pnpm install`. Never hand-merge generated Go or `pnpm-lock.yaml`.
+- Parse locale JSON structurally, retain independent keys, apply the current
+  glossary, and run the locale parity suite.
+- Keep independent migration-runner guards from both histories. Preserve
+  published filenames. Use an identity alias only for byte-identical renamed
+  `up.sql` files, and add a forward migration for DDL added after publication.
+- Accept an upstream deletion when upstream owns the old surface. Move a live
+  downstream hook to the replacement extension point.
 
-Completion criterion: every hunk has a source-backed intent, with no invented
-compatibility behavior.
+Completion criterion: every resolution implements the preservation ledger,
+with no compatibility behavior invented from the conflict markers.
 
-## 4. Prove Each Resolution
+## Audit semantic conflicts
 
-Before committing, compare every resolved path with both parents:
+Textual conflict resolution is only the first pass. Review every path changed
+on both sides, including clean auto-merges. Search for removed APIs, old import
+targets, stale mocks, retired environment variables, and downstream consumers
+of changed upstream contracts.
+
+When manifests or toolchain versions changed, verify all packaging and runtime
+consumers:
 
 ```bash
-git diff upstream/main -- <path>
+pnpm check:toolchain
+pnpm install --frozen-lockfile
+```
+
+Confirm that the actual CI workflow invokes any new consistency checker. A
+local script that CI bypasses is documentation, not a guard.
+
+Completion criterion: every `both` and `superseded` ledger entry accounts for
+auto-merged callers, fixtures, generated output, and delivery configuration.
+
+## Prove the merged tree
+
+Compare each resolved path with both parents:
+
+```bash
+git diff <upstream-sha> -- <path>
 git diff ORIG_HEAD -- <path>
 git diff --name-only --diff-filter=U
 git diff --check
 ```
 
-The upstream comparison should show only the deliberate downstream delta. The
-pre-merge comparison should show the intended upstream change without losing
-the local feature. Search tracked files for conflict markers and run the
-narrowest tests covering each resolution, followed by the broader checks
-required by the touched surfaces.
+Relative to upstream, only the intended downstream delta should remain.
+Relative to the pre-merge tree, the intended upstream change should remain.
+Search tracked files for conflict markers. Run the narrowest tests named in
+the preservation ledger, then broader checks for every touched package.
 
-When either side changes migrations, test two database histories:
+Run generators and require a clean second run. If locales changed, run
+the structural parity suite:
 
-1. A fresh database, which proves the merged migration sequence builds.
-2. A representative database already migrated by the pre-merge downstream,
-   which proves published ledger identities upgrade without replaying DDL.
+```bash
+pnpm --dir packages/views exec vitest run locales/parity.test.ts
+```
+
+If migrations changed, test both database histories:
+
+1. Run the complete migration sequence on a fresh database.
+2. Clone or seed a database with the pre-merge downstream ledger and schema.
+3. Run `migrate up` twice on the existing-ledger database.
+4. Inspect the columns, constraints, and indexes used by current code.
 
 ```bash
 (cd server && go run ./cmd/migrate up)
 (cd server && go test ./cmd/migrate ./internal/migrations -count=1)
 ```
 
-If the pre-merge database is unavailable, create a hermetic test that seeds its
-exact `schema_migrations.version` values and the corresponding schema objects.
-Do not claim upgrade compatibility from a fresh-database run alone. Run
-`migrate up` a second time to prove the reconciled ledger is idempotent.
-Compare the resulting columns, constraints, and indexes required by current
-code, not only the migration ledger. A successful migrator exit can still hide
-schema drift when an old migration file was modified after publication.
+A successful migrator exit does not prove schema compatibility. Exercise the
+feature that reads the migrated schema. Separate new failures from failures
+that reproduce at the exact downstream start.
 
 Finish the merge non-interactively and prove its topology:
 
 ```bash
 git commit --no-edit
-git merge-base --is-ancestor upstream/main HEAD
+git merge-base --is-ancestor <upstream-sha> HEAD
 git show -s --format='%H%n%P%n%s' HEAD
 ```
 
-Completion criterion: there are no unmerged paths or markers, relevant checks
-are green, fresh and existing database paths are green when migrations changed,
-the merge has two expected parents, and upstream is an ancestor.
+Completion criterion: the index and marker scan are clean, focused and broad
+checks match the touched risk, generated files are stable, both database
+histories pass when required, and the merge has the expected two parents.
 
-## 5. Preserve The Learning
+## Preserve the learning
 
-Update `docs/downstream/upstream-sync.md` with the date, exact SHAs, divergence,
-actual conflict count, conflict paths, semantic decision, generated artifacts,
-and commands actually verified. Update the ownership map or durable rules only
-when the merge produced a genuinely reusable lesson.
+Update `docs/downstream/upstream-sync.md` with the date, exact SHAs,
+divergence, actual conflict count and paths, semantic decisions, regenerated
+artifacts, and commands actually run. Add a durable rule only for a repeated
+failure mode. Prefer a lint, parity test, generator, or CI check when the rule
+can be enforced.
 
-Report the merge commit, upstream version/SHA, conflict resolution, validation,
-and local ahead/behind state. A request to fetch, merge, or resolve conflicts
-does not authorize pushing, opening a PR, tagging, or releasing; perform those
-only when explicitly requested.
+Report the merge commit, upstream version and SHA, conflict decisions,
+validation, known baseline failures, and local ahead or behind state. Keep
+local tests, CI, release, deployment, live runtime, and human acceptance as
+separate claims. A sync request does not authorize pushing, opening a PR,
+tagging, releasing, or merging another PR.
