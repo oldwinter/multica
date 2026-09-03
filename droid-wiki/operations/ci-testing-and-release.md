@@ -82,7 +82,7 @@ make check
 
 | 作业 | 内容 |
 | --- | --- |
-| `frontend-build` | Node 22、pnpm install、Turborepo cache、自托管/env/worktree registry shell 测试、reserved slugs drift、build/typecheck/lint、UI export contract |
+| `frontend-build` | Node 26、pnpm install、Turborepo cache、自托管/env/worktree registry shell 测试、reserved slugs drift、build/typecheck/lint、UI export contract |
 | `frontend-test` | Web、Core、Desktop 等非 Views Vitest |
 | `frontend-views-test` | `@multica/views` 的 2 shard 矩阵 |
 | `frontend` | 聚合以上结果，保持稳定 required-check 名 |
@@ -91,7 +91,7 @@ Docs 和 Mobile 被主 Turbo build/test 过滤；Docs 变化仍会因 knip/path 
 
 ### Backend 作业
 
-`backend-tests` 使用 PostgreSQL `pgvector/pgvector:pg17`（宿主端口 55432）和 Redis 7 Alpine（56379）service，Go 取最新 1.26.x。它执行：
+`backend-tests` 使用 PostgreSQL `pgvector/pgvector:pg17`（宿主端口 55432）和 Redis 7 Alpine（56379）service，Go 取最新 1.27.x。它执行：
 
 1. Helm 模板/config shell 测试；
 2. backend entrypoint signal 测试；
@@ -109,7 +109,7 @@ Docs 和 Mobile 被主 Turbo build/test 过滤；Docs 变化仍会因 knip/path 
 
 | Workflow | 触发/矩阵 | 用途 |
 | --- | --- | --- |
-| [`.github/workflows/mobile-verify.yml`](../../.github/workflows/mobile-verify.yml) | Mobile/Core 等路径；Node 22 | Mobile typecheck、lint、Vitest 与 iOS runner script test |
+| [`.github/workflows/mobile-verify.yml`](../../.github/workflows/mobile-verify.yml) | Mobile/Core 等路径；Node 26 | Mobile typecheck、lint、Vitest 与 iOS runner script test |
 | [`.github/workflows/downstream-features.yml`](../../.github/workflows/downstream-features.yml) | main、PR、手工；PG+Redis | Rooms、Wiki、Twin、命名皮肤和下游 contract |
 | [`.github/workflows/desktop-smoke.yml`](../../.github/workflows/desktop-smoke.yml) | 手工；Linux/Windows | x64 + arm64 Desktop 打包，不发布 |
 | `installer`（主 CI 内） | Ubuntu/macOS/Windows | shell 与 PowerShell installer stub 测试 |
@@ -139,7 +139,7 @@ git push origin v0.4.38
 
 `verify` 在任何发布前：
 
-- 记录最新 Go 1.26.x toolchain；
+- 记录最新 Go 1.27.x toolchain；
 - 自测 Go wrapper；
 - `scripts/test-go.sh --race`；
 - `govulncheck ./...`。

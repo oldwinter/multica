@@ -263,7 +263,7 @@ export default function WorkspaceLayout() {
         />
         {/* New-issue draft formSheet pickers — stacked on top of the
             new-issue.tsx Stack.Screen (which is itself a `modal`).
-            Expo Router 55 / RN Screens 4 support a formSheet pushed on top
+            Expo Router 57 / RN Screens 4 support a formSheet pushed on top
             of a modal in the same Stack. */}
         <Stack.Screen
           name="new-issue-picker/status"

@@ -79,11 +79,11 @@ This pattern repeats: timeline coalescing (`buildTimelineGroups`), inbox dedup, 
 
 Start minimal. Add to this list when actually adopted — do NOT pre-list libraries.
 
-- **Expo SDK 55**
-- **React Native 0.82**
-- **React 19.1** — whatever Expo SDK 55 ships. Pinned in `apps/mobile/package.json` directly, NOT via root `catalog:`.
+- **Expo SDK 57**
+- **React Native 0.86**
+- **React 19.2**. This version is aligned with Expo SDK 57 and pinned in `apps/mobile/package.json`, not through the root `catalog:`.
 - **TypeScript** strict
-- **Expo Router 55** (file-based routing — version aligns with Expo SDK)
+- **Expo Router 57** (file-based routing; version aligns with Expo SDK)
 - **NativeWind 4** + **Tailwind 3.4** — NativeWind 5 is unstable; stay on v4. (Note: web/desktop use Tailwind v4 — versions intentionally differ.)
 - **react-native-reusables (RNR)** — the shadcn equivalent for React Native. Uses NativeWind + RN-Primitives + CVA. Component API mirrors shadcn. **Phased adoption in progress — see `apps/mobile/docs/rnr-migration.md` for the canonical plan, three-tier classification, and Phase 0/1/2/3 status.**
 - **TanStack Query 5** — mobile owns its `QueryClient` with `AppState` focus listener + `NetInfo` online listener.
@@ -511,14 +511,14 @@ The mobile codebase started with ~15 Modal sheets. They almost all copied the sa
 
 - `presentation: "formSheet"` — the magic that hands the screen to `UISheetPresentationController`.
 - `sheetGrabberVisible: true` — the iOS native drag handle. Users don't discover the gesture without it.
-- `sheetAllowedDetents: [0.6, 0.95]` — explicit numeric detents. The ergonomic `"fitToContents"` is broken on iOS 26 + Expo 55 (expo/expo#42904 padding inconsistency, #42965 zero-size). Predictable two-snap presentation across every picker-row sheet is more important than shrink-wrapping; every formSheet that lives in a chip row (issue-detail / project-detail AttributeRow) uses these explicit detents so muscle memory carries across the row. Isolated sheets (no chip-row neighbour) override with `"fitToContents"` — see the workspace `menu` sheet for the canonical example.
+- `sheetAllowedDetents: [0.6, 0.95]` — explicit numeric detents. Expo 55 exposed `"fitToContents"` failures on iOS 26 (expo/expo#42904 padding inconsistency, #42965 zero-size), and the Expo 57 device path has not yet been revalidated. Predictable two-snap presentation across every picker-row sheet is more important than shrink-wrapping; every formSheet that lives in a chip row (issue-detail / project-detail AttributeRow) uses these explicit detents so muscle memory carries across the row. Isolated sheets (no chip-row neighbour) override with `"fitToContents"` — see the workspace `menu` sheet for the canonical example.
 - `sheetCornerRadius: 20` — matches RNR card radius. Without this iOS uses a larger system default that's slightly out of sync with the rest of the app.
 - `contentStyle: { height: "100%" }` — safety net against the zero-size class of bugs above. Ensures the sheet body fills the allotted detent height.
 
 **Caveats that still apply:**
 
 - **Android falls back to a regular modal** — no rounded corners, no native drag. mobile/CLAUDE.md treats iOS as the primary target so this is acceptable, but document inline at the call site if a particular feature must work identically on both.
-- **A formSheet pushed from inside a `presentation: "modal"` route is supported** by Expo Router 55 / RN Screens 4, but the back gesture from the formSheet returns to the modal, not the underlying tab. This is the right UX for the new-issue draft flow (sheet dismisses back to the form), but check the navigation graph if you're adding a sheet under a non-obvious parent.
+- **A formSheet pushed from inside a `presentation: "modal"` route is supported** by Expo Router 57 and RN Screens 4, but the back gesture from the formSheet returns to the modal, not the underlying tab. This is the right UX for the new-issue draft flow because the sheet dismisses back to the form. Check the navigation graph when you add a sheet under a non-obvious parent.
 
 **Carve-out — picker-row consistency wins over per-container optimisation:**
 

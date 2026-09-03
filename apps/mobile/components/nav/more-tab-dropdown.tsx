@@ -59,7 +59,7 @@ import { cn } from "@/lib/utils";
 
 // iOS bottom tab bar default height (above safe-area). React Navigation
 // doesn't expose this as a layout constant, but the value is stable
-// across Expo Router 55 / RN Screens 4 — see BottomTabBar.tsx in
+// across Expo Router 57 / RN Screens 4 — see BottomTabBar.tsx in
 // @react-navigation/bottom-tabs (`styles.tab` has no explicit height;
 // the container settles at 49 from the inner padding + icon size).
 const TAB_BAR_HEIGHT = 49;

@@ -13,7 +13,7 @@
 - 自动更新、文件下载、目录选择和受控外链；
 - Desktop 专属 runtime、daemon 与 update 设置。
 
-当前关键版本是 Electron `^39.2.6`、electron-vite `^5.0.0`、React Router `^7.6.0`，见 [apps/desktop/package.json](../../apps/desktop/package.json)。
+当前关键版本是 Electron `^44.1.0`、electron-vite `^5.0.0`、React Router `^7.18.3`，见 [apps/desktop/package.json](../../apps/desktop/package.json)。
 
 ## 入口
 

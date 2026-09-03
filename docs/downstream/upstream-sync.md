@@ -12,7 +12,7 @@ Use this page when merging `upstream/main`. The short pointer lives in
 - PR head: `581ef157d46f5fbbd031893d38dd3739370c6655`.
 - Current downstream main: `c6eb0098e73367d6db736541f364b7460837e1f6`.
 - Textual conflict files: 12.
-- Remote update: not performed; this reconciliation is local only.
+- Conflict-resolution merge: `5b418ba502ed5b3ea0d4983ba8a02b37d23b1d50`, pushed to the PR branch.
 
 The conflicts covered the Mobile and Views package manifests,
 `pnpm-lock.yaml`, this log, the Wiki page primitives, the migration runner and
@@ -38,6 +38,14 @@ mocked `@/.source`, while production imports `@/.source/server`. Before the
 fix, Vite parsed generated MDX as JavaScript and failed the suite; after the
 mock target was corrected, the focused five-test suite and the full Web suite
 passed.
+
+Independent shipping verification then found that the dependency and CI
+upgrade had left current runtime surfaces on Node 22 and Go 1.26. The Web and
+server Docker builders, `.nvmrc`, developer prerequisites, Mobile stack notes,
+and generated Droid Wiki pages now derive from or agree with the Node 26,
+Go 1.27, Expo 57, React Native 0.86, Electron 44, and Next.js 16 manifests.
+`scripts/check-toolchain-consistency.mjs` makes those boundaries a build gate
+so future manifest-only upgrades fail before packaging.
 
 Verification passed the frozen pnpm install, 9/9 typecheck tasks, all six
 frontend test tasks, and all five production build tasks. Views passed 481

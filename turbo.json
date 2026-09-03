@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  // The CI workflow pins the toolchain these tasks run under (Node 22 today).
+  // The CI workflow pins the toolchain these tasks run under.
   // Without it in the global hash, bumping that version would replay cached
   // typecheck/test results produced by the old runtime and hide an
   // incompatibility behind a green check.

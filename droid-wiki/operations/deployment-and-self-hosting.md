@@ -44,13 +44,13 @@ docker compose -f docker-compose.selfhost.yml logs -f backend frontend
 
 ## 镜像启动行为
 
-后端 [`Dockerfile`](../../Dockerfile) 使用 Go 1.26 Alpine builder 构建 server、CLI、migrate 和回填工具，runtime 是 Alpine 3.21。[`docker/entrypoint.sh`](../../docker/entrypoint.sh) 在同一个数据库启动预算内：
+后端 [`Dockerfile`](../../Dockerfile) 使用 Go 1.27 Alpine builder 构建 server、CLI、migrate 和回填工具，runtime 是 Alpine 3.21。[`docker/entrypoint.sh`](../../docker/entrypoint.sh) 在同一个数据库启动预算内：
 
 1. 执行 `./migrate up`；
 2. 迁移失败则容器退出；
 3. 成功后 `exec ./server`，让 signal 直接到达 Go 进程。
 
-Web [`Dockerfile.web`](../../Dockerfile.web) 使用 Node 22、仓库固定的 pnpm 版本和 Next.js standalone 输出，以非 root `nextjs` 用户运行。
+Web [`Dockerfile.web`](../../Dockerfile.web) 使用 Node 26、仓库固定的 pnpm 版本和 Next.js standalone 输出，以非 root `nextjs` 用户运行。
 
 生产不要依赖 mutable `latest`；固定：
 

@@ -8,19 +8,19 @@
 
 Mobile 的运行时边界是 Expo/React Native：入口由 `expo-router/entry` 提供，当前实际依赖见 [apps/mobile/package.json](../../apps/mobile/package.json)。环境和 bundle identifier 由 [apps/mobile/app.config.ts](../../apps/mobile/app.config.ts) 按 development、staging、production 分流。
 
-### 文档与实际版本漂移
+### 当前技术栈
 
-[apps/mobile/CLAUDE.md](../../apps/mobile/CLAUDE.md) 的 Tech-stack baseline 与当前 `package.json` 有两项明确漂移：
+版本以 [apps/mobile/package.json](../../apps/mobile/package.json) 为准：
 
-| 项目 | Mobile 文档 | `apps/mobile/package.json` | 结论 |
-| --- | --- | --- | --- |
-| Expo SDK | 55 | `expo ~55.0.23` | 一致 |
-| Expo Router | 55 | `expo-router ~55.0.14` | 一致 |
-| React Native | 0.82 | `react-native 0.83.6` | 文档过时 |
-| React | 19.1 | `react 19.2.0` | 文档过时 |
-| NativeWind / Tailwind | 4 / 3.4 | `nativewind ^4.1.23` / `tailwindcss ^3.4.17` | 一致 |
+| 项目 | 主版本 | Manifest 声明 |
+| --- | --- | --- |
+| Expo SDK | 57 | `expo ~57.0.19` |
+| Expo Router | 57 | `expo-router ~57.0.18` |
+| React Native | 0.86.3 | `react-native 0.86.3` |
+| React | 19.2 | `react 19.2.3` |
+| NativeWind / Tailwind | 4 / 3.4 | `nativewind ^4.2.6` / `tailwindcss ^3.4.19` |
 
-因此判断构建兼容性时应以 [apps/mobile/package.json](../../apps/mobile/package.json) 的 React Native 0.83.6 和 React 19.2.0 为准，同时应把 `apps/mobile/CLAUDE.md` 的 baseline 修正列为单独文档维护事项。此漂移不改变该文件中的预检、共享边界和 realtime 规则。
+[apps/mobile/CLAUDE.md](../../apps/mobile/CLAUDE.md) 记录同一组主版本和 Mobile 开发规则。升级任一基础包时，同步更新 manifest、该 baseline 和本页。
 
 ## 入口
 

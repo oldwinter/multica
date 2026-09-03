@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { TelegramBindPage } from "@multica/views/telegram";
 
 // /telegram/bind?token=<raw> is the bot's "link your account" destination.
-// Suspense wraps useSearchParams per Next.js 15's CSR-bailout rule.
+// Suspense wraps useSearchParams per the App Router's CSR-bailout rule.
 function TelegramBindPageContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
