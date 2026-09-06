@@ -68,7 +68,7 @@ describe("RoomDetail responsive controls", () => {
       "max-lg:min-h-11",
       "max-lg:min-w-11",
     );
-    for (const testId of ["room-duplicate", "room-manage-budget", "room-archive"]) {
+    for (const testId of ["room-duplicate", "room-copy-link", "room-manage-budget", "room-archive"]) {
       expect(view.getByTestId(testId)).toHaveClass("max-lg:size-11");
     }
     expect(view.getByTestId("room-wake")).toHaveClass(
