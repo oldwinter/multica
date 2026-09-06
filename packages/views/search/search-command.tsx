@@ -10,6 +10,7 @@ import {
   FileText,
   GitBranch,
   Link2,
+  ListX,
   Loader2,
   MessageSquare,
   Plus,
@@ -59,8 +60,10 @@ import { routeIconForPath } from "../layout/route-icon-components";
 import { PROJECT_STATUS_CONFIG } from "@multica/core/projects/config";
 import type { ProjectStatus } from "@multica/core/types";
 import { ActorAvatar } from "../common/actor-avatar";
+import { DeferredTooltip } from "../common/deferred-tooltip";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
+import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -357,6 +360,7 @@ export function SearchCommand() {
   }, []);
   const wsId = useWorkspaceId();
   const recentItems = useRecentIssuesStore(selectRecentIssues(wsId));
+  const clearRecentIssues = useRecentIssuesStore((state) => state.clearWorkspace);
   const p: WorkspacePaths = useWorkspacePaths();
   const {
     preferences: { requestedAppearance: theme },
@@ -1040,7 +1044,7 @@ export function SearchCommand() {
               </CommandPrimitive.Group>
             )}
 
-            {!query.trim() && recentIssues.length > 0 && (
+            {!isLoading && !query.trim() && recentItems.length > 0 && (
               <CommandPrimitive.Group
                 heading={
                   <>
@@ -1048,8 +1052,29 @@ export function SearchCommand() {
                     <span>{t(($) => $.groups.recent)}</span>
                   </>
                 }
-                className={`${GROUP_CLASS} [&_[cmdk-group-heading]]:flex [&_[cmdk-group-heading]]:items-center [&_[cmdk-group-heading]]:gap-2`}
+                className={`${GROUP_CLASS} relative [&_[cmdk-group-heading]]:flex [&_[cmdk-group-heading]]:items-center [&_[cmdk-group-heading]]:gap-2 [&_[cmdk-group-heading]]:min-h-11 sm:[&_[cmdk-group-heading]]:min-h-7`}
               >
+                <div className="pointer-events-none absolute inset-x-2 top-0 z-10 flex justify-end">
+                  <DeferredTooltip
+                    content={t(($) => $.actions.clear_recent)}
+                    side="left"
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="pointer-events-auto size-11 text-muted-foreground hover:text-foreground sm:size-7"
+                        aria-label={t(($) => $.actions.clear_recent)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          clearRecentIssues(wsId);
+                        }}
+                      >
+                        <ListX aria-hidden="true" />
+                      </Button>
+                    }
+                  />
+                </div>
                 {recentIssues.map((item) => (
                   <CommandPrimitive.Item
                     key={item.id}
@@ -1075,7 +1100,7 @@ export function SearchCommand() {
               </CommandPrimitive.Group>
             )}
 
-            {!isLoading && !query.trim() && recentIssues.length === 0 && (
+            {!isLoading && !query.trim() && recentItems.length === 0 && (
               <div className="px-5 py-4 text-center text-caption text-muted-foreground">
                 {t(($) => $.empty.type_to_search)}
               </div>

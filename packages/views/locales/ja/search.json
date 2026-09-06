@@ -26,6 +26,9 @@
     "switch_to_dark": "ダークテーマに切り替え",
     "use_system_theme": "システムテーマを使用"
   },
+  "actions": {
+    "clear_recent": "最近のイシュー履歴を消去"
+  },
   "toast": {
     "link_copied": "リンクをコピーしました",
     "link_copy_failed": "リンクをコピーできませんでした",

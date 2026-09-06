@@ -94,6 +94,34 @@ describe("useRecentIssuesStore.forgetIssue", () => {
   });
 });
 
+describe("useRecentIssuesStore.clearWorkspace", () => {
+  it("clears only the selected workspace history", () => {
+    useRecentIssuesStore.setState({
+      byWorkspace: {
+        "ws-a": [{ id: "issue-1", visitedAt: 1000 }],
+        "ws-b": [{ id: "issue-2", visitedAt: 900 }],
+      },
+    });
+
+    useRecentIssuesStore.getState().clearWorkspace("ws-a");
+
+    expect(useRecentIssuesStore.getState().byWorkspace).toEqual({
+      "ws-b": [{ id: "issue-2", visitedAt: 900 }],
+    });
+  });
+
+  it("is a no-op when the workspace has no recent history", () => {
+    const byWorkspace = {
+      "ws-a": [{ id: "issue-1", visitedAt: 1000 }],
+    };
+    useRecentIssuesStore.setState({ byWorkspace });
+
+    useRecentIssuesStore.getState().clearWorkspace("missing");
+
+    expect(useRecentIssuesStore.getState().byWorkspace).toBe(byWorkspace);
+  });
+});
+
 describe("useRecentIssuesStore.pruneWorkspaces", () => {
   it("drops buckets for workspaces not in the active set", () => {
     const { recordVisit, pruneWorkspaces } = useRecentIssuesStore.getState();

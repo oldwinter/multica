@@ -70,6 +70,7 @@ const {
   mockSearchProjects,
   mockFetchQuery,
   mockRecentItems,
+  mockClearRecentIssues,
   mockAllIssues,
   mockSetTheme,
   mockTheme,
@@ -95,6 +96,7 @@ const {
   mockSearchProjects: vi.fn(),
   mockFetchQuery: vi.fn(),
   mockRecentItems: { current: [] as Array<{ id: string; visitedAt: number }> },
+  mockClearRecentIssues: vi.fn(),
   mockAllIssues: { current: [] as Array<Record<string, unknown>> },
   mockSetTheme: vi.fn(),
   mockTheme: { current: "system" as "light" | "dark" | "system" },
@@ -178,9 +180,13 @@ vi.mock("@multica/core/issues/stores", () => {
     useRecentIssuesStore: (
       selector?: (state: {
         byWorkspace: Record<string, typeof mockRecentItems.current>;
+        clearWorkspace: typeof mockClearRecentIssues;
       }) => unknown,
     ) => {
-      const state = { byWorkspace: { "ws-test": mockRecentItems.current } };
+      const state = {
+        byWorkspace: { "ws-test": mockRecentItems.current },
+        clearWorkspace: mockClearRecentIssues,
+      };
       return selector ? selector(state) : state;
     },
     selectRecentIssues:
@@ -338,6 +344,7 @@ describe("SearchCommand", () => {
     mockSearchProjects.mockReset().mockResolvedValue({ projects: [] });
     mockFetchQuery.mockReset();
     mockRecentItems.current = [];
+    mockClearRecentIssues.mockReset();
     mockAllIssues.current = [];
     mockAgents.current = [];
     mockSquads.current = [];
@@ -620,6 +627,35 @@ describe("SearchCommand", () => {
     expect(screen.getByText("MUL-1")).toBeInTheDocument();
     expect(screen.getByText("Second issue")).toBeInTheDocument();
     expect(screen.getByText("MUL-2")).toBeInTheDocument();
+  });
+
+  it("clears recent issue history for the current workspace", async () => {
+    const user = userEvent.setup();
+    mockRecentItems.current = [{ id: "issue-1", visitedAt: 1000 }];
+    mockAllIssues.current = [
+      { id: "issue-1", identifier: "MUL-1", title: "First issue", status: "todo" },
+    ];
+
+    renderSearch();
+
+    await user.click(screen.getByRole("button", { name: "Clear recent issues" }));
+
+    expect(mockClearRecentIssues).toHaveBeenCalledWith("ws-test");
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(useSearchStore.getState().open).toBe(true);
+  });
+
+  it("allows clearing recent history when issue details cannot be resolved", async () => {
+    const user = userEvent.setup();
+    mockRecentItems.current = [{ id: "deleted-issue", visitedAt: 1000 }];
+
+    renderSearch();
+
+    expect(screen.queryByText("Type to search issues and projects")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear recent issues" }));
+
+    expect(mockClearRecentIssues).toHaveBeenCalledWith("ws-test");
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("shows New Issue / New Project under Commands and triggers the modal store", async () => {

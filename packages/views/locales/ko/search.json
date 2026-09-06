@@ -26,6 +26,9 @@
     "switch_to_dark": "다크 테마로 전환",
     "use_system_theme": "시스템 테마 사용"
   },
+  "actions": {
+    "clear_recent": "최근 이슈 기록 지우기"
+  },
   "toast": {
     "link_copied": "링크를 복사했습니다",
     "link_copy_failed": "링크를 복사하지 못했습니다",

@@ -26,6 +26,9 @@
     "switch_to_dark": "Switch to Dark Theme",
     "use_system_theme": "Use System Theme"
   },
+  "actions": {
+    "clear_recent": "Clear recent issues"
+  },
   "toast": {
     "link_copied": "Link copied",
     "link_copy_failed": "Failed to copy link",
