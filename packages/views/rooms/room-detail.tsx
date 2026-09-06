@@ -1,6 +1,7 @@
 "use client";
 
-import { Archive, Copy, Gauge, Loader2, Pause, Play, RotateCw, Square } from "lucide-react";
+import { Archive, Copy, Gauge, Link2, Loader2, Pause, Play, RotateCw, Square } from "lucide-react";
+import { toast } from "sonner";
 import type { Agent } from "@multica/core/types";
 import type {
   RoomComposerDraft,
@@ -18,6 +19,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@multica/ui/components/
 import { Tabs, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
+import { copyText } from "@multica/ui/lib/clipboard";
+import { currentPath, useOptionalNavigation } from "../navigation";
 import { roomStatusClass } from "./room-display";
 import { RoomTranscript } from "./room-transcript";
 import { RoomInspector } from "./room-inspector";
@@ -92,6 +95,7 @@ export function RoomDetail({
 	onManageBudget,
 }: RoomDetailProps) {
   const { t } = useT("rooms");
+  const navigation = useOptionalNavigation();
   const room = detail.room;
   const canWake = outcomeState.nextAction === "run_cycle" && !waking;
   const repeatEligible =
@@ -102,6 +106,13 @@ export function RoomDetail({
   const canRunAgain = repeatEligible && !waking;
   const canRetryPreflight = preflightError && !preflightPending;
   const wakeBusy = waking || (!repeatEligible && preflightPending);
+
+  const copyRoomLink = () => {
+    if (!navigation) return;
+    void copyText(navigation.getShareableUrl(currentPath(navigation))).then((ok) => {
+      toast[ok ? "success" : "error"](t(($) => ok ? $.toast.link_copied : $.toast.link_copy_failed));
+    });
+  };
 
   const jumpToCitation = (entryId: string) => {
     onDetailTabChange("transcript");
@@ -180,6 +191,23 @@ export function RoomDetail({
 				</Button>
 			} />
 			<TooltipContent>{t(($) => $.actions.duplicate)}</TooltipContent>
+		</Tooltip>
+		<Tooltip>
+			<TooltipTrigger render={
+				<Button
+					type="button"
+					size="icon-sm"
+					variant="ghost"
+					className="max-lg:size-11"
+					disabled={!navigation}
+					aria-label={t(($) => $.actions.copy_link)}
+					data-testid="room-copy-link"
+					onClick={copyRoomLink}
+				>
+					<Link2 aria-hidden="true" />
+				</Button>
+			} />
+			<TooltipContent>{t(($) => $.actions.copy_link)}</TooltipContent>
 		</Tooltip>
 		{canManageBudget ? (
 			<Tooltip>
