@@ -29,35 +29,6 @@ func TestFailedEventsUseWillRetry(t *testing.T) {
 	}
 }
 
-func TestIsMetricsOnly(t *testing.T) {
-	// As of MUL-4127, PostHog is retired for server-side product analytics:
-	// every server-side event is Prometheus-only and must not ship to PostHog.
-	for _, name := range []string{
-		// runtime / autopilot execution-lifecycle telemetry
-		EventRuntimeRegistered, EventRuntimeReady, EventRuntimeFailed, EventRuntimeOffline,
-		EventAutopilotRunStarted, EventAutopilotRunCompleted, EventAutopilotRunFailed,
-		// product-behaviour events (now DB + Grafana only)
-		EventSignup, EventWorkspaceCreated, EventIssueCreated, EventIssueExecuted,
-		EventChatMessageSent, EventTeamInviteSent, EventTeamInviteAccepted,
-		EventOnboardingStarted, EventOnboardingQuestionnaireSubmit, EventOnboardingSourceSubmit,
-		EventAgentCreated,
-		EventOnboardingCompleted, EventCloudWaitlistJoined, EventFeedbackSubmitted,
-		EventContactSalesSubmitted, EventSquadCreated, EventAutopilotCreated,
-		// Twin execution lifecycle remains metrics-only and never reaches PostHog.
-		EventTwinProposalGeneration, EventTwinSignOff,
-		EventTwinBriefingCompilation, EventTwinBriefingUse,
-		EventTwinRunFeedback, EventTwinTaskRevision, EventTwinDepositionReview,
-	} {
-		if !IsMetricsOnly(name) {
-			t.Errorf("IsMetricsOnly(%q) = false, want true (server events stay out of PostHog since MUL-4127)", name)
-		}
-	}
-	// A name that isn't a declared server event is not metrics-only.
-	if IsMetricsOnly("$exception") {
-		t.Errorf("IsMetricsOnly(%q) = true, want false (frontend-only event)", "$exception")
-	}
-}
-
 func TestTwinMetricContractsArePrivacySafe(t *testing.T) {
 	context := TwinMetricContext{UserID: "user-1", WorkspaceID: "workspace-1", TaskID: "task-1"}
 	tests := []struct {

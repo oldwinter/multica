@@ -129,6 +129,3 @@ body: {
 Personal (`user`) pages are private to the signed-in human. Do not attempt to
 read another member's personal wiki, cite them as shared evidence, or include
 them in an LM Wiki source policy.
-
-See `references/wiki-source-map.md` for the implementation surfaces behind
-this contract.

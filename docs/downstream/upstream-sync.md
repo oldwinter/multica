@@ -7,6 +7,108 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-07 v0.4.41 Sync
+
+- Original checkout: `c49b8d2746a7886e1f31540ec78f22ee3289044f`.
+- Fork reconciliation: fast-forward one published search-history commit to
+  `9df6e7ee4ffdb2fdf656b475272a6f176bfa6824`, the merge's first parent.
+- Merge base: `d4a712abf3880dfbd3daeac5daac1bd4bfb39b6f`.
+- Upstream: 64 commits through
+  `d8fa885d26acbdecde49010276e905cc9de5a056`
+  (`v0.4.41-6-gd8fa885d2`). Downstream unique commits after reconciliation: 266.
+- Both-side path overlap: 140. Predicted and actual conflict files: 37.
+- Existing Web development files stayed outside the merge commit. This sync
+  finishes locally; it does not push, release, deploy, or reconcile PR branches.
+
+| Conflict group | Paths |
+| --- | --- |
+| Authentication | `apps/web/components/web-providers.tsx`, `packages/core/auth/store.ts`, `packages/core/platform/{auth-initializer,core-provider}.tsx` |
+| Core contracts and tests | `packages/core/issues/mutations.ts`, `packages/core/types/api.ts`, `packages/core/paths/consistency.test.ts`, `packages/core/workspace/mutations.test.tsx` |
+| Navigation and run confirmation | `packages/views/layout/{app-sidebar.tsx,sidebar-auto-collapse.test.tsx}`, `packages/views/modals/run-confirm{,.test}.tsx` |
+| Settings | `packages/views/settings/components/{preferences-tab,settings-page}{,.test}.tsx`, all four `packages/views/locales/*/settings.json` bundles |
+| Server composition and metrics | `server/cmd/server/{main.go,notification_mute_group_test.go}`, `server/internal/metrics/{registry.go,business_pairing_test.go}` |
+| Daemon and handler contracts | `server/internal/daemon/{types.go,execenv/context.go}`, `server/internal/handler/{agent.go,daemon.go,daemon_batch_claim_test.go,issue_trigger.go,squad.go}` |
+| Task, migration and other tests | `server/internal/service/{task.go,builtin_skills_test.go}`, `server/internal/migrations/migrations_lint_test.go`, `server/internal/analytics/events_test.go`, `server/internal/featureflags/keys_test.go`, `server/pkg/llm/outbound_contract_test.go` |
+
+The auth resolution uses upstream's single idempotent session-expiry teardown.
+The downstream authenticated-account marker is cleared inside that action,
+including boot-time rejection, while appearance sync retains its account and
+stale-response guards. Web keeps both locale-route gating and appearance sync.
+The settings shell adopts upstream's grouped navigation and compact selector;
+appearance controls live inside the new General preferences panel. Work owns
+Rooms, Office and Wiki; AI Team owns Twin. Personal Wiki remains in the account
+menu. Locale JSON was merged by keys and values from all three versions; no
+scalar settings key required an arbitrary winner.
+
+The run confirmation removes the retired handoff-note editor and runtime gate
+while retaining the signed Twin preview and exact-version submission. The
+backend still carries upstream's installed-client handoff input and the
+downstream Twin override. Deferred channel enqueues preserve upstream's wakeup.
+New actor-specific enqueue callers pass the downstream snapshot argument.
+Rooms retain transaction-bound runtime lookup, claim capability checks,
+generation precision, retry locks, and per-turn prompt context. The deleted
+issue-context sidecar stays deleted; its old Room test now relies on the
+existing per-turn prompt regression. Replica pools and routing remain upstream
+owned, with the Skill Evolution metrics collector registered alongside them.
+
+Upstream's declaration-only test removals are retained. Downstream analytics
+privacy tests and the published migration-identity lint remain active. Wiki's
+maintainer source map moved to [its documentation location](wiki-source-map.md)
+so the shipped skill satisfies upstream's source-free payload contract. The
+merged built-in skill tests accept Windows CRLF frontmatter. New upstream
+archive-cancellation tests use an explicit pool for transactions and observers
+beside downstream's transaction-capable fixture interface. The new OpenClaw
+smoke workflow uses Node 26 and Go 1.27, matching the downstream toolchain.
+
+Both `450_drop_comment_delegated_failure_pending_index` and
+`450_room_memory_review_key_index` remain immutable published identities; the
+lint freezes their exact pair. A temporary PostgreSQL 17.6 instance applied all
+641 migrations to a fresh database. Another database was seeded by the exact
+pre-sync migrator and schema (640 identities), then upgraded to the same 641.
+Both second runs were no-ops. The retired delegated-failure index was absent,
+the Room review-key index and Room/Twin/Skill Evolution columns were present,
+and neither database had invalid or unready indexes. The normal local database
+was not modified. Optional extensions followed the migrator's existing gates.
+`sqlc` 1.31.1 ran twice with no generated-file difference.
+
+Verification uses Node 26.7.0, pnpm 10.28.2 and Go 1.27.0 on Windows. Frozen
+install, toolchain consistency, 9/9 root typecheck tasks and 6/6 lint tasks
+passed. The Core suite passed 182 files / 1,988 tests, Web passed 36 files /
+274 tests, and Docs passed three files / 15 tests. The focused merge suites
+passed 276 tests. Views passed 479 of 480 files and 5,399 of 5,400 tests; its
+remaining ownership-boundary assertion compares native Windows separators
+with POSIX paths and reproduces at the original checkout. Desktop passed 58
+files / 602 tests; its packaging module fails to load with the same syntax
+error at the original checkout, while both script files pass `node --check`.
+Mobile typecheck passed; its Vitest run passed 37 files / 223 tests with one
+unchanged Room fixture URL/path loading failure. These are partial suite
+results, not a green root `pnpm test` claim.
+
+The complete Go module compiled with `go test -p 2 ./... -run '^$'`.
+Database-backed migration, service, Room, server composition and Skill
+Evolution checks passed. Read routing and skill-bundle package tests passed.
+Focused handler checks passed after excluding three
+test functions reproduced at the exact original checkout:
+`TestParseSkillArchive_RejectsUnsafeSkillMdPath`, `TestWikiHandlersWithMockDB`
+and `TestValidateWikiPath`, which assume POSIX filesystem paths. Root
+`pnpm test` also hits the original Office generator's Windows separator bug;
+the UI token suite hits original Windows URL/path conversion failures.
+These two failures were reproduced in a detached copy of the original commit.
+The unrestricted execenv run encountered Windows Git CRLF, home-path and
+OpenClaw cache fixtures; it is not reported as passing. No production build,
+browser E2E, real-agent smoke, Desktop display, Mobile device or human
+acceptance check is claimed by this sync.
+
+Commands used include `pnpm install --frozen-lockfile`,
+`node scripts/check-toolchain-consistency.mjs`, `pnpm typecheck`, `pnpm lint`,
+and `pnpm --dir <workspace> exec vitest run --maxWorkers=2` (Views used four
+workers). pnpm was invoked through `npm exec --package=pnpm@10.28.2` because
+the machine's default shim selected pnpm 11 with Node 24. The Go checks used
+`go test -p 2`, the packages above, and focused Room/Twin/Wiki/Skill/Claim/
+Autopilot/Replica/RuntimeLookup/Handoff patterns; the handler rerun's `-skip`
+listed only the three reproduced baseline test functions. Migration runs
+used explicit temporary `DATABASE_URL` values on `127.0.0.1:55439`.
+
 ## 2026-09-03 PR #17 And #19 Reconciliation
 
 - Shared sync base: `c6eb0098e73367d6db736541f364b7460837e1f6`.

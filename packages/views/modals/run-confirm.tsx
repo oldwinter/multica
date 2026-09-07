@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { squadListOptions } from "@multica/core/workspace/queries";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,15 +13,12 @@ import {
   DialogTitle,
 } from "@multica/ui/components/ui/dialog";
 import { Button } from "@multica/ui/components/ui/button";
-import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import type { IssueAssigneeType, IssueStatus, UpdateIssueRequest } from "@multica/core/types";
 import { useUpdateIssue, useBatchUpdateIssues } from "@multica/core/issues/mutations";
 import { errorCode } from "@multica/core/api";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
-import { runtimeListOptions, readRuntimeCliVersion, handoffSupported } from "@multica/core/runtimes";
 import { useShortcut, shortcutMatchesEvent, isPlainShortcut } from "@multica/core/shortcuts";
 import { isImeComposing } from "@multica/core/utils";
 import {
@@ -32,8 +30,6 @@ import { Eye, Power, Sparkles } from "lucide-react";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { useStatusLabel } from "../issues/utils/status-label";
 import { useT } from "../i18n";
-
-const MAX_HANDOFF_NOTE = 2000;
 
 // i18next inlines {{name}} / {{status}} into the sentence, but their position
 // varies by language ("{{name}} 会…" vs "Once assigned, {{name}} will…" vs
@@ -87,10 +83,9 @@ interface RunConfirmData {
  * Handoff confirmation for the issue writes that start agent runs.
  *
  * The rule is "dialog = you are handing this to an agent", NOT "you are
- * confirming N runs" (MUL-5010). The note and actions remain usable on the
- * first frame. A single eligible run compiles its Twin briefing alongside the
- * form. The run write waits for that exact one-off snapshot so it cannot queue
- * a different signed version than the one the user reviewed.
+ * confirming N runs" (MUL-5010). A single eligible run compiles its Twin
+ * briefing alongside the form. The write waits for that exact snapshot so it
+ * cannot queue a different signed version than the one the user reviewed.
  *
  * Completion is silent: the assignee/status change and any run it starts
  * surface through the issue's normal updates, so the confirm adds no result
@@ -113,10 +108,8 @@ export function RunConfirmModal({
   const d = (data ?? {}) as RunConfirmData;
   const issueIds = d.issueIds ?? [];
 
-  const [note, setNote] = useState("");
   // Which footer action is in flight, so only the clicked button shows a
-  // spinner (the request runs an agent on the server for note assigns, so it is
-  // not instant — the disabled-only state read as frozen).
+  // spinner (the write is not instant — the disabled-only state read as frozen).
   const [pendingAction, setPendingAction] = useState<"go" | "suppress" | null>(null);
   const [twinUseState, setTwinUseState] = useState<TwinBindingState>("off");
   const [previewRevision, setPreviewRevision] = useState(0);
@@ -134,20 +127,10 @@ export function RunConfirmModal({
   const updateIssue = useUpdateIssue();
   const batchUpdate = useBatchUpdateIssues();
 
-  // Handoff-support verdict, resolved entirely from warm client caches
-  // (useWorkspacePresencePrefetch keeps agents / squads / runtimes hot), so the
-  // note box settles on the first frame with no round-trip — the same shape as
-  // the quick-create version gate. An agent assignee targets its own runtime; a
-  // squad targets its leader's, which the squad list gives us directly, so both
-  // are knowable locally. `null` means "cannot tell" (assignee not in cache
-  // yet, or no runtime bound) and leaves the box enabled: the note is a soft
-  // gate, and a spurious warning is worse than a note an old daemon drops.
   const wsId = useWorkspaceId();
   // Built-ins resolve through i18n, custom statuses through the catalog, so the
   // promotion headline reads the same way the picker the user just used does.
   const statusLabel = useStatusLabel(wsId);
-  const { data: agents = [] } = useQuery({ ...agentListOptions(wsId), enabled: !!wsId });
-  const { data: runtimes = [] } = useQuery({ ...runtimeListOptions(wsId), enabled: !!wsId });
   const { data: squads = [] } = useQuery({ ...squadListOptions(wsId), enabled: !!wsId });
   const targetAgentId = useMemo(() => {
     if (d.assigneeType === "agent") return d.assigneeId;
@@ -156,15 +139,6 @@ export function RunConfirmModal({
     }
     return undefined;
   }, [d.assigneeId, d.assigneeType, squads]);
-  const localHandoff = useMemo<boolean | null>(() => {
-    if (!targetAgentId) return null;
-    const agent = agents.find((a) => a.id === targetAgentId);
-    if (!agent?.runtime_id) return null;
-    const runtime = runtimes.find((r) => r.id === agent.runtime_id);
-    if (!runtime) return null;
-    return handoffSupported(readRuntimeCliVersion(runtime.metadata));
-  }, [targetAgentId, agents, runtimes]);
-
   const twinPreview = usePreviewTwinBriefing(wsId);
   const canPreviewTwin = issueIds.length === 1 && !!targetAgentId && !!d.request;
   const previewIntentKey = [targetAgentId, d.projectId, issueIds[0], d.request].join("\u0000");
@@ -215,9 +189,6 @@ export function RunConfirmModal({
     (!previewNeedsVersion || activePreview.twinVersion !== null)
   );
 
-  // Soft gate: an old runtime can't render the note. Disable the box but let
-  // the assignment proceed (MUL-3375 §6.3).
-  const noteDisabled = localHandoff === false;
 
   // A promotion carries the status and nothing else: the owner is already on
   // the issue, and re-sending the same assignee would turn a status write into
@@ -255,10 +226,7 @@ export function RunConfirmModal({
   const submit = async (suppressRun: boolean) => {
     if (issueIds.length === 0 || submitting || !previewReady) return;
     setPendingAction(suppressRun ? "suppress" : "go");
-    const payload = applyTo({
-      ...(suppressRun ? { suppress_run: true } : {}),
-      ...(!suppressRun && !noteDisabled && note.trim() ? { handoff_note: note.trim() } : {}),
-    });
+    const payload = applyTo(suppressRun ? { suppress_run: true } : {});
     if (suppressRun) delete payload.twin_use;
     try {
       // Completion is silent, exactly as before: the assignee and any run show
@@ -290,11 +258,10 @@ export function RunConfirmModal({
    * The configured `send` chord confirms the assignment, the same chord that
    * creates from the issue composer (MUL-5694).
    *
-   * Bound on the dialog, not on the note box, because the chord means "run the
-   * primary action" no matter which control has focus — and the note box is
-   * not always where focus is. An old runtime disables it, which hands initial
-   * focus to the footer instead, and that is precisely where the keycap on the
-   * confirm button would otherwise be advertising a dead key.
+   * Bound on the dialog, not on a single control, because the chord means "run
+   * the primary action" no matter which control has focus — and with only the
+   * footer left to focus, that is precisely where the keycap on the confirm
+   * button would otherwise be advertising a dead key.
    */
   const onDialogKeyDown = (e: React.KeyboardEvent) => {
     // A held chord submits once, and the Enter that commits an IME
@@ -344,25 +311,6 @@ export function RunConfirmModal({
           </DialogTitle>
           <DialogDescription>{headline}</DialogDescription>
         </DialogHeader>
-
-        {/* The note remains editable while the independent Twin preview settles. */}
-        <div className="grid gap-1.5">
-          <label className="text-body font-medium" htmlFor="handoff-note">
-            {t(($) => $.run_confirm.note_label)}
-          </label>
-          <Textarea
-            id="handoff-note"
-            value={note}
-            maxLength={MAX_HANDOFF_NOTE}
-            disabled={submitting || noteDisabled}
-            placeholder={t(($) => $.run_confirm.note_placeholder)}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-          />
-          {noteDisabled ? (
-            <p className="text-caption text-muted-foreground">{t(($) => $.run_confirm.note_unsupported)}</p>
-          ) : null}
-        </div>
 
         {canPreviewTwin ? (
           <section className="grid gap-2 border-y py-3" aria-labelledby="run-twin-use-title">

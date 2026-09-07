@@ -21,7 +21,7 @@ const maxLegacyMigrationPrefix = 148
 // listed and is deliberately absent again — the later of the two migrations
 // was renumbered to 376, which its idempotent DDL made safe.
 //
-// Prefixes 251–309, 403–432, and 437–449 record merges of already-published
+// Prefixes 251–309, 403–432, and 437–450 record merges of already-published
 // upstream and downstream histories. Renaming either side changes its
 // schema_migrations identity and can re-run DDL on existing installations, so
 // their exact stems stay frozen. The migration runner carries explicit aliases
@@ -156,6 +156,7 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"447": {"447_issue_properties_bigm_index_statistics", "447_room_synthesis_retry_key_index"},
 	"448": {"448_autopilot_quota_rejection_notified_at", "448_room_capability_rollout"},
 	"449": {"449_autopilot_trigger_created_by", "449_room_artifact_recommendation_key"},
+	"450": {"450_drop_comment_delegated_failure_pending_index", "450_room_memory_review_key_index"},
 }
 
 var migrationPrefixPattern = regexp.MustCompile(`^(\d+)_`)

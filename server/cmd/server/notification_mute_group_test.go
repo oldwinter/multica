@@ -47,28 +47,3 @@ func TestIsNotifMutedGroupSplit(t *testing.T) {
 		})
 	}
 }
-
-func TestNotifTypeToGroupRoomsLifecycleTypes(t *testing.T) {
-	for _, itemType := range []string{
-		"room_outcome_review_required",
-		"room_recommendation_review_required",
-		"room_cycle_failed",
-		"room_cycle_blocked",
-	} {
-		if got := notifTypeToGroup[itemType]; got != "rooms" {
-			t.Fatalf("notifTypeToGroup[%s] = %q, want rooms", itemType, got)
-		}
-	}
-}
-
-// TestNotifTypeToGroupMentionsIsOwnGroup guards the mapping itself: a future
-// edit that folds `mentioned` back under `comments` should fail here rather
-// than silently reintroduce the coupling.
-func TestNotifTypeToGroupMentionsIsOwnGroup(t *testing.T) {
-	if got := notifTypeToGroup["mentioned"]; got != "mentions" {
-		t.Fatalf("notifTypeToGroup[mentioned] = %q, want %q", got, "mentions")
-	}
-	if got := notifTypeToGroup["new_comment"]; got != "comments" {
-		t.Fatalf("notifTypeToGroup[new_comment] = %q, want %q", got, "comments")
-	}
-}
