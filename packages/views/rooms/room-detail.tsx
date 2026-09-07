@@ -21,7 +21,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { currentPath, useOptionalNavigation } from "../navigation";
-import { roomStatusClass } from "./room-display";
+import { roomRefusalKey, roomStatusClass } from "./room-display";
 import { RoomTranscript } from "./room-transcript";
 import { RoomInspector } from "./room-inspector";
 import { RoomOutcome, type RoomAttentionTarget } from "./room-outcome";
@@ -371,16 +371,6 @@ export function RoomDetail({
 }
 
 function blockerCopy(t: ReturnType<typeof useT<"rooms">>["t"], blocker: string | null): string {
-  switch (blocker) {
-    case "room_paused": return t(($) => $.refusal.room_paused);
-    case "room_archived": return t(($) => $.refusal.room_archived);
-    case "budget_exhausted": return t(($) => $.refusal.budget_exhausted);
-    case "active_cycle":
-    case "cycle_active": return t(($) => $.refusal.cycle_active);
-    case "agent_unavailable": return t(($) => $.refusal.agent_unavailable);
-    case "daemon_capability_unavailable": return t(($) => $.refusal.daemon_capability_unavailable);
-		case "spend_limit_unsupported": return t(($) => $.refusal.spend_limit_unsupported);
-    case "invocation_not_allowed": return t(($) => $.refusal.invocation_not_allowed);
-    default: return t(($) => $.refusal.preflight_required);
-  }
+  const key = roomRefusalKey(blocker);
+  return t(($) => $.refusal[key]);
 }

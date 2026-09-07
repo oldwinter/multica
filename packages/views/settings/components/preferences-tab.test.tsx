@@ -103,17 +103,23 @@ vi.mock("@multica/ui/components/common/theme-provider", () => ({
   useSkin: () => ({ skin: "tension", setSkin: mockSetSkin }),
 }));
 
-vi.mock("../../appearance", () => ({
-  useAppearancePreferences: () => ({
-    ...appearanceRef.current,
-    selectSkin: mockSetSkin,
-    selectAppearance: mockSetTheme,
-    reset: mockResetAppearance,
-    undo: mockUndoAppearance,
-    retry: mockRetryAppearance,
-    acknowledgeRecoveryNotice: mockAcknowledgeRecovery,
-  }),
-}));
+vi.mock("../../appearance", async () => {
+  const actual = await vi.importActual<typeof import("../../appearance")>(
+    "../../appearance",
+  );
+  return {
+    ...actual,
+    useAppearancePreferences: () => ({
+      ...appearanceRef.current,
+      selectSkin: mockSetSkin,
+      selectAppearance: mockSetTheme,
+      reset: mockResetAppearance,
+      undo: mockUndoAppearance,
+      retry: mockRetryAppearance,
+      acknowledgeRecoveryNotice: mockAcknowledgeRecovery,
+    }),
+  };
+});
 
 vi.mock("@multica/ui/lib/clipboard", () => ({
   copyText: mockCopyText,

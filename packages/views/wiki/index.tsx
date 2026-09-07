@@ -284,7 +284,7 @@ export function WikiPageView({
       data-wiki-interaction-region
     >
       <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <header className="flex flex-col gap-4 border-b border-surface-border pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-caption text-muted-foreground">
               <BookOpenText className="size-3.5" aria-hidden="true" />
@@ -293,13 +293,13 @@ export function WikiPageView({
             <h1 className="break-words text-display-sm font-medium text-foreground">{t(($) => $.page.title)}</h1>
             <p className="max-w-2xl break-words text-body text-muted-foreground">{t(($) => $.page.description)}</p>
           </div>
-          <Button onClick={() => setCreating(true)} disabled={requiresProjectSelection}>
+          <Button className="self-start sm:self-auto" onClick={() => setCreating(true)} disabled={requiresProjectSelection}>
             <Plus data-icon="inline-start" />
             {t(($) => $.actions.new_page)}
           </Button>
         </header>
 
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-3 border-b border-surface-border pb-3 xl:flex-row xl:items-center xl:justify-between">
           <Tabs
             value={scope}
             onValueChange={changeCollectionScope}
@@ -347,6 +347,8 @@ export function WikiPageView({
 
         <WikiMasterDetail
           detailRole={narrowDetailRole}
+          collectionLabel={t(($) => $.search.label)}
+          detailLabel={selected ? selected.title || selected.path : t(($) => $.empty.title)}
           collection={
             normalizedSearch.length === 1 ? (
               <p className="px-1 py-4 text-body text-muted-foreground">{t(($) => $.search.minimum)}</p>
@@ -427,7 +429,7 @@ export function WikiPageView({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-4 border-b border-surface-border pb-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-1">
                     <h2 className="break-words text-title-lg font-medium text-foreground">{selected.title || selected.path}</h2>
                     <p className="break-all font-mono text-caption text-muted-foreground">{selected.path}</p>
@@ -479,7 +481,7 @@ export function WikiPageView({
                       sourceKind: selected.lastSourceKind,
                       actorType: selected.lastActorType,
                     }} />
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
                       <Button variant="outline" onClick={() => { setActionError(null); setHistoryOpen(true); }}><History data-icon="inline-start" />{t(($) => $.history.action)}</Button>
                       <Button variant="outline" onClick={startEdit}>{t(($) => $.actions.edit)}</Button>
                       <Button variant="ghost" onClick={() => { setActionError(null); setDeleteOpen(true); }}><Trash2 data-icon="inline-start" />{t(($) => $.actions.delete)}</Button>

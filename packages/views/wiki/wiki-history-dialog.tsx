@@ -102,7 +102,7 @@ export function WikiHistoryDialog({
           </DialogHeader>
 
           {isLoading ? (
-            <p className="py-8 text-center text-body text-muted-foreground" role="status">
+            <p className="py-8 text-center text-body text-muted-foreground" role="status" aria-live="polite">
               {t(($) => $.history.loading)}
             </p>
           ) : isError ? (
@@ -135,36 +135,38 @@ export function WikiHistoryDialog({
                 <RevisionPreview revision={right} />
               </div>
 
-              <section className="space-y-2" aria-label={t(($) => $.history.timeline)}>
-                {ordered.map((revision) => (
-                  <div
-                    key={revision.id}
-                    className="flex flex-col gap-2 border-t border-surface-border py-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-body font-medium text-foreground">
-                        {t(($) => $.history.revision_label, { number: revision.revisionNumber })}
-                      </p>
-                      <p className="break-words text-caption text-muted-foreground">
-                        {t(($) => $.history.provenance, {
-                          source: revision.sourceKind,
-                          actor: revision.actorType,
-                        })}
-                      </p>
-                      <p className="break-all font-mono text-caption text-muted-foreground">{revision.contentDigest}</p>
-                    </div>
-                    {revision.revisionNumber < currentRevisionNumber ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setRestoreId(revision.id)}
-                      >
-                        <RotateCcw data-icon="inline-start" />
-                        {t(($) => $.history.restore)}
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
+              <section aria-label={t(($) => $.history.timeline)}>
+                <ol className="space-y-2">
+                  {ordered.map((revision) => (
+                    <li
+                      key={revision.id}
+                      className="flex flex-col gap-2 border-t border-surface-border py-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-body font-medium text-foreground">
+                          {t(($) => $.history.revision_label, { number: revision.revisionNumber })}
+                        </p>
+                        <p className="break-words text-caption text-muted-foreground">
+                          {t(($) => $.history.provenance, {
+                            source: revision.sourceKind,
+                            actor: revision.actorType,
+                          })}
+                        </p>
+                        <p className="break-all font-mono text-caption text-muted-foreground">{revision.contentDigest}</p>
+                      </div>
+                      {revision.revisionNumber < currentRevisionNumber ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRestoreId(revision.id)}
+                        >
+                          <RotateCcw data-icon="inline-start" />
+                          {t(($) => $.history.restore)}
+                        </Button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
               </section>
             </div>
           )}
@@ -232,11 +234,17 @@ function RevisionSelect({
 
 function RevisionPreview({ revision }: { revision?: WikiRevision }) {
   const { t } = useT("wiki");
-  if (!revision) return <div className="min-h-64 rounded-md bg-muted/40" />;
+  if (!revision) {
+    return (
+      <div className="flex min-h-64 items-center justify-center rounded-md border border-dashed border-surface-border bg-muted/20 px-3 text-center text-caption text-muted-foreground">
+        {t(($) => $.history.empty_content)}
+      </div>
+    );
+  }
   return (
-    <section className="min-w-0 overflow-hidden rounded-md border border-surface-border bg-surface">
+    <section className="min-w-0 overflow-hidden rounded-md border border-surface-border bg-surface" aria-label={revision.title || revision.path}>
       <header className="border-b border-surface-border px-3 py-2">
-        <p className="truncate text-body font-medium text-foreground">{revision.title || revision.path}</p>
+        <h3 className="truncate text-body font-medium text-foreground">{revision.title || revision.path}</h3>
         <p className="truncate font-mono text-caption text-muted-foreground">{revision.path}</p>
       </header>
       <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-caption text-foreground">

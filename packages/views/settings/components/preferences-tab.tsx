@@ -36,10 +36,8 @@ import {
   RadioGroupItem,
 } from "@multica/ui/components/ui/radio-group";
 import {
-  SKIN_IDS,
   serializeAppearanceDiagnostics,
   type AppearanceUndoReceipt,
-  type SkinId,
 } from "@multica/core/appearance";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -62,7 +60,14 @@ import { resolveSettingsLocation, settingsHref } from "./settings-navigation";
 import { IssueTab } from "./issue-tab";
 import { ChatTab } from "./chat-tab";
 import { useT } from "../../i18n";
-import { useAppearancePreferences } from "../../appearance";
+import {
+  APPEARANCE_OPTIONS,
+  SKIN_OPTIONS,
+  getAppearanceSyncMessage,
+  isRequestedAppearance,
+  isSkinId,
+  useAppearancePreferences,
+} from "../../appearance";
 import {
   SettingsCard,
   SettingsRow,
@@ -198,30 +203,18 @@ function GeneralPreferences() {
   // comparing so the picker always exposes the actual selected option.
   const currentLocale: SupportedLocale = resolveSettingsLocale(i18n.language);
 
-  const themeOptions = [
-    {
-      value: "system" as const,
-      label: t(($) => $.preferences.theme.system),
-      icon: Monitor,
-    },
-    {
-      value: "light" as const,
-      label: t(($) => $.preferences.theme.light),
-      icon: Sun,
-    },
-    {
-      value: "dark" as const,
-      label: t(($) => $.preferences.theme.dark),
-      icon: Moon,
-    },
-  ];
-
-  const skinOptions: Array<{ value: SkinId; label: string; description: string }> =
-    SKIN_IDS.map((value) => ({
-      value,
-      label: t(($) => $.preferences.skin[value].name),
-      description: t(($) => $.preferences.skin[value].description),
-    }));
+  const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
+  const themeOptions = APPEARANCE_OPTIONS.map(({ value }) => ({
+    value,
+    label: t(($) => $.preferences.theme[value]),
+    icon: themeIcons[value],
+  }));
+  const skinOptions = SKIN_OPTIONS.map(({ value }) => ({
+    value,
+    label: t(($) => $.preferences.skin[value].name),
+    description: t(($) => $.preferences.skin[value].description),
+  }));
+  const syncMessage = getAppearanceSyncMessage(preferences);
 
   const languageOptions: { value: SupportedLocale; label: string }[] = [
     { value: "en", label: t(($) => $.preferences.language.english) },
@@ -285,7 +278,8 @@ function GeneralPreferences() {
           aria-label={t(($) => $.preferences.skin.title)}
           value={skin}
           onValueChange={(value) => {
-            showAppearanceSaved(selectSkin(value as SkinId));
+            if (!isSkinId(value)) return;
+            showAppearanceSaved(selectSkin(value));
           }}
           className="grid gap-2 pe-chat-launcher @xl:grid-cols-3 @xl:pe-0"
         >
@@ -358,9 +352,8 @@ function GeneralPreferences() {
               aria-label={t(($) => $.preferences.theme.title)}
               value={theme}
               onValueChange={(value) => {
-                showAppearanceSaved(
-                  selectAppearance(value as "system" | "light" | "dark"),
-                );
+                if (!isRequestedAppearance(value)) return;
+                showAppearanceSaved(selectAppearance(value));
               }}
               className="grid grid-cols-3 gap-1 rounded-lg bg-secondary p-1"
             >
@@ -396,17 +389,7 @@ function GeneralPreferences() {
               role="status"
               aria-live="polite"
             >
-              {preferences.source === "default" &&
-                t(($) => $.preferences.appearance_sync.default)}
-              {preferences.source !== "default" &&
-                preferences.syncState.status === "local-only" &&
-                t(($) => $.preferences.appearance_sync.local_only)}
-              {preferences.syncState.status === "synced" &&
-                t(($) => $.preferences.appearance_sync.synced)}
-              {preferences.syncState.status === "pending" &&
-                t(($) => $.preferences.appearance_sync.pending)}
-              {preferences.syncState.status === "failed" &&
-                t(($) => $.preferences.appearance_sync.failed)}
+              {t(($) => $.preferences.appearance_sync[syncMessage])}
             </span>
             {canRetry && (
               <Button

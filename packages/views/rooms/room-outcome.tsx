@@ -124,6 +124,7 @@ export function RoomOutcome({
     <section
       className={cn("min-h-0 overflow-y-auto border-surface-border bg-surface", className)}
       aria-labelledby="room-outcome-heading"
+      aria-busy={retryPending}
       data-testid="room-outcome"
     >
       <div className="sticky top-0 z-10 flex min-h-11 items-center gap-2 border-b border-surface-border bg-surface px-4">
@@ -147,7 +148,7 @@ export function RoomOutcome({
         ) : null}
 
         {state.latestCycle?.synthesis_error ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3">
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3" role="alert">
             <div className="flex gap-2">
               <MessageSquareWarning className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
               <div className="min-w-0">
@@ -172,7 +173,7 @@ export function RoomOutcome({
         ) : null}
 
         {!synthesis ? (
-          <div className="py-8 text-center">
+          <div className="py-8 text-center" role="status" aria-live="polite">
             <Sparkles className="mx-auto size-5 text-muted-foreground" aria-hidden="true" />
             <p className="mt-2 text-body text-muted-foreground">
               {state.phase === "gathering" || state.phase === "synthesizing"

@@ -31,7 +31,7 @@ export function WikiRevisionSelector({
     <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
       {t(($) => $.selectors.wiki_revision)}
       <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
-        <SelectTrigger disabled={disabled} className="w-full sm:w-72" aria-label={t(($) => $.selectors.wiki_revision)}><SelectValue /></SelectTrigger>
+        <SelectTrigger disabled={disabled} className="w-full min-w-0 focus-visible:ring-2 focus-visible:ring-ring sm:w-72" aria-label={t(($) => $.selectors.wiki_revision)}><SelectValue /></SelectTrigger>
         <SelectContent>{items.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
       </Select>
     </label>
@@ -73,7 +73,7 @@ export function TwinHistorySelectors({
         <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
           {t(($) => $.selectors.twin_proposal)}
           <Select items={proposalItems} value={proposalId} onValueChange={(next) => typeof next === "string" && onProposalChange(next)}>
-            <SelectTrigger disabled={disabled} className="w-full" aria-label={t(($) => $.selectors.twin_proposal)}><SelectValue /></SelectTrigger>
+            <SelectTrigger disabled={disabled} className="w-full min-w-0 focus-visible:ring-2 focus-visible:ring-ring" aria-label={t(($) => $.selectors.twin_proposal)}><SelectValue /></SelectTrigger>
             <SelectContent>{proposalItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
           </Select>
         </label>
@@ -82,7 +82,7 @@ export function TwinHistorySelectors({
         <label className="flex min-w-0 flex-col gap-2 text-label font-medium">
           {t(($) => $.selectors.twin_version)}
           <Select items={versionItems} value={versionId} onValueChange={(next) => typeof next === "string" && onVersionChange(next)}>
-            <SelectTrigger disabled={disabled} className="w-full" aria-label={t(($) => $.selectors.twin_version)}><SelectValue /></SelectTrigger>
+            <SelectTrigger disabled={disabled} className="w-full min-w-0 focus-visible:ring-2 focus-visible:ring-ring" aria-label={t(($) => $.selectors.twin_version)}><SelectValue /></SelectTrigger>
             <SelectContent>{versionItems.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
           </Select>
         </label>

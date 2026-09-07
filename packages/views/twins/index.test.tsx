@@ -30,6 +30,9 @@ vi.mock("../navigation", () => ({
 vi.mock("./components/twin-activation-readiness", () => ({
   TwinActivationReadiness: () => null,
 }));
+vi.mock("../wiki/lm-wiki-source-policy-container", () => ({
+  LMWikiSourcePolicyContainer: () => null,
+}));
 
 const resources = { en: { common: enCommon, twins: enTwins } };
 

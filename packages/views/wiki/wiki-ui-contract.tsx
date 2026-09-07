@@ -5,6 +5,8 @@ export type WikiNarrowDetailRole = "collection-echo" | "required";
 
 interface WikiMasterDetailProps {
   detailRole: WikiNarrowDetailRole;
+  collectionLabel?: string;
+  detailLabel?: string;
   collection: ReactNode;
   detail: ReactNode;
 }
@@ -28,6 +30,8 @@ export const wikiDestructiveActionClassName =
 
 export function WikiMasterDetail({
   detailRole,
+  collectionLabel,
+  detailLabel,
   collection,
   detail,
 }: WikiMasterDetailProps) {
@@ -45,16 +49,18 @@ export function WikiMasterDetail({
       data-narrow-detail-role={detailRole}
     >
       <aside
-        className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-3 shadow-[var(--surface-shadow)]"
+        className="min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-2.5 shadow-[var(--surface-shadow)] sm:p-3"
+        aria-label={collectionLabel}
         data-testid="wiki-collection-pane"
       >
         {collection}
       </aside>
       <section
         className={cn(
-          "min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)]",
+          "min-h-0 overflow-y-auto rounded-lg border border-surface-border bg-surface p-4 shadow-[var(--surface-shadow)] sm:p-5",
           hidesNarrowDetail && "max-lg:hidden",
         )}
+        aria-label={detailLabel}
         data-testid="wiki-detail-pane"
       >
         {detail}

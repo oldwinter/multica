@@ -194,7 +194,7 @@ export function PersonalWikiPageView({
       data-wiki-interaction-region
     >
       <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <header className="flex flex-col gap-4 border-b border-surface-border pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-2">
             <Button
               type="button"
@@ -220,13 +220,13 @@ export function PersonalWikiPageView({
               </p>
             </div>
           </div>
-          <Button onClick={() => setCreating(true)}>
+          <Button className="self-start sm:self-auto" onClick={() => setCreating(true)}>
             <Plus data-icon="inline-start" />
             {t(($) => $.actions.new_page)}
           </Button>
         </header>
 
-        <div className="relative w-full sm:max-w-md">
+        <div className="relative w-full sm:max-w-md" role="search">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             value={searchText}
@@ -252,6 +252,8 @@ export function PersonalWikiPageView({
 
         <WikiMasterDetail
           detailRole={narrowDetailRole}
+          collectionLabel={t(($) => $.personal.search_label)}
+          detailLabel={selected ? selected.title || selected.path : t(($) => $.personal.empty_title)}
           collection={
             normalizedSearch.length === 1 ? (
               <p className="px-1 py-4 text-body text-muted-foreground">{t(($) => $.search.minimum)}</p>
@@ -340,7 +342,7 @@ export function PersonalWikiPageView({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-4 border-b border-surface-border pb-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-1">
                     <h2 className="break-words text-title-lg font-medium text-foreground">{selected.title || selected.path}</h2>
                     <p className="break-all font-mono text-caption text-muted-foreground">{selected.path}</p>
@@ -351,7 +353,7 @@ export function PersonalWikiPageView({
                       <span className="break-all font-mono">{selected.contentDigest}</span>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
                     <Button variant="outline" onClick={() => nav.push(routePaths.revision(selected.currentRevisionId))}>
                       <FileClock data-icon="inline-start" />
                       {t(($) => $.personal.stable_revision)}
