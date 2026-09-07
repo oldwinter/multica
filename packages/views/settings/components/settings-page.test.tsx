@@ -1,5 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SidebarProvider, useSidebar } from "@multica/ui/components/ui/sidebar";
@@ -12,9 +11,9 @@ import { renderWithI18n } from "../../test/i18n";
 
 // This file tests the settings SHELL — the chrome around the tabs — so every
 // tab panel is stubbed out. Their contents have their own test files.
-const stub = vi.hoisted(
-  () => (name: string) => () => ({ [name]: () => <div>{name}</div> }),
-);
+const stub = vi.hoisted(() => (name: string) => () => ({
+  [name]: () => <div>{name}</div>,
+}));
 vi.mock("./account-tab", stub("AccountTab"));
 vi.mock("./preferences-tab", stub("PreferencesTab"));
 vi.mock("./chat-tab", stub("ChatTab"));
@@ -25,7 +24,6 @@ vi.mock("./members-tab", stub("MembersTab"));
 vi.mock("./repositories-tab", stub("RepositoriesTab"));
 vi.mock("./github-tab", stub("GitHubTab"));
 vi.mock("./integrations-tab", stub("IntegrationsTab"));
-vi.mock("./labs-tab", stub("LabsTab"));
 vi.mock("./notifications-tab", stub("NotificationsTab"));
 vi.mock("./labels-tab", stub("LabelsTab"));
 vi.mock("./properties-tab", stub("PropertiesTab"));
@@ -39,13 +37,16 @@ vi.mock("@multica/core/paths", () => ({
 }));
 
 const replace = vi.fn();
+const push = vi.fn();
 const navigationState = { search: "" };
-vi.mock("../../navigation", () => ({
+vi.mock("../../navigation/context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../navigation/context")>()),
   useNavigation: () => ({
     searchParams: new URLSearchParams(navigationState.search),
     hash: "",
     pathname: "/acme/settings",
     replace,
+    push,
   }),
 }));
 
@@ -118,46 +119,15 @@ describe("SettingsPage nav trigger", () => {
   });
 });
 
-describe("SettingsPage mobile section navigation", () => {
-  it("exposes every settings section through an accessible mobile selector", () => {
-    renderWithI18n(<SettingsPage />);
-
-    expect(screen.getByRole("combobox", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByTestId("settings-mobile-tab-select")).toHaveClass("md:hidden");
-    expect(screen.getByRole("tablist")).toHaveClass("hidden");
-  });
-
-  it("keeps the full tab list on desktop", () => {
-    layout.compact = false;
-
-    renderWithI18n(<SettingsPage />);
-
-    expect(screen.queryByRole("combobox", { name: "Settings" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tablist")).toHaveClass("md:flex");
-  });
-
-  it("routes from the mobile selector while preserving existing query state", async () => {
-    navigationState.search = "view=activity";
-    const user = userEvent.setup();
-
-    renderWithI18n(<SettingsPage />);
-
-    await user.click(screen.getByRole("combobox", { name: "Settings" }));
-    await user.click(await screen.findByRole("option", { name: "Integrations" }));
-
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(
-      "/acme/settings?view=activity&tab=integrations",
-    ));
-  });
-});
-
 describe("SettingsPage Plugin feature flag", () => {
   it("hides Plugins and falls back from a direct tab URL when disabled", () => {
     navigationState.search = "tab=plugins";
 
     renderWithI18n(<SettingsPage />);
 
-    expect(screen.queryByRole("tab", { name: "Plugins" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Plugins" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("PluginsTab")).not.toBeInTheDocument();
     expect(screen.getByText("AccountTab")).toBeInTheDocument();
   });
@@ -168,7 +138,7 @@ describe("SettingsPage Plugin feature flag", () => {
 
     renderWithI18n(<SettingsPage />);
 
-    expect(screen.getByRole("tab", { name: "Plugins" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Plugins" })).toBeInTheDocument();
     expect(screen.getByText("PluginsTab")).toBeInTheDocument();
   });
 });
@@ -180,7 +150,7 @@ describe("SettingsPage workspace subscription feature flag", () => {
     renderWithI18n(<SettingsPage />);
 
     expect(
-      screen.queryByRole("tab", { name: "Billing" }),
+      screen.queryByRole("link", { name: "Billing" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("BillingTab")).not.toBeInTheDocument();
     expect(screen.getByText("WorkspaceTab")).toBeInTheDocument();
@@ -194,7 +164,62 @@ describe("SettingsPage workspace subscription feature flag", () => {
 
     renderWithI18n(<SettingsPage />);
 
-    expect(screen.getByRole("tab", { name: "Billing" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Billing" })).toBeInTheDocument();
     expect(screen.getByText("BillingTab")).toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage information architecture", () => {
+  it("groups workspace configuration and keeps retired pages out of navigation", () => {
+    renderWithI18n(<SettingsPage />);
+    const nav = screen.getByRole("navigation", { name: "Settings" });
+    const issues = within(nav).getByRole("region", {
+      name: "Issue configuration",
+    });
+    expect(
+      within(issues).getByRole("link", { name: "Issue Statuses" }),
+    ).toBeInTheDocument();
+    expect(
+      within(nav).queryByRole("link", { name: /^(Issue|Chat|GitHub|Labs)$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens old issue bookmarks in preferences", () => {
+    navigationState.search = "tab=issue";
+    renderWithI18n(<SettingsPage />);
+    expect(screen.getByText("PreferencesTab")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Preferences" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("places platform settings in a device group", () => {
+    renderWithI18n(
+      <SettingsPage
+        extraDeviceTabs={[
+          {
+            value: "updates",
+            label: "Updates",
+            icon: () => null,
+            content: <div>Device updates</div>,
+          },
+        ]}
+      />,
+    );
+    const device = screen.getByRole("region", { name: "Desktop app" });
+    expect(
+      within(device).getByRole("link", { name: "Updates" }),
+    ).toBeInTheDocument();
+  });
+
+  it("navigates from the compact selector and clears the old detail", () => {
+    navigationState.search = "tab=integrations&integration=github&keep=1";
+    renderWithI18n(<SettingsPage />);
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Go to settings page" }),
+      { target: { value: "preferences" } },
+    );
+    expect(push).toHaveBeenCalledWith("/acme/settings?tab=preferences&keep=1");
   });
 });

@@ -43,6 +43,14 @@ type AppearanceMockState = {
   recoveryNoticePending: boolean;
 };
 
+const navigationState = vi.hoisted(() => ({ search: "", replace: vi.fn() }));
+vi.mock("../../navigation", () => ({
+  useNavigation: () => ({
+    pathname: "/acme/settings",
+    searchParams: new URLSearchParams(navigationState.search),
+    replace: navigationState.replace,
+  }),
+}));
 const mockPersist = vi.hoisted(() => vi.fn());
 const mockUpdateMe = vi.hoisted(() => vi.fn());
 const mockReload = vi.hoisted(() => vi.fn());
@@ -112,10 +120,9 @@ vi.mock("@multica/ui/lib/clipboard", () => ({
 }));
 
 vi.mock("@multica/core/i18n/react", async () => {
-  const actual =
-    await vi.importActual<typeof import("@multica/core/i18n/react")>(
-      "@multica/core/i18n/react",
-    );
+  const actual = await vi.importActual<
+    typeof import("@multica/core/i18n/react")
+  >("@multica/core/i18n/react");
   return {
     ...actual,
     useLocaleAdapter: () => ({
@@ -152,8 +159,7 @@ vi.mock("@multica/core/auth", async () => {
     setUser: mockSetUser,
   });
   const useAuthStore = Object.assign(
-    (sel?: (s: AuthState) => unknown) =>
-      sel ? sel(state()) : state(),
+    (sel?: (s: AuthState) => unknown) => (sel ? sel(state()) : state()),
     { getState: state },
   );
   return { ...actual, useAuthStore };
@@ -581,7 +587,9 @@ describe("PreferencesTab — Timezone section", () => {
     user: ReturnType<typeof userEvent.setup>,
     name: RegExp | string,
   ) {
-    await user.click(screen.getByRole("combobox", { name: "Viewing Timezone" }));
+    await user.click(
+      screen.getByRole("combobox", { name: "Viewing Timezone" }),
+    );
     await user.click(await screen.findByRole("option", { name }));
   }
 
@@ -670,5 +678,30 @@ describe("PreferencesTab — Sticky comment bar", () => {
     expect(useCommentComposerStore.getState().sticky).toBe(false);
     expect(toggle).toHaveAttribute("aria-checked", "false");
     expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Preferences sections", () => {
+  afterEach(() => {
+    navigationState.search = "";
+    cleanup();
+  });
+  it("opens the issue creation controls from an old bookmark", () => {
+    navigationState.search = "tab=issue";
+    render(
+      <I18nWrapper>
+        <PreferencesTab />
+      </I18nWrapper>,
+    );
+    expect(screen.getByRole("tab", { name: "Issue creation" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.getByText(enSettings.preferences.issue_scope),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Theme" }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -436,6 +436,7 @@ var concurrentDownIndexCleanups = map[string]string{
 	"391_drop_agent_task_queue_dispatched_prepare_index":    "idx_agent_task_queue_dispatched_prepare",
 	"438_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
 	"437_drop_agent_runtime_last_seen_at_index":             "idx_agent_runtime_last_seen_at",
+	"450_drop_comment_delegated_failure_pending_index":      "idx_comment_delegated_failure_pending",
 }
 
 var preMigrationHooks = func() map[string]preMigrationHook {

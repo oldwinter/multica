@@ -16,6 +16,7 @@ import {
 import { detectWebOS } from "@/platform/client-os";
 import { webAppearanceAdapter } from "@/platform/appearance-adapter";
 import { AppearanceSyncBridge } from "@multica/views/appearance";
+import { useUserLocaleSyncEnabled } from "@/platform/user-locale-sync";
 
 // Legacy token in localStorage → keep this session in token mode so users who
 // logged in before the cookie-auth migration stay authed. They migrate to
@@ -81,6 +82,7 @@ export function WebProviders({
   wsUrl?: string;
 }) {
   const cookieAuth = !hasLegacyToken();
+  const syncUserLocale = useUserLocaleSyncEnabled();
   // Stable identity reference so downstream effects keyed on it don't see a
   // new object on every parent render.
   const identity = useMemo(
@@ -108,6 +110,7 @@ export function WebProviders({
       locale={locale}
       resources={resources}
       localeAdapter={localeAdapter}
+      syncUserLocale={syncUserLocale}
     >
       <WebAppearanceBridge>
         <WebNavigationProvider>

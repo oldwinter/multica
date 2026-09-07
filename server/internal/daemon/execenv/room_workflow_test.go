@@ -29,8 +29,5 @@ func TestRoomWorkflowUsesDedicatedRoomPath(t *testing.T) {
 			t.Errorf("Room workflow contains Autopilot sentinel %q", sentinel)
 		}
 	}
-	context := renderIssueContext("codex", task)
-	if !strings.Contains(context, "17 ticks") {
-		t.Fatalf("Room context omits cost limit:\n%s", context)
-	}
+	// Per-turn Room data and cost limits are covered by daemon/room_prompt_test.go.
 }

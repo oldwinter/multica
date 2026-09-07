@@ -77,10 +77,6 @@ export interface UpdateIssueRequest {
    *  MUL-3375). The assignee/status change still applies. Control field —
    *  strip from optimistic cache patches; never written onto the Issue. */
   suppress_run?: boolean;
-  /** Free-text handoff instruction injected into the started run's opening
-   *  context (MUL-3375). Only consumed when a run actually starts. Control
-   *  field — strip from optimistic cache patches. */
-  handoff_note?: string;
   /** Per-run Twin execution snapshot. It controls only the run started by
    *  this write and is never persisted on the Issue resource. */
   twin_use?: {
@@ -118,14 +114,11 @@ export interface IssueTriggerPreviewParams {
 }
 
 /** One issue that WILL start a run under the prospective write. `agent_id` is
- *  the runnable agent (squad leader for squads). `handoff_supported` is the
- *  soft-gate signal: false when the target runtime is too old to render a
- *  handoff note (gray the note box; the assignment still works). */
+ *  the runnable agent (squad leader for squads). */
 export interface IssueTriggerPreviewItem {
   issue_id: string;
   agent_id: string;
   source: string;
-  handoff_supported: boolean;
 }
 
 export interface IssueTriggerPreview {
@@ -529,7 +522,6 @@ export interface SearchIssueResult extends Issue {
 
 export interface SearchIssuesResponse {
   issues: SearchIssueResult[];
-  total: number;
 }
 
 export interface SearchProjectResult extends Project {
@@ -539,7 +531,6 @@ export interface SearchProjectResult extends Project {
 
 export interface SearchProjectsResponse {
   projects: SearchProjectResult[];
-  total: number;
 }
 
 export interface UpdateMeRequest {
