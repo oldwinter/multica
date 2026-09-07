@@ -100,8 +100,8 @@ export function WikiProposalsPanel({
 
   const canReview = selected?.status === "pending";
   return (
-    <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)]">
-      <nav className="max-h-56 overflow-y-auto lg:max-h-none" aria-label={t(($) => $.proposals.list_label)}>
+    <div className="grid min-h-0 gap-5 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)]">
+      <nav className="max-h-56 overflow-y-auto rounded-md border border-surface-border/70 p-1 lg:max-h-none" aria-label={t(($) => $.proposals.list_label)}>
         <ul className="space-y-1">
           {ordered.map((proposal) => (
             <li key={proposal.id}>
@@ -114,6 +114,7 @@ export function WikiProposalsPanel({
                     : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                 )}
                 onClick={() => setSelectedId(proposal.id)}
+                aria-current={proposal.id === selectedId ? "true" : undefined}
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate text-body">{proposal.proposedTitle || proposal.proposedPath}</span>
@@ -178,7 +179,7 @@ export function WikiProposalsPanel({
             </div>
           ) : null}
 
-          {actionError ? <p className="text-body text-destructive" role="alert">{actionError}</p> : null}
+          {actionError ? <p className="break-words text-body text-destructive" role="alert">{actionError}</p> : null}
           {canReview ? (
             <div className="flex flex-wrap gap-2">
               <Button

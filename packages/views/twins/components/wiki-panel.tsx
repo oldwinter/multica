@@ -48,7 +48,7 @@ export function WikiPanel(props: TwinWorkspaceProps) {
           {revision ? <p className="break-all font-mono text-caption text-muted-foreground">{revision.source_digest}</p> : null}
         </div>
         {props.canManageWiki ? (
-          <Button variant="outline" disabled={props.wikiMutationPending} onClick={props.onRefreshWiki}>
+          <Button variant="outline" className="w-full shrink-0 sm:w-auto" disabled={props.wikiMutationPending} onClick={props.onRefreshWiki}>
             <RefreshCw data-icon="inline-start" />
             {props.wikiMutationPending ? t(($) => $.actions.refreshing) : t(($) => $.actions.refresh_wiki)}
           </Button>
@@ -91,9 +91,9 @@ export function WikiPanel(props: TwinWorkspaceProps) {
                 <p className="break-words text-caption text-muted-foreground">{revision.created_at}</p>
               </div>
               {props.canManageWiki && state === "pending" ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" disabled={props.wikiMutationPending} onClick={() => setDialog("reject-wiki")}>{t(($) => $.actions.reject_revision)}</Button>
-                  <Button variant="brand" disabled={props.wikiMutationPending} onClick={() => setDialog("accept-wiki")}>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+                  <Button variant="outline" className="w-full sm:w-auto" disabled={props.wikiMutationPending} onClick={() => setDialog("reject-wiki")}>{t(($) => $.actions.reject_revision)}</Button>
+                  <Button variant="brand" className="w-full sm:w-auto" disabled={props.wikiMutationPending} onClick={() => setDialog("accept-wiki")}>
                     {props.wikiMutationPending ? t(($) => $.actions.saving) : t(($) => $.actions.accept_revision)}
                   </Button>
                 </div>

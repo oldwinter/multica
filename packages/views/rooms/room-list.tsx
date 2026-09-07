@@ -46,6 +46,7 @@ export function RoomList({
         "flex max-h-[30dvh] min-h-0 flex-col border-b border-surface-border bg-surface lg:max-h-none lg:border-r lg:border-b-0",
         mobileStandalone && "max-lg:row-span-2 max-lg:max-h-none",
       )}
+      aria-busy={loading}
     >
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-surface-border px-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -127,7 +128,7 @@ export function RoomList({
         )}
       >
         {loading ? (
-          <div className="space-y-2 p-1" aria-label={t(($) => $.states.loading)}>
+          <div className="space-y-2 p-1" role="status" aria-label={t(($) => $.states.loading)}>
             {[0, 1, 2].map((item) => (
               <Skeleton key={item} className="h-16 w-full rounded-md" />
             ))}
@@ -176,8 +177,9 @@ export function RoomList({
                           "size-1.5 shrink-0 rounded-full",
                           roomStatusDotClass(room.status),
                         )}
-                        aria-label={t(($) => $.status[room.status])}
+                        aria-hidden="true"
                       />
+                      <span className="sr-only">{t(($) => $.status[room.status])}</span>
                     </span>
                     <RoomValueLine room={room} timeAgo={timeAgo} timeUntil={timeUntil} />
                   </button>

@@ -30,6 +30,16 @@ const SOURCE_CLASSES: readonly LMWikiSourceClass[] = [
   "wiki_page",
 ];
 
+type WikiTranslator = ReturnType<typeof useT<"wiki">>["t"];
+
+const SOURCE_CLASS_LABELS: Readonly<Record<LMWikiSourceClass, (t: WikiTranslator) => string>> = {
+  issue: (t) => t(($) => $.source_policy.classes_issue),
+  project: (t) => t(($) => $.source_policy.classes_project),
+  project_resource: (t) => t(($) => $.source_policy.classes_project_resource),
+  autopilot_run: (t) => t(($) => $.source_policy.classes_autopilot_run),
+  wiki_page: (t) => t(($) => $.source_policy.classes_wiki_page),
+};
+
 export interface LMWikiSourcePolicyPanelProps {
   policy: LMWikiSourcePolicy | null;
   pages: readonly WikiPageSummary[];
@@ -115,7 +125,7 @@ export function LMWikiSourcePolicyPanel({
   const wikiPageClassEnabled = sourceClasses.includes("wiki_page");
 
   return (
-    <div className="space-y-6" data-testid="lm-wiki-source-policy">
+    <div className="space-y-6" data-testid="lm-wiki-source-policy" aria-busy={isSaving}>
       <header className="space-y-1">
         <h2 className="flex items-center gap-2 text-title-sm font-medium text-foreground">
           <Database className="size-4" aria-hidden="true" />
@@ -131,7 +141,7 @@ export function LMWikiSourcePolicyPanel({
       </header>
 
       <section className="space-y-3" aria-labelledby="lm-wiki-remote-generation">
-        <div className="flex min-w-0 flex-col gap-3 rounded-md bg-muted/40 p-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 rounded-md border border-surface-border/70 bg-muted/30 p-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1">
             <h3 id="lm-wiki-remote-generation" className="break-words text-body font-medium text-foreground">
               {t(($) => $.source_policy.remote_title)}
@@ -143,7 +153,7 @@ export function LMWikiSourcePolicyPanel({
               {t(($) => $.source_policy.remote_exclusions)}
             </p>
             {policy.exclusions.length > 0 ? (
-              <ul className="space-y-2 pt-1" aria-label={t(($) => $.source_policy.exclusions_title)}>
+              <ul className="space-y-2 border-l-2 border-surface-border pl-3 pt-1" aria-label={t(($) => $.source_policy.exclusions_title)}>
                 {policy.exclusions.map((exclusion, index) => (
                   <li key={`${exclusion.sourceClass}:${exclusion.state}:${index}`} className="min-w-0 text-caption text-muted-foreground">
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -177,7 +187,7 @@ export function LMWikiSourcePolicyPanel({
 
       <section className="space-y-3" aria-labelledby="lm-wiki-source-classes">
         <h3 id="lm-wiki-source-classes" className="text-body font-medium text-foreground">{t(($) => $.source_policy.classes)}</h3>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2" role="group" aria-labelledby="lm-wiki-source-classes">
           {SOURCE_CLASSES.map((sourceClass) => (
             <div key={sourceClass} className="flex min-h-10 items-center justify-between gap-4 rounded-md bg-muted/40 px-3 py-2 text-body text-foreground">
               <span className="break-words">{sourceClassLabel(sourceClass, t)}</span>
@@ -211,7 +221,7 @@ export function LMWikiSourcePolicyPanel({
               const actor = selectedRevision?.actorType ?? page.lastActorType;
 
               return (
-                <li key={page.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-start">
+                <li key={page.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start">
                   <div className="flex min-w-0 flex-1 items-start gap-3">
                     <Checkbox
                       checked={checked}
@@ -278,10 +288,12 @@ export function LMWikiSourcePolicyPanel({
             </Button>
           ) : null}
         </div>
-      ) : errorMessage ? <p className="text-body text-destructive" role="alert">{errorMessage}</p> : null}
-      {saved ? <p className="text-body text-success" role="status">{t(($) => $.source_policy.saved)}</p> : null}
+      ) : errorMessage ? <p className="break-words text-body text-destructive" role="alert">{errorMessage}</p> : null}
+      {saved ? <p className="text-body text-success" role="status" aria-live="polite">{t(($) => $.source_policy.saved)}</p> : null}
       <Button
+        className="w-full sm:w-auto"
         disabled={!canManage || isSaving}
+        aria-busy={isSaving}
         onClick={() => onSave({
           sourceClasses: sourceClasses,
           wikiPages: wikiPageClassEnabled
@@ -304,7 +316,7 @@ function revisionSelectItems(
   page: WikiPageSummary,
   revisions: readonly WikiRevision[],
   selectedRevisionNumber: number | undefined,
-  t: ReturnType<typeof useT<"wiki">>["t"],
+  t: WikiTranslator,
 ) {
   const numbers = new Set(revisions.map((revision) => revision.revisionNumber));
   numbers.add(page.currentRevisionNumber);
@@ -317,18 +329,11 @@ function revisionSelectItems(
     }));
 }
 
-function sourceClassLabel(sourceClass: LMWikiSourceClass, t: ReturnType<typeof useT<"wiki">>["t"]): string {
-  switch (sourceClass) {
-    case "issue": return t(($) => $.source_policy.classes_issue);
-    case "project": return t(($) => $.source_policy.classes_project);
-    case "project_resource": return t(($) => $.source_policy.classes_project_resource);
-    case "autopilot_run": return t(($) => $.source_policy.classes_autopilot_run);
-    case "wiki_page": return t(($) => $.source_policy.classes_wiki_page);
-    default: return sourceClass;
-  }
+function sourceClassLabel(sourceClass: LMWikiSourceClass, t: WikiTranslator): string {
+  return SOURCE_CLASS_LABELS[sourceClass]?.(t) ?? sourceClass;
 }
 
-function exclusionClassLabel(sourceClass: string, t: ReturnType<typeof useT<"wiki">>["t"]): string {
+function exclusionClassLabel(sourceClass: string, t: WikiTranslator): string {
   switch (sourceClass) {
     case "personal_wiki": return t(($) => $.source_policy.exclusion_personal);
     case "local_only": return t(($) => $.source_policy.exclusion_local_only);
@@ -336,13 +341,13 @@ function exclusionClassLabel(sourceClass: string, t: ReturnType<typeof useT<"wik
   }
 }
 
-function exclusionStateLabel(state: string, t: ReturnType<typeof useT<"wiki">>["t"]): string {
+function exclusionStateLabel(state: string, t: WikiTranslator): string {
   return state === "always_excluded"
     ? t(($) => $.source_policy.exclusion_always)
     : state;
 }
 
-function exclusionReasonLabel(reason: string, t: ReturnType<typeof useT<"wiki">>["t"]): string {
+function exclusionReasonLabel(reason: string, t: WikiTranslator): string {
   switch (reason) {
     case "personal_scope_never_eligible": return t(($) => $.source_policy.exclusion_personal_reason);
     case "local_only_never_leaves_owner_daemon": return t(($) => $.source_policy.exclusion_local_only_reason);

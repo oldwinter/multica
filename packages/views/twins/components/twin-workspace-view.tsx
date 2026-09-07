@@ -89,7 +89,7 @@ export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorksp
           <p className="max-w-2xl text-body text-muted-foreground">{t(($) => $.page.description)}</p>
         </header>
 
-        {props.actionError ? <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-body text-destructive">{props.actionError}</div> : null}
+        {props.actionError ? <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-body text-destructive break-words">{props.actionError}</div> : null}
         {!props.canManageWiki || !props.canManageTwin ? <ReadOnlyNotice /> : null}
         {props.state === "ready" && props.overviewStale ? <WorkspaceStaleState onRetry={props.onRetry} /> : null}
 
@@ -97,10 +97,10 @@ export function TwinWorkspaceView({ rootElement = "main", ...props }: TwinWorksp
           <>
             <TwinActivationReadiness wsId={props.wsId} onGuide={workspaceNavigation.guide} />
             <Tabs value={tab} onValueChange={(value) => isTwinWorkspaceTab(value) && workspaceNavigation.selectTab(value)} className="gap-5">
-              <TabsList variant="line" className="w-full justify-start">
-                <TabsTrigger value="wiki"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
-                <TabsTrigger value="twin"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
-                <TabsTrigger value="use"><SlidersHorizontal aria-hidden="true" />{t(($) => $.tabs.use)}</TabsTrigger>
+              <TabsList variant="line" className="grid w-full grid-cols-3 justify-stretch sm:flex sm:justify-start">
+                <TabsTrigger value="wiki" className="min-w-0 justify-center gap-2 whitespace-normal text-center"><BookOpenText aria-hidden="true" />{t(($) => $.tabs.wiki)}</TabsTrigger>
+                <TabsTrigger value="twin" className="min-w-0 justify-center gap-2 whitespace-normal text-center"><BrainCircuit aria-hidden="true" />{t(($) => $.tabs.twin)}</TabsTrigger>
+                <TabsTrigger value="use" className="min-w-0 justify-center gap-2 whitespace-normal text-center"><SlidersHorizontal aria-hidden="true" />{t(($) => $.tabs.use)}</TabsTrigger>
               </TabsList>
               <TabsContent value="wiki"><WikiPanel {...props} /></TabsContent>
               <TabsContent value="twin"><TwinPanel {...props} /></TabsContent>

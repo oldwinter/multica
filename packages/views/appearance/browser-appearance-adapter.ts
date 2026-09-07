@@ -226,6 +226,7 @@ export function createBrowserAppearanceAdapter(
         });
       };
       const onStorage = (event: StorageEvent) => {
+        if (event.storageArea && event.storageArea !== win.localStorage) return;
         const accountId = event.key
           ? accountIdFromStorageKey(event.key)
           : null;
@@ -235,6 +236,13 @@ export function createBrowserAppearanceAdapter(
             value:
               event.newValue === null ? null : parseStoredValue(event.newValue),
             accountId,
+          });
+          return;
+        }
+        if (event.key === null) {
+          listener({
+            type: "external-preferences-changed",
+            value: null,
           });
           return;
         }

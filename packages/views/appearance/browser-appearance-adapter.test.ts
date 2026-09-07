@@ -239,6 +239,33 @@ describe("browser appearance bootstrap", () => {
     unsubscribe();
   });
 
+  it("reconciles after another tab clears its local storage", () => {
+    const adapter = createBrowserAppearanceAdapter("web");
+    const listener = vi.fn();
+    const unsubscribe = adapter.subscribe(listener);
+
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
+
+    expect(listener).toHaveBeenCalledWith({
+      type: "external-preferences-changed",
+      value: null,
+    });
+    unsubscribe();
+  });
+
+  it("ignores storage events from another storage area", () => {
+    const adapter = createBrowserAppearanceAdapter("web");
+    const listener = vi.fn();
+    const unsubscribe = adapter.subscribe(listener);
+
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: null, storageArea: sessionStorage }),
+    );
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
   it("requests account reconciliation when a browser surface becomes active", () => {
     const adapter = createBrowserAppearanceAdapter("web");
     const listener = vi.fn();

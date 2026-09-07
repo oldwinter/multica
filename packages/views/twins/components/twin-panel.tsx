@@ -67,7 +67,7 @@ export function TwinPanel(props: TwinWorkspaceProps) {
           {currentVersion ? <p className="break-all font-mono text-caption text-muted-foreground">{currentVersion.content_digest}</p> : null}
         </div>
         {canBuildProposal ? (
-          <Button variant="outline" disabled={props.twinMutationPending} onClick={() => props.onEnsureTwin(acceptedWikiId)}>
+          <Button variant="outline" className="w-full shrink-0 sm:w-auto" disabled={props.twinMutationPending} onClick={() => props.onEnsureTwin(acceptedWikiId)}>
             <Hammer data-icon="inline-start" />
             {props.twinMutationPending ? t(($) => $.actions.building) : t(($) => $.actions.build_proposal)}
           </Button>
@@ -107,10 +107,11 @@ export function TwinPanel(props: TwinWorkspaceProps) {
               ) : null}
             </div>
             {props.canManageTwin && proposalPending ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                 {proposalCanBeEdited ? (
                   <Button
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={props.twinMutationPending}
                     onClick={() => setEditingProposal(true)}
                   >
@@ -118,8 +119,8 @@ export function TwinPanel(props: TwinWorkspaceProps) {
                     {proposal.kind === "deposition" ? t(($) => $.deposition.edit_action) : t(($) => $.correction.edit_action)}
                   </Button>
                 ) : null}
-                <Button variant="outline" disabled={props.twinMutationPending} onClick={() => setDialog("reject-twin")}>{t(($) => $.actions.reject_proposal)}</Button>
-                <Button variant="brand" disabled={props.twinMutationPending} onClick={() => setDialog("accept-twin")}>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={props.twinMutationPending} onClick={() => setDialog("reject-twin")}>{t(($) => $.actions.reject_proposal)}</Button>
+                <Button variant="brand" className="w-full sm:w-auto" disabled={props.twinMutationPending} onClick={() => setDialog("accept-twin")}>
                   {props.twinMutationPending ? t(($) => $.actions.saving) : t(($) => $.actions.sign_off)}
                 </Button>
               </div>
@@ -140,7 +141,7 @@ export function TwinPanel(props: TwinWorkspaceProps) {
                 <div className="flex flex-wrap items-center gap-2">
                   <FileCheck2 className="size-4 text-muted-foreground" aria-hidden="true" />
                   <h3 className="text-title font-medium text-foreground">{t(($) => $.deposition.evidence_title)}</h3>
-                  <Badge variant="outline">{props.proposalDetail.run_evidence.taskStatus}</Badge>
+                  <Badge variant="outline" className="max-w-full whitespace-normal break-words">{props.proposalDetail.run_evidence.taskStatus}</Badge>
                 </div>
                 <dl className="grid min-w-0 gap-3 text-caption sm:grid-cols-2">
                   <div className="min-w-0"><dt className="text-muted-foreground">{t(($) => $.deposition.task)}</dt><dd className="break-all font-mono text-foreground">{props.proposalDetail.run_evidence.taskId}</dd></div>

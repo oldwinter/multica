@@ -1,6 +1,7 @@
 import type {
   RoomArtifact,
   RoomCycle,
+  RoomCycleStatus,
   RoomStatus,
 } from "@multica/core/rooms";
 
@@ -9,20 +10,51 @@ interface RoomStatusStyle {
   readonly dot: string;
 }
 
+const ROOM_STATUS_STYLES: Readonly<Record<RoomStatus, RoomStatusStyle>> = {
+  active: { badge: "bg-success/10 text-foreground", dot: "bg-success" },
+  paused: { badge: "bg-warning/10 text-warning", dot: "bg-warning" },
+  archived: { badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground" },
+  unknown: { badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground" },
+};
+
+const CYCLE_STATUS_CLASSES: Readonly<Record<RoomCycleStatus, string>> = {
+  completed: "text-success",
+  failed: "text-destructive",
+  cancelled: "text-destructive",
+  refused: "text-warning",
+  queued: "text-brand",
+  running: "text-brand",
+  unknown: "text-muted-foreground",
+};
+
+export type RoomRefusalKey =
+  | "room_paused"
+  | "room_archived"
+  | "budget_exhausted"
+  | "cycle_active"
+  | "agent_unavailable"
+  | "daemon_capability_unavailable"
+  | "spend_limit_unsupported"
+  | "invocation_not_allowed"
+  | "preflight_required";
+
+const ROOM_REFUSAL_KEYS: Readonly<Record<string, RoomRefusalKey>> = {
+  room_paused: "room_paused",
+  room_archived: "room_archived",
+  budget_exhausted: "budget_exhausted",
+  active_cycle: "cycle_active",
+  cycle_active: "cycle_active",
+  agent_unavailable: "agent_unavailable",
+  daemon_capability_unavailable: "daemon_capability_unavailable",
+  spend_limit_unsupported: "spend_limit_unsupported",
+  invocation_not_allowed: "invocation_not_allowed",
+  preflight_required: "preflight_required",
+};
+
 function roomStatusStyle(status: RoomStatus | string): RoomStatusStyle {
-  switch (status) {
-    case "active":
-      return { badge: "bg-success/10 text-foreground", dot: "bg-success" };
-    case "paused":
-      return { badge: "bg-warning/10 text-warning", dot: "bg-warning" };
-    case "archived":
-    case "unknown":
-    default:
-      return {
-        badge: "bg-muted text-muted-foreground",
-        dot: "bg-muted-foreground",
-      };
-  }
+  return Object.hasOwn(ROOM_STATUS_STYLES, status)
+    ? ROOM_STATUS_STYLES[status as RoomStatus]
+    : ROOM_STATUS_STYLES.unknown;
 }
 
 export function roomStatusClass(status: RoomStatus | string): string {
@@ -34,21 +66,15 @@ export function roomStatusDotClass(status: RoomStatus | string): string {
 }
 
 export function cycleStatusClass(status: RoomCycle["status"] | string): string {
-  switch (status) {
-    case "completed":
-      return "text-success";
-    case "failed":
-    case "cancelled":
-      return "text-destructive";
-    case "refused":
-      return "text-warning";
-    case "queued":
-    case "running":
-      return "text-brand";
-    case "unknown":
-    default:
-      return "text-muted-foreground";
-  }
+  return Object.hasOwn(CYCLE_STATUS_CLASSES, status)
+    ? CYCLE_STATUS_CLASSES[status as RoomCycleStatus]
+    : CYCLE_STATUS_CLASSES.unknown;
+}
+
+export function roomRefusalKey(blocker: string | null | undefined): RoomRefusalKey {
+  return blocker && Object.hasOwn(ROOM_REFUSAL_KEYS, blocker)
+    ? ROOM_REFUSAL_KEYS[blocker]!
+    : "preflight_required";
 }
 
 export function countTodayTurns(
