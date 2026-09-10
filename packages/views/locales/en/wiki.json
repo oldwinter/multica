@@ -76,6 +76,8 @@
     "empty_content": "Empty page",
     "timeline": "Revision timeline",
     "revision_label": "Revision {{number}}",
+    "compare_latest": "Compare with latest",
+    "comparison": "Revision comparison",
     "compare_from": "Compare from",
     "compare_to": "Compare to",
     "provenance": "{{source}} by {{actor}}",

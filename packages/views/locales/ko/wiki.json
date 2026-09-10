@@ -76,6 +76,8 @@
     "empty_content": "빈 페이지",
     "timeline": "리비전 타임라인",
     "revision_label": "리비전 {{number}}",
+    "compare_latest": "최신 버전과 비교",
+    "comparison": "리비전 비교",
     "compare_from": "비교 시작",
     "compare_to": "비교 대상",
     "provenance": "{{actor}}의 {{source}}",

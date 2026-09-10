@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { History, RotateCcw } from "lucide-react";
 import type { WikiRevision } from "@multica/core/wiki";
 import { Button } from "@multica/ui/components/ui/button";
@@ -68,6 +68,8 @@ export function WikiHistoryDialog({
   const [leftId, setLeftId] = useState("");
   const [rightId, setRightId] = useState("");
   const [restoreId, setRestoreId] = useState("");
+  const comparisonRef = useRef<HTMLElement>(null);
+  const latest = ordered[0];
 
   useEffect(() => {
     if (ordered.length === 0) return;
@@ -115,25 +117,32 @@ export function WikiHistoryDialog({
           ) : (
             <div className="space-y-5">
               {actionError ? <p className="text-body text-destructive" role="alert">{actionError}</p> : null}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <RevisionSelect
-                  label={t(($) => $.history.compare_from)}
-                  items={items}
-                  value={leftId}
-                  onValueChange={setLeftId}
-                />
-                <RevisionSelect
-                  label={t(($) => $.history.compare_to)}
-                  items={items}
-                  value={rightId}
-                  onValueChange={setRightId}
-                />
-              </div>
+              <section
+                ref={comparisonRef}
+                tabIndex={-1}
+                aria-label={t(($) => $.history.comparison)}
+                className="space-y-3 rounded-md focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <RevisionSelect
+                    label={t(($) => $.history.compare_from)}
+                    items={items}
+                    value={leftId}
+                    onValueChange={setLeftId}
+                  />
+                  <RevisionSelect
+                    label={t(($) => $.history.compare_to)}
+                    items={items}
+                    value={rightId}
+                    onValueChange={setRightId}
+                  />
+                </div>
 
-              <div className="grid min-h-64 gap-3 sm:grid-cols-2">
-                <RevisionPreview revision={left} />
-                <RevisionPreview revision={right} />
-              </div>
+                <div className="grid min-h-64 gap-3 sm:grid-cols-2">
+                  <RevisionPreview revision={left} />
+                  <RevisionPreview revision={right} />
+                </div>
+              </section>
 
               <section aria-label={t(($) => $.history.timeline)}>
                 <ol className="space-y-2">
@@ -154,16 +163,32 @@ export function WikiHistoryDialog({
                         </p>
                         <p className="break-all font-mono text-caption text-muted-foreground">{revision.contentDigest}</p>
                       </div>
-                      {revision.revisionNumber < currentRevisionNumber ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setRestoreId(revision.id)}
-                        >
-                          <RotateCcw data-icon="inline-start" />
-                          {t(($) => $.history.restore)}
-                        </Button>
-                      ) : null}
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {latest && revision.id !== latest.id ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setLeftId(revision.id);
+                              setRightId(latest.id);
+                              comparisonRef.current?.focus({ preventScroll: true });
+                              comparisonRef.current?.scrollIntoView({ block: "start" });
+                            }}
+                          >
+                            {t(($) => $.history.compare_latest)}
+                          </Button>
+                        ) : null}
+                        {revision.revisionNumber < currentRevisionNumber ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRestoreId(revision.id)}
+                          >
+                            <RotateCcw data-icon="inline-start" />
+                            {t(($) => $.history.restore)}
+                          </Button>
+                        ) : null}
+                      </div>
                     </li>
                   ))}
                 </ol>
