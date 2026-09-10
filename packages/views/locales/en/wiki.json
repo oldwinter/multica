@@ -127,6 +127,9 @@
     "delete_description": "The live page will be removed. Its immutable revision links remain available only to you."
   },
   "revision": {
+    "content_view": "Revision content view",
+    "preview": "Preview",
+    "markdown_source": "Markdown source",
     "title": "Wiki revision",
     "shared_eyebrow": "Workspace evidence",
     "personal_eyebrow": "Private evidence",

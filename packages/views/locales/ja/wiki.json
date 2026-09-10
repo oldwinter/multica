@@ -127,6 +127,9 @@
     "delete_description": "現在のページは削除されます。不変のリビジョンリンクは引き続き自分だけが利用できます。"
   },
   "revision": {
+    "content_view": "リビジョン内容の表示",
+    "preview": "プレビュー",
+    "markdown_source": "Markdown ソース",
     "title": "Wiki リビジョン",
     "shared_eyebrow": "ワークスペースの証拠",
     "personal_eyebrow": "非公開の証拠",
