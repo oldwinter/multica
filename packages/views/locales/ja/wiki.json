@@ -76,6 +76,8 @@
     "empty_content": "空のページ",
     "timeline": "リビジョンの時系列",
     "revision_label": "リビジョン {{number}}",
+    "compare_latest": "最新版と比較",
+    "comparison": "リビジョンの比較",
     "compare_from": "比較元",
     "compare_to": "比較先",
     "provenance": "{{actor}} による {{source}}",

@@ -76,6 +76,8 @@
     "empty_content": "空页面",
     "timeline": "修订时间线",
     "revision_label": "修订 {{number}}",
+    "compare_latest": "与最新版比较",
+    "comparison": "版本比较",
     "compare_from": "比较起点",
     "compare_to": "比较终点",
     "provenance": "{{actor}} · {{source}}",
