@@ -26,11 +26,12 @@ Use this page when merging `upstream/main`. The short pointer lives in
   afterward.
 
 Validation run: `git diff --check`, exact conflict-marker scan,
-`pnpm install --lockfile-only`, locale parity (190 tests), and `go build`
-for daemon, service, and handler packages. `pnpm typecheck` currently stops
-on one unused import exposed by the realtime merge; the full Go test compile
-also has unrelated upstream daemon test fixtures and is recorded as a baseline
-failure. No push, release, deployment, browser, device, or real-agent check is implied.
+`pnpm install --lockfile-only`, locale parity (190 tests), `pnpm typecheck`,
+and `go build` for daemon, service, and handler packages. The full Go test
+compile still has unrelated upstream daemon and handler fixtures; the
+repository toolchain checker also reports the existing 1.26/1.27 documentation
+drift and two Rooms radius literals. No push, release, deployment, browser,
+device, or real-agent check is implied.
 
 ## 2026-09-07 v0.4.41 Sync
 
