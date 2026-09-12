@@ -142,7 +142,7 @@ func (s *IssueService) createRoomIssueTarget(ctx context.Context, tx pgx.Tx, art
 	if err != nil {
 		return db.Issue{}, fmt.Errorf("encode Room artifact metadata: %w", err)
 	}
-	issue, err = queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
+	_, err = queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
 		Key: "room_artifact_id", Value: artifactID, ID: issue.ID, WorkspaceID: artifact.WorkspaceID,
 	})
 	if err != nil {

@@ -27,6 +27,14 @@
  * before Korean so zh users never get Korean Hanja glyph shapes (Hangul is a
  * separate Unicode block, so ko users still get Korean fonts for Hangul). */
 .landing-shell {
+    --landing-radius-checkbox: 4px;
+    --landing-radius-menu-item: 6px;
+    --landing-radius-nav-item: 9px;
+    --landing-radius-control: 10px;
+    --landing-radius-button: 11px;
+    --landing-radius-action: 12px;
+    --landing-radius-menu: 14px;
+    --landing-radius-card: 16px;
     --font-serif: var(--font-instrument-serif), "Songti SC", "SimSun",
         "Noto Serif CJK SC", "Nanum Myeongjo", "AppleMyungjo", "Batang",
         "Noto Serif CJK KR", ui-serif, serif;

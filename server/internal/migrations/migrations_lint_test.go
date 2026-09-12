@@ -28,6 +28,14 @@ const maxLegacyMigrationPrefix = 148
 // for downstream migrations that had already been renumbered before this rule
 // was enforced.
 var legacyDuplicateMigrationStems = map[string][]string{
+	"451": {"451_agent_task_comment_thread", "451_room_memory_revision_creator"},
+	"452": {"452_agent_task_pending_thread_unique", "452_room_cycle_cost_limit"},
+	"453": {"453_drop_pending_issue_agent_unique", "453_room_spend_limit_refusal"},
+	"454": {"454_drop_comment_content_bigm_index", "454_wiki_knowledge_primary_keys"},
+	"455": {"455_drop_comment_content_trgm_index", "455_wiki_evidence_egress_compatibility"},
+	"460": {"460_agent_task_queue_autopilot_run_created_at_index", "460_room_inbox_identity"},
+	"461": {"461_channel_trigger_snapshot", "461_room_inbox_active_identity_index"},
+	"462": {"462_delete_reference_only_pr_links", "462_room_inbox_cleanup_index"},
 	"020": {"020_issue_number", "020_task_session"},
 	"026": {"026_comment_reactions", "026_task_messages"},
 	"029": {"029_attachment", "029_daemon_token", "029_drop_daemon_pairing"},

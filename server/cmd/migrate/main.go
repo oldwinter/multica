@@ -82,6 +82,9 @@ var issuePropertiesBigramOperatorClass = extensionOperatorClass{
 	Extension:     "pg_bigm",
 }
 
+// Alias used by newer optional search-index migrations.
+var pgBigmOperatorClass = issuePropertiesBigramOperatorClass
+
 // preMigrationHooks wires migration version → hook. The version key is
 // the file basename without the `.up.sql` suffix, matching what
 // `migrations.ExtractVersion` returns.
@@ -376,6 +379,11 @@ var concurrentIndexCleanups = map[string]string{
 	"443_issue_project_status_index":                            "idx_issue_project_status",
 	"445_comment_delegated_failure_unsettled_index":             "idx_comment_delegated_failure_unsettled",
 	"446_issue_properties_bigm_index":                           "idx_issue_properties_bigm",
+	"452_agent_task_pending_thread_unique":                      "idx_one_pending_task_per_issue_agent_thread",
+	"459_chat_message_assistant_task_index":                     "idx_chat_message_assistant_task",
+	"460_agent_task_queue_autopilot_run_created_at_index":       "idx_agent_task_queue_autopilot_run_created_at",
+	"465_agent_task_queue_chat_with_session_index":              "idx_agent_task_queue_chat_with_session_created_at",
+	"466_activity_log_member_assignee_frequency_index":          "idx_activity_log_member_assignee_frequency",
 	"483_agent_task_queue_manual_rerun_index":                   "idx_agent_task_queue_manual_rerun_source",
 	"484_skill_evolution_loop_id_index":                         "skill_evolution_loop_id_uidx",
 	"485_skill_evolution_revision_id_index":                     "skill_evolution_revision_id_uidx",
@@ -437,6 +445,11 @@ var concurrentDownIndexCleanups = map[string]string{
 	"438_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
 	"437_drop_agent_runtime_last_seen_at_index":             "idx_agent_runtime_last_seen_at",
 	"450_drop_comment_delegated_failure_pending_index":      "idx_comment_delegated_failure_pending",
+	"453_drop_pending_issue_agent_unique":                   "idx_one_pending_task_per_issue_agent_v2",
+	"454_drop_comment_content_bigm_index":                   "idx_comment_content_bigm",
+	"455_drop_comment_content_trgm_index":                   "idx_comment_content_trgm",
+	"463_drop_issue_description_bigm_index":                 "idx_issue_description_bigm",
+	"464_drop_issue_description_trgm_index":                 "idx_issue_description_trgm",
 }
 
 var preMigrationHooks = func() map[string]preMigrationHook {
@@ -615,6 +628,12 @@ var upMigrationConditions = map[string]migrationCondition{
 	"446_issue_properties_bigm_index": whenOperatorClassAvailable(issuePropertiesBigramOperatorClass),
 }
 
+var downMigrationConditions = map[string]migrationCondition{
+	"454_drop_comment_content_bigm_index":   whenOperatorClassAvailable(pgBigmOperatorClass),
+	"455_drop_comment_content_trgm_index":   whenOperatorClassUnavailable(pgBigmOperatorClass),
+	"463_drop_issue_description_bigm_index": whenOperatorClassAvailable(pgBigmOperatorClass),
+}
+
 func migrationAppliedByHook(reason string) migrationCondition {
 	return func(context.Context, *pgxpool.Conn) (bool, string, error) {
 		return false, reason, nil
@@ -734,8 +753,9 @@ func conditionsForDirection(direction string) map[string]migrationCondition {
 	if direction == "up" {
 		return upMigrationConditions
 	}
-	// Rollbacks intentionally ignore environment gates: they restore the
-	// portable pre-migration schema regardless of which up SQL actually ran.
+	if direction == "down" {
+		return downMigrationConditions
+	}
 	return nil
 }
 
@@ -796,6 +816,20 @@ func whenOperatorClassAvailable(opclass extensionOperatorClass) migrationConditi
 		}
 		if !available {
 			return false, fmt.Sprintf("operator class %s (%s) is not installed", opclass.OperatorClass, opclass.Extension), nil
+		}
+		return true, "", nil
+	}
+}
+
+func whenOperatorClassUnavailable(opclass extensionOperatorClass) migrationCondition {
+	availableCondition := whenOperatorClassAvailable(opclass)
+	return func(ctx context.Context, conn *pgxpool.Conn) (bool, string, error) {
+		available, _, err := availableCondition(ctx, conn)
+		if err != nil {
+			return false, "", err
+		}
+		if available {
+			return false, fmt.Sprintf("operator class %s (%s) is installed", opclass.OperatorClass, opclass.Extension), nil
 		}
 		return true, "", nil
 	}

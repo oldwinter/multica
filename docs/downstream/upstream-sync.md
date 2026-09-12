@@ -7,6 +7,32 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-12 v0.4.43 Sync
+
+- Downstream before sync: `5ccd181e3127e69fc9ae375b3b89ff2ea0083371`.
+- Fork reconciliation: fast-forwarded published `origin/main` to
+  `6027fc79bec2da34048c2db3895d8938b0c71520` (four downstream commits).
+- Merge base: `d8fa885d26acbdecde49010276e905cc9de5a056`.
+- Upstream: `3551e72e76d2c276e550b668303646d1280fb1e2` (`v0.4.43-2`).
+- Divergence at preview: downstream unique 268, upstream unique 86,
+  123 overlapping paths, 30 textual conflicts.
+- Conflict decisions: upstream lifecycle and API contracts were retained in
+  shared CI, daemon, handler, realtime, and issue shells. Downstream Rooms,
+  Twin/Wiki, appearance, and listener-ownership behavior was reattached at
+  its existing extension points. Migration lint retained both published
+  filename sets and generated database code was regenerated from merged SQL.
+- Lockfile and toolchain manifests were regenerated after resolving package
+  manifests. Local worktree edits were stashed before the merge and restored
+  afterward.
+
+Validation run: `git diff --check`, exact conflict-marker scan,
+`pnpm install --lockfile-only`, locale parity (190 tests), `pnpm typecheck`,
+and `go build` for daemon, service, and handler packages. The full Go test
+compile still has unrelated upstream daemon and handler fixtures; the
+repository toolchain checker also reports the existing 1.26/1.27 documentation
+drift and two Rooms radius literals. No push, release, deployment, browser,
+device, or real-agent check is implied.
+
 ## 2026-09-07 v0.4.41 Sync
 
 - Original checkout: `c49b8d2746a7886e1f31540ec78f22ee3289044f`.
