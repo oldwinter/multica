@@ -68,8 +68,58 @@ describe("ImmutableWikiRevision", () => {
   it("renders a recoverable error state for malformed or inaccessible revisions", () => {
     const props = renderRevision({ revision: undefined, isError: true });
     expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded");
+    expect(screen.queryByRole("group", { name: "Revision content view" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(props.onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("starts in preview and restores rendered content after viewing Markdown source", () => {
+    renderRevision();
+    const preview = screen.getByRole("button", { name: "Preview" });
+    const source = screen.getByRole("button", { name: "Markdown source" });
+
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(source).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("heading", { name: "Exact content" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Markdown source" })).not.toBeInTheDocument();
+
+    fireEvent.click(source);
+    expect(source).toHaveAttribute("aria-pressed", "true");
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("region", { name: "Markdown source" }).textContent).toBe(revision.content);
+    expect(screen.queryByRole("link", { name: "Open source issue" })).not.toBeInTheDocument();
+
+    fireEvent.click(preview);
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: "Open source issue" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Markdown source" })).not.toBeInTheDocument();
+  });
+
+  it("preserves whitespace, HTML, fenced code, and long lines as literal source", () => {
+    const content = `\n\t# Source  \r\n<script>alert("literal")</script>\n\n\`\`\`text\n${"long-line ".repeat(100)}\n\`\`\`\n\n`;
+    renderRevision({ revision: { ...revision, content } });
+    fireEvent.click(screen.getByRole("button", { name: "Markdown source" }));
+
+    const source = screen.getByRole("region", { name: "Markdown source" });
+    expect(source.tagName).toBe("PRE");
+    expect(source.querySelector("code")?.textContent).toBe(content);
+    expect(source.querySelector("script")).toBeNull();
+    expect(source).toHaveAttribute("tabindex", "0");
+    expect(source).toHaveClass("max-w-full", "overflow-x-auto");
+  });
+
+  it("keeps an empty source empty and labels the empty page separately", () => {
+    renderRevision({ revision: { ...revision, content: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Markdown source" }));
+
+    expect(screen.getByRole("region", { name: "Markdown source" }).textContent).toBe("");
+    expect(screen.getByText("Empty page")).toBeInTheDocument();
+  });
+
+  it("hides the view switch while a revision is loading", () => {
+    renderRevision({ isPending: true });
+    expect(screen.getByRole("status")).toHaveTextContent("Loading revision");
+    expect(screen.queryByRole("group", { name: "Revision content view" })).not.toBeInTheDocument();
   });
 
   it("labels personal immutable snapshots separately from shared evidence", () => {

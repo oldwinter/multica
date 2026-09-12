@@ -129,6 +129,9 @@
     "delete_description": "当前页面将被删除，其不可变修订链接仍仅对你可用。"
   },
   "revision": {
+    "content_view": "修订内容视图",
+    "preview": "预览",
+    "markdown_source": "Markdown 原文",
     "title": "Wiki 修订",
     "shared_eyebrow": "工作区证据",
     "personal_eyebrow": "私有证据",

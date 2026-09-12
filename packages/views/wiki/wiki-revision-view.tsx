@@ -49,6 +49,7 @@ export function ImmutableWikiRevision({
   const { t } = useT("wiki");
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
+  const [contentView, setContentView] = useState<"preview" | "source">("preview");
   const citationKey = revision?.id ? `${citationPrefix}:${revision.id}` : "";
   const createdAt = revision?.createdAt ? new Date(revision.createdAt) : null;
   const createdAtLabel = createdAt && !Number.isNaN(createdAt.getTime())
@@ -158,10 +159,44 @@ export function ImmutableWikiRevision({
             {copyError ? (
               <p className="mt-3 break-words text-caption text-destructive" role="alert">{t(($) => $.revision.copy_error)}</p>
             ) : null}
-            <RichContent
-              content={revision.content || t(($) => $.history.empty_content)}
-              className="prose prose-sm dark:prose-invert mt-6 max-w-none break-words"
-            />
+            <div className="mt-6 flex flex-wrap gap-1" role="group" aria-label={t(($) => $.revision.content_view)}>
+              <Button
+                type="button"
+                variant={contentView === "preview" ? "brand" : "ghost"}
+                aria-pressed={contentView === "preview"}
+                onClick={() => setContentView("preview")}
+              >
+                {t(($) => $.revision.preview)}
+              </Button>
+              <Button
+                type="button"
+                variant={contentView === "source" ? "brand" : "ghost"}
+                aria-pressed={contentView === "source"}
+                onClick={() => setContentView("source")}
+              >
+                {t(($) => $.revision.markdown_source)}
+              </Button>
+            </div>
+            {contentView === "preview" ? (
+              <RichContent
+                content={revision.content || t(($) => $.history.empty_content)}
+                className="prose prose-sm dark:prose-invert mt-4 max-w-none break-words"
+              />
+            ) : (
+              <div className="mt-4 min-w-0">
+                {revision.content === "" ? (
+                  <p className="mb-2 text-body text-muted-foreground">{t(($) => $.history.empty_content)}</p>
+                ) : null}
+                <pre
+                  role="region"
+                  aria-label={t(($) => $.revision.markdown_source)}
+                  tabIndex={0}
+                  className="max-w-full overflow-x-auto rounded-lg border border-surface-border bg-surface p-4 text-body text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <code className="font-mono whitespace-pre">{revision.content}</code>
+                </pre>
+              </div>
+            )}
           </div>
         )}
       </div>
