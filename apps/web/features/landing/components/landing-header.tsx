@@ -136,7 +136,7 @@ export function LandingHeader({
       {isMenuOpen ? (
         <div
           className={cn(
-            "absolute left-4 right-4 top-[calc(100%+8px)] z-50 rounded-[14px] border p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl md:hidden",
+            "absolute left-4 right-4 top-[calc(100%+8px)] z-50 rounded-(--landing-radius-menu) border p-2 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur-xl md:hidden",
             variant === "dark"
               ? "border-white/14 bg-[var(--landing-night)] text-white"
               : "border-border bg-surface text-foreground",
@@ -324,7 +324,7 @@ function GitHubStarsBadge({ label }: { label: string }) {
 
 function navLinkClassName(variant: "dark" | "light") {
   return cn(
-    "inline-flex h-9 items-center rounded-[9px] px-3 text-label font-medium transition-colors",
+    "inline-flex h-9 items-center rounded-(--landing-radius-nav-item) px-3 text-label font-medium transition-colors",
     variant === "dark"
       ? "text-white/72 hover:bg-surface/8 hover:text-white"
       : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -333,7 +333,7 @@ function navLinkClassName(variant: "dark" | "light") {
 
 function mobileNavLinkClassName(variant: "dark" | "light") {
   return cn(
-    "flex min-h-11 items-center gap-2 rounded-[10px] px-3 text-body font-medium transition-colors",
+    "flex min-h-11 items-center gap-2 rounded-(--landing-radius-menu-item) px-3 text-body font-medium transition-colors",
     variant === "dark"
       ? "text-white/76 hover:bg-surface/8 hover:text-white"
       : "text-muted-foreground hover:bg-muted hover:text-foreground",

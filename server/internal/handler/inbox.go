@@ -59,6 +59,26 @@ func inboxToResponse(i db.InboxItem) InboxItemResponse {
 	}
 }
 
+const inboxListBodyPreviewLimit = 200
+
+func inboxListBody(notifType string, issueID pgtype.UUID, body pgtype.Text) *string {
+	full := textToPtr(body)
+	if full == nil || notifType != "new_comment" || !issueID.Valid {
+		return full
+	}
+	cut, seen := 0, 0
+	for offset := range *full {
+		if seen == inboxListBodyPreviewLimit-1 {
+			cut = offset
+		}
+		if seen++; seen > inboxListBodyPreviewLimit {
+			preview := (*full)[:cut] + "…"
+			return &preview
+		}
+	}
+	return full
+}
+
 func inboxRowToResponse(r db.ListInboxItemsRow) InboxItemResponse {
 	return InboxItemResponse{
 		ID:                 uuidToString(r.ID),
@@ -72,7 +92,7 @@ func inboxRowToResponse(r db.ListInboxItemsRow) InboxItemResponse {
 		RoomCycleID:        uuidToPtr(r.RoomCycleID),
 		RoomReviewIdentity: textToPtr(r.RoomReviewIdentity),
 		Title:              r.Title,
-		Body:               textToPtr(r.Body),
+		Body:               inboxListBody(r.Type, r.IssueID, r.Body),
 		Read:               r.Read,
 		Archived:           r.Archived,
 		CreatedAt:          timestampToString(r.CreatedAt),

@@ -27,6 +27,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
+      - "scripts/check-ui-radius-tokens.mjs"
+      - "scripts/check-ui-radius-tokens.test.mjs"
       - ".github/workflows/mobile-verify.yml"
       - ".github/workflows/downstream-features.yml"
       - "scripts/test-downstream-feature.sh"
@@ -39,6 +41,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
+      - "scripts/check-ui-radius-tokens.mjs"
+      - "scripts/check-ui-radius-tokens.test.mjs"
       - ".github/workflows/mobile-verify.yml"
       - ".github/workflows/downstream-features.yml"
       - "scripts/test-downstream-feature.sh"
@@ -69,3 +73,8 @@ jobs:
 
       - name: Type check, lint, and test
         run: pnpm exec turbo typecheck lint test --filter=@multica/mobile
+
+      - name: Check UI radius tokens
+        run: |
+          node --test scripts/check-ui-radius-tokens.test.mjs
+          node scripts/check-ui-radius-tokens.mjs

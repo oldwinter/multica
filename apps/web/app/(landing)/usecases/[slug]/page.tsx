@@ -76,7 +76,7 @@ function MDXCTA({
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-2 rounded-[12px] px-5 py-3 text-body font-semibold not-italic transition-colors",
+        "inline-flex items-center gap-2 rounded-(--landing-radius-action) px-5 py-3 text-body font-semibold not-italic transition-colors",
         variant === "primary"
           ? "bg-[var(--landing-night)] text-white hover:bg-[var(--landing-night-hover)]"
           : "border border-border text-foreground hover:bg-muted",
@@ -191,7 +191,7 @@ function createMdxComponents(locale: SupportedLocale) {
     },
     code: (props: ComponentPropsWithoutRef<"code">) => (
       <code
-        className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.88em] text-foreground"
+        className="rounded-(--landing-radius-menu-item) bg-muted px-1.5 py-0.5 font-mono text-[0.88em] text-foreground"
         {...props}
       />
     ),

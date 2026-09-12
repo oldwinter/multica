@@ -205,7 +205,7 @@ function SuccessCard({
   cta: string;
 }) {
   return (
-    <div className="rounded-[16px] border border-border bg-surface p-8 shadow-[0_1px_2px_rgba(10,13,18,0.04)] sm:p-10">
+    <div className="rounded-(--landing-radius-card) border border-border bg-surface p-8 shadow-[0_1px_2px_rgba(10,13,18,0.04)] sm:p-10">
       <h2 className="landing-serif text-[1.8rem] leading-[1.15] tracking-normal">
         {title}
       </h2>
@@ -215,7 +215,7 @@ function SuccessCard({
       <div className="mt-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 rounded-[11px] bg-[var(--landing-night)] px-5 py-2.5 text-label font-semibold text-white transition-colors hover:bg-[var(--landing-night-hover)]"
+          className="inline-flex items-center gap-2 rounded-(--landing-radius-button) bg-[var(--landing-night)] px-5 py-2.5 text-label font-semibold text-white transition-colors hover:bg-[var(--landing-night-hover)]"
         >
           {cta}
         </Link>
@@ -259,9 +259,9 @@ function FormCard({
   return (
     <form
       onSubmit={onSubmit}
-      className="space-y-8 rounded-[16px] border border-border bg-surface p-6 shadow-[0_1px_2px_rgba(10,13,18,0.04)] sm:p-10"
+      className="space-y-8 rounded-(--landing-radius-card) border border-border bg-surface p-6 shadow-[0_1px_2px_rgba(10,13,18,0.04)] sm:p-10"
     >
-      <div className="rounded-[12px] border border-border bg-page-canvas p-4 text-label leading-[1.6] text-muted-foreground">
+      <div className="rounded-(--landing-radius-action) border border-border bg-page-canvas p-4 text-label leading-[1.6] text-muted-foreground">
         <p className="font-semibold text-foreground">
           <span aria-hidden className="mr-1.5">📌</span>
           {dict.notice.badge}
@@ -379,7 +379,7 @@ function FormCard({
           maxLength={2000}
           disabled={busy}
           aria-describedby={goalsHintId}
-          className="block w-full rounded-[10px] border border-border bg-surface px-3.5 py-2.5 text-body text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-60"
+          className="block w-full rounded-(--landing-radius-control) border border-border bg-surface px-3.5 py-2.5 text-body text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-60"
         />
       </Field>
 
@@ -395,7 +395,7 @@ function FormCard({
       {error ? (
         <p
           role="alert"
-          className="rounded-[10px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-label leading-[1.6] text-destructive"
+          className="rounded-(--landing-radius-control) border border-destructive/40 bg-destructive/10 px-4 py-3 text-label leading-[1.6] text-destructive"
         >
           {error}
         </p>
@@ -404,7 +404,7 @@ function FormCard({
       <button
         type="submit"
         disabled={busy}
-        className="inline-flex w-full items-center justify-center rounded-[12px] bg-brand px-5 py-3 text-body font-semibold text-white transition-colors hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="inline-flex w-full items-center justify-center rounded-(--landing-radius-action) bg-brand px-5 py-3 text-body font-semibold text-white transition-colors hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {busy ? dict.fields.submitting : dict.fields.submit}
       </button>
@@ -490,7 +490,7 @@ function TextInput({
       disabled={disabled}
       aria-describedby={ariaDescribedBy}
       aria-invalid={ariaInvalid}
-      className="block w-full rounded-[10px] border border-border bg-surface px-3.5 py-2.5 text-body text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-60 aria-[invalid=true]:border-destructive/40 aria-[invalid=true]:focus:ring-destructive/20"
+      className="block w-full rounded-(--landing-radius-control) border border-border bg-surface px-3.5 py-2.5 text-body text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-60 aria-[invalid=true]:border-destructive/40 aria-[invalid=true]:focus:ring-destructive/20"
     />
   );
 }
@@ -519,7 +519,7 @@ function SelectInput({
       onChange={(e) => onChange(e.target.value)}
       required={required}
       disabled={disabled}
-      className="block w-full appearance-none rounded-[10px] border border-border bg-surface bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%228%22%20viewBox%3D%220%200%2012%208%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M1%201.5L6%206.5L11%201.5%22%20stroke%3D%22%230a0d12%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_8px] bg-[right_14px_center] bg-no-repeat px-3.5 py-2.5 pr-10 text-body text-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-60"
+      className="block w-full appearance-none rounded-(--landing-radius-control) border border-border bg-surface bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%228%22%20viewBox%3D%220%200%2012%208%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M1%201.5L6%206.5L11%201.5%22%20stroke%3D%22%230a0d12%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_8px] bg-[right_14px_center] bg-no-repeat px-3.5 py-2.5 pr-10 text-body text-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-60"
     >
       <option value="" disabled>
         {placeholder}
@@ -602,7 +602,7 @@ function ConsentCheckbox({
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         disabled={disabled}
-        className="mt-0.5 size-4 shrink-0 rounded-[4px] border-border text-foreground focus:ring-ring/20 disabled:opacity-60"
+        className="mt-0.5 size-4 shrink-0 rounded-(--landing-radius-checkbox) border-border text-foreground focus:ring-ring/20 disabled:opacity-60"
       />
       <span>{label}</span>
     </label>
