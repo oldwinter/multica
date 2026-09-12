@@ -363,4 +363,4 @@ function ReplyInput({
   );
 }
 
-export { ReplyInput, type ReplyInputProps, type ReplyInsertRequest };
+export { ReplyInput, type ReplyInputProps };
