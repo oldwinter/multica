@@ -10,6 +10,7 @@ import {
   Filter,
   FolderKanban,
   LayoutGrid,
+  Link2,
   MoreHorizontal,
   Pin,
   PinOff,
@@ -43,7 +44,12 @@ import { useActorName } from "@multica/core/workspace/hooks";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import { useModalStore } from "@multica/core/modals";
 import { openCreateIssueWithPreference } from "@multica/core/issues/stores";
-import { AppLink, useIntentNavigate, useRowLink } from "../../navigation";
+import {
+  AppLink,
+  useIntentNavigate,
+  useNavigation,
+  useRowLink,
+} from "../../navigation";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { FILTER_ITEM_CLASS, HoverCheck } from "../../common/hover-check";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
@@ -113,6 +119,7 @@ import { ProjectStatusBadge, ProjectPriorityBadge } from "./project-badge";
 import { ProjectLeadPicker } from "./project-lead-picker";
 import { PAGE_GUTTER, PAGE_TOOLBAR } from "../../layout/page-header";
 import { cn } from "@multica/ui/lib/utils";
+import { copyText } from "@multica/ui/lib/clipboard";
 
 // Sort order maps for the enum columns (header sort needs a total order).
 const PRIORITY_ORDER: Record<ProjectPriority, number> = {
@@ -235,6 +242,7 @@ function ProjectRowActions({
   const { t } = useT("projects");
   const { t: tCommon } = useT("common");
   const wsPaths = useWorkspacePaths();
+  const router = useNavigation();
   const intentNavigate = useIntentNavigate();
   const createPin = useCreatePin();
   const deletePin = useDeletePin();
@@ -280,6 +288,18 @@ function ProjectRowActions({
           >
             <ExternalLink className="size-3.5" />
             {tCommon(($) => $.navigation.open_in_new_tab)}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              void copyText(
+                router.getShareableUrl(wsPaths.projectDetail(project.id)),
+              ).then((ok) => {
+                if (ok) toast.success(t(($) => $.detail.toast_link_copied));
+              });
+            }}
+          >
+            <Link2 className="size-3.5" />
+            {t(($) => $.detail.copy_link)}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={togglePin}>

@@ -107,6 +107,11 @@ vi.mock("@multica/core/issues/stores", () => ({
   openCreateIssueWithPreference: mocks.openCreateIssue,
 }));
 
+
+vi.mock("@multica/ui/lib/clipboard", () => ({
+  copyText: vi.fn(),
+}));
+
 vi.mock("@multica/ui/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -272,6 +277,23 @@ describe("ProjectsPage project actions", () => {
       expect(mocks.openCreateIssue).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("copies the project link from the row menu", async () => {
+    const user = userEvent.setup();
+    const adapter = makeAdapter({
+      getShareableUrl: (path) => `https://app.example${path}`,
+    });
+    const { copyText } = await import("@multica/ui/lib/clipboard");
+    vi.mocked(copyText).mockResolvedValue(true);
+    renderProjects(adapter);
+
+    await user.click(screen.getByRole("button", { name: "Project actions" }));
+    await user.click(screen.getByRole("button", { name: "Copy link" }));
+
+    expect(copyText).toHaveBeenCalledWith(
+      "https://app.example/test-workspace/projects/project-1",
+    );
+  });
 });
 
 describe("ProjectsPage compact row navigation", () => {
