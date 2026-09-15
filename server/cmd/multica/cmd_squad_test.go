@@ -4,10 +4,29 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
+
+func newSquadListTestCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "list"}
+	cmd.Flags().String("server-url", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("profile", "", "")
+	cmd.Flags().String("output", "table", "")
+	return cmd
+}
+
+func newSquadMemberListTestCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "list"}
+	cmd.Flags().String("server-url", "", "")
+	cmd.Flags().String("workspace-id", "", "")
+	cmd.Flags().String("profile", "", "")
+	cmd.Flags().String("output", "table", "")
+	return cmd
+}
 
 func newSquadMemberSetRoleTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "set-role"}
@@ -88,5 +107,65 @@ func TestRunSquadMemberSetRoleValidatesRequiredFlags(t *testing.T) {
 	_ = cmd.Flags().Set("member-id", "member-456")
 	if err := runSquadMemberSetRole(cmd, []string{"squad-123"}); err == nil {
 		t.Fatal("expected missing --role error")
+	}
+}
+
+func TestRunSquadListEmptyPointsAtCreateHelp(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("MULTICA_TOKEN", "test-token")
+	t.Setenv("MULTICA_WORKSPACE_ID", "workspace-123")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/squads" {
+			t.Fatalf("path = %q, want /api/squads", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+
+	cmd := newSquadListTestCmd()
+	stderr := captureStderr(t)
+	if err := runSquadList(cmd, nil); err != nil {
+		stderr.restore()
+		t.Fatalf("runSquadList: %v", err)
+	}
+	got := stderr.read()
+	if !strings.Contains(got, "No squads found.") {
+		t.Fatalf("stderr missing empty message: %q", got)
+	}
+	if !strings.Contains(got, "try: multica squad create --help") {
+		t.Fatalf("stderr missing create next step: %q", got)
+	}
+}
+
+func TestRunSquadMemberListEmptyPointsAtAddHelp(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("MULTICA_TOKEN", "test-token")
+	t.Setenv("MULTICA_WORKSPACE_ID", "workspace-123")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/squads/squad-123/members" {
+			t.Fatalf("path = %q, want /api/squads/squad-123/members", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+
+	cmd := newSquadMemberListTestCmd()
+	stderr := captureStderr(t)
+	if err := runSquadMemberList(cmd, []string{"squad-123"}); err != nil {
+		stderr.restore()
+		t.Fatalf("runSquadMemberList: %v", err)
+	}
+	got := stderr.read()
+	if !strings.Contains(got, "No members found.") {
+		t.Fatalf("stderr missing empty message: %q", got)
+	}
+	if !strings.Contains(got, "try: multica squad member add --help") {
+		t.Fatalf("stderr missing add next step: %q", got)
 	}
 }

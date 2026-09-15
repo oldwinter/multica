@@ -46,6 +46,7 @@ func runSquadList(cmd *cobra.Command, _ []string) error {
 
 	if len(squads) == 0 {
 		fmt.Fprintln(os.Stderr, "No squads found.")
+		fmt.Fprintln(os.Stderr, "try: multica squad create --help")
 		return nil
 	}
 
@@ -284,6 +285,7 @@ func runSquadMemberList(cmd *cobra.Command, args []string) error {
 
 	if len(members) == 0 {
 		fmt.Fprintln(os.Stderr, "No members found.")
+		fmt.Fprintln(os.Stderr, "try: multica squad member add --help")
 		return nil
 	}
 
