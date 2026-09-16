@@ -128,7 +128,9 @@
   "not_found": {
     "title": "ページが見つかりません",
     "description": "お探しのページは存在しないか、移動しました。",
-    "back_to_multica": "Multicaに戻る"
+    "back_to_multica": "Multicaに戻る",
+    "login": "ログイン",
+    "docs": "ドキュメント"
   },
   "navigation": {
     "open_in_new_tab": "新しいタブで開く"

@@ -22,5 +22,34 @@ describe("NotFound", () => {
       "href",
       "/",
     );
+    expect(screen.getByRole("link", { name: "登录" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(screen.getByRole("link", { name: "文档" })).toHaveAttribute(
+      "href",
+      "/docs/zh",
+    );
+  });
+
+  it("keeps home, login, and locale-aware docs exits in English", () => {
+    render(
+      <I18nProvider locale="en" resources={RESOURCES}>
+        <NotFound />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("link", { name: "Back to Multica" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute(
+      "href",
+      "/docs",
+    );
   });
 });
