@@ -28,11 +28,35 @@ func exactArgs(n int) cobra.PositionalArgs {
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Error: accepts %d args, received %d\n\n", n, len(args))
 			}
+			// Missing the single id/query: point at the sibling list when
+			// that is how operators discover the value. Do not hint list
+			// for extra args, list itself, or parents without a list child.
+			if n == 1 && len(args) == 0 {
+				if also := seeAlsoParentList(cmd); also != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "See also: %s\n\n", also)
+				}
+			}
 			cmd.Help()
 			return errSilent
 		}
 		return nil
 	}
+}
+
+func seeAlsoParentList(cmd *cobra.Command) string {
+	if cmd.Name() == "list" {
+		return ""
+	}
+	parent := cmd.Parent()
+	if parent == nil {
+		return ""
+	}
+	for _, child := range parent.Commands() {
+		if child.Name() == "list" && child.IsAvailableCommand() {
+			return parent.CommandPath() + " list"
+		}
+	}
+	return ""
 }
 
 // initHelp configures the root command to use gh-style help output.
