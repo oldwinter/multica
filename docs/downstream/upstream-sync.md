@@ -7,6 +7,125 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-18 v0.5.0 Sync
+
+- Original checkout: `codex/skill-evolution` at
+  `2b025b7b0437210d3a5d677a9139ab201f541b62`, already contained in published
+  fork history. Local `main` was `b0a443dba0cc03deca453de633a4267a4ddcd684`.
+- Fork reconciliation: fast-forwarded `main` to published `origin/main`
+  `fe63cf530c054d9706f06e80cb6aede02ea5bdc9` (the merge's first parent).
+- Upstream: `2df765a3c8f39789c9fb76316378bcffc20d22d9` (`v0.5.0`).
+- Merge base: `3551e72e76d2c276e550b668303646d1280fb1e2`.
+- Divergence: 283 downstream-only commits, 104 upstream-only commits,
+  170 overlapping paths and 32 textual conflicts.
+- Untracked `.factory/` was left untouched. The untracked `droid-wiki/`
+  directory overlapped files newly published on `origin/main`; its original
+  contents were preserved outside the checkout at
+  `/home/cdd/multica-sync-backup-20260918-XSdLN7/droid-wiki` before the
+  fast-forward. That backup is not part of the merge.
+
+| Conflict group | Paths |
+| --- | --- |
+| CI and instructions | `.github/workflows/ci.yml`, `AGENTS.md`, `CLAUDE.md`, `apps/mobile/CLAUDE.md`, `apps/mobile/docs/rnr-migration.md` |
+| Mobile | `apps/mobile/app/(app)/[workspace]/more/settings/notifications.tsx`, `apps/mobile/data/auth-store.ts`, `apps/mobile/lib/theme.ts` |
+| Web and dependency graph | `apps/web/features/landing/components/{about-page-client,contact-sales-page-client}.tsx`, `apps/web/package.json`, `pnpm-lock.yaml` |
+| Core, tokens and shared views | `packages/core/types/agent.ts`, `packages/ui/styles/tokens.css`, `packages/views/issues/components/{comment-card.tsx,pickers/status-picker.tsx}`, `packages/views/locales/index.ts`, `packages/views/settings/components/preferences-tab.test.tsx`, `packages/views/skills/components/skill-list-actions.tsx` |
+| Backend | `server/cmd/migrate/main.go`, `server/cmd/server/listeners.go`, `server/internal/daemon/{client,daemon}.go`, `server/internal/featureflags/keys.go`, `server/internal/handler/{daemon.go,workspace_delete_manifest_test.go}`, `server/internal/service/task.go` |
+| Generated database code | `server/pkg/db/generated/{agent.sql,autopilot.sql,chat.sql,models,runtime.sql}.go` |
+
+The preservation ledger classified all 170 overlaps, including clean
+auto-merges. Shared task, auth, issue, comment and CI lifecycles remain
+upstream-owned; downstream Rooms, Twin/Wiki, Office, Skill Evolution,
+appearance and copy actions remain registered at their existing seams.
+Notable integration decisions:
+
+- Task delivery now carries the upstream locked runtime/agent authorization
+  and issue snapshot through the downstream Twin finalizer. Authorization,
+  token issuance, Twin attribution, snapshot and comment receipt share one
+  transaction. Room capability filtering, refill and retry locking remain.
+- Upstream terminal-report persistence also stores the downstream dispatch
+  timestamp and exact skill execution manifest. Queue comparisons use value
+  equality after JSON decoding; the round-trip regression covers identical
+  manifest re-enqueue. Completion contributors run only on the successful
+  terminal transition, alongside upstream's other completion side effects.
+- Upstream's four lifecycle categories coexist with concrete built-in status
+  glyphs, custom icon choices and downstream completion feedback. Office
+  fixtures follow the new categories; UI Lab's user fixture includes the
+  downstream nullable appearance fields. Mobile consumers use the live skin
+  theme; category colors reuse the existing built-in palette without adding
+  raw-color debt.
+- Personal Wiki events retain recipient-only routing; upstream invitation
+  accept/decline events retain their new recipient routing. Both Triage and
+  Twin flags and every workspace deletion ownership entry remain.
+- Upstream French bundles retain their translations. Missing downstream keys
+  and the five downstream namespaces use explicit English fallback copy;
+  the landing appearance menu uses the same fallback. French translation of
+  those local strings is still outstanding. All five
+  locales have the same key and interpolation structure.
+- CI adopts upstream scope selection, aggregate gates and the shared quality
+  action while retaining trusted self-hosted runners, isolated service ports,
+  disk-backed Go temporary files, Node 26 and Go 1.27. `go.mod` now agrees
+  with that existing downstream Go toolchain. The consistency check runs in
+  CI and follows upstream's new `CLAUDE.md` -> `AGENTS.md` pointer structure.
+
+Published migration filenames and SQL contents were preserved. The lint
+freezes the exact 20 new duplicate-prefix pairs, `480` through `499`.
+Skill Evolution's isolated schema fixture selects its owned migration names
+instead of importing unrelated upstream DDL through a numeric range.
+The merged migrator retains both parents' retry cleanup hooks and skips the
+retired search indexes and superseded lifecycle migration as upstream does.
+
+PostgreSQL 17.11 validation used two disposable databases. The fresh path
+applied all 690 migration identities. The upgrade path was initialized by
+the migrator and schema from the exact first parent, then reached the same
+690 identities. Second runs on both were no-ops. Both schemas had no invalid
+or unready indexes, the four-category constraint and system mappings agreed,
+and claim snapshots, triage, Twin, Wiki policy and Skill Evolution columns
+were present. Tests used the disposable upgrade database, not the normal
+development database.
+
+Verification used Node 26.9.0, pnpm 10.28.2 and Go 1.27.1 on Linux:
+
+- All workspace typechecks passed across the root run and final package
+  checks. After fixing the new UI Lab user fixture and French appearance
+  menu entry, `pnpm --dir apps/{web,desktop,ui-lab} typecheck` was run for
+  each app sequentially. Core and mobile also passed explicit final
+  `typecheck` / `tsc --noEmit` runs. The initial root run exposed those
+  integration errors; it was not itself a green run.
+- `pnpm install --lockfile-only` and `pnpm install --frozen-lockfile` passed.
+  `make sqlc` ran twice; every generated Go file had the same SHA-256 after
+  the second run. Reserved-slug generation also remained byte-identical.
+- `go test -p 2 ./... -run '^$'` compiled every Go test package.
+  `go test ./cmd/migrate ./internal/migrations -count=1` passed, along with
+  daemon terminal/skill/Room tests and database-backed claim, authorization,
+  snapshot, Twin, Wiki, Room, Skill Evolution, Triage, deletion and listener
+  regressions. The extended Twin transaction test checks rejected and
+  successful delivery together with snapshot persistence.
+- Core: 2,267 tests verified (the obsolete total-invalidation-count
+  assertion was replaced with the actual async inbox-summary contract, then
+  its 25-test file passed). Mobile: 295 tests and the iOS runner shell suite.
+  Web: 275 tests. Desktop: 9 focused path, daemon locale and Wiki tests.
+  UI Lab's product fixture: 5 tests.
+- Shared conflict/locale tests: 289 passed. UI token contracts: 7 tests,
+  all six skin/mode combinations and the raw-color budget passed. Resolved
+  shared view files passed ESLint. Toolchain consistency, wildcard exports
+  and the 39 CI scope/image-budget tests passed.
+- Extended downstream UI: the initial 57-file run passed 374 tests and had
+  10 failures during concurrent compiler/CI load. All 79 tests in its five
+  failing files passed when rerun with `--maxWorkers=1 --testTimeout=30000`,
+  without further product or test changes. This covers all 384 selected
+  downstream UI tests; it is not a claim that the original parallel run was
+  green.
+- The radius checker still reports the two pre-existing bare `rounded`
+  classes in `packages/views/rooms/create-room-dialog.tsx` and
+  `packages/views/rooms/room-outcome.tsx`. Both files are byte-identical to
+  the first parent; this is the same baseline finding recorded on September
+  12, not a passing quality gate.
+
+The disposable validation databases and baseline worktree were removed;
+the untracked-file backup remains. No hosted CI,
+browser/device, live-agent, deployment, release or push is implied.
+
 ## 2026-09-12 v0.4.43 Sync
 
 - Downstream before sync: `5ccd181e3127e69fc9ae375b3b89ff2ea0083371`.

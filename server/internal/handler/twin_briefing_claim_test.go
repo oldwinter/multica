@@ -282,6 +282,8 @@ func TestFinalizeTaskClaimRequiresAtomicTwinFinalizer(t *testing.T) {
 		db.CreateTaskTokenParams{},
 		[]pgtype.UUID{},
 		false,
+		nil,
+		nil,
 		&service.TwinClaimAttribution{VersionID: "version-1"},
 	)
 	if err == nil {

@@ -70,6 +70,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"github_pull_request_check_run":      workspaceDelete,
 	"github_pull_request_check_suite":    workspaceDelete,
 	"inbox_item":                         workspaceDelete,
+	"instance_telemetry_state":           workspaceDeleteKeep,
 	"issue":                              workspaceDelete,
 	"issue_view":                         workspaceDelete,
 	"issue_view_preference":              workspaceDelete,
@@ -96,6 +97,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"lm_wiki_revision":                   workspaceDelete,
 	"lm_wiki_source_policy":              workspaceDelete,
 	"lm_wiki_source_wiki_page":           workspaceDelete,
+	"maintenance_job":                    workspaceDeleteKeep, // Global maintenance audit history, not workspace-owned.
 	"member":                             workspaceDelete,
 	"agent_mcp_server":                   workspaceDelete,
 	"workspace_mcp_server":               workspaceDelete,

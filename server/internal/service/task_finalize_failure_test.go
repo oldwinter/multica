@@ -43,7 +43,7 @@ func TestFinalizeTaskClaimFailureRollsBackTokenThenRequeue(t *testing.T) {
 		WorkspaceID: util.MustParseUUID(workspaceID),
 		UserID:      util.MustParseUUID(userID),
 		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
-	}, []pgtype.UUID{bogus}, true)
+	}, []pgtype.UUID{bogus}, true, nil, nil)
 	if ferr == nil {
 		t.Fatal("expected FinalizeTaskClaim to fail for an out-of-plan delivery receipt")
 	}
@@ -139,9 +139,19 @@ func TestFinalizeTaskClaimWithTwinCommitsOrRollsBackWholeClaim(t *testing.T) {
 
 	invalid := *attribution
 	invalid.BriefingDigest = TwinBriefingDigest("different briefing")
+	snapshot := []byte(`{"title":"Claimed issue snapshot"}`)
+	authzErr := &ClaimDeliveryAuthzError{Reason: "error_runtime_access_denied", Detail: "runtime owner changed"}
+	if _, err := svc.FinalizeTaskClaimWithTwin(
+		ctx, task, token(fmt.Sprintf("twin-finalize-denied-%d", time.Now().UnixNano())),
+		[]pgtype.UUID{task.TriggerCommentID}, true,
+		func(*db.Queries, *db.CreateTaskTokenParams) error { return authzErr },
+		snapshot, attribution,
+	); !errors.Is(err, authzErr) {
+		t.Fatalf("Twin claim authorization = %v, want delivery rejection", err)
+	}
 	if _, err := svc.FinalizeTaskClaimWithTwin(
 		ctx, task, token(fmt.Sprintf("twin-finalize-invalid-%d", time.Now().UnixNano())),
-		[]pgtype.UUID{task.TriggerCommentID}, true, &invalid,
+		[]pgtype.UUID{task.TriggerCommentID}, true, nil, snapshot, &invalid,
 	); err == nil {
 		t.Fatal("expected invalid Twin attribution to fail claim finalization")
 	}
@@ -155,10 +165,20 @@ func TestFinalizeTaskClaimWithTwinCommitsOrRollsBackWholeClaim(t *testing.T) {
 	if tokenCount != 0 || attributionCount != 0 {
 		t.Fatalf("failed finalization left token=%d attribution=%d, want both zero", tokenCount, attributionCount)
 	}
+	var storedTitle *string
+	if err := pool.QueryRow(ctx, `SELECT issue_snapshot->>'title' FROM agent_task_queue WHERE id = $1`, task.ID).Scan(&storedTitle); err != nil {
+		t.Fatalf("read rejected snapshot: %v", err)
+	}
+	if storedTitle != nil {
+		t.Fatalf("failed finalization persisted snapshot %q", *storedTitle)
+	}
 
+	authorized := false
 	receipt, err := svc.FinalizeTaskClaimWithTwin(
 		ctx, task, token(fmt.Sprintf("twin-finalize-valid-%d", time.Now().UnixNano())),
-		[]pgtype.UUID{task.TriggerCommentID}, true, attribution,
+		[]pgtype.UUID{task.TriggerCommentID}, true,
+		func(*db.Queries, *db.CreateTaskTokenParams) error { authorized = true; return nil },
+		snapshot, attribution,
 	)
 	if err != nil {
 		t.Fatalf("finalize valid Twin claim: %v", err)
@@ -174,6 +194,12 @@ func TestFinalizeTaskClaimWithTwinCommitsOrRollsBackWholeClaim(t *testing.T) {
 	}
 	if tokenCount != 1 || attributionCount != 1 {
 		t.Fatalf("successful finalization committed token=%d attribution=%d, want both one", tokenCount, attributionCount)
+	}
+	if err := pool.QueryRow(ctx, `SELECT issue_snapshot->>'title' FROM agent_task_queue WHERE id = $1`, task.ID).Scan(&storedTitle); err != nil {
+		t.Fatalf("read committed snapshot: %v", err)
+	}
+	if !authorized || storedTitle == nil || *storedTitle != "Claimed issue snapshot" {
+		t.Fatalf("successful Twin claim authorization=%t snapshot=%v", authorized, storedTitle)
 	}
 }
 

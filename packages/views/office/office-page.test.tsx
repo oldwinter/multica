@@ -125,7 +125,7 @@ const resolvedIssue = {
   identifier: "MUL-42",
   title: "Ship the accessible office",
   status: "in_progress",
-  statusCategory: "in_progress",
+  statusCategory: "started",
   assignedSquadId: "squad-1",
   executingAgentIds: ["agent-1"],
 } satisfies OfficeIssue;
@@ -898,7 +898,7 @@ describe("OfficePage", () => {
     const customIssue = {
       ...resolvedIssue,
       status: "quality_review",
-      statusCategory: "in_review",
+      statusCategory: "started",
     } satisfies OfficeIssue;
     const customModel = {
       ...readyModel,

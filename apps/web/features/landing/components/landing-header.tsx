@@ -216,6 +216,14 @@ const APPEARANCE_COPY: Record<
     skins: { tension: "テンション", relay: "リレー", field: "フィールド" },
     modes: { system: "システム", light: "ライト", dark: "ダーク" },
   },
+  // Match the downstream namespace fallback until French copy is localized.
+  fr: {
+    title: "Appearance",
+    skin: "Skin",
+    mode: "Mode",
+    skins: { tension: "Tension", relay: "Relay", field: "Field" },
+    modes: { system: "System", light: "Light", dark: "Dark" },
+  },
 };
 
 const APPEARANCE_MODES = [

@@ -1,3 +1,14 @@
+/**
+ * TypeScript mirror of the CSS variables defined in apps/mobile/global.css.
+ *
+ * - `THEME` is the raw token object for inline styles, animations, and
+ *   anywhere a Tailwind class can't reach.
+ * - `NAV_THEME` is the React Navigation theme — passed into <ThemeProvider />
+ *   in app/_layout.tsx so headers, modals, and the back button match.
+ *
+ * If you change a variable in global.css, update the matching key here.
+ * See apps/mobile/AGENTS.md, "Theming model", for the sync rule.
+ */
 import { DarkTheme, DefaultTheme, type Theme } from "@react-navigation/native";
 import {
   missingSemanticTokenRoles,

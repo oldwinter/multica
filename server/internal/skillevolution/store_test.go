@@ -1004,8 +1004,15 @@ func applySkillEvolutionMigrations(t *testing.T, pool *pgxpool.Pool) {
 	sort.Slice(files, func(i, j int) bool { return filepath.Base(files[i]) < filepath.Base(files[j]) })
 	for _, file := range files {
 		name := filepath.Base(file)
-		prefix := strings.SplitN(name, "_", 2)[0]
-		if (prefix < "482" || prefix > "512") && (prefix < "515" || prefix > "526") {
+		// Published upstream and downstream migrations can share numeric
+		// prefixes. Select this fixture's feature migrations by identity.
+		if !strings.Contains(name, "_skill_evolution_") &&
+			!strings.Contains(name, "_task_run_review_") &&
+			name != "483_agent_task_queue_manual_rerun_index.up.sql" &&
+			name != "512_agent_task_queue_manual_rerun_agent_index.up.sql" &&
+			name != "520_wiki_page_proposal_source.up.sql" &&
+			name != "521_wiki_page_room_proposal_idempotency_index.up.sql" &&
+			name != "522_wiki_page_proposal_source_validate.up.sql" {
 			continue
 		}
 		sql, err := os.ReadFile(file)

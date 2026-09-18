@@ -85,7 +85,6 @@ export function PreferencesTab() {
   return (
     <SettingsTab
       title={t(($) => $.page.tabs.preferences)}
-      description={t(($) => $.preferences.description)}
     >
       <Tabs
         value={section}
@@ -221,6 +220,7 @@ function GeneralPreferences() {
     { value: "zh-Hans", label: t(($) => $.preferences.language.chinese) },
     { value: "ko", label: t(($) => $.preferences.language.korean) },
     { value: "ja", label: t(($) => $.preferences.language.japanese) },
+    { value: "fr", label: t(($) => $.preferences.language.french) },
   ];
 
   // Persist locally → sync to user.language → reload. Reload (vs in-place
@@ -516,7 +516,6 @@ function StickyCommentBarRow() {
   return (
     <SettingsRow
       label={t(($) => $.preferences.sticky_comment_bar.title)}
-      description={t(($) => $.preferences.sticky_comment_bar.hint)}
     >
       <Switch
         checked={sticky}

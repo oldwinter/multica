@@ -1,0 +1,429 @@
+{
+  "page": {
+    "title": "Rooms",
+    "description": "Durable collaboration for people, agents, and squads"
+  },
+  "actions": {
+    "new_room": "New room",
+    "create": "Create room",
+    "duplicate": "Duplicate room",
+    "copy_link": "Copy room link",
+    "cancel": "Cancel",
+    "post": "Send",
+    "posting": "Sending",
+    "pause": "Pause",
+    "resume": "Resume",
+    "wake": "Run now",
+    "run_again": "Run again",
+    "waking": "Starting",
+    "promote": "Promote",
+    "promoting": "Promoting",
+    "copy_entry": "Copy message",
+    "retry": "Retry",
+    "retry_synthesis": "Retry synthesis",
+    "retry_preflight": "Retry readiness check",
+    "cancel_cycle": "Cancel cycle",
+    "archive": "Archive",
+    "new_activity": "{{count}} new",
+    "show_new_activity": "Show {{count}} new updates",
+    "new_activity_announcement": "{{count}} new updates available"
+  },
+  "states": {
+    "loading": "Loading rooms",
+    "error_title": "Rooms could not be loaded",
+    "error_description": "Check the connection and try again.",
+    "empty_title": "No rooms yet",
+    "empty_description": "Create a room from an outcome template to run a repeatable workflow.",
+    "detail_loading": "Loading room",
+    "no_room_title": "Select a room",
+    "no_room_description": "Choose a room from the list to open its conversation."
+  },
+  "status": {
+    "active": "Active",
+    "paused": "Paused",
+    "archived": "Archived",
+    "unknown": "Unknown"
+  },
+  "list": {
+    "participants": "{{count}} participants",
+    "updated": "Updated {{time}}",
+    "search": "Search Rooms",
+    "no_results": "No matching Rooms",
+    "last_accepted": "Accepted {{time}}",
+    "last_cost": "{{count}} cost ticks",
+    "next_scheduled": "Next {{time}}",
+    "value_review": "Outcome review",
+    "value_score": "{{accepted}} accepted · {{repeats}} repeats"
+  },
+  "detail": {
+    "participants": "Participants",
+    "transcript": "Transcript",
+    "activity": "Activity",
+    "memory": "Shared memory",
+    "cycles": "Activity",
+    "artifacts": "Artifacts",
+    "instructions": "Instructions",
+    "schedule": "Schedule",
+    "budget": "Daily budget",
+    "unlimited": "Unlimited",
+    "disabled": "Disabled",
+    "minutes": "{{count}} min",
+    "next_wake": "Next run {{time}}",
+    "memory_version": "Version {{version}}",
+    "facts": "Facts",
+    "decisions": "Decisions",
+    "open_questions": "Open questions",
+    "recent_contributions": "Recent contributions",
+    "empty_memory": "Memory will grow as agents complete turns.",
+    "empty_transcript": "The room is quiet.",
+    "empty_artifacts": "No promoted artifacts.",
+    "facilitator": "Facilitator",
+    "participant": "Participant",
+    "observer": "Observer",
+    "system": "System",
+    "turns_used": "{{count}} of {{limit}} turns used"
+  },
+  "composer": {
+    "placeholder": "Write to the room",
+    "mentions": "Notify agents",
+    "mentions_selected": "{{count}} selected",
+    "paused_notice": "Messages are saved while execution is paused.",
+    "archived_notice": "Archived rooms are read-only.",
+    "starters_label": "Start with a useful question",
+    "starters": {
+      "unblock": "What is the biggest blocker right now, and what should we do next?",
+      "plan": "Turn our current priorities into a short, ordered action plan.",
+      "challenge": "Challenge our riskiest assumption and propose a way to test it."
+    }
+  },
+  "create": {
+    "title": "Create room",
+    "description": "Start with the outcome, then choose who runs it.",
+    "duplicate_title": "Duplicate room",
+    "duplicate_description": "Review the copied configuration before creating a fresh Room.",
+    "copy_name_suffix": " (Copy)",
+    "choose_template": "Choose an outcome template",
+    "reset_defaults": "Reset defaults",
+    "bounded_execution": "Bounded execution",
+    "advanced": "Advanced configuration",
+    "summary": "Preflight summary",
+    "summary_runner": "Runner",
+    "summary_synthesis": "Result",
+    "summary_turns": "Daily turns",
+    "summary_cost": "Spend limit",
+    "summary_execution": "Timing",
+    "summary_people": "{{facilitator}} + {{count}} participants",
+    "summary_not_selected": "Not selected",
+    "summary_required": "Facilitator synthesis",
+    "summary_direct": "Direct result",
+    "scheduled_copy_paused": "This scheduled copy will be created paused. Resume it after reviewing the schedule.",
+    "manual": "Manual",
+    "turn_limit": "{{count}} turns",
+    "fields": {
+      "title": "Name",
+      "template": "Template",
+      "objective": "Objective",
+      "success_criteria": "Success criteria",
+      "stop_conditions": "Stop conditions",
+      "instructions": "Instructions",
+      "facilitator": "Facilitator",
+      "agent": "Agent",
+      "squad": "Squad",
+      "participants": "Participants",
+      "agent_participants": "Agents",
+      "member_participants": "People",
+      "daily_turn_limit": "Daily turn limit",
+      "max_cost_ticks": "Spend limit",
+      "schedule_interval": "Schedule interval"
+    },
+    "placeholders": {
+      "title": "Research council",
+      "objective": "State the outcome this room should produce",
+      "one_per_line": "One item per line",
+      "instructions": "Set the question, constraints, and expected outcome",
+      "select_agent": "Select an agent",
+      "select_squad": "Select a squad",
+      "optional": "Optional"
+    },
+    "hints": {
+      "daily_turn_limit": "Leave blank for unlimited turns.",
+      "schedule_interval": "Minimum 5 minutes; leave blank for manual runs."
+    },
+    "facilitator_modes": {
+      "agent": "Agent",
+      "squad": "Squad"
+    },
+    "facilitator_empty": {
+      "agent": "No active Agents. Create or restore an Agent before creating a Room.",
+      "squad": "No active Squads. Create or restore a Squad, or switch to Agent."
+    },
+    "templates": {
+      "research": {
+        "label": "Research",
+        "outcome": "A cited answer with uncertainty made explicit.",
+        "example": "Example: assess a market or technical approach",
+        "objective": "Answer the research question with cited evidence and explicit uncertainty.",
+        "success_criteria": "The conclusion cites supporting entries\nMaterial uncertainty is visible",
+        "stop_conditions": "Required sources have been assessed\nNo new evidence changes the conclusion"
+      },
+      "planning": {
+        "label": "Planning",
+        "outcome": "An ordered plan with owners, dependencies, and risks.",
+        "example": "Example: turn a goal into the next executable steps",
+        "objective": "Produce an ordered, owner-ready execution plan.",
+        "success_criteria": "Dependencies and risks are explicit\nEvery action has a clear result",
+        "stop_conditions": "The next executable action is clear\nRemaining questions have owners"
+      },
+      "risk": {
+        "label": "Risk review",
+        "outcome": "Ranked risks with actionable mitigations.",
+        "example": "Example: challenge a launch or architecture",
+        "objective": "Identify, rank, and mitigate the material risks.",
+        "success_criteria": "Risks are ranked by impact and likelihood\nMitigations are actionable",
+        "stop_conditions": "No unowned critical risk remains"
+      },
+      "incident": {
+        "label": "Incident review",
+        "outcome": "A supported timeline, causes, and prevention actions.",
+        "example": "Example: review an outage or failed rollout",
+        "objective": "Establish the incident timeline, causes, and prevention actions.",
+        "success_criteria": "Facts are separated from hypotheses\nFollow-up actions address root causes",
+        "stop_conditions": "The timeline and contributing factors are supported"
+      },
+      "decision": {
+        "label": "Decision",
+        "outcome": "A recommendation with tradeoffs and dissent preserved.",
+        "example": "Example: choose between competing approaches",
+        "objective": "Recommend a decision with tradeoffs, evidence, and dissent preserved.",
+        "success_criteria": "Options and tradeoffs are comparable\nThe recommendation is evidence-backed",
+        "stop_conditions": "A decision can be accepted or explicitly deferred"
+      },
+      "improvement": {
+        "label": "Skill improvement",
+        "outcome": "A cited recommendation for the smallest useful Skill change.",
+        "example": "Example: improve a Skill from repeated review feedback",
+        "objective": "Turn eligible feedback into the smallest evidence-backed Skill improvement recommendation.",
+        "success_criteria": "Every recommendation cites the signals that support it\nThe proposed change is small, reviewable, and explains why\nThe target and possible regression are explicit",
+        "stop_conditions": "Evidence is sufficient for one focused recommendation\nWeak or conflicting signals are called out instead of guessed",
+        "instructions": "Compare detailed feedback with the Skill's current procedure. Look for a repeated or domain-specific pattern. Propose principles, not exhaustive rules, and explain why the change should generalize. Prefer the smallest focused edit; keep the Skill concise by moving detail into a supporting file when appropriate. Classify each recommendation as Wiki knowledge, a Twin preference or constraint, a Skill procedure, a product defect, or a decision. Cite every supporting signal. Do not mutate any target. For executable_procedure, body must be strict JSON schema_version 1 with exactly base_skill_id, base_hash, bundle (id, source, name, description, content, files with path and content), observed_pattern, expected_benefit, regression_risk, and evidence_digests. Use unsupported if any exact value is unavailable."
+      }
+    }
+  },
+  "budget": {
+    "title": "Room budget",
+    "description": "Set admission ceilings for future Room work. Existing commitments cannot be reduced below their reserved usage.",
+    "manage": "Manage budget",
+    "daily_turn_limit": "Daily turn limit",
+    "max_cost_ticks": "Cost tick limit",
+    "daily_hint": "Leave blank for unlimited turns. This ceiling is checked before work is queued.",
+    "cost_hint": "Requires a cost-bound execution backend. Unsupported Agents are refused before tasks are queued; this is not a provider invoice guarantee.",
+    "invalid": "Use a positive whole number or leave the field blank.",
+    "save": "Save budget",
+    "saving": "Saving"
+  },
+  "promote": {
+    "title": "Promote result",
+    "description": "Turn completed Room work into a durable workspace artifact.",
+    "fields": {
+      "kind": "Destination",
+      "title": "Title",
+      "body": "Body",
+      "rationale": "Rationale"
+    },
+    "placeholders": {
+      "title": "Artifact title",
+      "body": "Edit the artifact before it enters the workspace",
+      "rationale": "Why this should be promoted"
+    },
+    "kinds": {
+      "issue": "Issue",
+      "wiki": "Wiki",
+      "knowledge": "Wiki knowledge",
+      "preference": "Twin preference",
+      "constraint": "Twin constraint",
+      "executable_procedure": "Skill procedure",
+      "implementation_defect": "Product defect",
+      "decision": "Decision",
+      "unsupported": "Unsupported",
+      "unknown": "Unknown recommendation"
+    },
+    "source_entry": "Transcript entry",
+    "source_cycle": "Completed cycle"
+  },
+  "phase": {
+    "gathering": "Gathering",
+    "synthesizing": "Synthesizing",
+    "awaiting_review": "Awaiting review",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "refused": "Refused",
+    "unknown": "Not started"
+  },
+  "outcome": {
+    "title": "Outcome",
+    "objective": "Objective",
+    "no_objective": "No objective was defined.",
+    "success_criteria": "Success criteria",
+    "stop_conditions": "Stop conditions",
+    "empty": "Run a cycle to produce a reviewable outcome.",
+    "in_progress": "Participants are working toward an outcome.",
+    "synthesis_failed": "Synthesis needs attention",
+    "synthesis_attempt": "Synthesis attempt {{attempt}}",
+    "partial_failure": "{{count}} participant turns failed; completed contributions were preserved.",
+    "changes": "Changes from accepted memory",
+    "disagreements": "Disagreements",
+    "action_items": "Action items",
+    "recommendations": "Recommended artifacts",
+    "citation": "Open citation {{citation}}",
+    "created_by": "Created by {{name}}"
+  },
+  "review": {
+    "actions_label": "Outcome review actions",
+    "accept": "Accept outcome",
+    "reject": "Request another synthesis",
+    "correct": "Correct outcome",
+    "correct_title": "Correct outcome",
+    "correct_description": "Edit the structured result. Existing citations stay attached to each item.",
+    "correct_summary": "Summary",
+    "remove_item": "Remove item",
+    "submit_correction": "Submit correction",
+    "status": {
+      "pending": "Pending review",
+      "accepted": "Accepted",
+      "rejected": "Another synthesis requested",
+      "corrected": "Corrected",
+      "unknown": "Unknown"
+    }
+  },
+  "confidence": {
+    "high": "High confidence",
+    "medium": "Medium confidence",
+    "low": "Low confidence"
+  },
+  "recommendation": {
+    "approve": "Review and promote",
+    "reject": "Reject",
+    "requires_accepted": "Promotion is available after this outcome is accepted and its cycle completes.",
+    "status": {
+      "approved": "Promoted",
+      "rejected": "Rejected",
+      "unknown": "Reviewed"
+    }
+  },
+  "usage": {
+    "title": "Value and usage",
+    "turns": "Turns",
+    "cost": "Cost ticks",
+    "accepted": "Accepted",
+    "promoted": "Promoted",
+    "failures": "Failures",
+    "uncosted": "Uncosted",
+    "repeat_runs": "Repeat runs",
+    "active_weeks": "Active weeks",
+    "accepted_per_week": "Accepted / week",
+    "review_latency": "Median review",
+    "promotion_rate": "Promotion rate",
+    "failed_refused": "Failed / refused",
+    "cost_per_outcome": "Cost / accepted",
+    "seconds": "{{count}}s",
+    "minutes": "{{count}}m",
+    "hours": "{{count}}h"
+  },
+  "preflight": {
+    "title": "Run estimate",
+    "manual": "Manual",
+    "schedule": "Scheduled",
+    "turns": "{{count}} max turns",
+    "synthesis": "Facilitator synthesis",
+    "direct": "Direct result",
+    "agents_ready": "{{ready}} / {{count}} Agents ready",
+    "ready": "Ready",
+    "blocked": "Blocked",
+    "daily": "{{used}} / {{limit}} daily turns",
+    "cost": "{{used}} / {{limit}} cost ticks",
+    "remaining": "{{count}} remaining",
+    "reserved": "{{count}} reserved for active work",
+    "uncosted": "{{count}} uncosted turns"
+  },
+  "cycle": {
+    "status": {
+      "refused": "Refused",
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "unknown": "Unknown"
+    },
+    "source": {
+      "message": "Message",
+      "mention": "Mention",
+      "manual": "Manual",
+      "schedule": "Schedule",
+      "agent": "Agent",
+      "unknown": "Unknown"
+    }
+  },
+  "refusal": {
+    "room_paused": "Room is paused",
+    "room_archived": "Room is archived",
+    "budget_exhausted": "Daily budget exhausted",
+    "cycle_active": "A cycle is already active",
+    "agent_unavailable": "An Agent is unavailable",
+    "daemon_capability_unavailable": "Update and reconnect the Agent daemon to enable Room outcomes",
+    "spend_limit_unsupported": "This Agent has no cost-bound execution backend; no work was queued",
+    "preflight_required": "Checking Agent readiness and budget",
+    "preflight_failed": "Readiness check failed. Retry when the connection is available.",
+    "no_targets": "No runnable agents",
+    "invocation_not_allowed": "Agent access was revoked",
+    "unknown": "Execution refused"
+  },
+  "artifact": {
+    "kinds": {
+      "issue": "Issue",
+      "wiki": "Wiki",
+      "knowledge": "Wiki knowledge",
+      "preference": "Twin preference",
+      "constraint": "Twin constraint",
+      "executable_procedure": "Skill procedure",
+      "implementation_defect": "Product defect",
+      "decision": "Decision",
+      "unsupported": "Unsupported",
+      "unknown": "Artifact"
+    }
+  },
+  "toast": {
+    "created": "Room created",
+    "message_posted": "Message sent",
+    "status_updated": "Room status updated",
+    "wake_queued": "Cycle queued",
+    "promoted": "Artifact promoted",
+    "entry_copied": "Message copied",
+    "link_copied": "Room link copied",
+    "link_copy_failed": "Room link could not be copied",
+    "copy_entry_failed": "Message could not be copied",
+    "reviewed": "Outcome review saved",
+    "review_failed": "Outcome review could not be saved",
+    "synthesis_retry_queued": "Synthesis retry queued",
+    "synthesis_retry_failed": "Synthesis could not be retried",
+    "cycle_cancelled": "Cycle cancelled",
+    "cycle_cancel_failed": "Cycle could not be cancelled",
+    "recommendation_rejected": "Recommendation rejected",
+    "recommendation_review_failed": "Recommendation review could not be saved",
+    "create_failed": "Room could not be created",
+    "message_saved_no_execution": "Message was saved, but execution did not start",
+    "message_failed": "Message could not be sent",
+    "status_failed": "Room status could not be updated",
+    "budget_updated": "Room budget updated",
+    "budget_failed": "Room budget could not be updated",
+    "wake_failed": "Cycle could not be started",
+    "promote_failed": "Artifact could not be promoted"
+  },
+  "errors": {
+    "stale_review": "The outcome changed. Review the latest version and try again.",
+    "idempotency_conflict": "This action conflicts with an earlier request.",
+    "synthesis_not_retryable": "This synthesis can no longer be retried.",
+    "recommendation_already_reviewed": "This recommendation was already reviewed."
+  }
+}
