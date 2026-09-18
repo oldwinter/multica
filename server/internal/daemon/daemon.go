@@ -6261,15 +6261,17 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 	case "completed":
 		taskLog.Info("task completed", "status", result.Status)
 		err := d.reportTerminalTask(ctx, terminalTaskReport{
-			kind:                  terminalTaskReportComplete,
-			taskID:                taskID,
-			output:                result.Comment,
-			branchName:            result.BranchName,
-			sessionID:             result.SessionID,
-			workDir:               result.WorkDir,
-			durableWorkDir:        result.DurableWorkDir,
-			sessionRolloutMissing: result.SessionRolloutMissing,
-			retiredSessionID:      result.RetiredSessionID,
+			kind:                   terminalTaskReportComplete,
+			taskID:                 taskID,
+			output:                 result.Comment,
+			branchName:             result.BranchName,
+			sessionID:              result.SessionID,
+			workDir:                result.WorkDir,
+			durableWorkDir:         result.DurableWorkDir,
+			taskDispatchedAt:       result.TaskDispatchedAt,
+			skillExecutionManifest: result.SkillExecutionManifest,
+			sessionRolloutMissing:  result.SessionRolloutMissing,
+			retiredSessionID:       result.RetiredSessionID,
 		})
 		if err == nil {
 			return
