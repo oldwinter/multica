@@ -37,6 +37,26 @@ describe("the shared design-token contract", () => {
     expect(sizeValue(parsed.shared["--radius"]!)).toBe(10);
     expect(parsed.dark["--background"]).toBe("var(--page-canvas)");
   });
+  it("reads base selector lists without selecting named skin overrides", () => {
+    const parsed = readSourceTokens(`
+      @theme { --text-body: 14px; }
+      :root[data-skin="relay"] { --page-canvas: oklch(0.9 0.1 20); }
+      :root, [data-appearance-fixture] {
+        --radius: 0.5rem;
+        --issue-row-height: 36px;
+        --background: var(--page-canvas);
+        --page-canvas: oklch(1 0 0);
+      }
+      .dark[data-skin="relay"] { --page-canvas: oklch(0.3 0.1 20); }
+      .dark, [data-appearance-fixture][data-appearance-mode="dark"] {
+        --page-canvas: oklch(0.2 0 0);
+      }
+    `);
+    expect(parsed.light["--page-canvas"]).toBe("oklch(1 0 0)");
+    expect(parsed.dark["--page-canvas"]).toBe("oklch(0.2 0 0)");
+    expect(parsed.dark["--background"]).toBe("var(--page-canvas)");
+    expect(sizeValue(parsed.shared["--radius"]!)).toBe(8);
+  });
   it("keeps light, dark and shared changes separate in exported source", () => {
     let draft = updateToken(
       emptyDraft(),

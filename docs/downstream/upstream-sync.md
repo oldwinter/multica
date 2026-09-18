@@ -123,7 +123,7 @@ Verification used Node 26.9.0, pnpm 10.28.2 and Go 1.27.1 on Linux:
   `packages/views/rooms/room-outcome.tsx`. The named token resolves to the
   same 0.25rem (4px) as the old utility; the radius gate now passes.
 
-PR #52 validation found two additional integration issues. The clean merge
+PR #52 validation found additional integration issues. The clean merge
 in `issue-detail.tsx` retained ordinary resolved-thread expansion but lost
 upstream's equivalent branch for assignment-run comments. The shared landing
 condition now covers both kinds while preserving downstream's valid-target
@@ -147,6 +147,27 @@ toolchain consistency and all 39 CI scope/image-budget tests passed locally.
 Hosted checks continue on PR #52; this record does not claim a green initial
 run. The initial hosted mobile, downstream feature gates, SQL generation,
 vulnerability scan, Windows runtime and installer checks passed.
+
+The full backend suite also exposed missing connections in the task response
+adapter: cancellation provenance, stable quick-create origin after issue
+linking, and omission of unused assignee fallbacks. These upstream contracts
+were restored alongside the downstream Room discriminator. Completed daemon
+reports now pass the dispatch timestamp and skill manifest into the durable
+outbox. The existing failing regressions reproduced locally and passed after
+the fixes, together with related terminal-report and Room tests. Full daemon
+and handler packages then passed `go test -race -p 2` against the isolated
+verification database; Slack's full package also passed its race run.
+
+UI Lab assumed standalone `:root` and `.dark` selectors and directly editable
+color values. It now accepts the base selector lists used by appearance
+fixtures, without reading named skin overrides. Input borders and sidebar
+primary text follow their existing semantic aliases to editable source roles.
+All 47 UI Lab tests, its typecheck and ESLint passed, including a regression
+for grouped base selectors beside named skin overrides.
+Browser recordings show its blank-page failure before the fix, then successful
+input-border editing in both Light and Dark modes and navigation through the
+sidebar-text alias afterward, without page errors. Evidence is stored beside
+the comment recordings in `ui-lab-{baseline,fixed}/`.
 
 The original disposable migration databases and baseline worktree were
 removed; the untracked-file backup remains. No native-device, live-agent,

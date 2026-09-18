@@ -59,7 +59,7 @@ export const colorGroups = [
     tokens: [
       ["--border", "border"],
       ["--surface-border", "surfaceBorder"],
-      ["--input", "inputBorder"],
+      ["--control-border", "inputBorder"],
       ["--ring", "ring"],
     ],
   },
@@ -79,7 +79,6 @@ export const colorGroups = [
       ["--sidebar", "sidebar"],
       ["--sidebar-foreground", "sidebarText"],
       ["--sidebar-primary", "sidebarPrimary"],
-      ["--sidebar-primary-foreground", "sidebarPrimaryText"],
       ["--sidebar-accent", "sidebarAccent"],
       ["--sidebar-accent-foreground", "sidebarAccentText"],
       ["--sidebar-border", "sidebarBorder"],
@@ -95,6 +94,8 @@ export const colorAliases = [
   ["--background", "--page-canvas"],
   ["--card", "--surface"],
   ["--popover", "--surface-raised"],
+  ["--input", "--control-border"],
+  ["--sidebar-primary-foreground", "--primary-foreground"],
 ] as const;
 export const buttonScales = ["xs", "sm", "default", "lg"] as const;
 export type ButtonScale = (typeof buttonScales)[number];
@@ -244,8 +245,10 @@ export function readSourceTokens(css: string): Draft {
       ]),
     );
   };
-  const light = block(/:root\s*\{([^}]+)\}/);
-  const dark = block(/\.dark\s*\{([^}]+)\}/);
+  // Named skins share base declarations with scoped appearance fixtures.
+  // Match the base selector's optional list, without selecting skin overrides.
+  const light = block(/:root\s*(?:,[^{]+)?\{([^}]+)\}/);
+  const dark = block(/\.dark\s*(?:,[^{]+)?\{([^}]+)\}/);
   const typography = block(/@theme\s*\{([^}]+)\}/);
   return {
     light,

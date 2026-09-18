@@ -15,7 +15,7 @@ const mappings = [
   { id: "action", tokens: ["--primary", "--primary-foreground"] },
   { id: "brand", tokens: ["--brand", "--brand-foreground"] },
   { id: "tabs", tokens: ["--foreground", "--muted-foreground"] },
-  { id: "input", tokens: ["--foreground", "--input"] },
+  { id: "input", tokens: ["--foreground", "--control-border"] },
   { id: "focus", tokens: ["--ring"] },
   { id: "error", tokens: ["--destructive"] },
 ] as const satisfies ReadonlyArray<{
