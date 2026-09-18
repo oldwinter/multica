@@ -320,7 +320,7 @@ jobs:
           POSTGRES_USER: multica
           POSTGRES_PASSWORD: multica
         ports:
-          - 55432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U multica -d multica"
           --health-interval 5s
@@ -329,23 +329,28 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 56379:6379
+          - 6379/tcp
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://multica:multica@localhost:55432/multica?sslmode=disable
-      # Wires up the RedisLocalSkill*_test.go suite. Distinct from REDIS_URL
-      # (which would flip the server binary itself onto the Redis-backed
-      # realtime relay + request stores); the tests talk to this Redis
-      # directly so they run alongside the Postgres-backed suite.
-      REDIS_TEST_URL: redis://localhost:56379/1
       GOFLAGS: -count=1
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Configure isolated service endpoints
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+        # The shared host may run other projects. Let Docker allocate free
+        # ports, and point the tests at this job's own service containers.
+        # REDIS_TEST_URL exercises Redis tests without enabling the relay.
+        run: |
+          echo "DATABASE_URL=postgres://multica:multica@localhost:${POSTGRES_PORT}/multica?sslmode=disable" >> "$GITHUB_ENV"
+          echo "REDIS_TEST_URL=redis://localhost:${REDIS_PORT}/1" >> "$GITHUB_ENV"
 
       - name: Use disk-backed Go temp directory
         if: runner.os == 'Linux'
