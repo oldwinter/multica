@@ -123,9 +123,34 @@ Verification used Node 26.9.0, pnpm 10.28.2 and Go 1.27.1 on Linux:
   `packages/views/rooms/room-outcome.tsx`. The named token resolves to the
   same 0.25rem (4px) as the old utility; the radius gate now passes.
 
-The disposable validation databases and baseline worktree were removed;
-the untracked-file backup remains. No hosted CI,
-browser/device, live-agent, deployment, release or push is implied.
+PR #52 validation found two additional integration issues. The clean merge
+in `issue-detail.tsx` retained ordinary resolved-thread expansion but lost
+upstream's equivalent branch for assignment-run comments. The shared landing
+condition now covers both kinds while preserving downstream's valid-target
+virtualization guard. The existing regression failed before the fix; all
+83 tests in `issue-detail.test.tsx` passed afterward, as did ESLint.
+
+Browser verification used a separate worktree, ports 18136/13056 and a
+disposable `verify-*` account/workspace. Inbox notification clicks, `?comment=`
+links and `#comment-` links all kept the reply hidden before the fix; all three
+expanded it and applied the highlight afterward. Recordings and JSON results
+are kept locally under
+`.agents/skills/verify-multica/artifacts/upstream-sync-20260918/{baseline,fixed}/`.
+The verification account, workspace and issue were deleted and its services
+stopped; the isolated environment database remains for normal environment GC.
+
+The first hosted backend job could not start because another project's
+container owned port 55432. Both database-backed workflows now let Docker
+allocate free PostgreSQL/Redis ports and read the assigned ports through
+`job.services`, so they never attach to another project's service. YAML,
+toolchain consistency and all 39 CI scope/image-budget tests passed locally.
+Hosted checks continue on PR #52; this record does not claim a green initial
+run. The initial hosted mobile, downstream feature gates, SQL generation,
+vulnerability scan, Windows runtime and installer checks passed.
+
+The original disposable migration databases and baseline worktree were
+removed; the untracked-file backup remains. No native-device, live-agent,
+deployment or release verification is implied.
 
 ## 2026-09-12 v0.4.43 Sync
 

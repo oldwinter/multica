@@ -1914,7 +1914,10 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     }
 
     const targetItem = items[targetIdx];
-    if (targetItem?.kind === "resolved-bar") {
+    // Assignment runs retain their run item even when their comment renders
+    // as a resolved bar, so expand them through the same landing path.
+    if (targetItem?.kind === "resolved-bar" ||
+      (targetItem?.kind === "run" && targetItem.entry?.resolved_at && !expandedResolved.has(targetItem.id))) {
       toggleResolvedExpand(targetItem.id, true);
       return;
     }
