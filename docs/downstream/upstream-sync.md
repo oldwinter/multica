@@ -116,11 +116,12 @@ Verification used Node 26.9.0, pnpm 10.28.2 and Go 1.27.1 on Linux:
   without further product or test changes. This covers all 384 selected
   downstream UI tests; it is not a claim that the original parallel run was
   green.
-- The radius checker still reports the two pre-existing bare `rounded`
-  classes in `packages/views/rooms/create-room-dialog.tsx` and
-  `packages/views/rooms/room-outcome.tsx`. Both files are byte-identical to
-  the first parent; this is the same baseline finding recorded on September
-  12, not a passing quality gate.
+- Initial validation found the same two bare `rounded` classes reported on
+  September 12. During PR preparation, the new upstream CI radius gate was
+  reconciled with those downstream Rooms controls by using `rounded-sm` in
+  `packages/views/rooms/create-room-dialog.tsx` and
+  `packages/views/rooms/room-outcome.tsx`. The named token resolves to the
+  same 0.25rem (4px) as the old utility; the radius gate now passes.
 
 The disposable validation databases and baseline worktree were removed;
 the untracked-file backup remains. No hosted CI,

@@ -392,7 +392,7 @@ function OutcomeList({ title, items, detail, onCitation, icon: Icon = Check }: {
                     <button
                       key={entryId}
                       type="button"
-                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-caption text-brand outline-none hover:bg-brand/10 focus-visible:ring-2 focus-visible:ring-ring"
+                      className="inline-flex items-center gap-1 rounded-sm px-1 py-0.5 text-caption text-brand outline-none hover:bg-brand/10 focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={t(($) => $.outcome.citation, {
                         citation: ordinal ? `#${ordinal}` : entryId.slice(0, 8),
                       })}

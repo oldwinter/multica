@@ -796,7 +796,7 @@ function ParticipantOption({
       <span className="min-w-0 flex-1 truncate">{name}</span>
       <span
         className={cn(
-          "flex size-4 items-center justify-center rounded border",
+          "flex size-4 items-center justify-center rounded-sm border",
           checked ? "border-brand bg-brand text-brand-foreground" : "border-input",
         )}
       >
