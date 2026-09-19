@@ -22,7 +22,7 @@
  */
 import { useRef } from "react";
 import { Tabs } from "expo-router";
-import { Image } from "expo-image";
+import { PlatformSymbol } from "@/components/ui/platform-symbol";
 import { View } from "react-native";
 import type { TriggerRef } from "@rn-primitives/dropdown-menu";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -77,10 +77,10 @@ export default function TabsLayout() {
             tabBarBadge: inboxBadge,
             tabBarBadgeStyle: badgeStyle,
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:tray.fill" : "sf:tray"}
-                tintColor={color as string}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name={focused ? "tray.fill" : "tray"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -90,10 +90,10 @@ export default function TabsLayout() {
           options={{
             title: "My Issues",
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:checklist" : "sf:checklist.unchecked"}
-                tintColor={color as string}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name={focused ? "checklist" : "checklist.unchecked"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -105,10 +105,10 @@ export default function TabsLayout() {
             tabBarBadge: chatBadge,
             tabBarBadgeStyle: badgeStyle,
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:bubble.left.fill" : "sf:bubble.left"}
-                tintColor={color as string}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name={focused ? "bubble.left.fill" : "bubble.left"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -118,10 +118,10 @@ export default function TabsLayout() {
           options={{
             title: "More",
             tabBarIcon: ({ color, size }) => (
-              <Image
-                source="sf:ellipsis"
-                tintColor={color as string}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name="ellipsis"
+                color={color}
+                size={size}
               />
             ),
           }}

@@ -1,6 +1,62 @@
-# Multica Mobile (iOS)
+# Multica Mobile (iOS and Android)
 
-Expo + React Native iOS client for Multica. Independent from web/desktop — shares types and pure utilities from `@multica/core/`. See [`AGENTS.md`](./AGENTS.md) for mobile architecture and development rules; `package.json` records the current dependency versions.
+Expo + React Native client for Multica. Independent from web/desktop — shares types and pure utilities from `@multica/core/`. See [`AGENTS.md`](./AGENTS.md) for mobile architecture and development rules; `package.json` records the current dependency versions.
+
+## Android: build a standalone APK
+
+Reuse this client for Android. It uses the same backend, native navigation,
+secure token storage, and shared mobile screens. The APK includes the JS
+bundle and runs without Metro, Expo Go, an Expo account, or a build service.
+
+Prerequisites: Node 26+, pnpm, JDK 21 (`JAVA_HOME`), and Android SDK
+(`ANDROID_HOME`) with platform-tools, platform 36, build-tools 36.0.0,
+NDK 27.1.12297006 and CMake 3.22.1. Install dependencies with
+`pnpm install --frozen-lockfile` at the repository root.
+
+From the repository root, specify the API and web addresses reachable from
+your phone, then run one command:
+
+```bash
+EXPO_PUBLIC_API_URL=https://api.your-multica.example \
+EXPO_PUBLIC_WEB_URL=https://your-multica.example \
+pnpm android:mobile:apk
+```
+
+The result is `apps/mobile/dist/multica-android.apk`, with a SHA-256 file
+alongside it. Transfer the APK to your phone and open it, allowing installation
+from that file source when Android asks. Or, with a USB device attached:
+
+```bash
+adb install -r apps/mobile/dist/multica-android.apk
+```
+
+The default APK targets ARM64 phones running Android 7 or newer. Override
+`ANDROID_ARCHITECTURES` with a comma-separated React Native architecture list
+when needed (for example `arm64-v8a,x86_64` to also support emulators).
+`APP_ENV` defaults to `production`; development and staging keep
+separate app IDs. `EXPO_ANDROID_PACKAGE` overrides the Android package ID,
+and `ANDROID_VERSION_CODE` sets its positive integer build number.
+
+Addresses are embedded at build time. The script requires both values and
+disables dotenv loading to avoid accidentally targeting the official cloud.
+For a self-hosted LAN server use its LAN IP, not `localhost`; the phone must
+have network access to that server. An HTTP API enables Android cleartext
+traffic for that build. Prefer HTTPS for servers reached over the internet.
+Re-run the command after changing either address. Prebuild explicitly uses
+`--no-clean` (Expo 57 otherwise recreates the native directory), preserving
+native build caches while refreshing app configuration and the JS bundle.
+
+The script creates a private signing key once under
+`${XDG_DATA_HOME:-$HOME/.local/share}/multica/android-signing/<package-id>`
+and reuses it for updates. **Back up this directory**, including its password
+file; do not commit or share it. `MULTICA_ANDROID_SIGNING_DIR` can point to a
+secured backup location. Deleting the generated `android/` directory does
+not delete this signing identity. This workflow produces an APK for direct
+installation; publishing to Google Play is a separate release workflow.
+
+For native development, configure `apps/mobile/.env.development.local` as
+below and run `pnpm android:mobile` with an emulator or USB device attached.
+Android hardware Back dismisses action menus; iOS keeps its native sheets.
 
 ## Just want to use it on your phone? (no development)
 

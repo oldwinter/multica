@@ -38,11 +38,12 @@ class MockWebSocket {
   }
 }
 
-function connectAuthenticatedClient() {
+function connectAuthenticatedClient(clientOS = "ios") {
   const client = new WSClient({
     url: "wss://example.test/ws",
     token: "token",
     workspaceSlug: "workspace",
+    clientOS,
   });
   client.connect();
   const socket = MockWebSocket.instances[0];
@@ -62,6 +63,12 @@ describe("WSClient application heartbeat", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it.each(["ios", "android"])("identifies %s on the upgrade request", (clientOS) => {
+    const { client, socket } = connectAuthenticatedClient(clientOS);
+    expect(new URL(socket.url).searchParams.get("client_os")).toBe(clientOS);
+    client.disconnect();
   });
 
   it("reconnects a stale OPEN socket through the jittered backoff path", () => {
@@ -112,6 +119,7 @@ describe("WSClient session renewal", () => {
       url: "wss://example.test/ws",
       token: "token-v1",
       workspaceSlug: "workspace",
+      clientOS: "ios",
       getToken: () => current,
     });
 
@@ -138,6 +146,7 @@ describe("WSClient session renewal", () => {
       url: "wss://example.test/ws",
       token: "token-only",
       workspaceSlug: "workspace",
+      clientOS: "ios",
     });
 
     client.connect();

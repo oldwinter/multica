@@ -9,6 +9,7 @@ vi.hoisted(() => {
 
 // The real store pulls in expo-secure-store; the client only needs the slug.
 vi.mock("@/data/workspace-store", () => ({ getCurrentSlug: () => null }));
+vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 
 describe("api.deleteComment", () => {
   const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
@@ -36,5 +37,8 @@ describe("api.deleteComment", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(url, expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenCalledWith(url, expect.objectContaining({
+      headers: expect.objectContaining({ "X-Client-OS": "android" }),
+    }));
   });
 });
