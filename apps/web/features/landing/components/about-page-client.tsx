@@ -22,9 +22,9 @@ export function AboutPageClient() {
             <p>
               {n.prefix}
               <strong className="font-semibold text-foreground">
-                {n.mul}
+                {n.mult}
               </strong>
-              {n.tiplexed}
+              {n.iplexed}
               <strong className="font-semibold text-foreground">
                 {n.i}
               </strong>

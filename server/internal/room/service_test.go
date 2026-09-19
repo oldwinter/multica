@@ -56,7 +56,7 @@ func (*testArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, _ pgx.
 		if err != nil {
 			return pgtype.UUID{}, err
 		}
-		issue, err = queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
+		_, err = queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
 			Key: "room_artifact_id", Value: metadata, ID: issue.ID, WorkspaceID: artifact.WorkspaceID,
 		})
 		return issue.ID, err

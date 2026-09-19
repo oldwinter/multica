@@ -240,6 +240,7 @@ func (r *wikiMockRows) FieldDescriptions() []pgconn.FieldDescription { return ni
 func (r *wikiMockRows) RawValues() [][]byte                          { return nil }
 func (r *wikiMockRows) Values() ([]any, error)                       { return nil, nil }
 func (r *wikiMockRows) Conn() *pgx.Conn                              { return nil }
+func (r *wikiMockRows) TypeMap() *pgtype.Map                         { return pgtype.NewMap() }
 
 func (r *wikiMockRows) Next() bool {
 	r.i++

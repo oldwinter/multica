@@ -106,7 +106,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     title: "Issue One",
     description: null,
     status: "in_progress",
-    status_category: "in_progress",
+    status_category: "started",
     priority: "medium",
     assignee_type: "squad",
     assignee_id: "squad-1",

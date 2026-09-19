@@ -57,7 +57,7 @@ function makeIssue(
     identifier: "OFF-1",
     title: "private issue title",
     status: "In Progress",
-    statusCategory: "in_progress",
+    statusCategory: "started",
     assignedSquadId: "squad-a",
     executingAgentIds: ["agent-a", "agent-b"],
   };

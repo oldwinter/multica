@@ -60,16 +60,10 @@ const nodeMajor = capture(rootPackage.engines.node, /^>=(\d+)$/, "Node major");
 const pnpmVersion = capture(rootPackage.packageManager, /^pnpm@(.+)$/, "pnpm version");
 const goVersion = capture(read("server/go.mod"), /^go (\d+\.\d+)(?:\.\d+)?$/m, "Go version");
 const expoMajor = capture(mobilePackage.dependencies.expo, /^(?:[~^])?(\d+)/, "Expo major");
-const reactVersion = capture(mobilePackage.dependencies.react, /^(\d+\.\d+)/, "React version");
 const reactNativeVersion = capture(
   mobilePackage.dependencies["react-native"],
   /^(\d+\.\d+)/,
   "React Native version",
-);
-const expoRouterMajor = capture(
-  mobilePackage.dependencies["expo-router"],
-  /^(?:[~^])?(\d+)/,
-  "Expo Router major",
 );
 const electronMajor = capture(desktopPackage.devDependencies.electron, /^(?:[~^])?(\d+)/, "Electron major");
 const electronViteMajor = capture(
@@ -99,13 +93,8 @@ requireSnippets("scripts/dev.sh", [
   `pnpm ${pnpmVersion}`,
   `Go ${goVersion}`,
 ]);
-requireSnippets("CLAUDE.md", [`CI runs Node ${nodeMajor}, the latest Go ${goVersion} patch`]);
-requireSnippets("apps/mobile/CLAUDE.md", [
-  `Expo SDK ${expoMajor}`,
-  `React Native ${reactNativeVersion}`,
-  `React ${reactVersion}`,
-  `Expo Router ${expoRouterMajor}`,
-]);
+requireExact("CLAUDE.md", "@AGENTS.md");
+requireExact("apps/mobile/CLAUDE.md", "@AGENTS.md");
 requireSnippets("SELF_HOSTING_WEB.md", [
   `Node.js ${nodeMajor}`,
   `pnpm ${pnpmVersion}`,

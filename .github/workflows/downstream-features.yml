@@ -25,7 +25,7 @@ jobs:
           POSTGRES_USER: multica
           POSTGRES_PASSWORD: multica
         ports:
-          - 55432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U multica -d multica_features"
           --health-interval 5s
@@ -34,18 +34,23 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 56379:6379
+          - 6379/tcp
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      DATABASE_URL: postgres://multica:multica@localhost:55432/multica_features?sslmode=disable
-      REDIS_TEST_URL: redis://localhost:56379/1
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Configure isolated service endpoints
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+        run: |
+          echo "DATABASE_URL=postgres://multica:multica@localhost:${POSTGRES_PORT}/multica_features?sslmode=disable" >> "$GITHUB_ENV"
+          echo "REDIS_TEST_URL=redis://localhost:${REDIS_PORT}/1" >> "$GITHUB_ENV"
 
       - name: Setup Go
         uses: actions/setup-go@v6

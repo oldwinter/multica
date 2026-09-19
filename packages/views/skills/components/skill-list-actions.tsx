@@ -55,7 +55,7 @@ import { useIntentNavigate } from "../../navigation";
 import { isRefreshableOrigin, readOrigin } from "../lib/origin";
 import { RefreshSkillDialog } from "./refresh-skill-dialog";
 import { SkillReferenceMenuItem } from "./skill-reference-copy";
-import type { SkillRow } from "./skills-page";
+import type { SkillRow } from "./skill-list-filter";
 
 // Shared context the row kebab and the batch toolbar both need. Assembled
 // once at the page level.
@@ -322,9 +322,6 @@ export function AddToAgentDialog({
           <DialogTitle className="text-body">
             {t(($) => $.actions.add_to_agent)}
           </DialogTitle>
-          <DialogDescription className="text-caption">
-            {t(($) => $.actions.add_dialog_description)}
-          </DialogDescription>
         </DialogHeader>
 
         <SkillChips skills={skills} />
