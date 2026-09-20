@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -306,6 +307,25 @@ func newMainHTTPServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
+// listenAddr is the public HTTP bind address. Bare `go run` / local binaries
+// default to loopback, matching pprof. Compose, the backend image, and Helm
+// set LISTEN_HOST=0.0.0.0 so container port maps still work. LISTEN_ADDR
+// overrides host+port together.
+func listenAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("LISTEN_ADDR")); addr != "" {
+		return addr
+	}
+	host := strings.TrimSpace(os.Getenv("LISTEN_HOST"))
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8080"
+	}
+	return net.JoinHostPort(host, port)
+}
+
 func main() {
 	logger.Init()
 	// Read the opt-out before constructing any telemetry dependency. In the
@@ -335,9 +355,12 @@ func main() {
 		}
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	addr := listenAddr()
+	if !obsmetrics.IsLoopbackAddr(addr) {
+		slog.Warn(
+			"API listener is not loopback-only; restrict access with private networking, allowlists, or proxy auth",
+			"addr", addr,
+		)
 	}
 	shutdownHoldDuration := envNonNegativeDuration("MULTICA_SHUTDOWN_HOLD_DURATION", 0)
 
@@ -689,7 +712,7 @@ func main() {
 	// the scheduler's Run goroutine starts so the field write is race-free.
 	heartbeatScheduler.RecoveryNotifier = h
 
-	srv := newMainHTTPServer(":"+port, r)
+	srv := newMainHTTPServer(addr, r)
 	profilingServer := profiling.NewServer()
 	maintenanceServer, maintenanceErr := maintenance.NewServer(os.Getenv("MAINTENANCE_PORT"), maintenance.NewService(pool, maintenance.StatusCategory{}))
 	if maintenanceErr != nil {
@@ -859,7 +882,7 @@ func main() {
 	}()
 
 	go func() {
-		slog.Info("server starting", "port", port)
+		slog.Info("server starting", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 			os.Exit(1)

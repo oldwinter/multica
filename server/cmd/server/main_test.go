@@ -366,3 +366,43 @@ func TestNewMainHTTPServerTimeouts(t *testing.T) {
 		t.Errorf("WriteTimeout = %v, want 0", got)
 	}
 }
+
+func TestListenAddrDefaultsToLoopback8080(t *testing.T) {
+	t.Setenv("LISTEN_ADDR", "")
+	t.Setenv("LISTEN_HOST", "")
+	t.Setenv("PORT", "")
+
+	if got := listenAddr(); got != "127.0.0.1:8080" {
+		t.Fatalf("listenAddr() = %q, want %q", got, "127.0.0.1:8080")
+	}
+}
+
+func TestListenAddrUsesPORTOnLoopback(t *testing.T) {
+	t.Setenv("LISTEN_ADDR", "")
+	t.Setenv("LISTEN_HOST", "")
+	t.Setenv("PORT", "9090")
+
+	if got := listenAddr(); got != "127.0.0.1:9090" {
+		t.Fatalf("listenAddr() = %q, want %q", got, "127.0.0.1:9090")
+	}
+}
+
+func TestListenAddrUsesLISTEN_HOST(t *testing.T) {
+	t.Setenv("LISTEN_ADDR", "")
+	t.Setenv("PORT", "8080")
+	t.Setenv("LISTEN_HOST", "0.0.0.0")
+
+	if got := listenAddr(); got != "0.0.0.0:8080" {
+		t.Fatalf("listenAddr() = %q, want %q", got, "0.0.0.0:8080")
+	}
+}
+
+func TestListenAddrUsesLISTEN_ADDROverride(t *testing.T) {
+	t.Setenv("PORT", "9090")
+	t.Setenv("LISTEN_HOST", "0.0.0.0")
+	t.Setenv("LISTEN_ADDR", "[::1]:8080")
+
+	if got := listenAddr(); got != "[::1]:8080" {
+		t.Fatalf("listenAddr() = %q, want %q", got, "[::1]:8080")
+	}
+}
