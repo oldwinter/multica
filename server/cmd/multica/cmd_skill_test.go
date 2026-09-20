@@ -18,6 +18,7 @@ func newSkillImportTestCmd() *cobra.Command {
 	cmd.Flags().String("workspace-id", "", "")
 	cmd.Flags().String("profile", "", "")
 	cmd.Flags().String("url", "", "")
+	cmd.Flags().String("file", "", "")
 	cmd.Flags().String("on-conflict", "fail", "")
 	cmd.Flags().String("output", "json", "")
 	return cmd
@@ -169,6 +170,48 @@ func TestRunSkillImportSendsOnConflictAndPrintsStructuredResult(t *testing.T) {
 	}
 	if got["status"] != "updated" {
 		t.Fatalf("status = %v", got["status"])
+	}
+}
+
+func TestRunSkillImportMissingSourceGivesExampleWithoutCallingAPI(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("MULTICA_TOKEN", "")
+	t.Setenv("MULTICA_SERVER_URL", "")
+
+	cmd := newSkillImportTestCmd()
+	err := runSkillImport(cmd, nil)
+	if err == nil {
+		t.Fatal("expected missing --url/--file error")
+	}
+	if !strings.Contains(err.Error(), "either --url or --file is required") {
+		t.Fatalf("error = %v, want required flags", err)
+	}
+	if !strings.Contains(err.Error(), "multica skill import --url https://skills.sh/owner/skill") {
+		t.Fatalf("error = %v, want copyable import example", err)
+	}
+	if strings.Contains(err.Error(), "server URL not set") || strings.Contains(err.Error(), "not logged") {
+		t.Fatalf("error = %v, flag check must run before API client", err)
+	}
+}
+
+func TestRunSkillCreateMissingNameGivesExampleWithoutCallingAPI(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("MULTICA_TOKEN", "")
+	t.Setenv("MULTICA_SERVER_URL", "")
+
+	cmd := newSkillCreateTestCmd()
+	err := runSkillCreate(cmd, nil)
+	if err == nil {
+		t.Fatal("expected missing --name error")
+	}
+	if !strings.Contains(err.Error(), "--name is required") {
+		t.Fatalf("error = %v, want required --name", err)
+	}
+	if !strings.Contains(err.Error(), "multica skill create --name my-skill") {
+		t.Fatalf("error = %v, want copyable create example", err)
+	}
+	if strings.Contains(err.Error(), "server URL not set") || strings.Contains(err.Error(), "not logged") {
+		t.Fatalf("error = %v, flag check must run before API client", err)
 	}
 }
 

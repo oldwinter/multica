@@ -339,14 +339,14 @@ func runSkillGet(cmd *cobra.Command, args []string) error {
 }
 
 func runSkillCreate(cmd *cobra.Command, _ []string) error {
+	name, _ := cmd.Flags().GetString("name")
+	if name == "" {
+		return fmt.Errorf("--name is required; try: multica skill create --name my-skill")
+	}
+
 	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
-	}
-
-	name, _ := cmd.Flags().GetString("name")
-	if name == "" {
-		return fmt.Errorf("--name is required")
 	}
 
 	body := map[string]any{
@@ -495,22 +495,22 @@ func runSkillRefresh(cmd *cobra.Command, args []string) error {
 }
 
 func runSkillImport(cmd *cobra.Command, _ []string) error {
-	client, err := newAPIClient(cmd)
-	if err != nil {
-		return err
-	}
-
 	importURL, _ := cmd.Flags().GetString("url")
 	importFile, _ := cmd.Flags().GetString("file")
 	switch {
 	case importURL == "" && importFile == "":
-		return fmt.Errorf("either --url or --file is required")
+		return fmt.Errorf("either --url or --file is required; try: multica skill import --url https://skills.sh/owner/skill")
 	case importURL != "" && importFile != "":
 		return fmt.Errorf("--url and --file are mutually exclusive")
 	}
 	onConflict, _ := cmd.Flags().GetString("on-conflict")
 	if !validSkillImportConflictStrategy(onConflict) {
 		return fmt.Errorf("--on-conflict must be one of: fail, overwrite, rename, skip")
+	}
+
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cli.AtLeastAPITimeout(60*time.Second))
