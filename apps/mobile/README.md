@@ -13,14 +13,17 @@ Prerequisites: Node 26+, pnpm, JDK 21 (`JAVA_HOME`), and Android SDK
 NDK 27.1.12297006 and CMake 3.22.1. Install dependencies with
 `pnpm install --frozen-lockfile` at the repository root.
 
-From the repository root, specify the API and web addresses reachable from
-your phone, then run one command:
+From the repository root, build against the official Multica service using
+the addresses in `.env.production`:
 
 ```bash
-EXPO_PUBLIC_API_URL=https://api.your-multica.example \
-EXPO_PUBLIC_WEB_URL=https://your-multica.example \
+EXPO_PUBLIC_API_URL=https://api.multica.ai \
+EXPO_PUBLIC_WEB_URL=https://multica.ai \
 pnpm android:mobile:apk
 ```
+
+For a self-hosted deployment, replace both addresses with your own API and
+web URLs reachable from the phone.
 
 The result is `apps/mobile/dist/multica-android.apk`, with a SHA-256 file
 alongside it. Transfer the APK to your phone and open it, allowing installation
@@ -36,6 +39,7 @@ when needed (for example `arm64-v8a,x86_64` to also support emulators).
 `APP_ENV` defaults to `production`; development and staging keep
 separate app IDs. `EXPO_ANDROID_PACKAGE` overrides the Android package ID,
 and `ANDROID_VERSION_CODE` sets its positive integer build number.
+For updates, set that number above the version installed on your phone.
 
 Addresses are embedded at build time. The script requires both values and
 disables dotenv loading to avoid accidentally targeting the official cloud.
