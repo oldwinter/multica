@@ -7,6 +7,8 @@
     "dev": "expo start",
     "dev:staging": "dotenv -e .env.staging -- cross-env APP_ENV=staging expo start",
     "dev:prod": "dotenv -e .env.production -- cross-env APP_ENV=production expo start",
+    "android": "expo prebuild --platform android --no-install --no-clean && expo run:android",
+    "android:apk": "bash scripts/android-build.sh",
     "ios": "./scripts/ios-run.sh",
     "ios:staging": "dotenv -e .env.staging -- cross-env APP_ENV=staging ./scripts/ios-run.sh",
     "ios:prod": "dotenv -e .env.production -- cross-env APP_ENV=production ./scripts/ios-run.sh",
@@ -22,6 +24,7 @@
   "dependencies": {
     "@expo/dom-webview": "^57.0.1",
     "@expo/metro-runtime": "~57.0.15",
+    "@expo/react-native-action-sheet": "^4.1.1",
     "@expo/vector-icons": "^15.1.1",
     "@multica/core": "workspace:*",
     "@react-native-community/datetimepicker": "9.1.0",

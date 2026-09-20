@@ -25,7 +25,7 @@ import {
   ScrollView,
   View,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { PlatformSymbol } from "@/components/ui/platform-symbol";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "@multica/core/types";
@@ -128,10 +128,10 @@ function WorkspaceRow({
         {workspace.name}
       </Text>
       {active ? (
-        <ExpoImage
-          source="sf:checkmark"
-          tintColor={iconTint}
-          style={{ width: 16, height: 16 }}
+        <PlatformSymbol
+          name="checkmark"
+          color={iconTint}
+          size={16}
         />
       ) : null}
     </Pressable>

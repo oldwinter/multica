@@ -48,6 +48,7 @@ var legacyDuplicateMigrationStems = map[string][]string{
 	"497": {"497_agent_task_queue_delegated_failure_evidence_index", "497_skill_evolution_proposal_generation_index"},
 	"498": {"498_chat_session_runtime_id_index", "498_skill_evolution_proposal_active_index"},
 	"499": {"499_agent_task_issue_snapshot", "499_skill_evolution_evidence_identity_index"},
+	"500": {"500_skill_evolution_evaluation_idempotency_index", "500_task_message_call_id"},
 	"451": {"451_agent_task_comment_thread", "451_room_memory_revision_creator"},
 	"452": {"452_agent_task_pending_thread_unique", "452_room_cycle_cost_limit"},
 	"453": {"453_drop_pending_issue_agent_unique", "453_room_spend_limit_refusal"},

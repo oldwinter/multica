@@ -7,6 +7,45 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-19 post-v0.5.0 Sync
+
+- Downstream and published fork tip: `82b1542d249f48cc03edcafca0730ff25ec840b7`.
+- Upstream: `8c4f4328f6e3baff08394b309034463b5db9d7af`, three commits
+  after `v0.5.0`; merge base `2df765a3c8f39789c9fb76316378bcffc20d22d9`.
+- Divergence: 290 downstream-only commits and 3 upstream-only commits.
+  Nine overlapping paths auto-merged without textual conflicts.
+- The overlap ledger preserves downstream Room/Twin/Skill Evolution
+  lifecycles in `daemon/{client,daemon}.go` and `handler/daemon.go`, downstream
+  event types in `protocol/messages.go` and `core/types/events.ts`, appearance
+  schemas/tests, and Twin transcript tests. Upstream tool-call identity is
+  additive throughout these contracts; database models were regenerated.
+- Upstream fixes pair parallel tool results by call identity, separate
+  cancelled child work from completed work, and use the database clock in
+  fallback timestamp tests.
+
+Both published `500` migrations remain immutable. The duplicate-prefix lint
+now freezes the exact pair `500_task_message_call_id` and
+`500_skill_evolution_evaluation_idempotency_index`. A fresh database and an
+upgrade from the exact first parent's 690-migration ledger both reached 691
+identities. Re-running both migrators was a no-op. The nullable `call_id`
+column and the existing Skill Evolution unique index coexist; neither
+database has an invalid or unready index.
+
+Core schema tests (174), transcript tests (206), core/views typechecks and the
+handler's complete message-batch tests passed. Running `make sqlc`
+twice produced byte-identical generated Go files. Local proof logs and the
+nine-path preservation ledger are under `/tmp/multica-sync-20260919-*`.
+The untracked `.factory/` and unrelated worktrees were preserved.
+
+Migration, daemon call identity/terminal reports, handler stage/cancellation,
+task-result and private Room transcript tests passed against the disposable
+upgrade database. The new upstream live/history test initially failed only
+for the user reader: it seeded a private agent but supplied no authenticated
+user. An isolated rerun reproduced both 404s. Giving the user reader the
+fixture owner's real member context restored full and incremental reads;
+the daemon reader keeps its separate daemon context. The production private
+agent guard remains intact.
+
 ## 2026-09-18 v0.5.0 Sync
 
 - Original checkout: `codex/skill-evolution` at
@@ -952,6 +991,7 @@ Use this to decide who wins a conflict:
 | Local Twin / Wiki | `server/internal/service/twin*`, `lm_wiki*`, `wiki*`, `packages/core/twins/`, `packages/core/wiki/`, `packages/views/twins/`, `packages/views/wiki/` |
 | Local skins / search extras | theme tokens, `data-twin-copy`, search commands `copy_page_link` / `surprise_issue` |
 | Local ops overlay | `downstream/` (LAN self-host scripts, compose bind override, extra docs). Do not patch upstream `Makefile` / `docker-compose.selfhost.yml` for this. |
+| Local Android delivery | `apps/mobile/scripts/android-build.sh`, `apps/mobile/lib/use-action-sheet.ts`, `apps/mobile/components/ui/platform-symbol.tsx`. Keep native packaging, menu, and icon behavior in these adapters; shared mobile screens retain upstream lifecycle and action ordering. |
 | Upstream | onboarding shell, auth recovery, plugins, share links, custom issue statuses, chat/task event contract, sqlc output |
 
 When a conflict is inside an upstream-owned shell, take upstream and

@@ -12,7 +12,6 @@
  */
 import { useCallback, useEffect } from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Linking,
@@ -42,8 +41,10 @@ import { useWorkspaceStore } from "@/data/workspace-store";
 import { useViewedIssuesStore } from "@/data/viewed-issues-store";
 import { useCommentSelectStore } from "@/data/comment-select-store";
 import { useReplyTargetStore } from "@/data/stores/reply-target-store";
+import { useAppActionSheet } from "@/lib/use-action-sheet";
 
 export default function IssueDetail() {
+  const showActionSheet = useAppActionSheet();
   // `highlight` + `h` come from inbox deep-link (apps/mobile/app/(app)/
   // [workspace]/(tabs)/inbox.tsx). `highlight` is the target comment id;
   // `h` is a per-tap nonce so re-tapping the same row re-fires the
@@ -107,7 +108,7 @@ export default function IssueDetail() {
 
   // Three-dot menu: Pin/Unpin / Copy link / Open on web (if web URL set) /
   // Delete. Mirrors apps/mobile/app/(app)/[workspace]/project/[id].tsx — same
-  // ActionSheetIOS + Alert.alert confirm pattern. Property edits (status,
+  // action sheet + Alert.alert confirm pattern. Property edits (status,
   // priority, assignee, due_date) live on the IssueHeaderCard chips inside
   // the timeline list, not in this menu — one entry per action.
   const onPressMore = useCallback(() => {
@@ -123,7 +124,7 @@ export default function IssueDetail() {
     if (issueLink) options.push("Open on web");
     options.push("Delete issue");
     const destructiveIndex = options.length - 1;
-    ActionSheetIOS.showActionSheetWithOptions(
+    showActionSheet(
       {
         options,
         cancelButtonIndex: 0,
@@ -151,7 +152,7 @@ export default function IssueDetail() {
         }
       },
     );
-  }, [issue, wsSlug, deleteIssue, isPinned, createPin, deletePin]);
+  }, [issue, wsSlug, deleteIssue, isPinned, createPin, deletePin, showActionSheet]);
 
   return (
     <View className="flex-1 bg-background">

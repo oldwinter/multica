@@ -1,11 +1,9 @@
 /**
  * Long-press handler for a chat message bubble. Exposes `onLongPress`
- * (drives a native iOS ActionSheetIOS) and `isPressed` (drives the
+ * (drives a platform action sheet) and `isPressed` (drives the
  * caller's highlight ring while the sheet is on screen).
  *
- * iOS-native first per apps/mobile/CLAUDE.md §UI components → waterfall
- * step 1: `ActionSheetIOS.showActionSheetWithOptions`. Zero custom
- * layout, zero animation, zero overflow math, zero new deps.
+ * iOS keeps its native sheet; Expo supplies Android presentation.
  *
  * Item set (v1, conditional):
  *   Copy · Select Text · Cancel
@@ -16,7 +14,7 @@
  * native alternative" threshold in apps/mobile/CLAUDE.md.
  */
 import { useCallback, useState } from "react";
-import { ActionSheetIOS } from "react-native";
+import { useAppActionSheet } from "@/lib/use-action-sheet";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import type { ChatMessage } from "@multica/core/types";
@@ -26,6 +24,7 @@ export function useChatMessageLongPress(
   message: ChatMessage,
 ): { onLongPress: () => void; isPressed: boolean } {
   const [isPressed, setIsPressed] = useState(false);
+  const showActionSheet = useAppActionSheet();
 
   const onLongPress = useCallback(() => {
     const hasContent = !!message.content;
@@ -53,7 +52,7 @@ export function useChatMessageLongPress(
 
     const cancelButtonIndex = options.length - 1;
 
-    ActionSheetIOS.showActionSheetWithOptions(
+    showActionSheet(
       { options, cancelButtonIndex },
       (i) => {
         setIsPressed(false);
@@ -75,7 +74,7 @@ export function useChatMessageLongPress(
         }
       },
     );
-  }, [message]);
+  }, [message, showActionSheet]);
 
   return { onLongPress, isPressed };
 }

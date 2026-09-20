@@ -1,11 +1,9 @@
 /**
  * Long-press handler for a comment bubble. Exposes `onLongPress` (drives a
- * native iOS ActionSheetIOS) and `isPressed` (drives the caller's highlight
+ * platform action sheet) and `isPressed` (drives the caller's highlight
  * ring while the sheet is on screen).
  *
- * iOS-native first per apps/mobile/CLAUDE.md §UI components → waterfall step
- * 1: `ActionSheetIOS.showActionSheetWithOptions`. Zero custom layout, zero
- * animation, zero overflow math, zero new deps.
+ * iOS keeps its native sheet; Expo supplies Android presentation.
  *
  * Item set (conditional, mirrors web's comment context menu):
  *   Reply (stub) · React… (opens nested sheet) · Copy · Select Text ·
@@ -18,7 +16,8 @@
  * first is still dismissing — the callback runs after dismissal completes.
  */
 import { useCallback, useState } from "react";
-import { ActionSheetIOS, Alert } from "react-native";
+import { Alert } from "react-native";
+import { useAppActionSheet, type ShowActionSheet } from "@/lib/use-action-sheet";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -46,6 +45,7 @@ export function useCommentLongPress(
   issueIdentifier: string | undefined,
 ): { onLongPress: () => void; isPressed: boolean } {
   const [isPressed, setIsPressed] = useState(false);
+  const showActionSheet = useAppActionSheet();
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const userId = useAuthStore((s) => s.user?.id);
   const toggleReaction = useToggleCommentReaction(issueId);
@@ -108,7 +108,7 @@ export function useCommentLongPress(
       ? actions.findIndex((a) => a.kind === "delete")
       : undefined;
 
-    ActionSheetIOS.showActionSheetWithOptions(
+    showActionSheet(
       {
         options,
         cancelButtonIndex,
@@ -144,6 +144,7 @@ export function useCommentLongPress(
             // Present the nested React sheet from inside this completion
             // callback — see file header for why.
             presentReactSheet({
+              showActionSheet,
               entry,
               reactions,
               userId,
@@ -215,12 +216,14 @@ export function useCommentLongPress(
     resolveComment,
     getName,
     keepReplies,
+    showActionSheet,
   ]);
 
   return { onLongPress, isPressed };
 }
 
 function presentReactSheet(args: {
+  showActionSheet: ShowActionSheet;
   entry: TimelineEntry;
   reactions: Reaction[];
   userId: string | undefined;
@@ -228,12 +231,12 @@ function presentReactSheet(args: {
   issueId: string;
   toggle: (emoji: string, existing: Reaction | undefined) => void;
 }) {
-  const { entry, reactions, userId, wsSlug, issueId, toggle } = args;
+  const { entry, reactions, userId, wsSlug, issueId, toggle, showActionSheet } = args;
   const emojis = QUICK_EMOJIS.slice(0, QUICK_ROW_SIZE);
   const options = [...emojis, "More reactions…", "Cancel"];
   const cancelButtonIndex = options.length - 1;
 
-  ActionSheetIOS.showActionSheetWithOptions(
+  showActionSheet(
     { options, cancelButtonIndex },
     (i) => {
       if (i === cancelButtonIndex) return;

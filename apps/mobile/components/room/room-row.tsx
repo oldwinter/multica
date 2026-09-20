@@ -1,5 +1,5 @@
 import { Pressable, View } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { PlatformSymbol } from "@/components/ui/platform-symbol";
 import type { Room } from "@/data/rooms-types";
 import { Text } from "@/components/ui/text";
 import { useColorScheme } from "@/lib/use-color-scheme";
@@ -29,10 +29,10 @@ export function RoomRow({ room, onPress }: { room: Room; onPress: () => void }) 
     >
       <View className="flex-row items-start gap-3">
         <View className="size-9 rounded-md bg-secondary items-center justify-center">
-          <ExpoImage
-            source="sf:person.3.fill"
-            tintColor={theme.foreground}
-            style={{ width: 18, height: 18 }}
+          <PlatformSymbol
+            name="person.3.fill"
+            color={theme.foreground}
+            size={18}
           />
         </View>
         <View className="flex-1 min-w-0 gap-1">

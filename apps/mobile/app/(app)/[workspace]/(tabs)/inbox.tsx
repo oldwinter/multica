@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import {
-  ActionSheetIOS,
   Alert,
   FlatList,
   View,
@@ -27,12 +26,14 @@ import {
 } from "@/data/mutations/inbox";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { useAppActionSheet } from "@/lib/use-action-sheet";
 import {
   deduplicateInboxItems,
   getInboxNavigationTarget,
 } from "@/lib/inbox-display";
 
 export default function Inbox() {
+  const showActionSheet = useAppActionSheet();
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const { theme } = useColorScheme();
@@ -76,7 +77,7 @@ export default function Inbox() {
       "Archive completed",
       "Archive all",
     ];
-    ActionSheetIOS.showActionSheetWithOptions(
+    showActionSheet(
       {
         options,
         cancelButtonIndex: 0,

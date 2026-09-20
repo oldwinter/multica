@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   RefreshControl,
@@ -23,6 +22,7 @@ import { wikiPageDetailOptions } from "@/data/queries/wiki";
 import { useDeleteWikiPage } from "@/data/mutations/wiki";
 import { useWikiPageRealtime } from "@/data/realtime/use-wiki-page-realtime";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useAppActionSheet } from "@/lib/use-action-sheet";
 
 const SOURCE_LABELS = {
   human: "Human edit",
@@ -34,6 +34,7 @@ const SOURCE_LABELS = {
 } as const;
 
 export default function WikiPageDetail() {
+  const showActionSheet = useAppActionSheet();
   const { id, workspace } = useLocalSearchParams<{ id: string; workspace: string }>();
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const detail = useQuery(wikiPageDetailOptions(wsId, id));
@@ -94,7 +95,7 @@ export default function WikiPageDetail() {
     const activationLabel = exactPinned ? "Exact revision pinned" : "Use as LM Wiki evidence";
     const canActivate = activation.canPinRevision(page.currentRevisionId, page.scope);
     const options = ["Cancel", activationLabel, "Edit", "Revision history", "Agent proposals", "Delete"];
-    ActionSheetIOS.showActionSheetWithOptions(
+    showActionSheet(
       {
         options,
         cancelButtonIndex: 0,
@@ -120,7 +121,7 @@ export default function WikiPageDetail() {
         else if (index === 5) onDelete();
       },
     );
-  }, [activation, navigate, onDelete, page]);
+  }, [activation, navigate, onDelete, page, showActionSheet]);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["bottom"]}>
