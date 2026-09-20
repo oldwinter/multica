@@ -42,5 +42,6 @@ COPY docker/entrypoint.sh .
 RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
 EXPOSE 8080
+ENV LISTEN_HOST=0.0.0.0
 
 ENTRYPOINT ["./entrypoint.sh"]
