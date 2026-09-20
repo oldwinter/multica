@@ -59,7 +59,7 @@ require_config "$config" 'MULTICA_APP_URL: http://localhost:3100'
 require_config "$config" 'SMTP_FROM_EMAIL: multica@example.com'
 require_config "$config" 'MULTICA_DATABASE_STARTUP_TIMEOUT: 3m'
 require_config "$config" 'MULTICA_DATABASE_CONNECT_TIMEOUT: 5s'
-require_config "$config" 'LISTEN_HOST: "0.0.0.0"'
+grep -Fq 'LISTEN_HOST: "0.0.0.0"' <<<"$config" || require_config "$config" 'LISTEN_HOST: 0.0.0.0'
 require_config "$config" 'MAINTENANCE_PORT: ""'
 maintenance_config="$(MAINTENANCE_PORT=6061 docker compose --env-file "$tmp_env" -f docker-compose.selfhost.yml config)"
 require_config "$maintenance_config" 'MAINTENANCE_PORT: "6061"'
