@@ -11,6 +11,14 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 check="$root_dir/scripts/check-ui-wildcard-exports.mjs"
 ui_dir="$root_dir/packages/ui/components/ui"
 out="$(mktemp)"
+
+# The check resolves the workspace's typescript package; without installed
+# dependencies it dies with ERR_MODULE_NOT_FOUND, which says nothing about
+# the guard itself.
+if ! (cd "$root_dir" && node -e 'import("typescript").then(() => {}, () => process.exit(1))'); then
+  echo "SKIP: workspace dependencies not installed (typescript unresolvable)"
+  exit 0
+fi
 scratch=()
 
 cleanup() {

@@ -387,6 +387,9 @@ bash -c '
 # The live pnpm/turbo chain can leave the launcher ancestry while both the
 # launcher and Next listener remain alive. A dedicated launch session survives
 # that reparenting, while an unrelated listener cannot join the session.
+# This branch only exists where setsid(1) is present — launch_detached's
+# documented fallback keeps process-group isolation without a session.
+if command -v setsid >/dev/null 2>&1; then
 bash -c '
   set -euo pipefail
   source "$1"
@@ -459,6 +462,9 @@ time.sleep(30)
   fi
 ' _ "$root_dir/scripts/dev-env.sh" "$tmp_dir" \
   || fail "listener ownership must survive reparenting without trusting an unrelated port owner"
+else
+  echo "SKIP: dedicated-session ownership (setsid unavailable on this platform)"
+fi
 
 # Listener ownership follows the process tree, not only the launcher's process
 # group. Turbo/pnpm can create a nested process group for Next while keeping the
