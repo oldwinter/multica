@@ -43,6 +43,11 @@ cat >"$probe_dir/go" <<EOF
 #!/usr/bin/env bash
 echo "\$@" >>"$probe_dir/invocations"
 [ -n "$real_go" ] || exit 1
+# The recorded go may itself re-dispatch through PATH (e.g. a version-manager
+# shim falling back to PATH lookup). Drop this probe directory first so that
+# fallback cannot recurse back into the probe and hang the suite.
+PATH="\${PATH#$probe_dir:}"
+export PATH
 exec "$real_go" "\$@"
 EOF
 chmod +x "$probe_dir/go"
