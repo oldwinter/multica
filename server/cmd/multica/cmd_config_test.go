@@ -189,6 +189,9 @@ func TestRunConfigSetRejectsUnknownKey(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unknown config key") {
 		t.Fatalf("runConfigSet error = %v, want unknown key", err)
 	}
+	if !strings.Contains(err.Error(), "multica config set --help") {
+		t.Fatalf("runConfigSet error = %v, want config set --help next step", err)
+	}
 }
 
 // TestApplyConfigSetSupportsDaemonKeys locks in the daemon keys added

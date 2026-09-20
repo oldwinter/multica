@@ -255,7 +255,7 @@ func applyConfigSet(cfg *cli.CLIConfig, key, value string) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("unknown config key %q (supported: %s)", key, joinKeys(configSetSupportedKeys))
+		return fmt.Errorf("unknown config key %q (supported: %s); see multica config set --help", key, joinKeys(configSetSupportedKeys))
 	}
 	return nil
 }
