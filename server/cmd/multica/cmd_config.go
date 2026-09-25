@@ -25,6 +25,15 @@ var configShowCmd = &cobra.Command{
 	RunE:  runConfigShow,
 }
 
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Show one CLI configuration value",
+	Long: `Reads a single key from the same whitelist 'config set' writes.
+Unset keys print (not set); 'multica config show' lists every key.`,
+	Args: exactArgs(1),
+	RunE: runConfigGet,
+}
+
 // configSetSupportedKeys is the whitelist consumed by both `config set`'s
 // switch and its --help output, so a new key gets validation, error text,
 // and documentation in one place. Order matches configShow output.
@@ -77,6 +86,7 @@ var configSetCmd = &cobra.Command{
 
 func init() {
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configSetCmd)
 }
 
@@ -112,6 +122,63 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stdout, "%-34s %s\n", "auto_update_check_interval:", valueOrDefault(cfg.AutoUpdateCheckInterval, "(not set)"))
 	fmt.Fprintf(os.Stdout, "%-34s %t\n", "disable_auto_reload:", cfg.DisableAutoReload)
 	return nil
+}
+
+func runConfigGet(cmd *cobra.Command, args []string) error {
+	if err := requireTaskLocalConfigRoot(); err != nil {
+		return err
+	}
+	cfg, err := cli.LoadCLIConfigForProfile(resolveProfile(cmd))
+	if err != nil {
+		return err
+	}
+	value, ok := configKeyValue(cfg, args[0])
+	if !ok {
+		return fmt.Errorf("unknown config key %q (see: multica config show, multica config set --help)", args[0])
+	}
+	fmt.Fprintln(os.Stdout, valueOrDefault(value, "(not set)"))
+	return nil
+}
+
+// configKeyValue renders one key from the same whitelist applyConfigSet
+// writes. Empty means unset; callers decide how to display that.
+func configKeyValue(cfg cli.CLIConfig, key string) (string, bool) {
+	switch key {
+	case "server_url":
+		return cfg.ServerURL, true
+	case "app_url":
+		return cfg.AppURL, true
+	case "workspace_id":
+		return cfg.WorkspaceID, true
+	case "device_name":
+		return cfg.DeviceName, true
+	case "runtime_name":
+		return cfg.RuntimeName, true
+	case "workspaces_root":
+		return cfg.WorkspacesRoot, true
+	case "max_concurrent_tasks":
+		return intOrDefault(cfg.MaxConcurrentTasks, ""), true
+	case "poll_interval":
+		return cfg.PollInterval, true
+	case "ws_claim_poll_interval":
+		return cfg.WSClaimPollInterval, true
+	case "heartbeat_interval":
+		return cfg.HeartbeatInterval, true
+	case "agent_timeout":
+		return agentTimeoutDisplay(cfg.AgentTimeout), true
+	case "codex_semantic_inactivity_timeout":
+		return cfg.CodexSemanticInactivityTimeout, true
+	case "codex_handshake_timeout":
+		return cfg.CodexHandshakeTimeout, true
+	case "disable_auto_update":
+		return strconv.FormatBool(cfg.DisableAutoUpdate), true
+	case "auto_update_check_interval":
+		return cfg.AutoUpdateCheckInterval, true
+	case "disable_auto_reload":
+		return strconv.FormatBool(cfg.DisableAutoReload), true
+	default:
+		return "", false
+	}
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -255,7 +322,7 @@ func applyConfigSet(cfg *cli.CLIConfig, key, value string) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("unknown config key %q (supported: %s)", key, joinKeys(configSetSupportedKeys))
+		return fmt.Errorf("unknown config key %q (supported: %s); see: multica config set --help", key, joinKeys(configSetSupportedKeys))
 	}
 	return nil
 }
