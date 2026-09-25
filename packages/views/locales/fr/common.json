@@ -128,7 +128,9 @@
   "not_found": {
     "title": "Page introuvable",
     "description": "La page recherchée n'existe pas ou a été déplacée.",
-    "back_to_multica": "Retour à Multica"
+    "back_to_multica": "Retour à Multica",
+    "log_in": "Se connecter",
+    "read_docs": "Lire la documentation"
   },
   "navigation": {
     "open_in_new_tab": "Ouvrir dans un nouvel onglet"
