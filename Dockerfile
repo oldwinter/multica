@@ -41,6 +41,10 @@ COPY LICENSE NOTICE ./
 COPY docker/entrypoint.sh .
 RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
+# Containerized deployments publish ports, which requires a non-loopback bind;
+# bare `go run` / local binaries keep the loopback-only default.
+ENV LISTEN_HOST=0.0.0.0
+
 EXPOSE 8080
 
 ENTRYPOINT ["./entrypoint.sh"]

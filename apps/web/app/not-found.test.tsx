@@ -22,5 +22,13 @@ describe("NotFound", () => {
       "href",
       "/",
     );
+    expect(screen.getByRole("link", { name: "登录" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(screen.getByRole("link", { name: "查看文档" })).toHaveAttribute(
+      "href",
+      "/docs/zh",
+    );
   });
 });

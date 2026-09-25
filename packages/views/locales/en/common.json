@@ -128,7 +128,9 @@
   "not_found": {
     "title": "Page not found",
     "description": "The page you are looking for doesn't exist or has been moved.",
-    "back_to_multica": "Back to Multica"
+    "back_to_multica": "Back to Multica",
+    "log_in": "Log in",
+    "read_docs": "Read the docs"
   },
   "navigation": {
     "open_in_new_tab": "Open in new tab"

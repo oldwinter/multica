@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -335,6 +336,14 @@ func main() {
 		}
 	}
 
+	listenHost := strings.TrimSpace(os.Getenv("LISTEN_HOST"))
+	if listenHost == "" {
+		// Default to loopback: pprof is already 127.0.0.1-only and metrics
+		// warns on non-loopback binds. Container images and Helm set
+		// LISTEN_HOST=0.0.0.0 explicitly because published ports cannot
+		// reach a loopback-only listener inside the container.
+		listenHost = "127.0.0.1"
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -689,7 +698,14 @@ func main() {
 	// the scheduler's Run goroutine starts so the field write is race-free.
 	heartbeatScheduler.RecoveryNotifier = h
 
-	srv := newMainHTTPServer(":"+port, r)
+	listenAddr := net.JoinHostPort(listenHost, port)
+	srv := newMainHTTPServer(listenAddr, r)
+	if !obsmetrics.IsLoopbackAddr(listenAddr) {
+		slog.Warn(
+			"API listener is not loopback-only; restrict access with private networking, allowlists, or proxy auth",
+			"addr", listenAddr,
+		)
+	}
 	profilingServer := profiling.NewServer()
 	maintenanceServer, maintenanceErr := maintenance.NewServer(os.Getenv("MAINTENANCE_PORT"), maintenance.NewService(pool, maintenance.StatusCategory{}))
 	if maintenanceErr != nil {

@@ -189,6 +189,50 @@ func TestRunConfigSetRejectsUnknownKey(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unknown config key") {
 		t.Fatalf("runConfigSet error = %v, want unknown key", err)
 	}
+	if !strings.Contains(err.Error(), "config set --help") {
+		t.Fatalf("runConfigSet error = %v, want --help guidance", err)
+	}
+}
+
+func TestRunConfigGetReadsSingleKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	cmd := newConfigTestCmd()
+	_ = cmd.Flags().Set("profile", "getdev")
+
+	out, err := captureStdout(t, func() error { return runConfigGet(cmd, []string{"server_url"}) })
+	if err != nil {
+		t.Fatalf("runConfigGet unset: %v", err)
+	}
+	if strings.TrimSpace(out) != "(not set)" {
+		t.Fatalf("runConfigGet unset output = %q, want (not set)", out)
+	}
+
+	stderr := captureStderr(t)
+	defer stderr.restore()
+	if err := runConfigSet(cmd, []string{"server_url", "http://127.0.0.1:8080"}); err != nil {
+		t.Fatalf("runConfigSet: %v", err)
+	}
+	out, err = captureStdout(t, func() error { return runConfigGet(cmd, []string{"server_url"}) })
+	if err != nil {
+		t.Fatalf("runConfigGet: %v", err)
+	}
+	if strings.TrimSpace(out) != "http://127.0.0.1:8080" {
+		t.Fatalf("runConfigGet output = %q, want configured URL", out)
+	}
+}
+
+func TestRunConfigGetRejectsUnknownKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	cmd := newConfigTestCmd()
+	err := runConfigGet(cmd, []string{"token"})
+	if err == nil || !strings.Contains(err.Error(), "unknown config key") {
+		t.Fatalf("runConfigGet error = %v, want unknown key", err)
+	}
+	if !strings.Contains(err.Error(), "config show") || !strings.Contains(err.Error(), "config set --help") {
+		t.Fatalf("runConfigGet error = %v, want discovery guidance", err)
+	}
 }
 
 // TestApplyConfigSetSupportsDaemonKeys locks in the daemon keys added

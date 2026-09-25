@@ -24,7 +24,23 @@ When cloning a production database for staging or testing, clear the clone's `in
 
 ## Quick Install (Recommended)
 
-Two commands to set up everything — server, CLI, and configuration.
+### From a checkout
+
+If you already have this repository checked out, build the images locally and
+start the stack (requires Docker and Go):
+
+```bash
+# 1. Build backend/web images from this checkout and start the stack
+make selfhost-build
+
+# 2. Configure CLI, authenticate, and start the daemon
+multica setup self-host
+```
+
+### Without a checkout
+
+The upstream install script installs the `multica` CLI, checks out the latest
+self-host assets, and pulls the official Multica images from GHCR.
 
 <details open>
 <summary><b>macOS / Linux</b></summary>
@@ -53,7 +69,7 @@ multica setup self-host
 ```
 </details>
 
-This installs the `multica` CLI, checks out the latest self-host assets, pulls the official Multica images from GHCR, and configures everything for localhost.
+Either path configures everything for localhost.
 
 Open http://localhost:3000. To log in, configure `RESEND_API_KEY` in `.env` for email-based codes (recommended), or leave Resend unset and copy the generated code from the backend logs. See [Step 2 — Log In](#step-2--log-in) for details.
 

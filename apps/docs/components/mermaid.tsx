@@ -36,76 +36,93 @@ export function Mermaid({ chart }: { chart: string }) {
       canvas.height = 1;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-      const v = (name: string, fallback: string) => {
+      const v = (name: string): string | null => {
         const raw = css.getPropertyValue(name).trim();
-        if (!raw || !ctx) return fallback;
-        // fillStyle silently ignores unparseable input; prime with a known
-        // baseline so a parse failure paints black, not whatever was last set.
-        ctx.fillStyle = "#000";
+        if (!raw || !ctx || !CSS.supports("color", raw)) return null;
         ctx.fillStyle = raw;
         ctx.fillRect(0, 0, 1, 1);
         const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
         return `rgb(${r}, ${g}, ${b})`;
       };
 
-      const brand = v("--brand", "#3b82f6");
-      const brandFg = v("--brand-foreground", "#ffffff");
-      const background = v("--background", "#ffffff");
-      const foreground = v("--foreground", "#111111");
-      const muted = v("--muted", "#f5f5f5");
-      const mutedFg = v("--muted-foreground", "#6b7280");
-      const border = v("--border", "#e5e5e5");
-      const accent = v("--accent", muted);
+      // When any token is missing or unparseable, fall back to Mermaid's
+      // `neutral` theme wholesale rather than substitute invented hex values
+      // that drift from the design tokens.
+      const tokenValues = [
+        "--brand",
+        "--brand-foreground",
+        "--background",
+        "--foreground",
+        "--muted",
+        "--muted-foreground",
+        "--border",
+        "--accent",
+      ].map((name) => v(name));
+      const tokensPresent = tokenValues.every(
+        (value): value is string => value !== null,
+      );
 
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: "base",
-        securityLevel: "strict",
-        fontFamily: "inherit",
-        themeVariables: {
-          // Canvas
-          background,
-          mainBkg: background,
-          // Nodes — soft muted fill with full-contrast text and a subtle border
-          primaryColor: muted,
-          primaryTextColor: foreground,
-          primaryBorderColor: border,
-          secondaryColor: accent,
-          secondaryTextColor: foreground,
-          secondaryBorderColor: border,
-          tertiaryColor: background,
-          tertiaryTextColor: foreground,
-          tertiaryBorderColor: border,
-          // Edges + labels
-          lineColor: mutedFg,
-          textColor: foreground,
-          edgeLabelBackground: background,
-          labelBackground: background,
-          // Clusters (subgraph boxes)
-          clusterBkg: accent,
-          clusterBorder: border,
-          titleColor: foreground,
-          // Notes / callouts
-          noteBkgColor: muted,
-          noteTextColor: foreground,
-          noteBorderColor: border,
-          // Brand accent — used for active / start states in state diagrams,
-          // user-decision diamonds in flowcharts, etc.
-          activeTaskBkgColor: brand,
-          activeTaskBorderColor: brand,
-          altBackground: muted,
-          // Sequence / git diagrams (harmless if unused)
-          actorBkg: muted,
-          actorBorder: border,
-          actorTextColor: foreground,
-          actorLineColor: mutedFg,
-          signalColor: foreground,
-          signalTextColor: foreground,
-          // Fine print
-          errorBkgColor: muted,
-          errorTextColor: foreground,
-        },
-      });
+      if (tokensPresent) {
+        const [brand, , background, foreground, muted, mutedFg, border, accent] =
+          tokenValues;
+
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "base",
+          securityLevel: "strict",
+          fontFamily: "inherit",
+          themeVariables: {
+            // Canvas
+            background,
+            mainBkg: background,
+            // Nodes — soft muted fill with full-contrast text and a subtle border
+            primaryColor: muted,
+            primaryTextColor: foreground,
+            primaryBorderColor: border,
+            secondaryColor: accent,
+            secondaryTextColor: foreground,
+            secondaryBorderColor: border,
+            tertiaryColor: background,
+            tertiaryTextColor: foreground,
+            tertiaryBorderColor: border,
+            // Edges + labels
+            lineColor: mutedFg,
+            textColor: foreground,
+            edgeLabelBackground: background,
+            labelBackground: background,
+            // Clusters (subgraph boxes)
+            clusterBkg: accent,
+            clusterBorder: border,
+            titleColor: foreground,
+            // Notes / callouts
+            noteBkgColor: muted,
+            noteTextColor: foreground,
+            noteBorderColor: border,
+            // Brand accent — used for active / start states in state diagrams,
+            // user-decision diamonds in flowcharts, etc.
+            activeTaskBkgColor: brand,
+            activeTaskBorderColor: brand,
+            altBackground: muted,
+            // Sequence / git diagrams (harmless if unused)
+            actorBkg: muted,
+            actorBorder: border,
+            actorTextColor: foreground,
+            actorLineColor: mutedFg,
+            signalColor: foreground,
+            signalTextColor: foreground,
+            // Fine print
+            errorBkgColor: muted,
+            errorTextColor: foreground,
+          },
+        });
+      } else {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "neutral",
+          securityLevel: "strict",
+          fontFamily: "inherit",
+        });
+      }
 
       // mermaid requires a DOM-valid id; useId returns ":r0:" which isn't.
       const domId = `mermaid-${reactId.replace(/:/g, "")}`;

@@ -404,8 +404,17 @@ jobs:
         run: bash scripts/test-go.test.sh
 
       - name: Test
+        # Runs inside a disposable container (see scripts/test-go-isolated.sh):
+        # moshi-hook on the shared host probes every loopback HTTP listener and
+        # was injecting stray `GET /` requests into live tests. Inside the
+        # container, service containers are reachable by name on the job
+        # network instead of the published localhost ports.
+        env:
+          DATABASE_URL: postgres://multica:multica@postgres:5432/multica?sslmode=disable
+          REDIS_TEST_URL: redis://redis:6379/1
+          GO_TEST_NETWORK: ${{ job.services.postgres.network }}
         # pkg/agent runs on its own runner: backend-agent-tests below.
-        run: bash scripts/test-go.sh --race --only regular
+        run: bash scripts/test-go-isolated.sh --race --only regular
 
       # Publishes from main only; see the job comment. `!cancelled()` so a red
       # main still refreshes the objects for the next run, and the key step's
@@ -470,7 +479,10 @@ jobs:
           restore-keys: ${{ steps.gocache.outputs.prefix }}
 
       - name: Test agent package
-        run: bash scripts/test-go.sh --race --only agent
+        # Same isolation as backend-tests: the shared host's service discovery
+        # must not reach the listeners these tests open. This job declares no
+        # services, so the script spins up its own network.
+        run: bash scripts/test-go-isolated.sh --race --only agent
 
   # Keep the live vulnerability database from hiding build and test results.
   # The aggregate backend job below still treats both jobs as one merge gate.
