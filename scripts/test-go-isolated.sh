@@ -16,6 +16,7 @@ REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 GO_IMAGE=${GO_TEST_IMAGE:-golang:1.27-bookworm}
 NETWORK=${GO_TEST_NETWORK:-}
 OWNED_NETWORK=""
+GOHOME_DIR=""
 
 if [ -z "$NETWORK" ]; then
   NETWORK="test-go-isolated-$$"
@@ -25,6 +26,9 @@ fi
 cleanup() {
   if [ -n "$OWNED_NETWORK" ]; then
     docker network rm "$OWNED_NETWORK" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$GOHOME_DIR" ]; then
+    rm -rf "$GOHOME_DIR" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
@@ -41,10 +45,15 @@ done
 # -u keeps files the suite writes (module cache, build cache, any workspace
 # artifacts) owned by the runner user instead of root. GOMODCACHE/GOCACHE are
 # mounted at fixed container paths so nothing in the image layout is assumed.
+# HOME is a mounted subdirectory rather than /tmp itself: validateLocalPath
+# treats the bare /tmp root as a protected system path, so a container HOME of
+# exactly /tmp would flag the home-directory check with the wrong reason.
+GOHOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gohome.XXXXXX")
 docker run --rm \
   --network "$NETWORK" \
   -u "$(id -u):$(id -g)" \
-  -e HOME=/tmp \
+  -e HOME=/tmp/gohome \
+  -v "$GOHOME_DIR:/tmp/gohome" \
   "${env_args[@]}" \
   -e GOMODCACHE=/gomodcache \
   -e GOCACHE=/gocache \
