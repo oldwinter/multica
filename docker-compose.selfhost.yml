@@ -70,6 +70,9 @@ services:
       REDIS_URL: ${REDIS_URL:-}
       REDIS_CLUSTER_MODE: ${REDIS_CLUSTER_MODE:-false}
       PORT: "8080"
+      # The backend must listen on all interfaces for the published host port
+      # to reach it; bare-process defaults stay loopback-only.
+      LISTEN_HOST: ${LISTEN_HOST:-0.0.0.0}
       MAINTENANCE_PORT: ${MAINTENANCE_PORT:-}
       METRICS_ADDR: ${METRICS_ADDR:-}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a strong random value — generate one with 'openssl rand -hex 32'}

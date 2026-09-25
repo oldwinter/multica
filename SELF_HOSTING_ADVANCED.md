@@ -154,6 +154,7 @@ If the frontend and backend are served from different hostnames, `COOKIE_DOMAIN`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | Backend port — the one to edit. It is the port the backend process listens on for a local/bare run, and the host port the Compose self-host stack publishes. In Compose the container always listens on `8080` internally, so changing this needs no rebuild. |
+| `LISTEN_HOST` | `127.0.0.1` | Address the backend binds to. Bare local runs default to loopback so the API is not exposed on the LAN; the Docker image, Compose self-host stack, and Helm chart set `0.0.0.0` explicitly because published ports and Kubernetes Services cannot reach a loopback-only listener inside the container/pod. Set `0.0.0.0` on a bare run only behind a firewall or private network — the server logs a warning when the bind is not loopback. |
 | `BACKEND_PORT` | Value of `PORT` | Optional alias that overrides `PORT` for the backend. `API_PORT` and `SERVER_PORT` are further aliases; the **alias order** is `BACKEND_PORT` → `API_PORT` → `SERVER_PORT` → `PORT` → `8080`, and it is the same in `Makefile`, `scripts/local-env.sh` and `docker-compose.selfhost.yml`. Leave them unset unless the host port must differ from the port the process listens on. |
 | `METRICS_ADDR` | empty | Optional Prometheus metrics listener, for example `127.0.0.1:9090` |
 | `FRONTEND_PORT` | `3000` | Frontend port. Host port in Compose; the container always listens on `3000` internally. |
