@@ -12,12 +12,16 @@
 
 Multica is an open-source workspace where you assign work to AI coding agents the way you'd
 assign it to a teammate — they pick up the issue, report progress, raise blockers, and hand it
-back for review. Self-hostable, works with 26 agent CLIs, no lock-in.
+back for review. Self-hostable, works with 25 agent CLIs, no lock-in.
 
 [![CI](https://github.com/multica-ai/multica/actions/workflows/ci.yml/badge.svg)](https://github.com/multica-ai/multica/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/multica-ai/multica?style=flat)](https://github.com/multica-ai/multica/releases)
 [![GitHub stars](https://img.shields.io/github/stars/multica-ai/multica?style=flat)](https://github.com/multica-ai/multica/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/W8gYBn226t)
+
+> **Note:** this is `oldwinter/multica`, a downstream clone of
+> [multica-ai/multica](https://github.com/multica-ai/multica). The badges above
+> track upstream. Please report bugs against this repository.
 
 <p align="center">
   <a href="https://www.star-history.com/multica-ai/multica">
@@ -67,7 +71,7 @@ issue — so nobody reconstructs context, and nothing ships without a human sayi
 
 *Claude Code, Codex, Cursor, Kimi — you don't pick one. You hire them all.*
 
-- **[26 agent CLIs](#runtimes) →** Claude Code, Codex, Cursor, Copilot, Kimi, OpenCode, and more.
+- **[25 agent CLIs](#runtimes) →** Claude Code, Codex, Cursor, Copilot, Kimi, OpenCode, and more.
 - **[Agents as teammates](https://multica.ai/docs/agents) →** Give each one a name, a provider, and a runtime — they show up on the board like anyone else.
 - **[Squads](https://multica.ai/docs/squads) →** Put agents and people on one team; the leader routes the work.
 - **[Skills](https://multica.ai/docs/skills) →** Turn a solved problem into a playbook every agent reuses.
@@ -122,6 +126,16 @@ friends. Multica drives them; it doesn't ship them.
 
 <br/>
 
+From a checkout like this one, build the images locally and start the stack
+(requires Docker and Go):
+
+```bash
+make selfhost-build
+multica setup self-host
+```
+
+Or install via the upstream script, which pulls the official images from GHCR:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash -s -- --with-server
 multica setup self-host
@@ -130,9 +144,7 @@ multica setup self-host
 On Windows, set `$env:MULTICA_MODE="with-server"`, then run the PowerShell installer:
 `irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex`.
 
-This pulls the official images from GHCR and requires Docker. See the
-[Self-Hosting Guide](SELF_HOSTING.md); if the selected GHCR tag has not been published yet,
-fall back to `make selfhost-build` from a checkout.
+See the [Self-Hosting Guide](SELF_HOSTING.md).
 
 </details>
 
@@ -219,7 +231,7 @@ Installing and authenticating them: [Install an agent runtime](https://multica.a
                              │  spawns
                       ┌──────┴───────────────────────────────┐
                       │  Claude Code · Codex · Cursor · …    │
-                      │  (any of the 26 runtimes above)      │
+                      │  (any of the 25 runtimes above)      │
                       └──────────────────────────────────────┘
 ```
 
@@ -230,7 +242,7 @@ Installing and authenticating them: [Install an agent runtime](https://multica.a
 | Mobile | Expo / React Native (iOS) |
 | Backend | Go (Chi router, sqlc, gorilla/websocket) |
 | Database | PostgreSQL 17 (`pgcrypto` + `pg_trgm`) |
-| Agent runtime | Local daemon executing any of the 26 agent CLIs above |
+| Agent runtime | Local daemon executing any of the 25 agent CLIs above |
 
 ---
 
