@@ -32,6 +32,7 @@ import { resolveAttachmentUrl } from "@/lib/attachment-url";
 import { useLightbox } from "@/lib/markdown/lightbox-provider";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { Text } from "@/components/ui/text";
+import { useT } from "@/lib/i18n";
 
 /** Mention chip data — composer-local state. No store, no cross-route
  *  sharing. The composer owns the array and passes it in. */
@@ -130,6 +131,7 @@ function MentionChipView({
   mention: MentionChip;
   onRemove: (type: MentionChipType, id: string) => void;
 }) {
+  const { t } = useT("issues");
   const { theme } = useColorScheme();
 
   // Icon picks: @all → people; issue → git-branch (matches web's status icon
@@ -153,7 +155,7 @@ function MentionChipView({
         onPress={() => onRemove(mention.type, mention.id)}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={`Remove mention ${mention.name}`}
+        accessibilityLabel={t("a11y.remove_mention", { name: mention.name })}
         className="h-4 w-4 items-center justify-center"
       >
         <Ionicons name="close" size={12} color={theme.mutedForeground} />
@@ -175,6 +177,7 @@ interface AttachmentChipProps {
 function AttachmentChipView({ item, onRemove, onRetry }: AttachmentChipProps) {
   const { theme } = useColorScheme();
   const { open } = useLightbox();
+  const { t } = useT("issues");
 
   const isImage = useMemo(
     () => item.mimeType.startsWith("image/"),
@@ -217,8 +220,8 @@ function AttachmentChipView({ item, onRemove, onRetry }: AttachmentChipProps) {
       accessibilityRole={item.status === "failed" ? "button" : "image"}
       accessibilityLabel={
         item.status === "failed"
-          ? `Retry upload of ${item.filename}`
-          : `Open ${item.filename}`
+          ? t("a11y.retry_upload", { name: item.filename })
+          : t("a11y.open_file", { name: item.filename })
       }
       className="flex-row items-center gap-1 h-7 px-2 rounded-full bg-secondary active:opacity-80"
     >
@@ -245,7 +248,7 @@ function AttachmentChipView({ item, onRemove, onRetry }: AttachmentChipProps) {
         onPress={() => onRemove(item.localId)}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={`Remove ${item.filename}`}
+        accessibilityLabel={t("a11y.remove_file", { name: item.filename })}
         className="h-4 w-4 items-center justify-center"
       >
         <Ionicons name="close" size={12} color={theme.mutedForeground} />

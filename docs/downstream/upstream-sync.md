@@ -7,6 +7,92 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-09-26 post-v0.5.3 Sync
+
+- Downstream start and fetched published fork tip:
+  `b1f91b4496bd301fafc9563e7558be161aaacace`.
+- Upstream: `57fabfc0789b162399afb5b48a3dcfe65e01184e`
+  (`v0.5.3-12-g57fabfc07`); merge base
+  `8c4f4328f6e3baff08394b309034463b5db9d7af`.
+- Divergence: 302 downstream-only commits and 110 upstream-only commits.
+  The preservation ledger covers all 182 overlapping paths, including clean
+  auto-merges. Git reported 77 conflicted paths.
+- The merge was prepared on `oldwinter/sync-upstream-conflicts` from the exact
+  downstream start. Unrelated main-worktree artifacts were preserved.
+
+| Conflict group | Paths |
+| --- | --- |
+| Release and documentation | `.github/workflows/release.yml`, `README.zh.md`, `apps/docs/content/docs/environment-variables{,.ja,.ko,.zh}.mdx` |
+| Mobile route shells | `apps/mobile/app/_layout.tsx`, `app/(app)/select-workspace.tsx`, `[workspace]/{_layout,switch-workspace}.tsx`, `[workspace]/(tabs)/{_layout,inbox,my-issues}.tsx`, `[workspace]/issue/[id].tsx`, `[workspace]/more/{issues,pins,settings}.tsx`, `[workspace]/more/settings/profile.tsx`, `[workspace]/project/[id].tsx` (workspace paths under `apps/mobile/app/(app)/`) |
+| Mobile components | `apps/mobile/components/chat/{chat-composer,message-long-press,status-pill}.tsx`, `composer/message-composer.tsx`, `inbox/detail-label.tsx`, `issue/{agent-activity-row,comment-card,comment-context-menu,composer-attachment-row,timeline-list}.tsx`, `issue/pickers/{label,priority,project,status}-picker-body.tsx`, `nav/more-tab-dropdown.tsx`, `project/pickers/project-{lead,priority,status}-picker-body.tsx`, `project/project-{properties,resources}-section.tsx` (all component paths under `apps/mobile/components/`) |
+| Mobile helpers and dependencies | `apps/mobile/lib/inbox-display.ts`, `apps/mobile/lib/markdown/code-block.tsx`, `apps/mobile/package.json`, `pnpm-lock.yaml` |
+| Web landing | `apps/web/features/landing/components/download/cli-section.tsx`, `apps/web/features/landing/components/faq-section.tsx` |
+| Shared API and issue behavior | `packages/core/{api/client.ts,issues/mutations.ts,types/api.ts}`, `packages/views/issues/actions/{use-issue-actions.ts,__tests__/use-issue-actions.test.tsx}`, `packages/views/issues/components/{comment-card.tsx,reply-input.tsx,pickers/status-picker.tsx,pickers/status-picker.test.tsx}`, `packages/views/modals/run-confirm.tsx` |
+| Locale bundles | `packages/views/locales/{en,fr,ja,ko,zh-Hans}/{issues,settings}.json` |
+| Backend and generated SQL | `server/cmd/migrate/main.go`, `server/cmd/server/{integration_test,main,router}.go`, `server/internal/daemon/types.go`, `server/internal/handler/{agent,daemon,issue}.go`, `server/pkg/db/queries/agent.sql`, `server/pkg/db/generated/{agent.sql,models}.go`, `server/pkg/llm/client.go` |
+
+Upstream wakeup, task supplement, duplicate issue, thread-run placement, and
+comment-link lifecycles retain downstream Room/Twin/Wiki/Skill Evolution
+registrations. The old card-local copy-link implementation is superseded by
+`useIssueActions.copyCommentLink`; quote-in-reply and collapsed-thread link
+recovery remain wired into the new thread layout. Menu and quote regression
+fixtures include the new query context and the retained quote action.
+
+Mobile keeps Android action-sheet/icon adapters, named skins, and Expo 57 /
+React Native 0.86 while adopting upstream localization and foreground socket
+recovery. `expo-localization` follows the installed SDK's bundled version.
+Room/Wiki navigation and Room notifications retain localized labels. The new
+French docs UI strings use the installed Fumadocs translation-key contract.
+
+The clean-merge audit also removed a duplicated daemon `DispatchedAt` field,
+adapted wakeup tests to the transaction-safe downstream `DBTX` fixture through
+a pool owned by the service test fixture, and repaired retired mobile theme
+references. The release workflow preserves unsigned packaging and upstream
+same-tag asset replacement. LLM thinking controls preserve all four local
+LLM consumers and the existing privacy contract.
+
+All 1,476 published migration files from both parents are byte-identical.
+The duplicate-prefix lint freezes 24 additional exact stem sets: 501–506,
+509–516, and 518–527. No migration was renamed or rewritten. A fresh managed
+database and an upgrade from the exact downstream 691-entry ledger both
+reach 738 identities. Two upgrade runs succeed; the second is a no-op.
+Both resulting schemas match exactly: 1,802 columns, 670 constraints, 531
+indexes, and no invalid or unready indexes. Verification uses disposable
+managed worktree environments, not the main checkout's database.
+
+`make sqlc` and `pnpm generate:reserved-slugs` produce byte-identical output
+on a second run. `pnpm install --lockfile-only`, a frozen install, and
+`pnpm check:toolchain` pass; CI invokes the toolchain checker directly.
+The mobile typecheck, all 322 mobile tests, the iOS launcher shell assertions,
+and all 252 shared locale parity tests pass. Root and mobile lint complete
+with warnings and no errors. The complete Go test-binary compilation passes.
+The final root typecheck passes all ten tasks, including web, desktop, docs,
+and UI Lab. Both owned verification environments and the temporary baseline
+worktree were removed after verification.
+Eight core schema/API suites pass all 325 tests. The focused shared-view
+run initially passed 240 of 250 tests; after adapting the retained quote/menu
+fixtures, the three affected files passed 102 of 104. Their three timing-
+sensitive run-placement cases pass with a temporary 30-second DOM wait on
+this heavily loaded host; no production or committed test timeout changed.
+
+The migration lint, wakeup actor/workspace validation, and Twin execution
+store lifecycle pass against both the fresh and upgraded databases. The
+comment-completion reconciliation regression also passes in isolation.
+The broad guarded Go run is **not green**: migration deadlines, the handler
+package's ten-minute timeout, inherited Git config, partial-clone object
+fetches, and local Git process termination produced failures. It was stopped
+after about forty minutes rather than treated as a passing suite. The pure
+Git-environment test passes after clearing inherited `GIT_CONFIG_*` only for
+that child process; repository configuration was not changed. Partial-clone
+and process-termination failures remain unverified. Real-agent smoke tests,
+native packaging, browser E2E, CI, and release checks were not run.
+
+Verification logs, both parent diffs for every overlap, the preservation
+ledger, and database schema snapshots are retained locally under
+`/tmp/multica-sync-20260926/`. This is local merge verification, not CI,
+a release, native-device acceptance, or an end-to-end browser run. No remote
+push, tag, release, or PR operation is part of this sync.
+
 ## 2026-09-19 post-v0.5.0 Sync
 
 - Downstream and published fork tip: `82b1542d249f48cc03edcafca0730ff25ec840b7`.

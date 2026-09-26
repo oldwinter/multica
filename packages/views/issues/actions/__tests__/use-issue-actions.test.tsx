@@ -329,6 +329,24 @@ describe("useIssueActions", () => {
     expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
+  it("copyCommentLink reports clipboard failures", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error("blocked")) },
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => false),
+    });
+    const { result } = renderHook(() => useIssueActions(mockIssue), { wrapper });
+
+    await act(async () => {
+      await result.current.copyCommentLink("comment-7");
+    });
+
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
   it("copyMarkdownLink writes a labeled Markdown reference to the clipboard", async () => {
     const issue = { ...mockIssue, title: "Review [agent] output" } as Issue;
     const { result } = renderHook(() => useIssueActions(issue), { wrapper });
@@ -339,6 +357,18 @@ describe("useIssueActions", () => {
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       "[TES-1: Review \\[agent\\] output](https://app.multica.com/test/issues/TES-1)",
+    );
+  });
+
+  it("copyCommentLink writes the issue's shareable URL anchored at the comment", async () => {
+    const { result } = renderHook(() => useIssueActions(mockIssue), { wrapper });
+
+    await act(async () => {
+      await result.current.copyCommentLink("comment-7");
+    });
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://app.multica.com/test/issues/TES-1#comment-comment-7",
     );
   });
 

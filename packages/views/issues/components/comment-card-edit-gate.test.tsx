@@ -173,7 +173,6 @@ function renderCard(onEdit = vi.fn().mockResolvedValue(undefined), overrides: Pa
     <QueryClientProvider client={qc}>
       <CommentCard
         issueId="issue-1"
-        issueHref="/acme/issues/MUL-1"
         entry={entry}
         replies={[]}
         currentUserId="user-1"
@@ -407,7 +406,7 @@ describe("comment thread — selection reply", () => {
     expect(screen.queryByRole("button", { name: "Preview reply" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(onReply).toHaveBeenCalledTimes(1));
-    expect(onReply).toHaveBeenCalledWith("agent-child", "> Selected agent text\n\nReply-specific note", undefined, undefined);
+    expect(onReply).toHaveBeenCalledWith("agent-child", "> Selected agent text\n\nReply-specific note", undefined, undefined, undefined);
     await waitFor(() => {
       expect(useCommentDraftStore.getState().getAnnotations("reply:issue-1:comment-1")).toHaveLength(0);
       expect(document.querySelector("[data-reply-annotation-overlay]")).not.toBeInTheDocument();

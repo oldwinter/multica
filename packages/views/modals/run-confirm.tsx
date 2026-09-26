@@ -302,7 +302,11 @@ export function RunConfirmModal({
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v && !submitting) onClose(); }}>
-      <DialogContent onKeyDown={onDialogKeyDown}>
+      {/* Wider than the primitive's sm:max-w-sm: the two actions are long
+          phrases, not "Cancel"/"Save". In French they measure ~435px with the
+          send-shortcut keycaps against the 352px the default leaves, so the
+          dialog's overflow-auto showed a horizontal scrollbar. */}
+      <DialogContent className="sm:max-w-lg" onKeyDown={onDialogKeyDown}>
         <DialogHeader>
           <DialogTitle>
             {isPromote
@@ -402,7 +406,7 @@ export function RunConfirmModal({
         ) : null}
 
         {/* A single run can only queue the exact snapshot shown above. */}
-        <DialogFooter>
+        <DialogFooter className="sm:flex-wrap">
           <Button type="button" variant="outline" disabled={submitting || !previewReady} onClick={() => submit(true)}>
             {pendingAction === "suppress" ? <Spinner className="size-4" /> : t(($) => $.run_confirm.dont_start)}
           </Button>

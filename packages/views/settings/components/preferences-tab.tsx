@@ -46,7 +46,7 @@ import {
 } from "@multica/core/i18n";
 import { useLocaleAdapter } from "@multica/core/i18n/react";
 import { useAuthStore } from "@multica/core/auth";
-import { useCommentComposerStore } from "@multica/core/issues/stores";
+import { useCommentComposerStore, type RunningAgentReply } from "@multica/core/issues/stores";
 import { api } from "@multica/core/api";
 import { browserTimezone, timezoneOptions } from "../../common/timezone-select";
 import {
@@ -502,6 +502,7 @@ function GeneralPreferences() {
       >
         <SettingsCard>
           <StickyCommentBarRow />
+          <RunningAgentReplyRow />
         </SettingsCard>
       </SettingsSection>
     </>
@@ -530,6 +531,56 @@ function StickyCommentBarRow() {
         }}
         aria-label={t(($) => $.preferences.sticky_comment_bar.title)}
       />
+    </SettingsRow>
+  );
+}
+
+function RunningAgentReplyRow() {
+  const { t } = useT("settings");
+  const value = useCommentComposerStore((s) => s.runningAgentReply);
+  const setValue = useCommentComposerStore((s) => s.setRunningAgentReply);
+  const options: { value: RunningAgentReply; label: string }[] = [
+    { value: "steer", label: t(($) => $.preferences.running_agent_reply.steer) },
+    { value: "after_run", label: t(($) => $.preferences.running_agent_reply.after_run) },
+  ];
+
+  return (
+    <SettingsRow
+      label={t(($) => $.preferences.running_agent_reply.title)}
+      description={t(($) => $.preferences.running_agent_reply.hint)}
+      size="select"
+    >
+      <Select
+        items={options}
+        value={value}
+        onValueChange={(next) => {
+          if (!next || next === value) return;
+          setValue(next as RunningAgentReply);
+          toast.success(
+            t(($) => $.auto_save.toast_saved),
+            {
+              id: "settings-auto-save",
+            },
+          );
+        }}
+      >
+        <SelectTrigger
+          size="sm"
+          className="w-full"
+          aria-label={t(($) => $.preferences.running_agent_reply.title)}
+        >
+          <SelectValue>
+            {options.find((option) => option.value === value)?.label}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent align="end">
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </SettingsRow>
   );
 }

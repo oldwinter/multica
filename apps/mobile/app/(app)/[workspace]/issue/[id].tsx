@@ -42,6 +42,7 @@ import { useViewedIssuesStore } from "@/data/viewed-issues-store";
 import { useCommentSelectStore } from "@/data/comment-select-store";
 import { useReplyTargetStore } from "@/data/stores/reply-target-store";
 import { useAppActionSheet } from "@/lib/use-action-sheet";
+import { useT } from "@/lib/i18n";
 
 export default function IssueDetail() {
   const showActionSheet = useAppActionSheet();
@@ -105,6 +106,7 @@ export default function IssueDetail() {
     !!pins?.some((p) => p.item_type === "issue" && p.item_id === issue.id);
   const createPin = useCreatePin();
   const deletePin = useDeletePin();
+  const { t } = useT("issues");
 
   // Three-dot menu: Pin/Unpin / Copy link / Open on web (if web URL set) /
   // Delete. Mirrors apps/mobile/app/(app)/[workspace]/project/[id].tsx — same
@@ -117,12 +119,27 @@ export default function IssueDetail() {
     const issueLink = webUrl
       ? `${webUrl}/${wsSlug}/issue/${issue.identifier}`
       : null;
-    const options: string[] = ["Cancel"];
-    options.push(isPinned ? "Unpin" : "Pin");
-    options.push("Edit details");
-    if (issueLink) options.push("Copy link");
-    if (issueLink) options.push("Open on web");
-    options.push("Delete issue");
+    const actions = ["cancel", "pin"];
+    if (isPinned) actions[1] = "unpin";
+    actions.push("edit");
+    if (issueLink) actions.push("copy_link");
+    if (issueLink) actions.push("open_web");
+    actions.push("delete");
+    const options = actions.map((action) =>
+      action === "cancel"
+        ? t("common:actions.cancel")
+        : action === "pin"
+          ? t("menu.pin")
+          : action === "unpin"
+            ? t("menu.unpin")
+            : action === "edit"
+              ? t("menu.edit_details")
+              : action === "copy_link"
+                ? t("menu.copy_link")
+                : action === "open_web"
+                  ? t("menu.open_web")
+                  : t("menu.delete_issue"),
+    );
     const destructiveIndex = options.length - 1;
     showActionSheet(
       {
@@ -132,19 +149,19 @@ export default function IssueDetail() {
         title: issue.identifier,
       },
       (i) => {
-        const label = options[i];
-        if (label === "Pin") {
+        const action = actions[i];
+        if (action === "pin") {
           createPin.mutate({ item_type: "issue", item_id: issue.id });
-        } else if (label === "Unpin") {
+        } else if (action === "unpin") {
           deletePin.mutate({ itemType: "issue", itemId: issue.id });
-        } else if (label === "Edit details") {
+        } else if (action === "edit") {
           if (wsSlug) router.push(`/${wsSlug}/issue/${issue.id}/edit`);
-        } else if (label === "Copy link" && issueLink) {
+        } else if (action === "copy_link" && issueLink) {
           Clipboard.setStringAsync(issueLink);
-        } else if (label === "Open on web" && issueLink) {
+        } else if (action === "open_web" && issueLink) {
           Linking.openURL(issueLink);
-        } else if (label === "Delete issue") {
-          confirmDelete(issue, () =>
+        } else if (action === "delete") {
+          confirmDelete(issue, t, () =>
             deleteIssue.mutate(issue.id, {
               onSuccess: () => router.back(),
             }),
@@ -152,14 +169,14 @@ export default function IssueDetail() {
         }
       },
     );
-  }, [issue, wsSlug, deleteIssue, isPinned, createPin, deletePin, showActionSheet]);
+  }, [issue, wsSlug, deleteIssue, isPinned, createPin, deletePin, showActionSheet, t]);
 
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
-          title: issue?.identifier ?? "Issue",
-          headerBackTitle: "Back",
+          title: issue?.identifier ?? t("navigation:routes.issue"),
+          headerBackTitle: t("common:actions.back"),
           headerRight: issue
             ? () => (
                 <View className="flex-row items-center gap-2">
@@ -170,7 +187,7 @@ export default function IssueDetail() {
                   <IconButton
                     name="ellipsis-horizontal"
                     onPress={onPressMore}
-                    accessibilityLabel="Issue actions"
+                    accessibilityLabel={t("menu.issue_actions")}
                   />
                 </View>
               )
@@ -184,13 +201,15 @@ export default function IssueDetail() {
       ) : detail.error || !issue ? (
         <View className="flex-1 items-center justify-center px-6 gap-3">
           <Text className="text-sm text-destructive text-center">
-            Failed to load issue:{" "}
-            {detail.error instanceof Error
-              ? detail.error.message
-              : "not found"}
+            {t("errors.load_failed", {
+              message:
+                detail.error instanceof Error
+                  ? detail.error.message
+                  : "not found",
+            })}
           </Text>
           <Button variant="outline" onPress={() => detail.refetch()}>
-            <Text>Retry</Text>
+            <Text>{t("common:actions.retry")}</Text>
           </Button>
         </View>
       ) : (
@@ -211,13 +230,17 @@ export default function IssueDetail() {
   );
 }
 
-function confirmDelete(issue: Issue, onConfirm: () => void) {
+function confirmDelete(
+  issue: Issue,
+  t: (key: string, options?: Record<string, unknown>) => string,
+  onConfirm: () => void,
+) {
   Alert.alert(
-    "Delete issue?",
-    `${issue.identifier} and its comments, reactions, and attachments will be permanently deleted. This cannot be undone.`,
+    t("delete.title"),
+    t("delete.message", { identifier: issue.identifier }),
     [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: onConfirm },
+      { text: t("common:actions.cancel"), style: "cancel" },
+      { text: t("common:actions.delete"), style: "destructive", onPress: onConfirm },
     ],
   );
 }

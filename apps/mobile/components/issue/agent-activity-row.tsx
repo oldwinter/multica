@@ -25,6 +25,7 @@ import {
 } from "@/data/queries/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   issueId: string;
@@ -86,20 +87,26 @@ export function AgentActivityRow({ issueId }: Props) {
 }
 
 function ActiveContent({ actors }: { actors: StackActor[] }) {
+  const { t } = useT("projects");
   return (
     <View className="flex-1 flex-row items-center gap-2">
       <AvatarStack actors={actors} max={3} size={24} />
       <PulseDot />
-      <Text className="text-sm font-medium text-foreground">Working</Text>
+      <Text className="text-sm font-medium text-foreground">
+        {t("runs.working")}
+      </Text>
     </View>
   );
 }
 
 function IdleContent({ count, mutedFg }: { count: number; mutedFg: string }) {
+  const { t } = useT("projects");
   return (
     <View className="flex-1 flex-row items-center gap-2">
       <Ionicons name="time-outline" size={16} color={mutedFg} />
-      <Text className="text-sm text-foreground">Runs · {count}</Text>
+      <Text className="text-sm text-foreground">
+        {t("runs.count", { count })}
+      </Text>
     </View>
   );
 }

@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import { DashboardLayout, WorkspaceLoader } from "@multica/views/layout";
 import { SearchCommand, SearchTrigger } from "@multica/views/search";
-import { FloatingChat } from "@multica/views/chat";
+import { FloatingChat } from "@multica/views/chat/floating-chat";
 import { WebNotificationBridge } from "@/components/web-notification-bridge";
 import { WorkspaceDocumentTitle } from "@/platform/workspace-document-title";
 

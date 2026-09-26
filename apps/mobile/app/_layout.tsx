@@ -22,6 +22,7 @@ import {
   useAppearanceSync,
   useColorScheme,
 } from "@/lib/use-color-scheme";
+import { MobileI18nProvider } from "@/lib/i18n";
 
 // Kick off Shiki highlighter init at module load — fires once per process,
 // finishes before the user navigates to any screen with a code block. If
@@ -92,6 +93,7 @@ export default function RootLayout() {
   }[skin][colorScheme];
   return (
     <GestureHandlerRootView style={{ flex: 1 }} className={skinClass}>
+      <MobileI18nProvider>
       <SafeAreaProvider>
         <KeyboardProvider>
           <QueryClientProvider client={queryClient}>
@@ -115,6 +117,7 @@ export default function RootLayout() {
           </QueryClientProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
+      </MobileI18nProvider>
     </GestureHandlerRootView>
   );
 }

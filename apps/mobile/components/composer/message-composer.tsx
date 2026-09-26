@@ -64,6 +64,7 @@ import {
   type ComposerAttachmentItem,
   type MentionChip,
 } from "@/components/issue/composer-attachment-row";
+import { useT } from "@/lib/i18n";
 
 export interface MessageComposerReplyTarget {
   actorName: string;
@@ -158,8 +159,8 @@ export function MessageComposer({
   onSubmit,
   mentionPickerPath,
   uploadContext,
-  placeholder = "Type a message…",
-  pillLabel = "Type a message…",
+  placeholder,
+  pillLabel,
   pillIcon = "chatbubble-ellipses-outline",
   value: controlledValue,
   onChangeText: controlledOnChange,
@@ -173,6 +174,9 @@ export function MessageComposer({
   manageKeyboard = true,
 }: Props) {
   const { theme } = useColorScheme();
+  const { t } = useT("chat");
+  const resolvedPlaceholder = placeholder ?? t("composer.default_placeholder");
+  const resolvedPillLabel = pillLabel ?? t("composer.default_placeholder");
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const [expanded, setExpanded] = useState(false);
@@ -324,7 +328,8 @@ export function MessageComposer({
           ),
         );
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
+        const message =
+          err instanceof Error ? err.message : t("common:states.error");
         setAttachments((prev) =>
           prev.map((it) =>
             it.localId === localId
@@ -334,7 +339,7 @@ export function MessageComposer({
         );
       }
     },
-    [uploadContext],
+    [uploadContext, t],
   );
 
   const onImagePress = useCallback(async () => {
@@ -346,7 +351,10 @@ export function MessageComposer({
     const picked = picker.assets[0];
     if (!picked) return;
     if (picked.fileSize != null && picked.fileSize > MAX_FILE_SIZE) {
-      Alert.alert("File too large", "Files must be smaller than 100 MB.");
+      Alert.alert(
+        t("composer.file_too_large_title"),
+        t("composer.file_too_large_message"),
+      );
       return;
     }
     const filename = picked.fileName ?? `image-${Date.now()}.jpg`;
@@ -368,7 +376,7 @@ export function MessageComposer({
       name: filename,
       type: mimeType,
     });
-  }, [startUpload]);
+  }, [startUpload, t]);
 
   const onFilePress = useCallback(async () => {
     const picker = await DocumentPicker.getDocumentAsync({
@@ -379,7 +387,10 @@ export function MessageComposer({
     const picked = picker.assets[0];
     if (!picked) return;
     if (picked.size != null && picked.size > MAX_FILE_SIZE) {
-      Alert.alert("File too large", "Files must be smaller than 100 MB.");
+      Alert.alert(
+        t("composer.file_too_large_title"),
+        t("composer.file_too_large_message"),
+      );
       return;
     }
     const mimeType = picked.mimeType ?? "application/octet-stream";
@@ -400,7 +411,7 @@ export function MessageComposer({
       name: picked.name,
       type: mimeType,
     });
-  }, [startUpload]);
+  }, [startUpload, t]);
 
   const onRemoveAttachment = useCallback((localId: string) => {
     setAttachments((prev) => prev.filter((it) => it.localId !== localId));
@@ -467,7 +478,7 @@ export function MessageComposer({
           color={theme.mutedForeground}
         />
         <Text className="text-base text-muted-foreground">
-          {disabled && disabledReason ? disabledReason : pillLabel}
+          {disabled && disabledReason ? disabledReason : resolvedPillLabel}
         </Text>
       </Pressable>
     </View>
@@ -490,13 +501,13 @@ export function MessageComposer({
               className="flex-1 text-xs font-medium text-muted-foreground"
               numberOfLines={1}
             >
-              Replying to {replyTarget.actorName}
+              {t("composer.replying_to", { name: replyTarget.actorName })}
             </Text>
             <Pressable
               onPress={onClearReplyTarget}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Cancel reply"
+              accessibilityLabel={t("composer.cancel_reply")}
             >
               <Ionicons
                 name="close-circle"
@@ -537,7 +548,7 @@ export function MessageComposer({
           value={text}
           onChangeText={setText}
           onBlur={onBlur}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           placeholderTextColor={theme.mutedForeground}
           multiline
           editable={!disabled}
@@ -554,21 +565,21 @@ export function MessageComposer({
             iconSize={20}
             color={mentions.length > 0 ? theme.primary : undefined}
             onPress={onAtPress}
-            accessibilityLabel="Mention someone or an issue"
+            accessibilityLabel={t("composer.mention")}
             className="h-8 w-8"
           />
           <IconButton
             name="image-outline"
             iconSize={20}
             onPress={onImagePress}
-            accessibilityLabel="Upload image"
+            accessibilityLabel={t("composer.upload_image")}
             className="h-8 w-8"
           />
           <IconButton
             name="attach-outline"
             iconSize={20}
             onPress={onFilePress}
-            accessibilityLabel="Upload file"
+            accessibilityLabel={t("composer.upload_file")}
             className="h-8 w-8"
           />
           <View className="flex-1" />
@@ -584,7 +595,7 @@ export function MessageComposer({
               disabled={!canSend}
               hitSlop={12}
               className="h-8 w-8 rounded-full"
-              accessibilityLabel="Send"
+              accessibilityLabel={t("composer.send")}
               accessibilityState={{ disabled: !canSend }}
             />
           )}

@@ -1,26 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { TimelineEntry } from "@multica/core/types";
 import { useCommentCollapseStore } from "@multica/core/issues/stores";
 import { renderWithI18n } from "../../test/i18n";
 
-const copyText = vi.hoisted(() => vi.fn());
-const toastSuccess = vi.hoisted(() => vi.fn());
-const toastError = vi.hoisted(() => vi.fn());
 const replyInputProps = vi.hoisted(() => ({
   insertRequest: undefined as { id: number; markdown: string } | undefined,
-}));
-
-vi.mock("@multica/ui/lib/clipboard", () => ({ copyText }));
-vi.mock("sonner", () => ({
-  toast: { success: toastSuccess, error: toastError },
-}));
-
-vi.mock("../../navigation", () => ({
-  useNavigation: () => ({
-    getShareableUrl: (path: string) => `https://app.example${path}`,
-  }),
 }));
 
 vi.mock("@multica/core/workspace/hooks", () => ({
@@ -89,35 +76,26 @@ function comment(
 }
 
 function renderCard(targetCommentId?: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   renderWithI18n(
-    <CommentCard
-      issueId="issue-1"
-      issueHref="/acme/issues/MUL-1"
-      entry={comment("comment-1", null, "Root comment")}
-      replies={[comment("reply-1", "comment-1", "Nested reply")]}
-      currentUserId="user-1"
-      onReply={vi.fn().mockResolvedValue(true)}
-      onEdit={vi.fn().mockResolvedValue(undefined)}
-      onDelete={vi.fn()}
-      onToggleReaction={vi.fn()}
-      targetCommentId={targetCommentId}
-    />,
+    <QueryClientProvider client={client}>
+      <CommentCard
+        issueId="issue-1"
+        entry={comment("comment-1", null, "Root comment")}
+        replies={[comment("reply-1", "comment-1", "Nested reply")]}
+        currentUserId="user-1"
+        onReply={vi.fn().mockResolvedValue(true)}
+        onEdit={vi.fn().mockResolvedValue(undefined)}
+        onDelete={vi.fn()}
+        onToggleReaction={vi.fn()}
+        targetCommentId={targetCommentId}
+      />
+    </QueryClientProvider>,
   );
-}
-
-async function copyLinkFromMenu(triggerIndex: number) {
-  const triggers = document.querySelectorAll('button[aria-haspopup="menu"]');
-  const trigger = triggers.item(triggerIndex);
-  if (!(trigger instanceof HTMLButtonElement)) {
-    throw new Error(`Expected comment menu trigger ${triggerIndex}`);
-  }
-  fireEvent.click(trigger);
-  fireEvent.click(await screen.findByText("Copy comment link"));
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  copyText.mockResolvedValue(true);
   useCommentCollapseStore.setState({ collapsedByIssue: {} });
   replyInputProps.insertRequest = undefined;
 });
@@ -155,38 +133,6 @@ describe("comment quote reply actions", () => {
 });
 
 describe("comment permalink actions", () => {
-  it("copies the root comment's shareable URL", async () => {
-    renderCard();
-
-    await copyLinkFromMenu(0);
-
-    expect(copyText).toHaveBeenCalledWith(
-      "https://app.example/acme/issues/MUL-1?comment=comment-1",
-    );
-    expect(toastSuccess).toHaveBeenCalledOnce();
-  });
-
-  it("copies a nested reply's shareable URL", async () => {
-    renderCard();
-
-    await copyLinkFromMenu(1);
-
-    expect(copyText).toHaveBeenCalledWith(
-      "https://app.example/acme/issues/MUL-1?comment=reply-1",
-    );
-    expect(toastSuccess).toHaveBeenCalledOnce();
-  });
-
-  it("shows an error when copying a comment link fails", async () => {
-    copyText.mockResolvedValue(false);
-    renderCard();
-
-    await copyLinkFromMenu(0);
-
-    await waitFor(() => expect(toastError).toHaveBeenCalledOnce());
-    expect(toastSuccess).not.toHaveBeenCalled();
-  });
-
   it("renders a permalinked root comment inside a manually collapsed thread", () => {
     useCommentCollapseStore.setState({
       collapsedByIssue: { "issue-1": ["comment-1"] },
