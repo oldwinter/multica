@@ -155,7 +155,7 @@ export const APPEARANCE_TOKEN_CONTRACT = Object.freeze({
 // change so later work cannot silently spend the reduction again.
 export const RAW_COLOR_DEBT_BUDGETS = Object.freeze({
   "apps/docs": 1,
-  "apps/web/features/landing": 10,
+  "apps/web/features/landing": 2,
 });
 
 const RAW_COLOR_EXCEPTIONS = new Map([

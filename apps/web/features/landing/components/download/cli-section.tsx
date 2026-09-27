@@ -9,13 +9,12 @@ import { useLocale } from "../../i18n";
 const SETUP_CMD = "multica setup";
 
 /**
- * The landing palette bypasses the product tokens, so the shared platform
- * switch takes its list and trigger colours from here.
+ * Keep the shared platform switch aligned with the active appearance tokens.
  */
 const PLATFORM_TABS = {
-  list: "border border-[#0a0d12]/10 bg-white",
+  list: "border border-border bg-surface",
   trigger:
-    "text-[#0a0d12]/60 hover:text-[#0a0d12] data-active:bg-[#0a0d12]/5 data-active:text-[#0a0d12]",
+    "text-muted-foreground hover:text-foreground data-active:bg-surface-selected data-active:text-foreground",
 };
 
 /**
@@ -76,7 +75,7 @@ export function CliSection() {
 
 function CommandLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-[#0a0d12]/55">
+    <p className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
       {children}
     </p>
   );
