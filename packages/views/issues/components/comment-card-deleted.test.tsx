@@ -84,7 +84,6 @@ function renderThread(root: TimelineEntry, replies: TimelineEntry[]) {
     <QueryClientProvider client={qc}>
       <CommentCard
         issueId="issue-1"
-        issueHref="/test/issues/issue-1"
         entry={root}
         replies={replies}
         currentUserId="user-1"

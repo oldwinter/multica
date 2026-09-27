@@ -11,8 +11,9 @@ import { Text } from "@/components/ui/text";
 import { ProjectPriorityIcon } from "@/components/ui/project-priority-icon";
 import {
   PROJECT_PRIORITIES,
-  PROJECT_PRIORITY_LABEL,
+  projectPriorityLabel,
 } from "@/lib/project-status";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   value: ProjectPriority | string;
@@ -21,13 +22,16 @@ interface Props {
 
 export function ProjectPriorityPickerBody({ value, onChange }: Props) {
   const { theme } = useColorScheme();
+  const { t } = useT();
   const checkColor =
     theme.primary;
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
       <View className="px-4 pt-3 pb-2">
-        <Text className="text-lg font-semibold text-foreground">Priority</Text>
+        <Text className="text-lg font-semibold text-foreground">
+          {t("fields.priority")}
+        </Text>
       </View>
       <View className="px-2">
         {PROJECT_PRIORITIES.map((priority) => {
@@ -40,7 +44,7 @@ export function ProjectPriorityPickerBody({ value, onChange }: Props) {
             >
               <ProjectPriorityIcon priority={priority} size={18} />
               <Text className="flex-1 text-base text-foreground">
-                {PROJECT_PRIORITY_LABEL[priority]}
+                {projectPriorityLabel(priority)}
               </Text>
               {selected ? (
                 <Ionicons name="checkmark" size={20} color={checkColor} />

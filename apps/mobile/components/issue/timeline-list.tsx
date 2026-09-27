@@ -103,6 +103,7 @@ import { issueAttachmentsOptions } from "@/data/queries/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import type { ImageSequenceBlock } from "@multica/core/attachments/image-sequence";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { useT } from "@/lib/i18n";
 import { useCommentSelectStore } from "@/data/comment-select-store";
 
 interface Props {
@@ -498,11 +499,12 @@ function RowSeparator() {
  * disappears the next time the user scrolls past and unmounts the screen).
  */
 function UnreadDivider() {
+  const { t } = useT("issues");
   return (
     <View className="flex-row items-center gap-2 px-4">
       <View className="flex-1 h-px bg-destructive/40" />
-      <Text className="text-[10px] uppercase tracking-normalr font-medium text-destructive">
-        New
+      <Text className="text-[10px] uppercase tracking-normal font-medium text-destructive">
+        {t("new_badge")}
       </Text>
       <View className="flex-1 h-px bg-destructive/40" />
     </View>
@@ -528,13 +530,17 @@ function NewCommentChip({
   onPress: () => void;
 }) {
   const { theme } = useColorScheme();
+  const { t } = useT("issues");
   const fg = theme.primaryForeground;
   return (
     <Pressable
       onPress={onPress}
       className="absolute bottom-3 self-center px-3.5 py-1.5 rounded-full bg-primary active:opacity-80 flex-row items-center gap-1.5"
       accessibilityRole="button"
-      accessibilityLabel={`Jump to ${count} new ${count === 1 ? "message" : "messages"}`}
+      accessibilityLabel={t(
+        count === 1 ? "jump_a11y_one" : "jump_a11y_other",
+        { count },
+      )}
       style={{
         // shadow comes from system, not Tailwind — keeps the chip readable
         // against either light or dark timeline content beneath.

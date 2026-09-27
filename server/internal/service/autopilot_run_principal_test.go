@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -38,8 +39,9 @@ var principalSeq atomic.Int64
 // and it builds an agent and issue these tests do not use.
 type principalFixture struct {
 	*testutil.Fixture
-	svc *AutopilotService
-	q   *db.Queries
+	pool *pgxpool.Pool
+	svc  *AutopilotService
+	q    *db.Queries
 }
 
 func newPrincipalFixture(t *testing.T) (principalFixture, string) {
@@ -61,6 +63,7 @@ func newPrincipalFixture(t *testing.T) (principalFixture, string) {
 
 	return principalFixture{
 		Fixture: fx,
+		pool:    pool,
 		q:       q,
 		svc: &AutopilotService{
 			Queries: q, TxStarter: pool, Bus: events.New(),
