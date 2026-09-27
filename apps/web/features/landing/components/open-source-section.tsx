@@ -36,7 +36,7 @@ export function OpenSourceSection() {
               </Link>
               <Link
                 href="/licensing"
-                className="inline-flex items-center justify-center rounded-(--landing-radius-action) px-4 py-3 text-body font-semibold text-[#0a0d12]/70 transition-colors hover:text-[#0a0d12]"
+                className="inline-flex items-center justify-center rounded-(--landing-radius-action) px-4 py-3 text-body font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 {t.openSource.licensingCta}
               </Link>

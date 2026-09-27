@@ -57,23 +57,23 @@ export function AboutPageClient() {
             </Link>
           </div>
 
-          <section className="mt-16 border-t border-[#0a0d12]/10 pt-12 sm:mt-20 sm:pt-16">
+          <section className="mt-16 border-t border-border pt-12 sm:mt-20 sm:pt-16">
             <h2 className="landing-serif text-[2rem] leading-[1.1] tracking-[-0.02em] sm:text-[2.4rem]">
               {team.title}
             </h2>
-            <div className="mt-6 space-y-6 text-body-lg leading-[1.8] text-[#0a0d12]/70 sm:text-title-sm">
+            <div className="mt-6 space-y-6 text-body-lg leading-[1.8] text-muted-foreground sm:text-title-sm">
               {team.paragraphs.map((p, i) => (
                 <p key={i}>
                   <InlineLinks text={p} />
                 </p>
               ))}
             </div>
-            <dl className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-[#0a0d12]/8 bg-[#0a0d12]/8 sm:grid-cols-2">
+            <dl className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2">
               {team.contacts.map((contact) => {
                 const external = contact.href.startsWith("http");
                 return (
-                  <div key={contact.label} className="bg-white p-6">
-                    <dt className="text-caption font-semibold uppercase tracking-[0.1em] text-[#0a0d12]/40">
+                  <div key={contact.label} className="bg-surface p-6">
+                    <dt className="text-caption font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                       {contact.label}
                     </dt>
                     <dd className="mt-2">
@@ -82,7 +82,7 @@ export function AboutPageClient() {
                         {...(external
                           ? { target: "_blank", rel: "noreferrer" }
                           : {})}
-                        className="text-body-lg font-semibold text-[#0a0d12] underline decoration-[#0a0d12]/20 underline-offset-4 transition-colors hover:decoration-[#0a0d12]"
+                        className="text-body-lg font-semibold text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground"
                       >
                         {contact.linkLabel}
                       </Link>

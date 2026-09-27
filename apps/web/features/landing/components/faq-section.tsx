@@ -21,7 +21,7 @@ export function FAQSection() {
           </h2>
         </div>
 
-        <div className="mt-14 divide-y divide-[#0a0d12]/10 sm:mt-16">
+        <div className="mt-14 divide-y divide-border sm:mt-16">
           {t.faq.items.map((faq, i) => (
             <div key={i}>
               <button

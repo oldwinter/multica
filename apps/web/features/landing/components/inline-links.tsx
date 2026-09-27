@@ -28,7 +28,7 @@ export function parseInlineLinks(text: string): InlineSegment[] {
 
 export function InlineLinks({
   text,
-  linkClassName = "font-medium text-[#0a0d12] underline decoration-[#0a0d12]/24 underline-offset-4 transition-colors hover:decoration-[#0a0d12]",
+  linkClassName = "font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground",
 }: {
   text: string;
   linkClassName?: string;
