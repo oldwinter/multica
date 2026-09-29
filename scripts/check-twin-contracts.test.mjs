@@ -109,7 +109,7 @@ test("a new named query in a known SQL file requires classification", () => {
     assert.equal(result.stdout, "");
     assert.match(result.stderr, /unclassified agent_task_queue SQL consumer: server\/pkg\/db\/queries\/chat.sql#UnclassifiedLinkedBlindSpot/);
     writeFileSync(path, input);
-    const goPath = join(root, "server/internal/metrics/business_sampler_queries.go");
+    const goPath = join(root, "server/internal/metrics/business.go");
     const goInput = readFileSync(goPath, "utf8");
     writeFileSync(goPath, `${goInput}\nfunc unclassifiedLinkedBlindSpot() { _ = \`SELECT * FROM agent_task_queue\` }\n`);
     const goResult = spawnSync(process.execPath, [
@@ -119,7 +119,7 @@ test("a new named query in a known SQL file requires classification", () => {
     ], { cwd: process.cwd(), encoding: "utf8" });
     assert.notEqual(goResult.status, 0, "new direct Go consumer must fail validation");
     assert.equal(goResult.stdout, "");
-    assert.match(goResult.stderr, /unclassified agent_task_queue Go consumer: server\/internal\/metrics\/business_sampler_queries.go#unclassifiedLinkedBlindSpot/);
+    assert.match(goResult.stderr, /unclassified agent_task_queue Go consumer: server\/internal\/metrics\/business.go#unclassifiedLinkedBlindSpot/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -150,7 +150,7 @@ test("Go consumer discovery preserves strings and classifies package, generic, a
   }
 });
 
-test("all 225 structured rows reject semantic corruption or deletion", { timeout: 120_000 }, () => {
+test("all 240 structured rows reject semantic corruption or deletion", { timeout: 120_000 }, () => {
   const root = mkdtempSync(join(tmpdir(), "twin-contract-matrix-test-"));
   cpSync("docs", join(root, "docs"), { recursive: true });
   try {
@@ -161,7 +161,7 @@ test("all 225 structured rows reject semantic corruption or deletion", { timeout
         if (/^\| [a-z0-9][^|]+ \|/.test(line) && !line.startsWith("| id |")) rows.push({ path, line });
       });
     }
-    assert.equal(rows.length, 225);
+    assert.equal(rows.length, 240);
     rows.forEach(({ path, line }, index) => {
       const fixturePath = join(root, path);
       const original = readFileSync(fixturePath, "utf8");

@@ -1,6 +1,6 @@
 import { useImperativeHandle, useRef, useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderWithI18n } from "../../test/i18n";
@@ -146,15 +146,16 @@ describe("AutopilotDialog required-field feedback", () => {
     expect(mockCreateAutopilot).not.toHaveBeenCalled();
   });
 
-  it("names the missing assignee once the title is filled, and marks the picker invalid", async () => {
-    const user = userEvent.setup();
+  it("names the missing assignee once the title is filled, and marks the picker invalid", () => {
     renderCreateDialog();
 
-    await user.type(screen.getByLabelText("title"), "Daily digest");
-    await user.click(createButton());
+    fireEvent.change(screen.getByLabelText("title"), {
+      target: { value: "Daily digest" },
+    });
+    fireEvent.click(createButton());
 
     expect(
-      await screen.findByText("Choose the agent or squad that will run this autopilot."),
+      screen.getByText("Choose the agent or squad that will run this autopilot."),
     ).toBeInTheDocument();
     // The title error clears itself the moment the field is filled — no second
     // submit needed to retire an error the user has already fixed.

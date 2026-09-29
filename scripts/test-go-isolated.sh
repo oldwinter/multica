@@ -15,6 +15,8 @@ set -euo pipefail
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 GO_IMAGE=${GO_TEST_IMAGE:-golang:1.27-bookworm}
 NETWORK=${GO_TEST_NETWORK:-}
+MODULE_CACHE_DIR=${GOMODCACHE:-$HOME/go/pkg/mod}
+BUILD_CACHE_DIR=${GOCACHE:-$HOME/.cache/go-build}
 OWNED_NETWORK=""
 GOHOME_DIR=""
 
@@ -49,6 +51,7 @@ done
 # treats the bare /tmp root as a protected system path, so a container HOME of
 # exactly /tmp would flag the home-directory check with the wrong reason.
 GOHOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gohome.XXXXXX")
+mkdir -p "$MODULE_CACHE_DIR" "$BUILD_CACHE_DIR"
 docker run --rm \
   --network "$NETWORK" \
   -u "$(id -u):$(id -g)" \
@@ -57,8 +60,8 @@ docker run --rm \
   "${env_args[@]}" \
   -e GOMODCACHE=/gomodcache \
   -e GOCACHE=/gocache \
-  -v "$HOME/go/pkg/mod:/gomodcache" \
-  -v "$HOME/.cache/go-build:/gocache" \
+  -v "$MODULE_CACHE_DIR:/gomodcache" \
+  -v "$BUILD_CACHE_DIR:/gocache" \
   -v "$REPO_ROOT:$REPO_ROOT" \
   -w "$REPO_ROOT" \
   "$GO_IMAGE" \

@@ -349,9 +349,20 @@ exit 0
 STUB
   chmod +x "$stub_bin/docker"
 
-  # git: the installer takes the "existing installation" path, so only the
-  # fetch/checkout calls run and they are all tolerant of failure.
-  printf '#!/usr/bin/env bash\nexit 0\n' >"$stub_bin/git"
+  # git: model a fetched commit and a checkout that resolves to the same HEAD.
+  cat >"$stub_bin/git" <<'STUB'
+#!/usr/bin/env bash
+set -uo pipefail
+case "${1:-}" in
+  fetch)
+    if [[ -n "${MULTICA_TEST_GIT_FETCH_FAIL:-}" && "${3:-}" == "$MULTICA_TEST_GIT_FETCH_FAIL" ]]; then
+      exit 42
+    fi
+    ;;
+  rev-parse) printf '%s\n' 0123456789abcdef0123456789abcdef01234567 ;;
+esac
+exit 0
+STUB
   chmod +x "$stub_bin/git"
 
   # brew: pretend the CLI installs cleanly so the run reaches the summary.
@@ -361,15 +372,14 @@ STUB
   printf '#!/usr/bin/env bash\necho "multica v0.3.2 (commit: test)"\n' >"$stub_bin/multica"
   chmod +x "$stub_bin/multica"
 
-  # curl records every probed URL so the health-check port can be asserted.
+  # curl records every probe so the URL and timeout flags can be asserted.
   cat >"$stub_bin/curl" <<'STUB'
 #!/usr/bin/env bash
 set -uo pipefail
-for arg in "$@"; do
-  case "$arg" in
-    http*) printf '%s\n' "$arg" >>"$MULTICA_TEST_CURL_LOG" ;;
-  esac
-done
+printf '%s\n' "$*" >>"$MULTICA_TEST_CURL_LOG"
+if [[ "${MULTICA_TEST_CURL_FAIL:-0}" == 1 ]]; then
+  exit 22
+fi
 exit 0
 STUB
   chmod +x "$stub_bin/curl"
@@ -419,6 +429,11 @@ _require_server_ports() {
     echo "  health check probed: ${probed:-<none>}" >&2
     echo "  printed:            backend=${printed_backend:-<none>} frontend=${printed_frontend:-<none>}" >&2
     cat "$tmp/install.out" >&2 || true
+    return 1
+  fi
+  if ! grep -q -- '--connect-timeout 5 --max-time 5' "$tmp/curl.log"; then
+    echo "[$label] health probe omitted bounded curl timeouts" >&2
+    cat "$tmp/curl.log" >&2 || true
     return 1
   fi
 }
@@ -509,10 +524,184 @@ STUB
   fi
 }
 
+test_unknown_option_fails_before_installing() {
+  local tmp status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  set +e
+  bash "$ROOT_DIR/scripts/install.sh" --with-sever >"$tmp/out" 2>"$tmp/err"
+  status=$?
+  set -e
+  if [ "$status" -ne 2 ]; then
+    echo "unknown option returned $status, want 2" >&2
+    return 1
+  fi
+  grep -q "Unknown option: --with-sever" "$tmp/err"
+  grep -q "Usage: install.sh" "$tmp/err"
+}
+
+test_add_to_path_ignores_unrelated_substrings() {
+  local tmp expected
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  printf '# unrelated: %s-extra\n' "$tmp/.local/bin" >"$tmp/.bashrc"
+  : >"$tmp/.zshrc"
+
+  HOME="$tmp" bash -c 'source "$1"; add_to_path "$HOME/.local/bin"; add_to_path "$HOME/.local/bin"' _ "$ROOT_DIR/scripts/install.sh"
+  expected="export PATH=\"$tmp/.local/bin:\$PATH\""
+  if [ "$(grep -Fxc "$expected" "$tmp/.bashrc")" -ne 1 ] || [ "$(grep -Fxc "$expected" "$tmp/.zshrc")" -ne 1 ]; then
+    echo "PATH update was missing or non-idempotent" >&2
+    return 1
+  fi
+}
+
+test_latest_lookup_failure_is_not_reported_as_up_to_date() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  _setup_sandbox "$tmp"
+  cat >"$tmp/install-bin/multica" <<'STUB'
+#!/usr/bin/env bash
+echo "multica v0.3.1 (commit: old)"
+STUB
+  chmod +x "$tmp/install-bin/multica"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/stub-bin/curl"
+  chmod +x "$tmp/stub-bin/curl"
+
+  HOME="$tmp" PATH="$tmp/stub-bin:$tmp/install-bin:/usr/bin:/bin" \
+    bash "$ROOT_DIR/scripts/install.sh" >"$tmp/out" 2>"$tmp/err"
+  grep -q "Could not determine the latest Multica CLI version" "$tmp/err"
+  if grep -q "is up to date" "$tmp/out"; then
+    echo "unknown latest version was reported as current" >&2
+    return 1
+  fi
+}
+
+test_brew_upgrade_failure_falls_back_to_binary() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  _setup_sandbox "$tmp"
+  cat >"$tmp/install-bin/multica" <<'STUB'
+#!/usr/bin/env bash
+echo "multica v0.3.1 (commit: old)"
+STUB
+  chmod +x "$tmp/install-bin/multica"
+  cat >"$tmp/stub-bin/brew" <<'STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list | update) exit 0 ;;
+  outdated) echo multica-ai/tap/multica; exit 0 ;;
+  upgrade) echo "simulated upgrade failure" >&2; exit 42 ;;
+esac
+exit 0
+STUB
+  chmod +x "$tmp/stub-bin/brew"
+
+  HOME="$tmp" PATH="$tmp/stub-bin:$tmp/install-bin:/usr/bin:/bin" \
+    MULTICA_BIN_DIR="$tmp/install-bin" MULTICA_TEST_ARCHIVE="$tmp/multica.tar.gz" \
+    bash "$ROOT_DIR/scripts/install.sh" >"$tmp/out" 2>"$tmp/err"
+  grep -q "Homebrew upgrade failed" "$tmp/err"
+  "$tmp/install-bin/multica" version | grep -q 'v0.3.2'
+  grep -q "upgraded (v0.3.1 → v0.3.2)" "$tmp/out"
+}
+
+test_with_server_preserves_populated_non_git_directory() {
+  local tmp status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  _setup_server_sandbox "$tmp"
+  rm -rf "$tmp/server/.git"
+  printf 'keep me\n' >"$tmp/server/user-data.txt"
+
+  set +e
+  env -i PATH="$tmp/stub-bin:/usr/bin:/bin" HOME="$tmp" \
+    MULTICA_INSTALL_DIR="$tmp/server" MULTICA_SELFHOST_REF=main \
+    bash "$ROOT_DIR/scripts/install.sh" --with-server >"$tmp/out" 2>"$tmp/err"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ] || [ "$(cat "$tmp/server/user-data.txt")" != "keep me" ]; then
+    echo "installer overwrote a populated non-git directory" >&2
+    return 1
+  fi
+  grep -q "non-empty and is not a Git repository" "$tmp/err"
+}
+
+test_with_server_rejects_unfetchable_ref() {
+  local tmp status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  _setup_server_sandbox "$tmp"
+
+  set +e
+  env -i PATH="$tmp/stub-bin:/usr/bin:/bin" HOME="$tmp" \
+    MULTICA_INSTALL_DIR="$tmp/server" MULTICA_SELFHOST_REF=missing \
+    MULTICA_TEST_GIT_FETCH_FAIL=missing \
+    bash "$ROOT_DIR/scripts/install.sh" --with-server >"$tmp/out" 2>"$tmp/err"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ]; then
+    echo "installer accepted an unfetchable self-host ref" >&2
+    return 1
+  fi
+  grep -q "Could not fetch requested self-host ref: missing" "$tmp/err"
+  if grep -q "Repository ready" "$tmp/out"; then
+    echo "installer reported an unfetchable ref as ready" >&2
+    return 1
+  fi
+
+  set +e
+  env -i PATH="$tmp/stub-bin:/usr/bin:/bin" HOME="$tmp" \
+    MULTICA_INSTALL_DIR="$tmp/server" MULTICA_SELFHOST_REF=-danger \
+    bash "$ROOT_DIR/scripts/install.sh" --with-server >"$tmp/out" 2>"$tmp/err"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ]; then
+    echo "installer accepted an option-like self-host ref" >&2
+    return 1
+  fi
+  grep -q "Invalid self-host ref: -danger" "$tmp/err"
+}
+
+test_with_server_fails_when_health_never_succeeds() {
+  local tmp status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  _setup_server_sandbox "$tmp"
+  : >"$tmp/curl.log"
+
+  set +e
+  env -i PATH="$tmp/stub-bin:/usr/bin:/bin" HOME="$tmp" \
+    MULTICA_INSTALL_DIR="$tmp/server" MULTICA_SELFHOST_REF=main \
+    MULTICA_TEST_CURL_LOG="$tmp/curl.log" MULTICA_TEST_CURL_FAIL=1 \
+    MULTICA_HEALTH_ATTEMPTS=2 MULTICA_HEALTH_INTERVAL_SECONDS=0 \
+    bash "$ROOT_DIR/scripts/install.sh" --with-server >"$tmp/out" 2>"$tmp/err"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ]; then
+    echo "installer succeeded despite an unhealthy backend" >&2
+    return 1
+  fi
+  grep -q "Backend did not become healthy" "$tmp/err"
+  if grep -q "server is running and CLI is ready" "$tmp/out"; then
+    echo "installer printed success despite an unhealthy backend" >&2
+    return 1
+  fi
+  grep -q -- '--connect-timeout 5 --max-time 5' "$tmp/curl.log"
+}
+
 test_brew_install_failure_falls_back_to_release_binary
 test_brew_tap_failure_falls_back_to_release_binary
 test_remote_ssh_install_prints_token_login_hint
 test_local_install_does_not_print_token_login_hint
 test_with_server_uses_compose_published_ports
 test_with_server_fails_when_compose_port_is_unavailable
+test_unknown_option_fails_before_installing
+test_add_to_path_ignores_unrelated_substrings
+test_latest_lookup_failure_is_not_reported_as_up_to_date
+test_brew_upgrade_failure_falls_back_to_binary
+test_with_server_preserves_populated_non_git_directory
+test_with_server_rejects_unfetchable_ref
+test_with_server_fails_when_health_never_succeeds
 echo "install.sh tests passed"
