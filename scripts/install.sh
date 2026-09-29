@@ -194,7 +194,7 @@ add_to_path() {
   local dir="$1"
   local line="export PATH=\"$dir:\$PATH\""
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [ -f "$rc" ] && ! grep -qF "$dir" "$rc"; then
+    if [ -f "$rc" ] && ! grep -Fqx "$line" "$rc"; then
       printf '\n# Added by Multica installer\n%s\n' "$line" >> "$rc"
     fi
   done
@@ -223,22 +223,24 @@ get_selfhost_ref() {
 
 checkout_server_ref() {
   local ref="$1"
+  local target actual
+  case "$ref" in
+    "" | -*) fail "Invalid self-host ref: $ref" ;;
+  esac
+
+  if ! git fetch origin "$ref" --depth 1; then
+    fail "Could not fetch requested self-host ref: $ref"
+  fi
+  target=$(git rev-parse --verify 'FETCH_HEAD^{commit}') || fail "Fetched self-host ref is not a commit: $ref"
 
   if [ "$ref" = "main" ]; then
-    git fetch origin main --depth 1 2>/dev/null || true
-    git checkout --force main 2>/dev/null || true
-    git reset --hard origin/main 2>/dev/null || true
-    return
+    git checkout --force -B main "$target" || fail "Could not check out self-host ref: $ref"
+  else
+    git checkout --force --detach "$target" || fail "Could not check out self-host ref: $ref"
   fi
 
-  git fetch origin --tags --force 2>/dev/null || true
-  if git rev-parse --verify --quiet "refs/tags/$ref" >/dev/null; then
-    git checkout --force "$ref" 2>/dev/null || git checkout --force "tags/$ref" 2>/dev/null || true
-    return
-  fi
-
-  git fetch origin "$ref" --depth 1 2>/dev/null || true
-  git checkout --force "$ref" 2>/dev/null || true
+  actual=$(git rev-parse --verify HEAD) || fail "Could not verify checked-out self-host ref: $ref"
+  [ "$actual" = "$target" ] || fail "Checked-out self-host ref does not match requested ref: $ref"
 }
 
 pull_official_selfhost_images() {
@@ -256,13 +258,24 @@ pull_official_selfhost_images() {
 
 upgrade_cli_brew() {
   info "Upgrading Multica CLI via Homebrew..."
-  brew update 2>/dev/null || true
-  if brew upgrade "$BREW_PACKAGE" 2>/dev/null; then
-    ok "Multica CLI upgraded via Homebrew"
-  else
-    # brew upgrade exits non-zero if already up to date
-    ok "Multica CLI is already the latest version"
+  local outdated
+  if ! brew update; then
+    warn "Homebrew update failed. Falling back to GitHub Releases binary install."
+    return 1
   fi
+  if ! outdated=$(brew outdated --quiet "$BREW_PACKAGE"); then
+    warn "Could not determine Homebrew upgrade status. Falling back to GitHub Releases binary install."
+    return 1
+  fi
+  if [ -z "$outdated" ]; then
+    ok "Multica CLI is already the latest version"
+    return 0
+  fi
+  if ! brew upgrade "$BREW_PACKAGE"; then
+    warn "Homebrew upgrade failed. Falling back to GitHub Releases binary install."
+    return 1
+  fi
+  ok "Multica CLI upgraded via Homebrew"
 }
 
 install_cli() {
@@ -278,20 +291,28 @@ install_cli() {
     local current_cmp="${current_ver#v}"
     local latest_cmp="${latest_ver#v}"
 
-    if [ -z "$latest_ver" ] || [ "$current_cmp" = "$latest_cmp" ]; then
+    if [ -z "$latest_ver" ]; then
+      warn "Could not determine the latest Multica CLI version; keeping installed version $current_ver."
+      return 0
+    fi
+
+    if [ "$current_cmp" = "$latest_cmp" ]; then
       ok "Multica CLI is up to date ($current_ver)"
       return 0
     fi
 
     info "Multica CLI $current_ver installed, latest is $latest_ver — upgrading..."
     if command_exists brew && brew list "$BREW_PACKAGE" >/dev/null 2>&1; then
-      upgrade_cli_brew
+      upgrade_cli_brew || install_cli_binary
     else
       install_cli_binary
     fi
 
     local new_ver
     new_ver=$(multica version 2>/dev/null | awk 'NR==1{print $2}' || echo "unknown")
+    if [ "${new_ver#v}" != "$latest_cmp" ]; then
+      fail "CLI upgrade did not install expected version $latest_ver (found $new_ver)."
+    fi
     ok "Multica CLI upgraded ($current_ver → $new_ver)"
     return 0
   fi
@@ -347,10 +368,15 @@ setup_server() {
     if ! command_exists git; then
       fail "Git is not installed. Please install git and re-run."
     fi
-    # Remove leftover directory from a previously interrupted clone
+    if [ -e "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR" ]; then
+      fail "Install path exists and is not a directory: $INSTALL_DIR"
+    fi
+    # Reuse an empty directory, but never guess that a populated directory is
+    # disposable user data from an interrupted clone.
     if [ -d "$INSTALL_DIR" ]; then
-      warn "Removing incomplete installation at $INSTALL_DIR..."
-      rm -rf "$INSTALL_DIR"
+      if [ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+        fail "Install path is non-empty and is not a Git repository: $INSTALL_DIR"
+      fi
     fi
     mkdir -p "$(dirname "$INSTALL_DIR")"
     git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
@@ -402,20 +428,21 @@ setup_server() {
   # Wait for health check
   info "Waiting for backend to be ready..."
   local ready=false
-  for i in $(seq 1 45); do
-    if curl -sf "http://localhost:${SELFHOST_BACKEND_PORT}/health" >/dev/null 2>&1; then
+  local health_attempts=${MULTICA_HEALTH_ATTEMPTS:-45}
+  local health_interval=${MULTICA_HEALTH_INTERVAL_SECONDS:-2}
+  local health_max_time=${MULTICA_HEALTH_MAX_TIME_SECONDS:-5}
+  for i in $(seq 1 "$health_attempts"); do
+    if curl --connect-timeout "$health_max_time" --max-time "$health_max_time" -sf "http://localhost:${SELFHOST_BACKEND_PORT}/health" >/dev/null 2>&1; then
       ready=true
       break
     fi
-    sleep 2
+    sleep "$health_interval"
   done
 
   if [ "$ready" = true ]; then
     ok "Multica server is running"
   else
-    warn "Server is still starting. You can check logs with:"
-    echo "  cd $INSTALL_DIR && docker compose -f docker-compose.selfhost.yml logs"
-    echo ""
+    fail "Backend did not become healthy. Check logs with: cd $INSTALL_DIR && docker compose -f docker-compose.selfhost.yml logs"
   fi
 }
 
@@ -538,7 +565,11 @@ main() {
         echo "After installation, run 'multica setup' to configure your environment."
         exit 0
         ;;
-      *) warn "Unknown option: $1" ;;
+      *)
+        warn "Unknown option: $1"
+        echo "Usage: install.sh [--with-server | --stop]" >&2
+        exit 2
+        ;;
     esac
     shift
   done
@@ -550,4 +581,6 @@ main() {
   esac
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

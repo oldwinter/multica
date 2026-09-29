@@ -46,7 +46,7 @@ const required = {
   "final-custody": ["custody-plan", "custody-runner", "custody-platform", "custody-qa", "custody-upstream", "custody-tools"],
 };
 
-const semanticRoot = "602cd6dcd9ecbea34a8054c8cf3287570c49b66a9870d09c11ed8962b72cbde7";
+const semanticRoot = "17b3f8a18a32d2ee5516681c4b1380b376f8706616ee7ee1470064c64915818c";
 
 function parseArgs(argv) {
   const here = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -267,11 +267,13 @@ function validate() {
   }
   const discovered = new Set();
   walk(join(repoRoot, "server"), repoRoot, discovered);
+  const classificationErrors = [];
   for (const identity of discovered) if (!declared.has(identity)) {
     const kind = identity.includes("#query:") ? "SQL" : "Go";
-    throw new Error(`unclassified agent_task_queue ${kind} consumer: ${identity.replace("#query:", "#").replace("#go:", "#")}`);
+    classificationErrors.push(`unclassified agent_task_queue ${kind} consumer: ${identity.replace("#query:", "#").replace("#go:", "#")}`);
   }
-  for (const identity of declared) if (!discovered.has(identity)) throw new Error(`stale agent_task_queue consumer: ${identity}`);
+  for (const identity of declared) if (!discovered.has(identity)) classificationErrors.push(`stale agent_task_queue consumer: ${identity}`);
+  if (classificationErrors.length > 0) throw new Error(classificationErrors.join("\n"));
   return { tables: tables.length, rows: ids.size, consumers: discovered.size };
 }
 

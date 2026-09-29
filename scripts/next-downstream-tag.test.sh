@@ -67,4 +67,17 @@ git -C "$TEST_DIR" tag v0.4.36-oldwinter.11
 got=$(run_script)
 expect_eq "$got" "v0.4.36-oldwinter.11" "HEAD already tagged stays idempotent"
 
+git -C "$TEST_DIR" tag v0.4.36-oldXwinter.7
+got=$(DOWNSTREAM_TAG_SUFFIX=old.winter run_script)
+expect_eq "$got" "v0.4.36-old.winter.1" "dot in suffix is matched literally"
+
+for invalid in '.hidden' 'bad..suffix' 'trailing.' 'slash/name' 'regex+'; do
+  if DOWNSTREAM_TAG_SUFFIX="$invalid" run_script >"$TEST_DIR/out" 2>"$TEST_DIR/err"; then
+    fail "invalid suffix '$invalid' was accepted"
+  fi
+  if ! grep -q "invalid downstream tag suffix" "$TEST_DIR/err"; then
+    fail "invalid suffix '$invalid' did not report validation error"
+  fi
+done
+
 echo "next-downstream-tag tests passed"

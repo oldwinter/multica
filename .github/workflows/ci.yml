@@ -345,6 +345,7 @@ jobs:
           --health-retries 10
     env:
       GOFLAGS: -count=1
+      GOMODCACHE: ${{ runner.temp }}/go-mod-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -377,7 +378,7 @@ jobs:
       - name: Restore Go module cache
         uses: actions/cache@v6
         with:
-          path: ~/go/pkg/mod
+          path: ${{ runner.temp }}/go-mod-cache
           key: go-mod-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('server/go.sum') }}
 
       # ImageOS is a runner environment variable, not a context value, so a
@@ -471,6 +472,7 @@ jobs:
     env:
       # Same policy as backend-tests: CI always executes the tests it reports.
       GOFLAGS: -count=1
+      GOMODCACHE: ${{ runner.temp }}/go-mod-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -490,7 +492,7 @@ jobs:
       - name: Restore Go module cache
         uses: actions/cache/restore@v6
         with:
-          path: ~/go/pkg/mod
+          path: ${{ runner.temp }}/go-mod-cache
           key: go-mod-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('server/go.sum') }}
 
       # Must match backend-tests' key step exactly.
