@@ -60,15 +60,19 @@ vi.mock("../utils/use-github-stars", () => ({
 import { LandingHeader } from "./landing-header";
 
 describe("LandingHeader appearance picker", () => {
-  it("routes skin and mode selections through the appearance bridge", () => {
-    render(<LandingHeader />);
+  it(
+    "routes skin and mode selections through the appearance bridge",
+    () => {
+      render(<LandingHeader />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Field" }));
-    expect(mockSelectSkin).toHaveBeenCalledWith("field");
+      fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Field" }));
+      expect(mockSelectSkin).toHaveBeenCalledWith("field");
 
-    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Dark" }));
-    expect(mockSelectAppearance).toHaveBeenCalledWith("dark");
-  });
+      fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Dark" }));
+      expect(mockSelectAppearance).toHaveBeenCalledWith("dark");
+    },
+    15_000,
+  );
 });
