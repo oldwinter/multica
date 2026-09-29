@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 const mockSelectSkin = vi.hoisted(() => vi.fn());
@@ -61,16 +60,15 @@ vi.mock("../utils/use-github-stars", () => ({
 import { LandingHeader } from "./landing-header";
 
 describe("LandingHeader appearance picker", () => {
-  it("routes skin and mode selections through the appearance bridge", async () => {
-    const user = userEvent.setup();
+  it("routes skin and mode selections through the appearance bridge", () => {
     render(<LandingHeader />);
 
     fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Field" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Field" }));
     expect(mockSelectSkin).toHaveBeenCalledWith("field");
 
     fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Dark" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Dark" }));
     expect(mockSelectAppearance).toHaveBeenCalledWith("dark");
   });
 });
