@@ -53,6 +53,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "support",
   "status",
   "legal",
+  "licensing",
   "privacy",
   "terms",
   "security",
@@ -82,7 +83,10 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "autopilots",
   "agents",
   "twins",
+  "rooms",
+  "office",
   "wiki",
+  "personal-wiki",
   "squads",
   "inbox",
   "my-issues",
@@ -104,6 +108,11 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "sdk",
   "tokens",
   "cli",
+
+  // DingTalk account-bind route
+  // `/dingtalk/bind` is a global pre-workspace route where a member links their
+  // DingTalk identity. Reserve the prefix so a workspace slug cannot shadow it.
+  "dingtalk",
 
   // Backend ops / observability
   // `/health`, `/readyz`, `/healthz`, and `/ws` exist on the backend host;

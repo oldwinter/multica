@@ -90,6 +90,7 @@ function adapter(): NavigationAdapter {
     back: vi.fn(),
     pathname: "/",
     searchParams: new URLSearchParams(),
+    hash: "",
     // The real platform adapters return an absolute URL; useAppOrigin derives
     // the deployment origin from it, and without that nothing is "in-app".
     getShareableUrl: (p) => `${APP_ORIGIN}${p}`,
@@ -148,7 +149,7 @@ describe("bare entity URLs in readonly content", () => {
 
     expect(queryByTestId("issue-chip")).toBeNull();
     expect(
-      container.querySelector(`a[href="${APP_ORIGIN}/acme/issues/MUL-404"]`),
+      container.querySelector('a[href="/acme/issues/MUL-404"]'),
     ).not.toBeNull();
   });
 
@@ -174,7 +175,7 @@ describe("bare entity URLs in readonly content", () => {
     expect(queryByTestId("project-chip")).toBeNull();
     expect(
       container.querySelector(
-        `a[href="${APP_ORIGIN}/other-ws/projects/${PROJECT_ID}"]`,
+        `a[href="/other-ws/projects/${PROJECT_ID}"]`,
       ),
     ).not.toBeNull();
   });

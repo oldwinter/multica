@@ -13,6 +13,7 @@
  * Theme picker stays inline (3 fixed options, fits in one section).
  */
 import { Alert, ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -26,17 +27,16 @@ import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import {
+  recordMobileAppearanceViewed,
   useColorScheme,
   type ThemePreference,
 } from "@/lib/use-color-scheme";
 import { SKIN_IDS, THEMES, type AppSkin } from "@/lib/theme";
+import { useLocalePreference, useT, type LocalePreference } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-];
+const THEME_OPTIONS: ThemePreference[] = ["light", "dark", "system"];
+const LANGUAGE_OPTIONS: LocalePreference[] = ["system", "en", "zh-Hans"];
 
 const SKIN_LABELS: Record<AppSkin, { name: string; description: string }> = {
   tension: { name: "Tension", description: "Concrete, carbon, signal red" },
@@ -47,6 +47,20 @@ const SKIN_LABELS: Record<AppSkin, { name: string; description: string }> = {
 function parseThemePreference(value: string): ThemePreference {
   if (value === "light" || value === "dark" || value === "system") return value;
   return "system";
+}
+
+function appearanceSyncCopy(
+  status: "local-only" | "pending" | "synced" | "failed",
+  online: boolean,
+): string {
+  if (status === "synced") return "Synced across your devices";
+  if (status === "pending") {
+    return online ? "Syncing your choice..." : "Waiting for a connection";
+  }
+  if (status === "failed") {
+    return "Saved on this device, but sync needs attention";
+  }
+  return "Using product defaults";
 }
 
 function initialsOf(name: string | undefined): string {
@@ -67,8 +81,51 @@ export default function SettingsPage() {
   const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
   const clearWorkspace = useWorkspaceStore((s) => s.clear);
   const { data, isLoading, error } = useQuery(workspaceListOptions());
-  const { preference, setPreference, skin, setSkin, theme } = useColorScheme();
+  const {
+    preference,
+    preferences,
+    setPreference,
+    skin,
+    setSkin,
+    theme,
+    online,
+    retrySync,
+    reset,
+  } = useColorScheme();
   const mutedFg = theme.mutedForeground;
+  const syncStatus = preferences.syncState.status;
+  const canRetry = syncStatus === "pending" || syncStatus === "failed";
+  const syncIcon =
+    syncStatus === "synced"
+      ? "cloud-done-outline"
+      : syncStatus === "failed"
+        ? "warning-outline"
+        : syncStatus === "pending"
+          ? "cloud-upload-outline"
+          : "phone-portrait-outline";
+  const syncIconColor =
+    syncStatus === "synced"
+      ? theme.success
+      : syncStatus === "failed"
+        ? theme.destructive
+        : syncStatus === "pending"
+          ? theme.info
+          : mutedFg;
+
+  useEffect(() => {
+    recordMobileAppearanceViewed();
+  }, []);
+  const {
+    preference: localePreference,
+    setPreference: setLocalePreference,
+  } = useLocalePreference();
+  const { t } = useT("settings");
+  const { t: tCommon } = useT();
+  const localeLabels = {
+    system: t("language.system"),
+    en: t("language.english"),
+    "zh-Hans": t("language.chinese_simplified"),
+  };
 
   const onSwitch = async (ws: Workspace) => {
     if (ws.slug === currentSlug) return;
@@ -78,12 +135,12 @@ export default function SettingsPage() {
 
   const onSignOut = () => {
     Alert.alert(
-      "Sign out",
-      "You'll need to sign in again to use Multica on this device.",
+      t("account.sign_out"),
+      t("account.sign_out_message"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: tCommon("actions.cancel"), style: "cancel" },
         {
-          text: "Sign out",
+          text: t("account.sign_out"),
           style: "destructive",
           onPress: async () => {
             await clearWorkspace();
@@ -103,12 +160,12 @@ export default function SettingsPage() {
       className="flex-1 bg-background"
       contentContainerClassName="px-4 py-4 gap-6"
     >
-      <SectionGroup title="Account">
+      <SectionGroup title={t("account.title")}>
         <NavRow
           onPress={goProfile}
           chevronColor={mutedFg}
           leading={
-            <Avatar alt={user?.name ?? "User avatar"} className="size-10">
+            <Avatar alt={user?.name ?? t("profile.name")} className="size-10">
               {user?.avatar_url ? (
                 <AvatarImage source={{ uri: user.avatar_url }} />
               ) : null}
@@ -126,12 +183,12 @@ export default function SettingsPage() {
         <NavRow
           onPress={goNotifications}
           chevronColor={mutedFg}
-          title="Notifications"
-          subtitle="Inbox and system alerts"
+          title={t("notifications.title")}
+          subtitle={t("account.notifications_subtitle")}
         />
       </SectionGroup>
 
-      <SectionGroup title="Workspaces">
+      <SectionGroup title={t("account.workspaces")}>
         {isLoading ? (
           <View className="py-4 items-center">
             <ActivityIndicator />
@@ -139,7 +196,7 @@ export default function SettingsPage() {
         ) : error ? (
           <View className="p-4">
             <Text className="text-sm text-destructive">
-              Failed to load workspaces
+              {t("account.load_failed")}
             </Text>
           </View>
         ) : (
@@ -208,7 +265,7 @@ export default function SettingsPage() {
         })}
       </SectionGroup>
 
-      <SectionGroup title="Appearance">
+      <SectionGroup title={t("appearance.title")}>
         {/* Two converging entry points by design, NOT a double-fire:
               - Tap on small radio circle  → RadioGroupItem (Pressable, inner) consumes → onValueChange fires
               - Tap on text / row padding  → outer Pressable.onPress fires
@@ -224,14 +281,17 @@ export default function SettingsPage() {
           {THEME_OPTIONS.map((opt, idx) => {
             const isLast = idx === THEME_OPTIONS.length - 1;
             return (
-              <View key={opt.value}>
+              <View key={opt}>
                 <Pressable
-                  onPress={() => setPreference(opt.value)}
+                  onPress={() => setPreference(opt)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: opt === preference }}
+                  accessibilityLabel={t(`appearance.${opt}`)}
                   className="flex-row items-center px-4 py-3.5 active:bg-secondary gap-3"
                 >
-                  <RadioGroupItem value={opt.value} />
+                  <RadioGroupItem value={opt} accessible={false} importantForAccessibility="no-hide-descendants" />
                   <Text className="flex-1 text-base font-medium text-foreground">
-                    {opt.label}
+                    {t(`appearance.${opt}`)}
                   </Text>
                 </Pressable>
                 {!isLast ? <Separator /> : null}
@@ -241,9 +301,95 @@ export default function SettingsPage() {
         </RadioGroup>
       </SectionGroup>
 
+      <SectionGroup title={t("language.title")}>
+        <RadioGroup
+          value={localePreference}
+          onValueChange={(v) => setLocalePreference(v as LocalePreference)}
+          className="gap-0"
+        >
+          {LANGUAGE_OPTIONS.map((opt, idx) => {
+            const isLast = idx === LANGUAGE_OPTIONS.length - 1;
+            return (
+              <View key={opt}>
+                <Pressable
+                  onPress={() => setLocalePreference(opt)}
+                  className="flex-row items-center px-4 py-3.5 active:bg-secondary gap-3"
+                >
+                  <RadioGroupItem value={opt} />
+                  <Text className="flex-1 text-base font-medium text-foreground">
+                    {localeLabels[opt]}
+                  </Text>
+                </Pressable>
+                {!isLast ? <Separator /> : null}
+              </View>
+            );
+          })}
+        </RadioGroup>
+        <Separator />
+        <View className="gap-3 px-4 py-3.5">
+          <View
+            className="flex-row items-center gap-2"
+            accessibilityLiveRegion="polite"
+          >
+            <Ionicons
+              name={syncIcon}
+              size={17}
+              color={syncIconColor}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <Text className="flex-1 text-sm text-muted-foreground">
+              {appearanceSyncCopy(syncStatus, online)}
+            </Text>
+          </View>
+          <View className="flex-row flex-wrap justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={reset}
+              className="h-auto min-h-9 py-2"
+              accessibilityLabel="Reset appearance to Tension and System"
+            >
+              <Ionicons
+                name="refresh-outline"
+                size={16}
+                color={mutedFg}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+              <Text>Reset defaults</Text>
+            </Button>
+            {canRetry ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={retrySync}
+                className="h-auto min-h-9 py-2"
+                disabled={!online}
+                accessibilityLabel="Retry appearance sync"
+                accessibilityHint={
+                  online
+                    ? "Retries syncing this device's appearance choice"
+                    : "Available when this device is online"
+                }
+              >
+                <Ionicons
+                  name="sync-outline"
+                  size={16}
+                  color={mutedFg}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+                <Text>Retry now</Text>
+              </Button>
+            ) : null}
+          </View>
+        </View>
+      </SectionGroup>
+
       <View className="pt-2">
         <Button variant="destructive" onPress={onSignOut}>
-          <Text>Sign out</Text>
+          <Text>{t("account.sign_out")}</Text>
         </Button>
       </View>
     </ScrollView>
@@ -293,7 +439,7 @@ function SectionGroup({
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-xs uppercase tracking-normalr text-muted-foreground px-1">
+      <Text className="text-xs uppercase tracking-normal text-muted-foreground px-1">
         {title}
       </Text>
       <View className="rounded-md border border-border bg-card overflow-hidden">

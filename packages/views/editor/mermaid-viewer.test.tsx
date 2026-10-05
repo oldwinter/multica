@@ -190,16 +190,16 @@ describe("MermaidViewer closing", () => {
   it("locks background scroll while open and restores it on close", async () => {
     render(<Harness />);
 
-    // Base UI marks the scroll-locked root; without the lock the page behind
-    // drifts and reopening lands the reader somewhere else.
+    // Base UI hides overflow while the dialog is open; without the lock the
+    // page behind drifts and reopening lands the reader somewhere else.
     await waitFor(() => {
-      expect(document.documentElement).toHaveAttribute("data-base-ui-scroll-locked");
+      expect(document.body).toHaveStyle({ overflowY: "hidden" });
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     await waitFor(() => {
-      expect(document.documentElement).not.toHaveAttribute("data-base-ui-scroll-locked");
+      expect(document.body.style.overflowY).toBe("");
     });
   });
 });

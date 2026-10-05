@@ -13,7 +13,23 @@ import { create } from "zustand";
 import type { User } from "@multica/core/types";
 import { api, ApiError } from "./api";
 import { clearToken, getToken, setToken } from "./secure-storage";
+import { invalidateSessionEpoch } from "./session-epoch";
 import { useWorkspaceStore } from "./workspace-store";
+import type { AppearanceUpdateRequest } from "@/lib/appearance-sync";
+import {
+  configureMobileAppearanceAnalytics,
+  identifyMobileAppearanceAnalytics,
+} from "./appearance-analytics";
+
+async function refreshAppearanceAnalyticsConfig(): Promise<void> {
+  try {
+    configureMobileAppearanceAnalytics(
+      await api.getConfig(),
+    );
+  } catch {
+    // Configuration is opportunistic; appearance behavior never waits on it.
+  }
+}
 
 interface AuthState {
   user: User | null;
@@ -22,16 +38,21 @@ interface AuthState {
   sendCode: (email: string) => Promise<void>;
   verifyCode: (email: string, code: string) => Promise<User>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<User>;
+  updateAppearancePreferences: (
+    data: AppearanceUpdateRequest,
+  ) => Promise<User>;
   /** Overwrite the in-memory user — call after PATCH /api/me so name/avatar
    *  edits land without a refetch. Server response is the source of truth. */
   setUser: (user: User) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
 
   initialize: async () => {
+    void refreshAppearanceAnalyticsConfig();
     // Restore the persisted workspace slug alongside the auth token so the
     // entry redirect (app/index.tsx) can route directly to the last-used
     // workspace without flashing /select-workspace.
@@ -39,20 +60,27 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     const token = await getToken();
     if (!token) {
+      identifyMobileAppearanceAnalytics(null);
       set({ isLoading: false });
       return;
     }
     api.setToken(token);
     try {
       const user = await api.getMe();
+      identifyMobileAppearanceAnalytics(user.id);
       set({ user, isLoading: false });
     } catch (err) {
       // Only clear token on a genuine 401. Network blips / 5xx keep the
       // token so the next launch (or a manual refresh) can retry.
       if (err instanceof ApiError && err.status === 401) {
+        // Synchronous first, before the awaited delete: anything already
+        // in flight has to learn the credential is dead now, not once the
+        // Keychain write lands.
+        invalidateSessionEpoch();
         await clearToken();
         api.setToken(null);
       }
+      identifyMobileAppearanceAnalytics(null);
       set({ user: null, isLoading: false });
     }
   },
@@ -63,17 +91,72 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   verifyCode: async (email, code) => {
     const { token, user } = await api.verifyCode(email, code);
+    // Signing in replaces the credential just as decisively as signing out:
+    // a renewal still in flight for the previous account must not write its
+    // result over this one.
+    invalidateSessionEpoch();
     await setToken(token);
     api.setToken(token);
+    identifyMobileAppearanceAnalytics(user.id);
     set({ user });
     return user;
   },
 
   logout: async () => {
-    await clearToken();
+    invalidateSessionEpoch();
     api.setToken(null);
+    identifyMobileAppearanceAnalytics(null);
     set({ user: null });
+    await clearToken();
   },
 
-  setUser: (user) => set({ user }),
+  refreshUser: async () => {
+    const expectedUserId = get().user?.id;
+    if (!expectedUserId) throw new Error("No current user to refresh");
+    void refreshAppearanceAnalyticsConfig();
+    const user = await api.getMe();
+    if (user.id !== expectedUserId || get().user?.id !== expectedUserId) {
+      throw new Error("Stale current-user response");
+    }
+    identifyMobileAppearanceAnalytics(user.id);
+    set((state) => ({
+      user: state.user
+        ? {
+            ...state.user,
+            skin: user.skin,
+            appearance: user.appearance,
+            appearanceUpdatedAt: user.appearanceUpdatedAt,
+            appearanceTokenVersion: user.appearanceTokenVersion,
+          }
+        : user,
+    }));
+    return user;
+  },
+
+  updateAppearancePreferences: async (data) => {
+    const expectedUserId = get().user?.id;
+    if (!expectedUserId) throw new Error("No current user to update");
+    const user = await api.updateAppearancePreferences(data);
+    if (user.id !== expectedUserId || get().user?.id !== expectedUserId) {
+      throw new Error("Stale appearance sync response");
+    }
+    identifyMobileAppearanceAnalytics(user.id);
+    set((state) => ({
+      user: state.user
+        ? {
+            ...state.user,
+            skin: user.skin,
+            appearance: user.appearance,
+            appearanceUpdatedAt: user.appearanceUpdatedAt,
+            appearanceTokenVersion: user.appearanceTokenVersion,
+          }
+        : user,
+    }));
+    return user;
+  },
+
+  setUser: (user) => {
+    identifyMobileAppearanceAnalytics(user.id);
+    set({ user });
+  },
 }));

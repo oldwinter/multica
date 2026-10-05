@@ -5,9 +5,10 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@multica/ui/components/ui/sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { WebProviders } from "@/components/web-providers";
-import type { SupportedLocale } from "@multica/core/i18n";
 import { RESOURCES } from "@multica/views/locales";
 import { getRequestLocale } from "@/lib/request-locale";
+import { HTML_LANG } from "@/lib/html-lang";
+import { SITE_TITLE, TITLE_TEMPLATE } from "@/platform/document-title";
 import {
   resolveBrowserApiBaseUrl,
   resolveBrowserWsUrl,
@@ -74,14 +75,30 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.multica.ai"),
   title: {
-    default: "Multica — Project Management for Human + Agent Teams",
-    template: "%s | Multica",
+    default: SITE_TITLE,
+    template: TITLE_TEMPLATE,
   },
   description:
-    "Open-source platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills.",
+    "Source-available platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills.",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: ["/favicon.svg"],
+    // iOS never reads the manifest's icons for the home screen; it needs its
+    // own opaque, full-bleed square and rounds the corners itself.
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  // Home-screen behaviour: launch without browser chrome, and label the icon
+  // "Multica" rather than the long SEO <title>. `capable` renders the
+  // standardised `mobile-web-app-capable` tag — Next 16 no longer emits the
+  // deprecated apple-prefixed spelling, so iOS standalone rides on the
+  // manifest's `display` instead (honoured since iOS 16.4).
+  appleWebApp: {
+    capable: true,
+    title: "Multica",
+    // `default` keeps the web view below the status bar. Going edge-to-edge
+    // (`black-translucent` + viewport-fit=cover) needs env(safe-area-inset-*)
+    // padding, which no surface in the app has yet.
+    statusBarStyle: "default",
   },
   openGraph: {
     type: "website",
@@ -102,17 +119,6 @@ export const metadata: Metadata = {
   },
 };
 
-// HTML lang attribute uses BCP-47 region tags that screen readers and font
-// stacks recognize widely. i18next keeps `zh-Hans` as its internal locale
-// (script subtag is what we actually translate against), but the html element
-// expects a region-flavoured tag for accessibility tooling and CJK fallback.
-const HTML_LANG: Record<SupportedLocale, string> = {
-  en: "en",
-  "zh-Hans": "zh-CN",
-  ko: "ko-KR",
-  ja: "ja-JP",
-};
-
 export default async function RootLayout({
   children,
 }: {
@@ -131,7 +137,7 @@ export default async function RootLayout({
     >
       <body className="h-full overflow-hidden">
         <Script id="multica-skin" strategy="beforeInteractive">
-          {`try{var s=localStorage.getItem("multica-skin");document.documentElement.dataset.skin=["tension","relay","field"].includes(s)?s:"tension"}catch(e){document.documentElement.dataset.skin="tension"}`}
+          {`var e=document.documentElement,m=false,s="tension",a="system",d=false;try{m=matchMedia("(prefers-color-scheme: dark)").matches}catch(_){}try{var o=localStorage.getItem("multica-appearance-preferences-owner"),x=localStorage.getItem("multica-authenticated-account-id"),q=x?localStorage.getItem("multica-appearance-preferences:account:"+encodeURIComponent(x)):null,r=q!==null?q:o===null||o===x?localStorage.getItem("multica-appearance-preferences"):null,p=null;try{p=r?JSON.parse(r):null}catch(_){}var f=p&&(p.version>1||p.tokenContractVersion>1),v=p&&p.version===1&&p.tokenContractVersion===1;s=f?"tension":v?p.skin:o===null?localStorage.getItem("multica-skin"):"tension";a=f?"system":v?p.requestedAppearance:o===null?localStorage.getItem("theme"):"system";d=a==="dark"||(a!=="light"&&m);if(v)localStorage.setItem("theme",a)}catch(_){s="tension";a="system";d=m}e.dataset.skin=["tension","relay","field"].includes(s)?s:"tension";e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light"`}
         </Script>
         {/*
           react-grab: dev-only element inspector. Hold ⌘C (Mac) / Ctrl+C and click

@@ -16,6 +16,41 @@ import enCommon from "../../locales/en/common.json";
 import enAuth from "../../locales/en/auth.json";
 import enSettings from "../../locales/en/settings.json";
 
+type AppearanceMockState = {
+  preferences: {
+    skin: string;
+    requestedAppearance: string;
+    resolvedAppearance: string;
+    source: string;
+    syncState: { status: string; errorClass?: string };
+  };
+  diagnostics: {
+    preferenceVersion: number;
+    tokenContractVersion: number;
+    skin: string;
+    requestedAppearance: string;
+    resolvedAppearance: string;
+    preferenceSource: string;
+    adapterSource: string;
+    syncStatus: string;
+    lastSyncErrorClass: string | null;
+    reducedMotion: boolean;
+    forcedColors: boolean;
+    recoveredFields: string[];
+  };
+  canRetry: boolean;
+  canCopyDiagnostics: boolean;
+  recoveryNoticePending: boolean;
+};
+
+const navigationState = vi.hoisted(() => ({ search: "", replace: vi.fn() }));
+vi.mock("../../navigation", () => ({
+  useNavigation: () => ({
+    pathname: "/acme/settings",
+    searchParams: new URLSearchParams(navigationState.search),
+    replace: navigationState.replace,
+  }),
+}));
 const mockPersist = vi.hoisted(() => vi.fn());
 const mockUpdateMe = vi.hoisted(() => vi.fn());
 const mockReload = vi.hoisted(() => vi.fn());
@@ -24,7 +59,40 @@ const mockToastError = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
 const mockSetTheme = vi.hoisted(() => vi.fn());
 const mockSetSkin = vi.hoisted(() => vi.fn());
+const mockResetAppearance = vi.hoisted(() => vi.fn());
+const mockRetryAppearance = vi.hoisted(() => vi.fn());
+const mockUndoAppearance = vi.hoisted(() => vi.fn());
+const mockAcknowledgeRecovery = vi.hoisted(() => vi.fn());
+const mockCopyText = vi.hoisted(() => vi.fn());
 const mockSetUser = vi.hoisted(() => vi.fn());
+const appearanceRef = vi.hoisted(() => ({
+  current: {
+    preferences: {
+      skin: "tension",
+      requestedAppearance: "system",
+      resolvedAppearance: "light",
+      source: "local",
+      syncState: { status: "local-only" },
+    },
+    diagnostics: {
+      preferenceVersion: 1,
+      tokenContractVersion: 1,
+      skin: "tension",
+      requestedAppearance: "system",
+      resolvedAppearance: "light",
+      preferenceSource: "local",
+      adapterSource: "web",
+      syncStatus: "local-only",
+      lastSyncErrorClass: null,
+      reducedMotion: false,
+      forcedColors: false,
+      recoveredFields: [] as string[],
+    },
+    canRetry: false,
+    canCopyDiagnostics: false,
+    recoveryNoticePending: false,
+  } as AppearanceMockState,
+}));
 const userRef = vi.hoisted(() => ({
   current: null as { id: string; timezone?: string | null } | null,
 }));
@@ -35,11 +103,32 @@ vi.mock("@multica/ui/components/common/theme-provider", () => ({
   useSkin: () => ({ skin: "tension", setSkin: mockSetSkin }),
 }));
 
+vi.mock("../../appearance", async () => {
+  const actual = await vi.importActual<typeof import("../../appearance")>(
+    "../../appearance",
+  );
+  return {
+    ...actual,
+    useAppearancePreferences: () => ({
+      ...appearanceRef.current,
+      selectSkin: mockSetSkin,
+      selectAppearance: mockSetTheme,
+      reset: mockResetAppearance,
+      undo: mockUndoAppearance,
+      retry: mockRetryAppearance,
+      acknowledgeRecoveryNotice: mockAcknowledgeRecovery,
+    }),
+  };
+});
+
+vi.mock("@multica/ui/lib/clipboard", () => ({
+  copyText: mockCopyText,
+}));
+
 vi.mock("@multica/core/i18n/react", async () => {
-  const actual =
-    await vi.importActual<typeof import("@multica/core/i18n/react")>(
-      "@multica/core/i18n/react",
-    );
+  const actual = await vi.importActual<
+    typeof import("@multica/core/i18n/react")
+  >("@multica/core/i18n/react");
   return {
     ...actual,
     useLocaleAdapter: () => ({
@@ -76,8 +165,7 @@ vi.mock("@multica/core/auth", async () => {
     setUser: mockSetUser,
   });
   const useAuthStore = Object.assign(
-    (sel?: (s: AuthState) => unknown) =>
-      sel ? sel(state()) : state(),
+    (sel?: (s: AuthState) => unknown) => (sel ? sel(state()) : state()),
     { getState: state },
   );
   return { ...actual, useAuthStore };
@@ -90,6 +178,54 @@ const TEST_RESOURCES = {
   en: { common: enCommon, auth: enAuth, settings: enSettings },
 };
 
+const APPEARANCE_RECEIPT = {
+  previous: {
+    version: 1 as const,
+    tokenContractVersion: 1 as const,
+    skin: "tension" as const,
+    requestedAppearance: "system" as const,
+    resolvedAppearance: "light" as const,
+    source: "local" as const,
+    updatedAt: "2026-08-26T10:00:00.000Z",
+    syncState: { status: "local-only" as const },
+  },
+  expectedUpdatedAt: "2026-08-26T10:01:00.000Z",
+};
+
+beforeEach(() => {
+  appearanceRef.current = {
+    preferences: {
+      skin: "tension",
+      requestedAppearance: "system",
+      resolvedAppearance: "light",
+      source: "local",
+      syncState: { status: "local-only" },
+    },
+    diagnostics: {
+      preferenceVersion: 1,
+      tokenContractVersion: 1,
+      skin: "tension",
+      requestedAppearance: "system",
+      resolvedAppearance: "light",
+      preferenceSource: "local",
+      adapterSource: "web",
+      syncStatus: "local-only",
+      lastSyncErrorClass: null,
+      reducedMotion: false,
+      forcedColors: false,
+      recoveredFields: [],
+    },
+    canRetry: false,
+    canCopyDiagnostics: false,
+    recoveryNoticePending: false,
+  };
+  mockSetSkin.mockReturnValue(APPEARANCE_RECEIPT);
+  mockSetTheme.mockReturnValue(APPEARANCE_RECEIPT);
+  mockResetAppearance.mockReturnValue(APPEARANCE_RECEIPT);
+  mockUndoAppearance.mockResolvedValue("applied");
+  mockCopyText.mockResolvedValue(true);
+});
+
 function I18nWrapper({ children }: { children: ReactNode }) {
   return (
     <I18nProvider locale="en" resources={TEST_RESOURCES}>
@@ -97,7 +233,6 @@ function I18nWrapper({ children }: { children: ReactNode }) {
     </I18nProvider>
   );
 }
-
 describe("PreferencesTab — Language switcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,6 +257,23 @@ describe("PreferencesTab — Language switcher", () => {
     await user.click(await screen.findByRole("option", { name }));
   }
 
+  it("keeps stacked skins clear of the chat launcher", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(screen.getByRole("radiogroup", { name: "Skin" })).toHaveClass(
+      "pe-chat-launcher",
+      "@xl:pe-0",
+    );
+  });
+
+  it("keeps the general settings card clear of the chat launcher on compact screens", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(screen.getByRole("heading", { name: "General" }).closest("section")).toHaveClass(
+      "max-md:pe-chat-launcher",
+    );
+  });
+
   it("does nothing when clicking the current locale", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
@@ -132,7 +284,6 @@ describe("PreferencesTab — Language switcher", () => {
     expect(mockUpdateMe).not.toHaveBeenCalled();
     expect(mockReload).not.toHaveBeenCalled();
   });
-
   it("shows a confirmation toast when the appearance is saved locally", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
@@ -141,6 +292,26 @@ describe("PreferencesTab — Language switcher", () => {
 
     expect(mockSetTheme).toHaveBeenCalledWith("dark");
     expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+    expect(mockToastSuccess).toHaveBeenCalledWith(
+      "Changes saved",
+      expect.objectContaining({
+        id: "settings-appearance-save",
+        action: expect.objectContaining({ label: "Undo" }),
+      }),
+    );
+
+    const toastOptions = mockToastSuccess.mock.calls[0]![1] as {
+      action: { onClick: () => void };
+    };
+    toastOptions.action.onClick();
+
+    await waitFor(() =>
+      expect(mockUndoAppearance).toHaveBeenCalledWith(APPEARANCE_RECEIPT),
+    );
+    expect(mockToastSuccess).toHaveBeenLastCalledWith(
+      "Previous appearance restored",
+      { id: "settings-appearance-undo" },
+    );
   });
 
   it("persists a named skin independently from appearance", async () => {
@@ -163,6 +334,146 @@ describe("PreferencesTab — Language switcher", () => {
 
     expect(mockSetSkin).toHaveBeenCalledWith("relay");
     expect(screen.getByRole("radio", { name: /Relay/ })).toHaveFocus();
+  });
+
+  it("renders the same semantic state fixture for every named skin", () => {
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    const fixtures = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-appearance-fixture]"),
+    );
+    expect(fixtures).toHaveLength(3);
+    expect(fixtures.map((fixture) => fixture.dataset.skin)).toEqual([
+      "tension",
+      "relay",
+      "field",
+    ]);
+    expect(
+      fixtures.every(
+        (fixture) =>
+          fixture.dataset.appearanceMode === "light" &&
+          fixture.querySelector('[data-fixture-role="form-control"]') &&
+          fixture.querySelector('[data-fixture-role="destructive"]') &&
+          fixture.querySelector('[data-fixture-role="code-editor"]'),
+      ),
+    ).toBe(true);
+    expect(fixtures[0]).toHaveTextContent("Review ready");
+    expect(fixtures[0]).toHaveTextContent("Selected task");
+  });
+
+  it("names the exact defaults before reset and only resets on confirm", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    await user.click(
+      screen.getByRole("button", { name: "Reset appearance" }),
+    );
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText(/skin to Tension/i)).toBeInTheDocument();
+    expect(screen.getByText(/color mode to System/i)).toBeInTheDocument();
+    expect(mockResetAppearance).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockResetAppearance).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "Reset appearance" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Reset to defaults" }),
+    );
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(mockResetAppearance).toHaveBeenCalledTimes(1);
+    expect(mockToastSuccess).toHaveBeenCalledWith(
+      "Changes saved",
+      expect.objectContaining({ id: "settings-appearance-save" }),
+    );
+  });
+
+  it("explains an expired Undo without claiming restoration", async () => {
+    mockUndoAppearance.mockResolvedValueOnce("expired");
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+    await user.click(screen.getByRole("radio", { name: "Dark" }));
+    const toastOptions = mockToastSuccess.mock.calls[0]![1] as {
+      action: { onClick: () => void };
+    };
+
+    toastOptions.action.onClick();
+
+    await waitFor(() =>
+      expect(mockToastWarning).toHaveBeenCalledWith(
+        "Undo expired because appearance changed elsewhere",
+        { id: "settings-appearance-undo" },
+      ),
+    );
+  });
+
+  it("reveals and copies only the bounded diagnostic snapshot", async () => {
+    appearanceRef.current.preferences.syncState = {
+      status: "failed",
+      errorClass: "network",
+    };
+    appearanceRef.current.diagnostics.syncStatus = "failed";
+    appearanceRef.current.diagnostics.lastSyncErrorClass = "network";
+    appearanceRef.current.canCopyDiagnostics = true;
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    await user.click(
+      screen.getByRole("button", { name: "Copy diagnostics" }),
+    );
+
+    expect(mockCopyText).toHaveBeenCalledTimes(1);
+    const payload = mockCopyText.mock.calls[0]![0] as string;
+    expect(JSON.parse(payload)).toEqual(appearanceRef.current.diagnostics);
+    expect(payload).not.toMatch(/workspace|route|email|updatedAt/i);
+    expect(mockToastSuccess).toHaveBeenCalledWith(
+      "Appearance diagnostics copied",
+      { id: "settings-appearance-diagnostics" },
+    );
+  });
+
+  it("shows Retry only when the current failure can make progress", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    appearanceRef.current.preferences.syncState = {
+      status: "failed",
+      errorClass: "conflict",
+    };
+    const rendered = render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    expect(
+      screen.queryByRole("button", { name: "Retry sync" }),
+    ).not.toBeInTheDocument();
+
+    appearanceRef.current.preferences.syncState = {
+      status: "failed",
+      errorClass: "network",
+    };
+    appearanceRef.current.canRetry = true;
+    rendered.rerender(<PreferencesTab />);
+    await user.click(screen.getByRole("button", { name: "Retry sync" }));
+
+    expect(mockRetryAppearance).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies once when an invalid appearance value was recovered", async () => {
+    appearanceRef.current.recoveryNoticePending = true;
+    appearanceRef.current.diagnostics.recoveredFields = ["skin"];
+    const rendered = render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    await waitFor(() =>
+      expect(mockToastWarning).toHaveBeenCalledWith(
+        "An invalid appearance value was replaced with a safe default",
+        { id: "settings-appearance-recovered" },
+      ),
+    );
+    expect(mockAcknowledgeRecovery).toHaveBeenCalledTimes(1);
+
+    appearanceRef.current.recoveryNoticePending = false;
+    rendered.rerender(<PreferencesTab />);
+    expect(mockToastWarning).toHaveBeenCalledTimes(1);
   });
 
   it("when not logged in: persists + reloads, no PATCH", async () => {
@@ -195,16 +506,30 @@ describe("PreferencesTab — Language switcher", () => {
     expect(mockToastWarning).not.toHaveBeenCalled();
   });
 
-  it("when logged in + PATCH success: confirms the save before reloading", async () => {
+  it("cancels the delayed locale reload when Settings unmounts", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const rendered = render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    await pickLanguage(user, "한국어");
+    rendered.unmount();
+    act(() => vi.advanceTimersByTime(900));
+
+    expect(mockReload).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "中文", locale: "zh-Hans" },
+    { name: "Français", locale: "fr" },
+  ])("when logged in: saves $locale before reloading", async ({ name, locale }) => {
     userRef.current = { id: "user-1" };
     mockUpdateMe.mockResolvedValueOnce({});
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<PreferencesTab />, { wrapper: I18nWrapper });
 
-    await pickLanguage(user, "中文");
+    await pickLanguage(user, name);
 
-    expect(mockPersist).toHaveBeenCalledWith("zh-Hans");
-    expect(mockUpdateMe).toHaveBeenCalledWith({ language: "zh-Hans" });
+    expect(mockPersist).toHaveBeenCalledWith(locale);
+    expect(mockUpdateMe).toHaveBeenCalledWith({ language: locale });
     expect(mockToastWarning).not.toHaveBeenCalled();
     expect(mockToastSuccess).toHaveBeenCalledTimes(1);
     expect(mockReload).not.toHaveBeenCalled();
@@ -271,7 +596,9 @@ describe("PreferencesTab — Timezone section", () => {
     user: ReturnType<typeof userEvent.setup>,
     name: RegExp | string,
   ) {
-    await user.click(screen.getByRole("combobox", { name: "Viewing Timezone" }));
+    await user.click(
+      screen.getByRole("combobox", { name: "Viewing Timezone" }),
+    );
     await user.click(await screen.findByRole("option", { name }));
   }
 
@@ -337,6 +664,33 @@ describe("PreferencesTab — Timezone section", () => {
   });
 });
 
+describe("PreferencesTab — Replying to a running agent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    userRef.current = null;
+    useCommentComposerStore.setState({ runningAgentReply: "steer" });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("defaults to adding the reply to the current run and saves starting after it", async () => {
+    const user = userEvent.setup();
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+
+    const select = screen.getByRole("combobox", { name: "When replying to a running agent" });
+    expect(select).toHaveTextContent("Add to current run");
+
+    await user.click(select);
+    await user.click(await screen.findByRole("option", { name: "Start after this run" }));
+
+    expect(useCommentComposerStore.getState().runningAgentReply).toBe("after_run");
+    expect(select).toHaveTextContent("Start after this run");
+    expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("PreferencesTab — Sticky comment bar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -352,7 +706,7 @@ describe("PreferencesTab — Sticky comment bar", () => {
     const user = userEvent.setup();
     render(<PreferencesTab />, { wrapper: I18nWrapper });
 
-    const toggle = screen.getByRole("switch", { name: "Sticky comment bar" });
+    const toggle = screen.getByRole("switch", { name: "Pin comment bar to bottom" });
     expect(toggle).toHaveAttribute("aria-checked", "true");
 
     await user.click(toggle);
@@ -360,5 +714,30 @@ describe("PreferencesTab — Sticky comment bar", () => {
     expect(useCommentComposerStore.getState().sticky).toBe(false);
     expect(toggle).toHaveAttribute("aria-checked", "false");
     expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Preferences sections", () => {
+  afterEach(() => {
+    navigationState.search = "";
+    cleanup();
+  });
+  it("opens the issue creation controls from an old bookmark", () => {
+    navigationState.search = "tab=issue";
+    render(
+      <I18nWrapper>
+        <PreferencesTab />
+      </I18nWrapper>,
+    );
+    expect(screen.getByRole("tab", { name: "Issue creation" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.getByText(enSettings.preferences.issue_scope),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Theme" }),
+    ).not.toBeInTheDocument();
   });
 });

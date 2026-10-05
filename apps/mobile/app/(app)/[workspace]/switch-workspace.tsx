@@ -25,7 +25,7 @@ import {
   ScrollView,
   View,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { PlatformSymbol } from "@/components/ui/platform-symbol";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "@multica/core/types";
@@ -34,23 +34,24 @@ import { WorkspaceAvatar } from "@/components/workspace/workspace-avatar";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export default function SwitchWorkspaceRoute() {
   const activeSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const { theme } = useColorScheme();
-  const t = theme;
   const { data, isLoading } = useQuery(workspaceListOptions());
+  const { t } = useT("workspace");
 
   const onSelect = (ws: Workspace) => {
     if (ws.slug === activeSlug) return;
     Alert.alert(
-      "Switch workspace",
-      `Switch to "${ws.name}"?`,
+      t("switch.title"),
+      t("switch.message", { name: ws.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common:actions.cancel"), style: "cancel" },
         {
-          text: "Switch",
+          text: t("switch.confirm"),
           onPress: () => {
             router.dismiss();
             router.replace(`/${ws.slug}/inbox`);
@@ -64,7 +65,7 @@ export default function SwitchWorkspaceRoute() {
     <View className="flex-1">
       <View className="px-4 pt-4 pb-3">
         <Text className="text-base font-semibold text-foreground">
-          Switch workspace
+          {t("switch.title")}
         </Text>
       </View>
       {isLoading ? (
@@ -79,7 +80,7 @@ export default function SwitchWorkspaceRoute() {
               workspace={ws}
               active={ws.slug === activeSlug}
               onPress={() => onSelect(ws)}
-              iconTint={t.foreground}
+              iconTint={theme.foreground}
             />
           ))}
         </ScrollView>
@@ -99,14 +100,15 @@ function WorkspaceRow({
   onPress: () => void;
   iconTint: string;
 }) {
+  const { t } = useT("workspace");
   return (
     <Pressable
       onPress={onPress}
       disabled={active}
       accessibilityLabel={
         active
-          ? `${workspace.name}, current workspace`
-          : `Switch to ${workspace.name}`
+          ? t("switch.current_a11y", { name: workspace.name })
+          : t("switch.switch_a11y", { name: workspace.name })
       }
       className={cn(
         "flex-row items-center gap-3 px-4 py-3 active:bg-secondary",
@@ -128,10 +130,10 @@ function WorkspaceRow({
         {workspace.name}
       </Text>
       {active ? (
-        <ExpoImage
-          source="sf:checkmark"
-          tintColor={iconTint}
-          style={{ width: 16, height: 16 }}
+        <PlatformSymbol
+          name="checkmark"
+          color={iconTint}
+          size={16}
         />
       ) : null}
     </Pressable>

@@ -37,6 +37,9 @@ func TestNormalizePR3LabelsCollapseUnknownValues(t *testing.T) {
 		{"webhook_provider_unknown", metrics.NormalizeWebhookProvider, "internal-billing", "other", "other"},
 		{"webhook_status_unknown", metrics.NormalizeWebhookDeliveryStatus, "exotic", "other", "other"},
 		{"webhook_gate_unknown", metrics.NormalizeWebhookRateLimitGate, "exotic", "other", "other"},
+		{"email_rate_limit_action_known", metrics.NormalizeEmailRateLimitAction, "workspace_invitation", "workspace_invitation", "other"},
+		{"email_rate_limit_action_unknown", metrics.NormalizeEmailRateLimitAction, "password_reset", "other", "other"},
+		{"email_rate_limit_gate_unknown", metrics.NormalizeEmailRateLimitGate, "email_address", "other", "other"},
 		{"github_event_unknown", metrics.NormalizeGithubEventKind, "deploy_status", "other", "other"},
 		{"github_action_empty", metrics.NormalizeGithubAction, "", "none", "none"},
 		{"github_action_unknown", metrics.NormalizeGithubAction, "rerequested_by_user", "other", "other"},
@@ -48,6 +51,13 @@ func TestNormalizePR3LabelsCollapseUnknownValues(t *testing.T) {
 		{"daemon_ws_kind_unknown", metrics.NormalizeDaemonWSKind, "future_event", "other", "other"},
 		{"feedback_kind_unknown", metrics.NormalizeFeedbackKind, "rant", "other", "other"},
 		{"contact_sales_source_unknown", metrics.NormalizeContactSalesSource, "homepage_modal", "other", "other"},
+		{"twin_proposal_kind_unknown", metrics.NormalizeTwinProposalKind, "workspace-123", "unknown", "unknown"},
+		{"twin_state_unknown", metrics.NormalizeTwinState, "raw-briefing", "unknown", "unknown"},
+		{"twin_scope_unknown", metrics.NormalizeTwinPolicyScope, "task-123", "unknown", "unknown"},
+		{"twin_decision_unknown", metrics.NormalizeTwinDecision, "user-123", "unknown", "unknown"},
+		{"twin_rating_unknown", metrics.NormalizeTwinFeedbackRating, "private-feedback", "unknown", "unknown"},
+		{"twin_revision_kind_unknown", metrics.NormalizeTwinRevisionKind, "raw-instructions", "unknown", "unknown"},
+		{"twin_exclusion_unknown", metrics.NormalizeTwinExclusionCode, "/Users/private/repo", "unknown", "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -115,6 +125,50 @@ func TestOnboardingStartedUnknownPlatformCollapses(t *testing.T) {
 	for v := range seen {
 		if len(v) > len("desktop") && !strings.EqualFold(v, "unknown") {
 			t.Errorf("platform label %q is suspiciously long — likely raw header bleed", v)
+		}
+	}
+}
+
+func TestTwinMetricsNeverUseIdentityOrSensitiveValuesAsLabels(t *testing.T) {
+	t.Parallel()
+
+	const sensitiveMarker = "secret-user-path-token"
+	m := metrics.NewBusinessMetrics()
+	event := analytics.TwinBriefingUse(analytics.TwinBriefingUseMetric{
+		Context: analytics.TwinMetricContext{
+			UserID:      sensitiveMarker,
+			WorkspaceID: "workspace-" + sensitiveMarker,
+			TaskID:      "task-" + sensitiveMarker,
+		},
+		State:         analytics.TwinUseState("prompt-" + sensitiveMarker),
+		Scope:         analytics.TwinPolicyScope("/Users/private/" + sensitiveMarker),
+		ExclusionCode: analytics.TwinExclusionCode("credential-" + sensitiveMarker),
+		ByteCount:     512,
+		TokenCount:    128,
+	})
+	metrics.RecordEvent(analytics.NoopClient{}, m, event)
+
+	families := metrics.GatherForTest(t, m)
+	for _, familyName := range []string{
+		"multica_twin_briefing_use_total",
+		"multica_twin_briefing_bytes",
+		"multica_twin_briefing_tokens",
+	} {
+		family := families[familyName]
+		if family == nil {
+			t.Fatalf("metric family %s not found", familyName)
+		}
+		for _, metric := range family.GetMetric() {
+			for _, label := range metric.GetLabel() {
+				switch label.GetName() {
+				case "state", "scope", "exclusion_code":
+				default:
+					t.Errorf("%s exposes unexpected label %q", familyName, label.GetName())
+				}
+				if strings.Contains(label.GetValue(), sensitiveMarker) {
+					t.Errorf("%s leaked sensitive value into %s label", familyName, label.GetName())
+				}
+			}
 		}
 	}
 }

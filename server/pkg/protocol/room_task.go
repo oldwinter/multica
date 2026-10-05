@@ -11,9 +11,12 @@ import (
 )
 
 const (
-	RoomTaskContextType         = "room"
-	RoomTaskContextSchemaV1     = 1
-	DaemonCapabilityRoomTasksV1 = "room-tasks-v1"
+	RoomTaskContextType              = "room"
+	RoomTaskContextSchemaV1          = 1
+	RoomTaskContextSchemaV2          = 2
+	DaemonCapabilityRoomTasksV1      = "room-tasks-v1"
+	DaemonCapabilityRoomOutcomesV2   = "room-outcomes-v2"
+	DaemonCapabilityRoomCostLimitsV1 = "room-cost-limits-v1"
 )
 
 var ErrInvalidRoomTaskContext = errors.New("invalid Room task context")
@@ -35,16 +38,18 @@ type RoomTaskTranscriptEntryV1 struct {
 // and daemon claim consumer. It intentionally has no dependency on Room or
 // sqlc storage types.
 type RoomTaskContextV1 struct {
-	Type          string                      `json:"type"`
-	SchemaVersion int                         `json:"schema_version"`
-	WorkspaceID   string                      `json:"workspace_id"`
-	RoomID        string                      `json:"room_id"`
-	CycleID       string                      `json:"cycle_id"`
-	TurnID        string                      `json:"turn_id"`
-	Title         string                      `json:"title"`
-	Instructions  string                      `json:"instructions"`
-	Memory        json.RawMessage             `json:"memory"`
-	Transcript    []RoomTaskTranscriptEntryV1 `json:"transcript"`
+	Type           string                      `json:"type"`
+	SchemaVersion  int                         `json:"schema_version"`
+	WorkspaceID    string                      `json:"workspace_id"`
+	RoomID         string                      `json:"room_id"`
+	CycleID        string                      `json:"cycle_id"`
+	TurnID         string                      `json:"turn_id"`
+	Title          string                      `json:"title"`
+	Instructions   string                      `json:"instructions"`
+	Memory         json.RawMessage             `json:"memory"`
+	Transcript     []RoomTaskTranscriptEntryV1 `json:"transcript"`
+	TurnKind       string                      `json:"turn_kind,omitempty"`
+	CostLimitTicks *int64                      `json:"cost_limit_ticks,omitempty"`
 }
 
 // EncodeRoomTaskContextV1 stamps and validates the v1 discriminator before a
@@ -58,6 +63,24 @@ func EncodeRoomTaskContextV1(context RoomTaskContextV1) ([]byte, error) {
 	payload, err := json.Marshal(context)
 	if err != nil {
 		return nil, fmt.Errorf("encode Room task context v1: %w", err)
+	}
+	return payload, nil
+}
+
+// EncodeRoomTaskContextV2 stamps an outcome-capable participant or synthesis
+// turn. The claim path requires room-outcomes-v2 before delivering it.
+func EncodeRoomTaskContextV2(context RoomTaskContextV1) ([]byte, error) {
+	context.Type = RoomTaskContextType
+	context.SchemaVersion = RoomTaskContextSchemaV2
+	if context.TurnKind != "participant" && context.TurnKind != "synthesis" {
+		return nil, fmt.Errorf("Room task context turn kind %q: %w", context.TurnKind, ErrInvalidRoomTaskContext)
+	}
+	if err := validateRoomTaskContext(context, RoomTaskContextSchemaV2); err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(context)
+	if err != nil {
+		return nil, fmt.Errorf("encode Room task context v2: %w", err)
 	}
 	return payload, nil
 }
@@ -76,12 +99,44 @@ func ParseRoomTaskContextV1(payload []byte) (RoomTaskContextV1, error) {
 	return context, nil
 }
 
+// ParseRoomTaskContext accepts every supported durable Room context version.
+// Callers still enforce the matching daemon capability before execution.
+func ParseRoomTaskContext(payload []byte) (RoomTaskContextV1, error) {
+	var context RoomTaskContextV1
+	if err := json.Unmarshal(payload, &context); err != nil {
+		return RoomTaskContextV1{}, fmt.Errorf("%w: decode Room task context: %v", ErrInvalidRoomTaskContext, err)
+	}
+	switch context.SchemaVersion {
+	case RoomTaskContextSchemaV1:
+		if err := validateRoomTaskContext(context, RoomTaskContextSchemaV1); err != nil {
+			return RoomTaskContextV1{}, err
+		}
+	case RoomTaskContextSchemaV2:
+		if context.TurnKind != "participant" && context.TurnKind != "synthesis" {
+			return RoomTaskContextV1{}, fmt.Errorf("Room task context turn kind %q: %w", context.TurnKind, ErrInvalidRoomTaskContext)
+		}
+		if err := validateRoomTaskContext(context, RoomTaskContextSchemaV2); err != nil {
+			return RoomTaskContextV1{}, err
+		}
+	default:
+		return RoomTaskContextV1{}, fmt.Errorf("Room task context schema version %d: %w", context.SchemaVersion, ErrInvalidRoomTaskContext)
+	}
+	return context, nil
+}
+
 func validateRoomTaskContextV1(context RoomTaskContextV1) error {
+	return validateRoomTaskContext(context, RoomTaskContextSchemaV1)
+}
+
+func validateRoomTaskContext(context RoomTaskContextV1, schemaVersion int) error {
 	if context.Type != RoomTaskContextType {
 		return fmt.Errorf("Room task context type %q: %w", context.Type, ErrInvalidRoomTaskContext)
 	}
-	if context.SchemaVersion != RoomTaskContextSchemaV1 {
+	if context.SchemaVersion != schemaVersion {
 		return fmt.Errorf("Room task context schema version %d: %w", context.SchemaVersion, ErrInvalidRoomTaskContext)
+	}
+	if context.CostLimitTicks != nil && *context.CostLimitTicks <= 0 {
+		return fmt.Errorf("Room task context cost limit must be positive: %w", ErrInvalidRoomTaskContext)
 	}
 	if strings.TrimSpace(context.Title) == "" {
 		return fmt.Errorf("Room task context title is empty: %w", ErrInvalidRoomTaskContext)

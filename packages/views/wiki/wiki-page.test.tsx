@@ -1,102 +1,120 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { ApiError } from "@multica/core/api";
 import enWiki from "../locales/en/wiki.json";
 
 const harness = vi.hoisted(() => ({
-  list: {
-    isLoading: false,
-    isError: false,
-    data: [] as unknown[],
-  },
+  list: { isLoading: false, isError: false, data: [] as unknown[] },
   detail: {
     isLoading: false,
     isError: false,
     data: undefined as unknown,
+    error: undefined as unknown,
+    refetch: vi.fn(),
   },
-  projects: {
-    isLoading: false,
-    data: [] as { id: string; title: string }[],
-  },
-  mutate: vi.fn(),
-  invalidateQueries: vi.fn(),
+  revisions: { isPending: false, isError: false, data: [] as unknown[], refetch: vi.fn() },
+  proposals: { isPending: false, isError: false, data: [] as unknown[], refetch: vi.fn() },
+  search: { isPending: false, isError: false, data: [] as unknown[] },
+  readiness: { isPending: false, isError: false, data: undefined as unknown, refetch: vi.fn() },
+  projects: { isLoading: false, data: [{ id: "project-1", title: "Roadmap" }] },
   push: vi.fn(),
-  lastMutation: null as null | {
-    mutationFn: () => Promise<unknown>;
-    onSuccess?: (data: unknown) => Promise<void> | void;
-  },
+  replace: vi.fn(),
+  pathname: "/acme/wiki",
+  urlSearch: "",
+  hash: "",
+  create: { mutate: vi.fn(), isPending: false },
+  update: { mutate: vi.fn(), isPending: false },
+  remove: { mutate: vi.fn(), isPending: false },
+  restore: { mutate: vi.fn(), isPending: false },
+  accept: { mutate: vi.fn(), isPending: false },
+  reject: { mutate: vi.fn(), isPending: false },
+  pin: { mutate: vi.fn(), isPending: false, isError: false },
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    useQuery: (options: { queryKey?: unknown[] }) => {
+    useQuery: (options: { queryKey?: readonly unknown[] }) => {
       const key = options.queryKey ?? [];
-      if (Array.isArray(key) && key.includes("detail")) return harness.detail;
-      if (Array.isArray(key) && key[0] === "projects") return harness.projects;
+      if (key[0] === "projects") return harness.projects;
+      if (key.includes("revisions")) return harness.revisions;
+      if (key.includes("proposals")) return harness.proposals;
+      if (key.includes("search")) return harness.search;
+      if (key.includes("knowledge-readiness")) return harness.readiness;
+      if (key.includes("detail")) return harness.detail;
       return harness.list;
     },
-    useMutation: (options: {
-      mutationFn: () => Promise<unknown>;
-      onSuccess?: (data: unknown) => Promise<void> | void;
-    }) => {
-      harness.lastMutation = options;
-      return {
-        mutate: () => {
-          harness.mutate();
-          void Promise.resolve(options.mutationFn()).then((data) => options.onSuccess?.(data));
-        },
-        isPending: false,
-        isError: false,
-        error: null,
-      };
-    },
-    useQueryClient: () => ({ invalidateQueries: harness.invalidateQueries }),
   };
 });
 
-vi.mock("@multica/core/hooks", () => ({
-  useWorkspaceId: () => "workspace-1",
-}));
-
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "workspace-1" }));
 vi.mock("@multica/core/paths", () => ({
+  paths: { personalWiki: () => "/personal-wiki" },
+  useWorkspaceSlug: () => "acme",
   useWorkspacePaths: () => ({
     wiki: () => "/acme/wiki",
     wikiPage: (id: string) => `/acme/wiki/${id}`,
+    wikiRevision: (id: string) => `/acme/wiki/revisions/${id}`,
   }),
 }));
-
 vi.mock("../navigation", () => ({
-  useNavigation: () => ({ push: harness.push }),
+  resolveClickIntent: () => "push",
+  useAppOrigin: () => null,
+  useNavigation: () => ({
+    push: harness.push,
+    replace: harness.replace,
+    pathname: harness.pathname,
+    searchParams: new URLSearchParams(harness.urlSearch),
+    hash: harness.hash,
+  }),
+  useOptionalNavigation: () => ({
+    push: harness.push,
+    replace: harness.replace,
+    pathname: harness.pathname,
+    searchParams: new URLSearchParams(harness.urlSearch),
+    hash: harness.hash,
+  }),
 }));
-
-vi.mock("@multica/core/api", () => ({
-  api: {
-    createWikiPage: vi.fn(async () => ({
-      id: "new-page",
-      path: "created.md",
-      title: "Created",
-      content: "# Created",
-      scope: "workspace",
-      workspace_id: "workspace-1",
-    })),
-    updateWikiPage: vi.fn(async () => ({
-      id: "page-1",
-      path: "notes.md",
-      title: "Updated",
-      content: "# Updated",
-      scope: "user",
-      workspace_id: null,
-    })),
-    deleteWikiPage: vi.fn(async () => undefined),
-    listProjects: vi.fn(async () => ({ projects: [] })),
-  },
-}));
+vi.mock("@multica/core/wiki", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@multica/core/wiki")>();
+  return {
+    ...actual,
+    useCreateWikiPage: () => harness.create,
+    useUpdateWikiPage: () => harness.update,
+    useDeleteWikiPage: () => harness.remove,
+    useRestoreWikiRevision: () => harness.restore,
+    useAcceptWikiProposal: () => harness.accept,
+    useRejectWikiProposal: () => harness.reject,
+    usePinWikiRevisionAsLMWikiEvidence: () => harness.pin,
+  };
+});
 
 import { WikiPageView } from "./index";
+
+const page = {
+  id: "page-1",
+  workspaceId: "workspace-1",
+  scope: "workspace",
+  projectId: null,
+  ownerUserId: null,
+  path: "guide.md",
+  title: "Guide",
+  content: "# Shared guide",
+  createdBy: "member-1",
+  currentRevisionNumber: 4,
+  currentRevisionId: "revision-4",
+  contentDigest: "sha256:guide",
+  lastSourceKind: "human",
+  lastActorType: "member",
+  lastActorId: "member-1",
+  createdAt: "2026-08-23T10:00:00Z",
+  updatedAt: "2026-08-23T11:00:00Z",
+};
 
 function renderWiki(pageId?: string) {
   return render(
@@ -109,38 +127,36 @@ function renderWiki(pageId?: string) {
 describe("WikiPageView", () => {
   beforeEach(() => {
     harness.list = { isLoading: false, isError: false, data: [] };
-    harness.detail = { isLoading: false, isError: false, data: undefined };
-    harness.projects = { isLoading: false, data: [{ id: "proj-1", title: "Roadmap" }] };
-    harness.mutate.mockClear();
-    harness.invalidateQueries.mockClear();
-    harness.push.mockClear();
-    harness.lastMutation = null;
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-  });
-
-  it("renders the wiki shell and scope tabs", () => {
-    renderWiki();
-    expect(screen.getByRole("heading", { name: "Wiki" })).toBeInTheDocument();
-    expect(screen.getByText("Workspace")).toBeInTheDocument();
-    expect(screen.getByText("Project")).toBeInTheDocument();
-    expect(screen.getByText("Personal")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New page" })).toBeInTheDocument();
-  });
-
-  it("lists pages when the query returns data", () => {
-    harness.list = {
+    harness.detail = {
       isLoading: false,
       isError: false,
-      data: [{ id: "page-1", path: "index.md", title: "Home" }],
+      data: undefined,
+      error: undefined,
+      refetch: vi.fn(),
     };
-    renderWiki();
-    expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.getByText("index.md")).toBeInTheDocument();
+    harness.revisions = { isPending: false, isError: false, data: [], refetch: vi.fn() };
+    harness.proposals = { isPending: false, isError: false, data: [], refetch: vi.fn() };
+    harness.search = { isPending: false, isError: false, data: [] };
+    harness.readiness = { isPending: false, isError: false, data: undefined, refetch: vi.fn() };
+    harness.push.mockClear();
+    harness.replace.mockClear();
+    harness.pathname = "/acme/wiki";
+    harness.urlSearch = "";
+    harness.hash = "";
+    for (const mutation of [harness.create, harness.update, harness.remove, harness.restore, harness.accept, harness.reject, harness.pin]) {
+      mutation.mutate.mockReset();
+      mutation.isPending = false;
+    }
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
   });
 
-  it("shows loading and error list states", () => {
+  it("renders loading, empty, and error states without dropping the shell", () => {
     harness.list = { isLoading: true, isError: false, data: [] };
     const { unmount } = renderWiki();
+    expect(screen.getByRole("heading", { name: "Wiki" })).toBeInTheDocument();
     expect(screen.getByText("Loading wiki…")).toBeInTheDocument();
     unmount();
 
@@ -149,154 +165,304 @@ describe("WikiPageView", () => {
     expect(screen.getByText("Could not load wiki pages.")).toBeInTheDocument();
   });
 
-  it("shows the cross-workspace personal hint on the personal scope", () => {
-    renderWiki();
-    fireEvent.click(screen.getByText("Personal"));
-    expect(
-      screen.getByText("Personal pages follow you across every workspace."),
-    ).toBeInTheDocument();
-  });
-
-  it("shows project picker on project scope and selects a project", async () => {
-    renderWiki();
-    fireEvent.click(screen.getByRole("tab", { name: "Project" }));
-    expect(screen.getAllByText("Select a project to browse its wiki.").length).toBeGreaterThan(0);
-    const combo = screen.getByRole("combobox");
-    fireEvent.click(combo);
-    const option = await screen.findByRole("option", { name: "Roadmap" });
-    fireEvent.click(option);
-    // Selecting a project clears the empty-state pick message in the list.
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
-  });
-
-  it("opens create form and creates a page", async () => {
-    renderWiki();
-    fireEvent.click(screen.getByRole("button", { name: "New page" }));
-    expect(screen.getByText("Path")).toBeInTheDocument();
-
-    const pathInput = screen.getByPlaceholderText("index.md");
-    fireEvent.change(pathInput, { target: { value: "created.md" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-
-    expect(harness.mutate).toHaveBeenCalled();
-    // onSuccess navigates to the new page
-    await vi.waitFor(() => {
-      expect(harness.push).toHaveBeenCalledWith("/acme/wiki/new-page");
-    });
-  });
-
-  it("cancels create form", () => {
-    renderWiki();
-    fireEvent.click(screen.getByRole("button", { name: "New page" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByPlaceholderText("index.md")).not.toBeInTheDocument();
-  });
-
-  it("renders detail content and edit/delete flows", async () => {
-    harness.detail = {
-      isLoading: false,
-      isError: false,
-      data: {
-        id: "page-1",
-        path: "notes.md",
-        title: "Notes",
-        content: "# Hello wiki",
-        workspace_id: null,
-        scope: "user",
-      },
-    };
-    renderWiki("page-1");
-    expect(screen.getByRole("heading", { name: "Notes" })).toBeInTheDocument();
-    expect(screen.getByText("Hello wiki")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByDisplayValue("notes.md")).toBeInTheDocument();
-    fireEvent.change(screen.getByDisplayValue("Notes"), { target: { value: "Updated" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await vi.waitFor(() => {
-      expect(harness.invalidateQueries).toHaveBeenCalled();
-    });
-
-    // re-open edit then cancel
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    await vi.waitFor(() => {
-      expect(harness.push).toHaveBeenCalledWith("/acme/wiki");
-    });
-  });
-
-  it("navigates when a list item is clicked", () => {
-    harness.list = {
-      isLoading: false,
-      isError: false,
-      data: [{ id: "page-9", path: "a.md", title: "A" }],
-    };
-    renderWiki();
-    fireEvent.click(screen.getByText("A"));
-    expect(harness.push).toHaveBeenCalledWith("/acme/wiki/page-9");
-  });
-
-  it("shows detail loading and error states", () => {
-    harness.detail = { isLoading: true, isError: false, data: undefined };
-    const { unmount } = renderWiki("page-1");
-    expect(screen.getByText("Loading wiki…")).toBeInTheDocument();
+  it("keeps the default main landmark opt-in for standalone callers", () => {
+    const { container, unmount } = renderWiki();
+    expect(container.querySelector('[data-testid="wiki-page"]')?.tagName).toBe("MAIN");
     unmount();
 
-    harness.detail = { isLoading: false, isError: true, data: undefined };
-    renderWiki("page-1");
-    expect(screen.getByText("Could not load wiki pages.")).toBeInTheDocument();
+    render(
+      <I18nProvider locale="en" resources={{ en: { wiki: enWiki } }}>
+        <WikiPageView rootElement="div" />
+      </I18nProvider>,
+    );
+    expect(document.querySelector('[data-testid="wiki-page"]')?.tagName).toBe("DIV");
   });
 
-  it("navigates to wiki root when scope changes while viewing a page", () => {
+  it("hides only the redundant empty detail pane on narrow screens", () => {
+    renderWiki();
+
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "collection-echo",
+    );
+  });
+
+  it("routes an unavailable deep link back to the Wiki collection", () => {
     harness.detail = {
       isLoading: false,
-      isError: false,
-      data: {
-        id: "page-1",
-        path: "notes.md",
-        title: "Notes",
-        content: "body",
-        workspace_id: "workspace-1",
-        scope: "workspace",
-      },
+      isError: true,
+      data: undefined,
+      error: new ApiError("not found", 404, "Not Found"),
+      refetch: vi.fn(),
     };
-    renderWiki("page-1");
-    fireEvent.click(screen.getByRole("tab", { name: "Personal" }));
+    renderWiki("missing-page");
+
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Wiki page unavailable");
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wiki" }));
     expect(harness.push).toHaveBeenCalledWith("/acme/wiki");
   });
 
-  it("fills create form fields", () => {
-    renderWiki();
-    fireEvent.click(screen.getByRole("button", { name: "New page" }));
-    fireEvent.change(screen.getByPlaceholderText("index.md"), { target: { value: "x.md" } });
-    const titleInputs = screen.getAllByRole("textbox");
-    // path, title, content textareas/inputs
-    fireEvent.change(titleInputs[1]!, { target: { value: "Title" } });
-    fireEvent.change(titleInputs[2]!, { target: { value: "# body" } });
-    expect(screen.getByDisplayValue("x.md")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Title")).toBeInTheDocument();
+  it("keeps retry available for a transient detail failure", () => {
+    const refetch = vi.fn();
+    harness.detail = {
+      isLoading: false,
+      isError: true,
+      data: undefined,
+      error: new Error("offline"),
+      refetch,
+    };
+    renderWiki("page-1");
+
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("This Wiki page could not be loaded.");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(refetch).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Back to Wiki" }));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki");
   });
 
-  it("edits path and content fields in edit mode", () => {
+  it("opens the current immutable revision from document metadata", () => {
     harness.detail = {
       isLoading: false,
       isError: false,
-      data: {
-        id: "page-1",
-        path: "notes.md",
-        title: "Notes",
-        content: "old",
-        workspace_id: null,
-        scope: "user",
-      },
+      data: page,
+      error: undefined,
+      refetch: vi.fn(),
     };
     renderWiki("page-1");
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open stable revision" }));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki/revisions/revision-4");
+  });
+
+  it("groups cross-scope search results and opens the chosen page", () => {
+    harness.search = {
+      isPending: false,
+      isError: false,
+      data: [
+        { ...page, id: "workspace-page", title: "Workspace guide" },
+        { ...page, id: "project-page", title: "Project guide", scope: "project", projectId: "project-1" },
+        { ...page, id: "personal-page", title: "Personal guide", workspaceId: null, scope: "user", ownerUserId: "member-1" },
+      ],
+    };
+    renderWiki();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search Wiki" }), { target: { value: "guide" } });
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "collection-echo",
+    );
+    expect(screen.getByRole("heading", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Project" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Personal" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Workspace guide"));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki/workspace-page");
+    fireEvent.click(screen.getByText("Project guide"));
+    expect(harness.push).toHaveBeenCalledWith("/acme/wiki/project-page");
+    fireEvent.click(screen.getByText("Personal guide"));
+    expect(harness.push).toHaveBeenCalledWith("/personal-wiki/personal-page");
+  });
+
+  it("aligns a project deep link with its scope and project picker", async () => {
+    harness.detail.data = { ...page, scope: "project", projectId: "project-1" };
+    renderWiki("page-1");
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("combobox")).toHaveTextContent("Roadmap");
+  });
+
+  it("hydrates the project collection from the URL", async () => {
+    harness.urlSearch = "scope=project&project_id=project-1";
+    renderWiki();
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true");
+    });
+    expect(screen.getByRole("combobox")).toHaveTextContent("Roadmap");
+  });
+
+  it("uses replace for collection scope changes and preserves unrelated location state", () => {
+    harness.urlSearch = "view=grid";
+    harness.hash = "#wiki-note";
+    renderWiki();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Project" }));
+
+    expect(harness.replace).toHaveBeenCalledWith(
+      "/acme/wiki?view=grid&scope=project#wiki-note",
+    );
+    expect(harness.push).not.toHaveBeenCalled();
+  });
+
+  it("writes the selected project id to the collection URL", async () => {
+    harness.urlSearch = "scope=project&view=grid";
+    const user = userEvent.setup();
+    renderWiki();
+
+    await user.click(screen.getByRole("combobox"));
+    const option = await screen.findByRole("option", { name: "Roadmap" });
+    expect(option.closest('[data-slot="select-content"]')).toHaveClass(
+      "max-lg:[&_[data-slot=select-item]]:min-h-11",
+    );
+    await user.click(option);
+
+    expect(harness.replace).toHaveBeenCalledWith(
+      "/acme/wiki?scope=project&view=grid&project_id=project-1",
+    );
+  });
+
+  it("keeps a project URL visible but disables list creation until a project is selected", () => {
+    harness.urlSearch = "scope=project";
+    renderWiki();
+
+    expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("combobox")).toHaveTextContent("Select a project");
+    expect(screen.getByRole("button", { name: "New page" })).toBeDisabled();
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
+    expect(screen.queryByText(enWiki.empty.title)).not.toBeInTheDocument();
+    expect(screen.queryByText(enWiki.empty.description)).not.toBeInTheDocument();
+  });
+
+  it("leaves a project detail page before changing its collection project", async () => {
+    harness.projects.data = [
+      { id: "project-1", title: "Roadmap" },
+      { id: "project-2", title: "Launch" },
+    ];
+    harness.detail = {
+      isLoading: false,
+      isError: false,
+      data: { ...page, scope: "project", projectId: "project-1" },
+      error: undefined,
+      refetch: vi.fn(),
+    };
+    const user = userEvent.setup();
+    renderWiki("page-1");
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Project" })).toHaveAttribute("aria-selected", "true"));
+    await user.click(screen.getByRole("combobox", { name: "Project" }));
+    await user.click(await screen.findByRole("option", { name: "Launch" }));
+
+    expect(harness.push).toHaveBeenCalledWith(
+      "/acme/wiki?scope=project&project_id=project-2",
+    );
+    expect(harness.replace).not.toHaveBeenCalled();
+  });
+
+  it("labels a new page action as create instead of save", () => {
+    renderWiki();
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    expect(screen.getByTestId("wiki-master-detail")).toHaveAttribute(
+      "data-narrow-detail-role",
+      "required",
+    );
+    expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("keeps workspace Wiki creation disabled until the title and content are meaningful", () => {
+    renderWiki();
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    const create = screen.getByRole("button", { name: "Create" });
+    const title = screen.getByLabelText("Title");
+    const content = screen.getByLabelText("Content");
+
+    expect(create).toBeDisabled();
+    fireEvent.change(title, { target: { value: "  " } });
+    fireEvent.change(content, { target: { value: "A useful guide" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(title, { target: { value: "Guide" } });
+    expect(create).toBeEnabled();
+
+    fireEvent.change(content, { target: { value: " \n\t" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "# " } });
+    expect(create).toBeDisabled();
+    fireEvent.change(content, { target: { value: "# Guide\n\nA useful guide" } });
+    expect(create).toBeEnabled();
+  });
+
+  it("lets the short mobile Wiki shell scroll to detail actions", () => {
+    renderWiki();
+    const root = screen.getByTestId("wiki-page");
+    expect(root).toHaveClass("overflow-y-auto", "lg:overflow-hidden");
+    expect(root).toHaveAttribute("data-wiki-interaction-region");
+    expect(root).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_button]:min-w-11",
+      "max-lg:[&_[data-slot=input]]:min-h-11",
+      "max-lg:[&_[data-slot=tabs-list]]:min-h-11",
+      "max-lg:[&_[data-slot=select-trigger]]:min-h-11",
+    );
+    expect(screen.getByRole("textbox", { name: "Search Wiki" })).toHaveClass("max-lg:pr-12");
+  });
+
+  it("sends expectedRevisionNumber with direct edits", () => {
+    harness.detail.data = page;
+    renderWiki("page-1");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByDisplayValue("notes.md"), { target: { value: "new.md" } });
-    fireEvent.change(screen.getByDisplayValue("old"), { target: { value: "new body" } });
-    expect(screen.getByDisplayValue("new.md")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("new body")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("# Shared guide"), { target: { value: "# Updated" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(harness.update.mutate).toHaveBeenCalledWith({
+      expectedRevisionNumber: 4,
+      path: "guide.md",
+      title: "Guide",
+      content: "# Updated",
+    }, expect.any(Object));
+  });
+
+  it("copies the immutable revision citation instead of the mutable path", async () => {
+    harness.detail.data = page;
+    renderWiki("page-1");
+    fireEvent.click(screen.getByRole("button", { name: "Copy revision citation" }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "wiki_page_revision:revision-4",
+    ));
+    expect(screen.getByRole("button", { name: "Revision citation copied" })).toBeInTheDocument();
+  });
+
+  it("preserves the local draft and offers explicit reload or merge on a stale edit", async () => {
+    harness.detail.data = page;
+    harness.detail.refetch.mockResolvedValue({ data: { ...page, content: "# Server edit", currentRevisionNumber: 5 } });
+    harness.update.mutate.mockImplementation((_input, options) => options.onError(
+      new ApiError("stale", 409, "Conflict", { code: "wiki_revision_conflict", current_revision_number: 5 }),
+    ));
+    renderWiki("page-1");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByDisplayValue("# Shared guide"), { target: { value: "# My draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("alertdialog")).toHaveClass("max-lg:[&_button]:min-h-11");
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("This page changed while you were editing");
+    fireEvent.click(screen.getByRole("button", { name: "Merge my draft" }));
+    await waitFor(() => expect(screen.getByDisplayValue("# My draft")).toBeInTheDocument());
+    expect(screen.getByText("Review your merge")).toBeInTheDocument();
+  });
+
+  it("uses an accessible delete dialog and surfaces a failed delete inside it", () => {
+    harness.detail.data = page;
+    harness.remove.mutate.mockImplementation((_id, options) => options.onError(new Error("failed")));
+    renderWiki("page-1");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveAttribute("data-wiki-interaction-region");
+    expect(dialog).toHaveClass("max-lg:[&_button]:min-h-11");
+    expect(dialog).toHaveTextContent("Delete this Wiki page?");
+    const confirm = within(dialog).getByRole("button", { name: "Delete" });
+    expect(confirm).toHaveClass("bg-destructive", "text-destructive-foreground");
+    fireEvent.click(confirm);
+    expect(screen.getByRole("alert")).toHaveTextContent("The action could not be completed");
   });
 });

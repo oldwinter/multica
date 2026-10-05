@@ -14,9 +14,10 @@ import {
 // route that shows up in the sidebar/tab bar must map to a WORKSPACE_PAGES
 // entry.
 describe("workspace page coverage", () => {
-  // `root` aliases `issues` (same segment) and is never rendered as its own
-  // nav item; the parameterized detail routes are resources, not pages.
-  const EXCLUDED_METHODS = new Set(["root"]);
+  // `root` aliases `issues` and personal Wiki is a sidebar account action;
+  // neither is rendered as a workspace page nav item. Parameterized detail
+  // routes are resources, not pages.
+  const EXCLUDED_METHODS = new Set(["root", "personalWiki"]);
   const KNOWN_SEGMENTS = new Set(
     (Object.keys(WORKSPACE_PAGES) as WorkspacePageKey[]).map(
       (k) => WORKSPACE_PAGES[k].segment,
@@ -48,6 +49,7 @@ describe("pageForSegment", () => {
     expect(pageForSegment("settings")).toBe("settings");
     expect(pageForSegment("twins")).toBe("twins");
     expect(pageForSegment("rooms")).toBe("rooms");
+    expect(pageForSegment("office")).toBe("office");
   });
 
   it("returns null for an unknown segment", () => {
@@ -62,6 +64,7 @@ describe("resolveRouteIconName", () => {
     expect(resolveRouteIconName("/acme/autopilots")).toBe("Zap");
     expect(resolveRouteIconName("/acme/chat")).toBe("MessageSquare");
     expect(resolveRouteIconName("/acme/rooms")).toBe("RadioTower");
+    expect(resolveRouteIconName("/acme/office")).toBe("Building2");
     expect(resolveRouteIconName("/acme/squads")).toBe("Users");
     expect(resolveRouteIconName("/acme/usage")).toBe("BarChart3");
     expect(resolveRouteIconName("/acme/my-issues")).toBe("CircleUser");

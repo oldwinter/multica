@@ -3,6 +3,7 @@
     "inbox": "Inbox",
     "chat": "Chat",
     "rooms": "Rooms",
+    "office": "Office",
     "my_issues": "My Issues",
     "issues": "Issues",
     "projects": "Projects",
@@ -10,7 +11,7 @@
     "agents": "Agents",
     "twins": "Twin",
     "squads": "Squads",
-    "usage": "Usage",
+    "usage": "Analytics",
     "runtimes": "Runtimes",
     "skills": "Skills",
     "settings": "Settings",
@@ -32,6 +33,7 @@
   },
   "help": {
     "trigger": "Help",
+    "download_desktop": "Desktop app",
     "docs": "Docs",
     "changelog": "Change log",
     "discord": "Discord",
@@ -43,6 +45,7 @@
     "loading_named_prefix": "Loading"
   },
   "sidebar": {
+    "navigation_label": "Primary navigation",
     "unpin_tooltip": "Unpin",
     "workspaces_label": "Workspaces",
     "create_workspace": "Create workspace",
@@ -54,8 +57,10 @@
     "new_issue": "New Issue",
     "new_issue_shortcut": "C",
     "pinned_label": "Pinned",
-    "workspace_group": "Workspace",
-    "configure_group": "Configure",
+    "work_group": "Work",
+    "ai_team_group": "AI Team",
+    "show_more_pins": "Show {{count}} more…",
+    "show_fewer_pins": "Show fewer",
     "unread_overflow": "99+",
     "discord_card": {
       "title": "Join our Discord",

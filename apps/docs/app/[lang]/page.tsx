@@ -3,6 +3,7 @@ import { DocsPage, DocsBody } from "fumadocs-ui/page";
 import { notFound } from "next/navigation";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import { ImageZoom } from "fumadocs-ui/components/image-zoom";
+import type { ComponentProps } from "react";
 import type { Metadata } from "next";
 import { DocsHero } from "@/components/hero";
 import { NumberedCards, NumberedCard, NumberedSteps, Step } from "@/components/editorial";
@@ -17,6 +18,11 @@ function asLang(lang: string): Lang {
   return (i18n.languages as readonly string[]).includes(lang)
     ? (lang as Lang)
     : (i18n.defaultLanguage as Lang);
+}
+
+function DocsImage(props: ComponentProps<"img">) {
+  if (typeof props.src !== "string") return <img {...props} />;
+  return <ImageZoom {...props} src={props.src} />;
 }
 
 // A layout's `generateStaticParams` does NOT cascade — every page that
@@ -60,7 +66,7 @@ export default async function Page({
             components={{
               ...defaultMdxComponents,
               // Same lightbox mapping as [...slug]/page.tsx — keep in sync.
-              img: (props) => <ImageZoom {...props} />,
+              img: DocsImage,
               a: LocaleLink,
               NumberedCards,
               NumberedCard,

@@ -12,6 +12,7 @@ import type { Label } from "./label";
 export type WSEventType =
   | "issue:created"
   | "issue:updated"
+  | "issue_attachments:changed"
   | "issue:deleted"
   | "comment:created"
   | "comment:updated"
@@ -59,6 +60,7 @@ export type WSEventType =
   | "chat:done"
   | "chat:quick_actions"
   | "chat:cancel_finalized"
+  | "chat:session_created"
   | "chat:session_read"
   | "chat:session_deleted"
   | "chat:session_updated"
@@ -66,7 +68,21 @@ export type WSEventType =
   | "room:updated"
   | "room:entry"
   | "room:cycle"
+  | "room:turn"
+  | "room:memory_revision"
+  | "room:review"
+  | "room:recommendation_review"
   | "room:artifact"
+  | "wiki:page_created"
+  | "wiki:page_updated"
+  | "wiki:page_deleted"
+  | "wiki:revision_created"
+  | "wiki:revision_restored"
+  | "wiki:proposal_created"
+  | "wiki:proposal_reviewed"
+  | "lm_wiki:source_policy_changed"
+  | "lm_wiki:revision_changed"
+  | "lm_wiki:review_changed"
   | "project:created"
   | "project:updated"
   | "project:deleted"
@@ -81,6 +97,7 @@ export type WSEventType =
   | "issue_properties:changed"
   | "property:created"
   | "property:updated"
+  | "issue_status:changed"
   | "pin:created"
   | "pin:deleted"
   | "pin:reordered"
@@ -92,13 +109,85 @@ export type WSEventType =
   | "github_installation:deleted"
   | "pull_request:linked"
   | "pull_request:updated"
-  | "pull_request:unlinked";
+  | "pull_request:unlinked"
+  | "twin:proposal_changed"
+  | "twin:version_changed"
+  | "twin:binding_changed"
+  | "twin:deposition_changed";
 
 export interface WSMessage<T = unknown> {
   type: WSEventType;
   payload: T;
   actor_id?: string;
   actor_type?: string;
+}
+
+export interface RoomEventPayload {
+  readonly room_id: string;
+  readonly status: string;
+  readonly memory_version: number;
+  readonly active_cycle_id?: string;
+}
+
+export type RoomCreatedPayload = RoomEventPayload;
+
+export type RoomUpdatedPayload = RoomEventPayload;
+
+export interface RoomEntryPayload {
+  readonly room_id: string;
+  readonly entry_id: string;
+  readonly cycle_id?: string;
+  readonly turn_id?: string;
+}
+
+export interface RoomCyclePayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly status: string;
+  readonly phase: string;
+}
+
+export interface RoomTurnPayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly turn_id: string;
+  readonly status: string;
+  readonly turn_kind: string;
+  readonly attempt: number;
+}
+
+export interface RoomMemoryRevisionPayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly memory_revision_id: string;
+  readonly review_status: string;
+  readonly version: number;
+}
+
+export interface RoomReviewPayload {
+  readonly room_id: string;
+  readonly cycle_id: string;
+  readonly memory_revision_id: string;
+  readonly review_status: string;
+  readonly action: string;
+  readonly memory_version: number;
+}
+
+export interface RoomRecommendationReviewPayload {
+  readonly room_id: string;
+  readonly memory_revision_id: string;
+  readonly recommendation_key: string;
+  readonly status: string;
+  readonly artifact_id?: string;
+}
+
+export interface RoomArtifactPayload {
+  readonly room_id: string;
+  readonly artifact_id: string;
+  readonly kind: string;
+  readonly target_id?: string;
+  readonly memory_revision_id?: string;
+  readonly recommendation_key?: string;
 }
 
 export interface IssueCreatedPayload {
@@ -119,29 +208,83 @@ export interface IssueUpdatedPayload {
   assignee_changed?: boolean;
   status_changed?: boolean;
   project_changed?: boolean;
+  // Both ends of a duplicate-mark change (MUL-7349). The mark is not on Issue,
+  // so these tell the realtime layer whose duplicate relations to refresh.
+  duplicate_of_issue_id?: string | null;
+  prev_duplicate_of_issue_id?: string | null;
 }
 
 export interface IssueDeletedPayload {
   issue_id: string;
 }
 
+export interface TwinProposalChangedPayload {
+  proposal_id: string;
+  state: string;
+  version_id?: string;
+}
+
+export interface TwinVersionChangedPayload {
+  version_id: string;
+  proposal_id: string;
+  version_number: number;
+}
+
+export interface TwinBindingChangedPayload {
+  binding_id: string;
+  state: string;
+  twin_version_id?: string;
+}
+
+export interface TwinDepositionChangedPayload {
+  deposition_id: string;
+  proposal_id: string;
+  task_id: string;
+  base_twin_version_id: string;
+  state: string;
+}
+
 export interface IssueLabelsChangedPayload {
   issue_id: string;
   labels: Label[];
+  issue_revision?: number;
+}
+
+export interface IssueAttachmentsChangedPayload {
+  issue_id: string;
+  issue_revision?: number;
 }
 
 export interface IssueMetadataChangedPayload {
   issue_id: string;
   metadata: IssueMetadata;
+  issue_revision?: number;
 }
 
 export interface IssuePropertiesChangedPayload {
   issue_id: string;
   properties: IssuePropertyValues;
+  issue_revision?: number;
 }
 
 export interface PropertyChangedPayload {
   property: IssueProperty;
+}
+
+/**
+ * The workspace issue status catalog changed (MUL-6243).
+ *
+ * One event covers all four writes because clients answer them the same way:
+ * re-read the catalog. It deliberately carries no entry — merging a row out of
+ * an event would have to be reconciled against writes this client never saw,
+ * and the catalog is small enough that a refetch is both simpler and safer.
+ *
+ * `action` is advisory: it makes the frame self-describing in devtools. Nothing
+ * routes on it, so a future write verb this client has never heard of still
+ * refreshes the catalog correctly.
+ */
+export interface IssueStatusChangedPayload {
+  action?: "created" | "updated" | "archived" | "reordered";
 }
 
 export interface AgentStatusPayload {
@@ -198,15 +341,18 @@ export interface InboxBatchArchivedPayload {
 
 export interface CommentCreatedPayload {
   comment: Comment;
+  issue_revision?: number;
 }
 
 export interface CommentUpdatedPayload {
   comment: Comment;
+  issue_revision?: number;
 }
 
 export interface CommentDeletedPayload {
   comment_id: string;
   issue_id: string;
+  issue_revision?: number;
 }
 
 export interface CommentResolvedPayload {
@@ -260,6 +406,8 @@ export interface ActivityCreatedPayload {
 }
 
 export interface TaskMessagePayload {
+  /** Opaque tool-call identity, scoped to one backend execution. */
+  call_id?: string;
   task_id: string;
   issue_id: string;
   chat_session_id?: string;
@@ -269,6 +417,18 @@ export interface TaskMessagePayload {
   content?: string;
   input?: Record<string, unknown>;
   output?: string;
+  /**
+   * Whether `output` is the whole tool output that ran (`tool_result` only).
+   *
+   * Tri-state on purpose. `undefined` means no daemon ever measured this
+   * record — messages stored before the flag existed, and messages from an
+   * older installed daemon — and must be presented as unknown, never as
+   * complete: the original length is gone and cannot be reconstructed.
+   * `true` means the remainder was never uploaded and no amount of expanding
+   * or scrolling recovers it, which is what separates it from a client-side
+   * display clip.
+   */
+  output_truncated?: boolean;
   created_at?: string;
 }
 
@@ -298,9 +458,12 @@ export interface TaskRunningPayload {
 
 // task:waiting_local_directory fires when the daemon dequeues a task but
 // can't immediately acquire the on-disk path lock — another task on this
-// daemon is already executing in the same local_directory. The optional
-// `wait_reason` mirrors the server-side hint (path / holder task id), but
-// is not yet surfaced end-to-end; the UI today only reads the status.
+// daemon is already executing in the same local_directory. `wait_reason` names
+// the directory and, when known, the short id of the task holding it; the
+// StatusPill renders it so a parked task explains itself instead of just
+// spinning. It is a display name, never an absolute path — the daemon strips
+// that at the source (localDirectoryAssignment.DisplayName), because this text
+// reaches every client on the session and lands in screenshots.
 export interface TaskWaitingLocalDirectoryPayload {
   task_id: string;
   agent_id: string;
@@ -324,6 +487,8 @@ export interface TaskFailedPayload {
   issue_id: string;
   chat_session_id?: string;
   status: string;
+  failure_reason?: string;
+  retry_pending?: boolean;
 }
 
 export interface TaskCancelledPayload {
@@ -337,6 +502,7 @@ export interface TaskCancelledPayload {
 export interface ReactionAddedPayload {
   reaction: Reaction;
   issue_id: string;
+  comment_revision?: number;
 }
 
 export interface ReactionRemovedPayload {
@@ -345,11 +511,13 @@ export interface ReactionRemovedPayload {
   emoji: string;
   actor_type: string;
   actor_id: string;
+  comment_revision?: number;
 }
 
 export interface IssueReactionAddedPayload {
   reaction: IssueReaction;
   issue_id: string;
+  issue_revision?: number;
 }
 
 export interface IssueReactionRemovedPayload {
@@ -357,6 +525,7 @@ export interface IssueReactionRemovedPayload {
   emoji: string;
   actor_type: string;
   actor_id: string;
+  issue_revision?: number;
 }
 
 export interface ChatMessageEventPayload {
@@ -457,6 +626,50 @@ export interface ChatSessionDeletedPayload {
   chat_session_id: string;
 }
 
+export type WikiRealtimeScope = "workspace" | "project" | "user";
+
+interface WikiScopedEventPayload {
+  page_id: string;
+  scope: WikiRealtimeScope;
+  project_id?: string;
+}
+
+export interface WikiPageChangedPayload extends WikiScopedEventPayload {
+  revision_id?: string;
+  revision_number?: number;
+}
+
+export interface WikiRevisionChangedPayload extends WikiScopedEventPayload {
+  revision_id: string;
+  revision_number: number;
+}
+
+export interface WikiProposalCreatedPayload extends WikiScopedEventPayload {
+  proposal_id: string;
+  base_revision_number: number;
+}
+
+export interface WikiProposalReviewedPayload extends WikiScopedEventPayload {
+  proposal_id: string;
+  status: "accepted" | "rejected";
+  accepted_revision_id?: string;
+  accepted_revision_number?: number;
+}
+
+export interface LMWikiSourcePolicyChangedPayload {
+  policy_version: number;
+}
+
+export interface LMWikiRevisionChangedPayload {
+  revision_id: string;
+  revision_number: number;
+}
+
+export interface LMWikiReviewChangedPayload {
+  revision_id: string;
+  decision: "accepted" | "rejected";
+}
+
 export interface ProjectCreatedPayload {
   project: Project;
 }
@@ -489,6 +702,20 @@ export interface InvitationRevokedPayload {
   invitee_email: string;
 }
 
+export interface ChatSessionCreatedPayload {
+  workspace_id: string;
+  chat_session_id: string;
+  agent_id: string;
+  creator_id: string;
+  title: string;
+  channel_source: {
+    channel_type: string;
+    installation_id: string;
+    route_revision: number;
+  };
+  is_current_channel_route: boolean;
+}
+
 /**
  * Maps every WSEventType to its payload interface. Events whose payload
  * shape isn't formally typed (server emits an object the client doesn't
@@ -506,10 +733,12 @@ export interface WSEventPayloadMap {
   "issue:created": IssueCreatedPayload;
   "issue:updated": IssueUpdatedPayload;
   "issue:deleted": IssueDeletedPayload;
+  "issue_attachments:changed": IssueAttachmentsChangedPayload;
   "issue_labels:changed": IssueLabelsChangedPayload;
   "issue_properties:changed": IssuePropertiesChangedPayload;
   "property:created": PropertyChangedPayload;
   "property:updated": PropertyChangedPayload;
+  "issue_status:changed": IssueStatusChangedPayload;
   "issue_reaction:added": IssueReactionAddedPayload;
   "issue_reaction:removed": IssueReactionRemovedPayload;
   "comment:created": CommentCreatedPayload;
@@ -551,14 +780,29 @@ export interface WSEventPayloadMap {
   "chat:done": ChatDonePayload;
   "chat:quick_actions": ChatQuickActionsPayload;
   "chat:cancel_finalized": ChatCancelFinalizedPayload;
+  "chat:session_created": ChatSessionCreatedPayload;
   "chat:session_read": ChatSessionReadPayload;
   "chat:session_deleted": ChatSessionDeletedPayload;
   "chat:session_updated": unknown;
-  "room:created": unknown;
-  "room:updated": unknown;
-  "room:entry": unknown;
-  "room:cycle": unknown;
-  "room:artifact": unknown;
+  "room:created": RoomCreatedPayload;
+  "room:updated": RoomUpdatedPayload;
+  "room:entry": RoomEntryPayload;
+  "room:cycle": RoomCyclePayload;
+  "room:turn": RoomTurnPayload;
+  "room:memory_revision": RoomMemoryRevisionPayload;
+  "room:review": RoomReviewPayload;
+  "room:recommendation_review": RoomRecommendationReviewPayload;
+  "room:artifact": RoomArtifactPayload;
+  "wiki:page_created": WikiPageChangedPayload;
+  "wiki:page_updated": WikiPageChangedPayload;
+  "wiki:page_deleted": WikiPageChangedPayload;
+  "wiki:revision_created": WikiRevisionChangedPayload;
+  "wiki:revision_restored": WikiRevisionChangedPayload;
+  "wiki:proposal_created": WikiProposalCreatedPayload;
+  "wiki:proposal_reviewed": WikiProposalReviewedPayload;
+  "lm_wiki:source_policy_changed": LMWikiSourcePolicyChangedPayload;
+  "lm_wiki:revision_changed": LMWikiRevisionChangedPayload;
+  "lm_wiki:review_changed": LMWikiReviewChangedPayload;
   "project:created": ProjectCreatedPayload;
   "project:updated": ProjectUpdatedPayload;
   "project:deleted": ProjectDeletedPayload;
@@ -587,6 +831,10 @@ export interface WSEventPayloadMap {
   "pull_request:linked": unknown;
   "pull_request:updated": unknown;
   "pull_request:unlinked": unknown;
+  "twin:proposal_changed": TwinProposalChangedPayload;
+  "twin:version_changed": TwinVersionChangedPayload;
+  "twin:binding_changed": TwinBindingChangedPayload;
+  "twin:deposition_changed": TwinDepositionChangedPayload;
 }
 
 /**

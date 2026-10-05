@@ -7,7 +7,6 @@ import type {
   RoomArtifact,
   RoomPromotionKind,
 } from "@multica/core/rooms";
-import { createSafeId } from "@multica/core/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
@@ -27,10 +26,38 @@ import {
 } from "@multica/ui/components/ui/select";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { useT } from "../i18n";
+import { operationFingerprint, useIdempotencyRegistry } from "./idempotency";
 
-export type PromotionSource =
-  | { readonly entryId: string; readonly cycleId?: never; readonly suggestedTitle: string }
-  | { readonly entryId?: never; readonly cycleId: string; readonly suggestedTitle: string };
+interface PromotionSuggestion {
+  readonly suggestedTitle: string;
+  readonly suggestedBody?: string;
+  readonly suggestedRationale?: string;
+  readonly suggestedKind?: RoomPromotionKind;
+}
+
+export type PromotionSource = PromotionSuggestion & (
+  | {
+      readonly entryId: string;
+      readonly cycleId?: never;
+      readonly memoryRevisionId?: never;
+      readonly recommendationKey?: never;
+      readonly citationEntryIds?: readonly string[];
+    }
+  | {
+      readonly entryId?: never;
+      readonly cycleId: string;
+      readonly memoryRevisionId?: never;
+      readonly recommendationKey?: never;
+      readonly citationEntryIds?: readonly string[];
+    }
+  | {
+      readonly entryId?: never;
+      readonly cycleId?: never;
+      readonly memoryRevisionId: string;
+      readonly recommendationKey: string;
+      readonly citationEntryIds: readonly string[];
+    }
+);
 
 interface PromoteRoomDialogProps {
   readonly source: PromotionSource | null;
@@ -53,36 +80,69 @@ export function PromoteRoomDialog({
   const { t } = useT("rooms");
   const [kind, setKind] = useState<RoomPromotionKind>("issue");
   const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
   const [rationale, setRationale] = useState("");
+  const idempotency = useIdempotencyRegistry();
+  const recommendationSource = source?.recommendationKey !== undefined;
 
   useEffect(() => {
-    if (source) setTitle(source.suggestedTitle);
+    if (!source) return;
+    setTitle(source.suggestedTitle);
+    setBody(source.suggestedBody ?? "");
+    setRationale(source.suggestedRationale ?? "");
+    setKind(source.suggestedKind ?? "issue");
   }, [source]);
 
   const close = () => {
+    idempotency.clear();
     setKind("issue");
     setTitle("");
+    setBody("");
     setRationale("");
     onOpenChange(false);
   };
 
   const submit = () => {
     if (!source || !title.trim()) return;
+    const fingerprint = operationFingerprint("promote", {
+      source,
+      kind,
+      title: title.trim(),
+      body: body.trim(),
+      rationale: rationale.trim(),
+    });
     const shared = {
       kind,
-      idempotency_key: createSafeId(),
+      idempotency_key: idempotency.keyFor(fingerprint),
       title: title.trim(),
+      body: body.trim() || undefined,
       rationale: rationale.trim() || undefined,
     };
     let input: PromoteRoomArtifactInput;
     if (source.entryId !== undefined) {
-      input = { ...shared, entry_id: source.entryId };
+      input = {
+        ...shared,
+        entry_id: source.entryId,
+        citation_entry_ids: source.citationEntryIds,
+      };
     } else if (source.cycleId !== undefined) {
-      input = { ...shared, cycle_id: source.cycleId };
+      input = {
+        ...shared,
+        cycle_id: source.cycleId,
+        citation_entry_ids: source.citationEntryIds,
+      };
     } else {
-      return;
+      input = {
+        ...shared,
+        memory_revision_id: source.memoryRevisionId,
+        recommendation_key: source.recommendationKey,
+        citation_entry_ids: source.citationEntryIds,
+      };
     }
-    onPromote(input, close);
+    onPromote(input, () => {
+      idempotency.complete(fingerprint);
+      close();
+    });
   };
 
   return (
@@ -103,13 +163,14 @@ export function PromoteRoomDialog({
                 label: t(($) => $.promote.kinds[value]),
               }))}
               value={kind}
+              disabled={recommendationSource}
               onValueChange={(value) => {
-                if (value === "issue" || value === "wiki" || value === "decision") {
+                if (!recommendationSource && (value === "issue" || value === "wiki" || value === "decision")) {
                   setKind(value);
                 }
               }}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full" data-testid="room-promotion-kind">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -128,6 +189,15 @@ export function PromoteRoomDialog({
               maxLength={300}
               placeholder={t(($) => $.promote.placeholders.title)}
               onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5 text-caption font-medium text-muted-foreground">
+            <span>{t(($) => $.promote.fields.body)}</span>
+            <Textarea
+              value={body}
+              className="min-h-28 resize-y"
+              placeholder={t(($) => $.promote.placeholders.body)}
+              onChange={(event) => setBody(event.target.value)}
             />
           </label>
           <label className="block space-y-1.5 text-caption font-medium text-muted-foreground">

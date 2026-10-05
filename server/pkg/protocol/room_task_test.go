@@ -62,3 +62,32 @@ func TestRoomTaskContextV1RejectsUnsupportedVersionAndMalformedIdentity(t *testi
 		})
 	}
 }
+
+func TestRoomTaskContextV2RequiresTurnKindAndGenericParserRoundTrips(t *testing.T) {
+	want := validRoomTaskContextV1()
+	want.TurnKind = "synthesis"
+	want.CostLimitTicks = roomCostLimitPointer(17)
+	payload, err := EncodeRoomTaskContextV2(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ParseRoomTaskContext(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != RoomTaskContextSchemaV2 || got.TurnKind != "synthesis" || got.CostLimitTicks == nil || *got.CostLimitTicks != 17 {
+		t.Fatalf("Room v2 context = version %d kind %q", got.SchemaVersion, got.TurnKind)
+	}
+
+	want.TurnKind = ""
+	if _, err := EncodeRoomTaskContextV2(want); !errors.Is(err, ErrInvalidRoomTaskContext) {
+		t.Fatalf("missing v2 turn kind error = %v", err)
+	}
+	want.TurnKind = "participant"
+	want.CostLimitTicks = roomCostLimitPointer(0)
+	if _, err := EncodeRoomTaskContextV2(want); !errors.Is(err, ErrInvalidRoomTaskContext) {
+		t.Fatalf("invalid v2 cost limit error = %v", err)
+	}
+}
+
+func roomCostLimitPointer(value int64) *int64 { return &value }

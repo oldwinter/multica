@@ -1,5 +1,5 @@
 import { TwinsPage } from "@multica/views/twins";
 
 export default function Page() {
-  return <TwinsPage />;
+  return <TwinsPage rootElement="div" />;
 }

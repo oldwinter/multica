@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS skill_evolution_task_attribution_id_uidx;

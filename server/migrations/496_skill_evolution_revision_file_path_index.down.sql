@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS skill_evolution_revision_file_workspace_path_uidx;

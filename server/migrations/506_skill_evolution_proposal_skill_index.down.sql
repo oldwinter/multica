@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS skill_evolution_proposal_skill_created_idx;

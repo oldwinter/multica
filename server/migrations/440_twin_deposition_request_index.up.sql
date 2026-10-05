@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS twin_deposition_workspace_request_uidx ON twin_deposition (workspace_id, task_id, base_twin_version_id, COALESCE(replaces_proposal_id, '00000000-0000-0000-0000-000000000000'::uuid), evidence_digest);

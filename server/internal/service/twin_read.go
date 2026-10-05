@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,19 @@ type TwinProposalDetail struct {
 	Version        *db.TwinVersion
 	SourceRevision db.LmWikiRevision
 	Citations      []db.LmWikiCitation
+	RunEvidence    *TwinDepositionRunEvidence
+}
+
+// TwinDepositionRunEvidence is the bounded audit projection exposed during
+// deposition review. Raw task output and feedback notes are deliberately not
+// representable here.
+type TwinDepositionRunEvidence struct {
+	TaskID            pgtype.UUID
+	BaseTwinVersionID pgtype.UUID
+	EvidenceDigest    string
+	TaskStatus        string
+	CompletedAt       pgtype.Timestamptz
+	FeedbackRating    pgtype.Text
 }
 
 type TwinVersionDetail struct {
@@ -32,6 +46,109 @@ type TwinOverview struct {
 	Pending   *db.TwinProposal
 	Proposals []TwinProposalDetail
 	Versions  []db.TwinVersion
+}
+
+// TwinAcceptedEvidence is the immutable, egress-reviewable evidence envelope
+// consumed by Twin generation. CanonicalContent is intentionally opaque here:
+// Wiki owns its schema, while Twin owns citation validation and generated output.
+type TwinAcceptedEvidence struct {
+	RevisionID       string
+	SourceDigest     string
+	CanonicalContent json.RawMessage
+	Citations        []LMWikiCitation
+}
+
+type TwinEvidenceProvider interface {
+	LoadAcceptedEvidence(ctx context.Context, workspaceID, revisionID pgtype.UUID) (TwinAcceptedEvidence, error)
+}
+
+type transactionalTwinEvidenceProvider interface {
+	withQueries(*db.Queries) TwinEvidenceProvider
+}
+
+type dbTwinEvidenceProvider struct{ queries *db.Queries }
+
+func NewDBTwinEvidenceProvider(queries *db.Queries) TwinEvidenceProvider {
+	return dbTwinEvidenceProvider{queries: queries}
+}
+
+func (p dbTwinEvidenceProvider) withQueries(queries *db.Queries) TwinEvidenceProvider {
+	return dbTwinEvidenceProvider{queries: queries}
+}
+
+func (p dbTwinEvidenceProvider) LoadAcceptedEvidence(ctx context.Context, workspaceID, revisionID pgtype.UUID) (TwinAcceptedEvidence, error) {
+	revision, err := loadTwinSourceForBuild(ctx, p.queries, workspaceID, revisionID)
+	if err != nil {
+		return TwinAcceptedEvidence{}, err
+	}
+	canonical, err := validateTwinAcceptedEvidenceRevision(revision)
+	if err != nil {
+		return TwinAcceptedEvidence{}, err
+	}
+	rows, err := p.queries.ListLMWikiCitations(ctx, db.ListLMWikiCitationsParams{WorkspaceID: workspaceID, RevisionID: revision.ID})
+	if err != nil {
+		return TwinAcceptedEvidence{}, fmt.Errorf("load twin source citations: %w", err)
+	}
+	citations := make([]LMWikiCitation, len(rows))
+	for index, citation := range rows {
+		sourceUpdatedAt := ""
+		if citation.SourceUpdatedAt.Valid {
+			sourceUpdatedAt = citation.SourceUpdatedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
+		}
+		citations[index] = LMWikiCitation{
+			CitationKey:     citation.CitationKey,
+			SourceType:      citation.SourceType,
+			SourceID:        citation.SourceID.String(),
+			SourceUpdatedAt: sourceUpdatedAt,
+			Locator:         citation.Locator,
+			Label:           citation.Label,
+			SafeMetadata:    append(json.RawMessage(nil), citation.SafeMetadata...),
+			SourceDigest:    citation.SourceDigest,
+		}
+	}
+	return TwinAcceptedEvidence{
+		RevisionID:       revision.ID.String(),
+		SourceDigest:     revision.SourceDigest,
+		CanonicalContent: canonical,
+		Citations:        citations,
+	}, nil
+}
+
+func validateTwinAcceptedEvidenceRevision(revision db.LmWikiRevision) (json.RawMessage, error) {
+	policy, err := parseTwinModelEgressPolicy(revision.Content)
+	if err != nil {
+		return nil, ErrTwinGenerationDenied
+	}
+	canonical, err := canonicalizeTwinAcceptedEvidence(revision.Content)
+	if err != nil || revision.SchemaVersion != 2 ||
+		revision.SourcePolicyVersion != policy.PolicyVersion ||
+		revision.SourcePolicyDigest != policy.PolicyDigest ||
+		revision.RemoteGenerationEnabled != policy.RemoteGenerationEnabled ||
+		!revision.RemoteGenerationEnabled ||
+		revision.SourceDigest != digestLMWiki(canonical) {
+		return nil, ErrTwinGenerationDenied
+	}
+	return canonical, nil
+}
+
+// PostgreSQL JSONB does not preserve the key order used by Wiki's canonical
+// encoder. Decode through Wiki's closed v2 schema and encode it again before
+// verifying the digest that was frozen at revision creation time.
+func canonicalizeTwinAcceptedEvidence(content json.RawMessage) ([]byte, error) {
+	var decoded LMWikiContent
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil || decoded.SchemaVersion != 2 {
+		return nil, ErrTwinGenerationDenied
+	}
+	if err := ensureTwinJSONEOF(decoder); err != nil {
+		return nil, ErrTwinGenerationDenied
+	}
+	canonical, err := json.Marshal(decoded)
+	if err != nil {
+		return nil, ErrTwinGenerationDenied
+	}
+	return canonical, nil
 }
 
 func (s *TwinService) Overview(ctx context.Context, workspaceID pgtype.UUID) (TwinOverview, error) {
@@ -100,7 +217,41 @@ func (s *TwinService) ProposalDetail(ctx context.Context, workspaceID, proposalI
 	if err != nil {
 		return TwinProposalDetail{}, err
 	}
+	if proposal.Kind == "deposition" {
+		detail.RunEvidence, err = loadTwinDepositionRunEvidence(ctx, s.Queries, workspaceID, proposal.ID)
+		if err != nil {
+			return TwinProposalDetail{}, err
+		}
+	}
 	return detail, nil
+}
+
+func loadTwinDepositionRunEvidence(ctx context.Context, queries *db.Queries, workspaceID, proposalID pgtype.UUID) (*TwinDepositionRunEvidence, error) {
+	deposition, err := queries.GetTwinDepositionByProposal(ctx, db.GetTwinDepositionByProposalParams{WorkspaceID: workspaceID, ProposalID: proposalID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrTwinNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load Twin deposition review evidence: %w", err)
+	}
+	evidence := &TwinDepositionRunEvidence{
+		TaskID: deposition.TaskID, BaseTwinVersionID: deposition.BaseTwinVersionID,
+		EvidenceDigest: deposition.EvidenceDigest,
+	}
+	task, err := queries.GetAgentTaskInWorkspace(ctx, db.GetAgentTaskInWorkspaceParams{WorkspaceID: workspaceID, ID: deposition.TaskID})
+	if err == nil {
+		evidence.TaskStatus = task.Status
+		evidence.CompletedAt = task.CompletedAt
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("load Twin deposition task state: %w", err)
+	}
+	feedback, err := queries.GetTwinRunFeedback(ctx, db.GetTwinRunFeedbackParams{WorkspaceID: workspaceID, TaskID: deposition.TaskID})
+	if err == nil {
+		evidence.FeedbackRating = pgtype.Text{String: feedback.Rating, Valid: true}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("load Twin deposition feedback: %w", err)
+	}
+	return evidence, nil
 }
 
 func (s *TwinService) VersionDetail(ctx context.Context, workspaceID, versionID pgtype.UUID) (TwinVersionDetail, error) {
@@ -143,26 +294,6 @@ func loadTwinSourceForBuild(ctx context.Context, queries *db.Queries, workspaceI
 		return db.LmWikiRevision{}, fmt.Errorf("load latest accepted twin source wiki: %w", err)
 	}
 	return revision, nil
-}
-
-func buildTwinFromRevision(ctx context.Context, queries *db.Queries, workspaceID pgtype.UUID, revision db.LmWikiRevision, prior []TwinAssertion) (TwinProposalBuild, error) {
-	var content LMWikiContent
-	if err := json.Unmarshal(revision.Content, &content); err != nil {
-		return TwinProposalBuild{}, fmt.Errorf("decode twin source wiki content: %w", err)
-	}
-	rows, err := queries.ListLMWikiCitations(ctx, db.ListLMWikiCitationsParams{WorkspaceID: workspaceID, RevisionID: revision.ID})
-	if err != nil {
-		return TwinProposalBuild{}, fmt.Errorf("load twin source citations: %w", err)
-	}
-	citations := make([]LMWikiCitation, len(rows))
-	for index, citation := range rows {
-		citations[index] = LMWikiCitation{CitationKey: citation.CitationKey}
-	}
-	build, err := BuildTwinProposal(TwinBuilderInput{SourceWikiRevisionID: revision.ID.String(), SourceDigest: revision.SourceDigest, Content: content, Citations: citations, PriorAssertions: prior})
-	if err != nil {
-		return TwinProposalBuild{}, fmt.Errorf("build twin proposal: %w", err)
-	}
-	return build, nil
 }
 
 func twinAssertions(content []byte) ([]TwinAssertion, error) {

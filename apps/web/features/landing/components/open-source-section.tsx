@@ -29,10 +29,16 @@ export function OpenSourceSection() {
                 href={githubUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center gap-2.5 rounded-[12px] bg-[var(--landing-night)] px-5 py-3 text-body font-semibold text-white transition-colors hover:bg-[var(--landing-night-hover)]"
+                className="inline-flex items-center justify-center gap-2.5 rounded-(--landing-radius-action) bg-[var(--landing-night)] px-5 py-3 text-body font-semibold text-white transition-colors hover:bg-[var(--landing-night-hover)]"
               >
                 <GitHubMark className="size-4" />
                 {t.openSource.cta}
+              </Link>
+              <Link
+                href="/licensing"
+                className="inline-flex items-center justify-center rounded-(--landing-radius-action) px-4 py-3 text-body font-semibold text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {t.openSource.licensingCta}
               </Link>
             </div>
           </div>

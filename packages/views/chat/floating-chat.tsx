@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useChatStore } from "@multica/core/chat";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../navigation";
@@ -20,8 +21,18 @@ import { isFloatingChatRouteSuppressed } from "./floating-chat-visibility";
  */
 export function FloatingChat() {
   const enabled = useChatStore((s) => s.floatingChatEnabled);
+  const isOpen = useChatStore((s) => s.isOpen);
+  const setOpen = useChatStore((s) => s.setOpen);
   const { pathname } = useNavigation();
   const wsPaths = useWorkspacePaths();
+  const fabRef = useRef<HTMLButtonElement>(null);
+  const restoreFabFocus = useRef(false);
+
+  useEffect(() => {
+    if (isOpen || !restoreFabFocus.current || !fabRef.current) return;
+    fabRef.current.focus();
+    restoreFabFocus.current = false;
+  }, [isOpen]);
 
   if (!enabled) return null;
   // Suppress on the Chat tab — it renders the same conversation full-page.
@@ -29,8 +40,13 @@ export function FloatingChat() {
 
   return (
     <>
-      <ChatWindow />
-      <ChatFab />
+      <ChatWindow
+        onMinimize={() => {
+          restoreFabFocus.current = true;
+          setOpen(false);
+        }}
+      />
+      <ChatFab triggerRef={fabRef} />
     </>
   );
 }

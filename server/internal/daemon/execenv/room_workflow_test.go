@@ -6,17 +6,20 @@ import (
 )
 
 func TestRoomWorkflowUsesDedicatedRoomPath(t *testing.T) {
-	content := buildMetaSkillContentSlim("codex", TaskContextForEnv{
-		RoomID:           "room-1",
-		RoomCycleID:      "cycle-1",
-		RoomTurnID:       "turn-1",
-		RoomTitle:        "Architecture council",
-		RoomInstructions: "Challenge assumptions.",
-		AutopilotRunID:   "autopilot-run-sentinel",
-		AutopilotID:      "autopilot-sentinel",
-		AgentName:        "Reviewer",
-		AgentID:          "agent-1",
-	})
+	costLimit := int64(17)
+	task := TaskContextForEnv{
+		RoomID:             "room-1",
+		RoomCycleID:        "cycle-1",
+		RoomTurnID:         "turn-1",
+		RoomTitle:          "Architecture council",
+		RoomInstructions:   "Challenge assumptions.",
+		RoomCostLimitTicks: &costLimit,
+		AutopilotRunID:     "autopilot-run-sentinel",
+		AutopilotID:        "autopilot-sentinel",
+		AgentName:          "Reviewer",
+		AgentID:            "agent-1",
+	}
+	content := buildMetaSkillContentSlim("codex", task)
 
 	if count := strings.Count(content, "### Workflow"); count != 1 {
 		t.Fatalf("Workflow section count = %d, want 1", count)
@@ -26,4 +29,5 @@ func TestRoomWorkflowUsesDedicatedRoomPath(t *testing.T) {
 			t.Errorf("Room workflow contains Autopilot sentinel %q", sentinel)
 		}
 	}
+	// Per-turn Room data and cost limits are covered by daemon/room_prompt_test.go.
 }

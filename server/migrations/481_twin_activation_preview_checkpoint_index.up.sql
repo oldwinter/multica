@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY twin_activation_preview_checkpoint_lookup_idx ON twin_activation_preview_checkpoint (workspace_id, twin_version_id, compiled_at DESC);

@@ -13,12 +13,20 @@ import { api } from "@multica/core/api";
 import {
   chatKeys,
   isTaskMessageTaskId,
-  mergeTaskMessagesBySeq,
   taskMessagesOptions,
 } from "@multica/core/chat/queries";
 import type { AgentTask } from "@multica/core/types/agent";
 import type { TaskMessagePayload } from "@multica/core/types/events";
-import { AgentTranscriptDialog } from "./agent-transcript-dialog";
+import { useWorkspaceId } from "@multica/core/hooks";
+import {
+  twinTaskContextOptions,
+  useCreateTwinDeposition,
+  useSubmitTwinTaskFeedback,
+} from "@multica/core/twins";
+import {
+  AgentTranscriptDialog,
+} from "./agent-transcript-dialog";
+import { TaskRunReviewSlot } from "../../task-run-reviews";
 import { buildTimeline, type TimelineItem } from "./build-timeline";
 
 interface TranscriptButtonProps {
@@ -36,6 +44,19 @@ interface TranscriptButtonProps {
   isLive?: boolean;
   className?: string;
   title?: string;
+  renderButton?: boolean;
+  open?: boolean;
+  /**
+   * `fromKeyboard` reports how the open was requested, so a parent that hosts
+   * the dialog on another instance can hand it back as `finalFocus`.
+   */
+  onOpenChange?: (open: boolean, fromKeyboard?: boolean) => void;
+  /**
+   * Whether focus returns to the trigger on close. Only a dialog-owning
+   * instance needs this: one that renders the dialog for a trigger living
+   * somewhere else never sees the click that would tell it.
+   */
+  finalFocus?: boolean;
   /**
    * Optional content rendered above the transcript event list. Used to
    * surface autopilot webhook payloads inline with the run history.
@@ -64,11 +85,47 @@ export function TranscriptButton({
   isLive = false,
   className,
   title = "View transcript",
+  renderButton = true,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  finalFocus,
   headerSlot,
 }: TranscriptButtonProps) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  // A click carrying no detail count came from Enter/Space. Only that reader
+  // gets focus handed back when the dialog closes: after a pointer open it
+  // would return a focus ring and this button's tooltip on Esc.
+  const [fromKeyboard, setFromKeyboard] = useState(false);
+  // A dialog-owning parent knows better than this instance's own clicks —
+  // when the trigger lives elsewhere, those never happen.
+  const returnFocus = finalFocus ?? fromKeyboard;
   const [loading, setLoading] = useState(false);
   const [loadedItems, setLoadedItems] = useState<TimelineItem[] | null>(null);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = controlledOnOpenChange ?? setUncontrolledOpen;
+  const wsId = useWorkspaceId();
+  const contextQuery = useQuery({
+    ...twinTaskContextOptions(wsId, task.id),
+    enabled: open && !!wsId && isTaskMessageTaskId(task.id),
+  });
+  const feedbackMutation = useSubmitTwinTaskFeedback(wsId, task.id);
+  const depositionMutation = useCreateTwinDeposition(wsId, task.id);
+  const terminal = ["completed", "failed", "cancelled"].includes(task.status);
+  const taskRunReviewAvailable =
+    !!wsId && terminal && isTaskMessageTaskId(task.id);
+  const effectiveTask = useMemo(
+    () => contextQuery.data ? { ...task, twin_context: contextQuery.data } : task,
+    [contextQuery.data, task],
+  );
+  const twinActions = {
+    onTwinFeedback: feedbackMutation.mutateAsync,
+    onCreateTwinDeposition: () => depositionMutation.mutateAsync({}),
+    twinFeedbackPending: feedbackMutation.isPending,
+    twinDepositionPending: depositionMutation.isPending,
+  };
+  const taskRunReviewSlot = taskRunReviewAvailable ? (
+    <TaskRunReviewSlot wsId={wsId} task={task} />
+  ) : null;
 
   // Live cache mode: the running task feeds the shared task-messages cache, so
   // we render straight off that cache instead of a one-shot local snapshot.
@@ -82,8 +139,14 @@ export function TranscriptButton({
   // authoritative backfill on the running→terminal transition.
   const [liveSession, setLiveSession] = useState(false);
   useEffect(() => {
-    if (!open) setLiveSession(false);
-  }, [open]);
+    if (!open) {
+      setLiveSession(false);
+      return;
+    }
+    if (liveCacheMode) {
+      setLiveSession(true);
+    }
+  }, [liveCacheMode, open]);
 
   // Live mode renders from the cache; lazy/provided modes from local state.
   const items = providedItems ?? loadedItems ?? [];
@@ -92,13 +155,15 @@ export function TranscriptButton({
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      const keyboard = e.detail === 0;
+      setFromKeyboard(keyboard);
       if (liveCacheMode) {
         setLiveSession(true);
-        setOpen(true);
+        setOpen(true, keyboard);
         return;
       }
       if (providedItems !== undefined || loadedItems !== null) {
-        setOpen(true);
+        setOpen(true, keyboard);
         return;
       }
       setLoading(true);
@@ -106,16 +171,16 @@ export function TranscriptButton({
         .listTaskMessages(task.id)
         .then((msgs) => {
           setLoadedItems(buildTimeline(msgs));
-          setOpen(true);
+          setOpen(true, keyboard);
         })
         .catch((err) => {
           console.error(err);
           setLoadedItems([]);
-          setOpen(true);
+          setOpen(true, keyboard);
         })
         .finally(() => setLoading(false));
     },
-    [liveCacheMode, providedItems, loadedItems, task.id],
+    [liveCacheMode, providedItems, loadedItems, setOpen, task.id],
   );
 
   useEffect(() => {
@@ -129,48 +194,56 @@ export function TranscriptButton({
     return () => {
       window.removeEventListener("multica:navigate", handleGlobalNavigate);
     };
-  }, [open]);
+  }, [open, setOpen]);
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={<button type="button" />}
-          onClick={handleClick}
-          disabled={loading}
-          aria-label={title}
-          className={cn(
-            "flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-50",
-            className,
-          )}
-        >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <ScrollText className="h-3.5 w-3.5" />
-          )}
-        </TooltipTrigger>
-        <TooltipContent>{title}</TooltipContent>
-      </Tooltip>
+      {renderButton ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={<button type="button" />}
+            onClick={handleClick}
+            disabled={loading}
+            aria-label={title}
+            className={cn(
+              "flex items-center justify-center rounded-xs p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-50",
+              className,
+            )}
+          >
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ScrollText className="h-3.5 w-3.5" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent>{title}</TooltipContent>
+        </Tooltip>
+      ) : null}
 
       {open &&
         (liveSession ? (
           <LiveTranscriptDialog
-            task={task}
+            task={effectiveTask}
             agentName={agentName}
             isLive={isLive}
             onOpenChange={setOpen}
+            finalFocus={returnFocus}
             headerSlot={headerSlot}
+            {...twinActions}
+            taskRunReviewSlot={taskRunReviewSlot}
           />
         ) : (
           <AgentTranscriptDialog
             open={open}
             onOpenChange={setOpen}
-            task={task}
+            task={effectiveTask}
             items={items}
             agentName={agentName}
             isLive={isLive}
+            finalFocus={returnFocus}
             headerSlot={headerSlot}
+            {...twinActions}
+            taskRunReviewSlot={taskRunReviewSlot}
           />
         ))}
     </>
@@ -182,7 +255,13 @@ interface LiveTranscriptDialogProps {
   agentName: string;
   isLive: boolean;
   onOpenChange: (open: boolean) => void;
+  finalFocus: boolean;
   headerSlot?: React.ReactNode;
+  onTwinFeedback: NonNullable<React.ComponentProps<typeof AgentTranscriptDialog>["onTwinFeedback"]>;
+  onCreateTwinDeposition: NonNullable<React.ComponentProps<typeof AgentTranscriptDialog>["onCreateTwinDeposition"]>;
+  twinFeedbackPending: boolean;
+  twinDepositionPending: boolean;
+  taskRunReviewSlot?: React.ReactNode;
 }
 
 /**
@@ -201,7 +280,13 @@ function LiveTranscriptDialog({
   agentName,
   isLive,
   onOpenChange,
+  finalFocus,
   headerSlot,
+  onTwinFeedback,
+  onCreateTwinDeposition,
+  twinFeedbackPending,
+  twinDepositionPending,
+  taskRunReviewSlot,
 }: LiveTranscriptDialogProps) {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -213,7 +298,8 @@ function LiveTranscriptDialog({
   // `taskMessagesOptions` is `staleTime: Infinity`, so a plain subscription
   // never refetches — a WS reconnect gap (or the final tail of messages a
   // completed issue task never re-broadcasts) would otherwise leave a hole.
-  // Merge by seq so the fetch and any concurrent WS append both survive.
+  // The query's `structuralSharing` folds this response into whatever the
+  // realtime stream has already written, so neither side loses a seq.
   useEffect(() => {
     if (!isTaskMessageTaskId(task.id)) return;
     let cancelled = false;
@@ -223,7 +309,7 @@ function LiveTranscriptDialog({
         if (cancelled) return;
         queryClient.setQueryData<TaskMessagePayload[]>(
           chatKeys.taskMessages(task.id),
-          (old = []) => mergeTaskMessagesBySeq(old, msgs),
+          msgs,
         );
       })
       .catch((err) => {
@@ -244,7 +330,13 @@ function LiveTranscriptDialog({
       items={items}
       agentName={agentName}
       isLive={isLive}
+      finalFocus={finalFocus}
       headerSlot={headerSlot}
+      onTwinFeedback={onTwinFeedback}
+      onCreateTwinDeposition={onCreateTwinDeposition}
+      twinFeedbackPending={twinFeedbackPending}
+      twinDepositionPending={twinDepositionPending}
+      taskRunReviewSlot={taskRunReviewSlot}
     />
   );
 }

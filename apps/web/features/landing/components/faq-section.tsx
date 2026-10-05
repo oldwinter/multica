@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@multica/ui/lib/utils";
+import { InlineLinks } from "./inline-links";
 import { useLocale } from "../i18n";
 
 export function FAQSection() {
@@ -20,7 +21,7 @@ export function FAQSection() {
           </h2>
         </div>
 
-        <div className="mt-14 divide-y divide-[#0a0d12]/10 sm:mt-16">
+        <div className="mt-14 divide-y divide-border sm:mt-16">
           {t.faq.items.map((faq, i) => (
             <div key={i}>
               <button
@@ -56,9 +57,10 @@ export function FAQSection() {
                   openIndex === i ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
                 )}
               >
-                <div className="overflow-hidden">
+                {/* inert keeps links in a collapsed answer out of the tab order. */}
+                <div className="overflow-hidden" inert={openIndex !== i}>
                   <p className="pb-6 pr-12 text-body leading-[1.7] text-muted-foreground sm:text-body-lg">
-                    {faq.answer}
+                    <InlineLinks text={faq.answer} />
                   </p>
                 </div>
               </div>

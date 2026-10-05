@@ -1,4 +1,4 @@
-import type { WSMessage, WSEventType } from "../types/events";
+import type { WSMessage, WSEventPayload, WSEventType } from "../types/events";
 import { type Logger, noopLogger } from "../logger";
 
 type EventHandler = (payload: unknown, actorId?: string, actorType?: string) => void;
@@ -51,18 +51,28 @@ export class WSClient {
   private anyHandlers = new Set<(msg: WSMessage) => void>();
   private logger: Logger;
 
+  /**
+   * Reads the current token at connect time. A reconnect can happen long
+   * after this client was built — long enough for a sliding session to have
+   * been renewed in between — so the token the auth frame carries has to be
+   * looked up now, not captured once (MUL-7436).
+   */
+  private getToken: (() => string | null) | undefined;
+
   constructor(
     url: string,
     options?: {
       logger?: Logger;
       cookieAuth?: boolean;
       identity?: WSClientIdentity;
+      getToken?: () => string | null;
     },
   ) {
     this.baseUrl = url;
     this.logger = options?.logger ?? noopLogger;
     this.cookieAuth = options?.cookieAuth ?? false;
     this.identity = options?.identity;
+    this.getToken = options?.getToken;
   }
 
   setAuth(token: string | null, workspaceSlug: string) {
@@ -89,9 +99,10 @@ export class WSClient {
     this.ws = new WebSocket(url.toString());
 
     this.ws.onopen = () => {
-      if (!this.cookieAuth && this.token) {
+      const token = this.getToken?.() ?? this.token;
+      if (!this.cookieAuth && token) {
         this.ws!.send(
-          JSON.stringify({ type: "auth", payload: { token: this.token } }),
+          JSON.stringify({ type: "auth", payload: { token } }),
         );
         return;
       }
@@ -181,8 +192,9 @@ export class WSClient {
 
   private onAuthenticated() {
     this.logger.info("connected");
+    const recoveredConnection = this.hasConnectedBefore || this.reconnectAttempt > 0;
     this.reconnectAttempt = 0;
-    if (this.hasConnectedBefore) {
+    if (recoveredConnection) {
       for (const cb of this.onReconnectCallbacks) {
         try {
           cb();
@@ -213,13 +225,21 @@ export class WSClient {
     this.onReconnectCallbacks.clear();
   }
 
-  on(event: WSEventType, handler: EventHandler) {
+  on<E extends WSEventType>(
+    event: E,
+    handler: (
+      payload: WSEventPayload<E>,
+      actorId?: string,
+      actorType?: string,
+    ) => void,
+  ) {
+    const eventHandler = handler as EventHandler;
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
-    this.handlers.get(event)!.add(handler);
+    this.handlers.get(event)!.add(eventHandler);
     return () => {
-      this.handlers.get(event)?.delete(handler);
+      this.handlers.get(event)?.delete(eventHandler);
     };
   }
 

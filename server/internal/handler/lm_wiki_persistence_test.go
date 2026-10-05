@@ -9,8 +9,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/testutil"
 
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -194,18 +196,12 @@ func TestLMWikiConcurrentRevisionAndReview(t *testing.T) {
 func createLMWikiTestWorkspace(t *testing.T, ctx context.Context, suffix string) pgtype.UUID {
 	t.Helper()
 
-	var workspaceID pgtype.UUID
-	err := testPool.QueryRow(ctx, `
-INSERT INTO workspace (name, slug, description, issue_prefix)
-VALUES ($1, $2 || gen_random_uuid()::text, '', 'WIK')
-RETURNING id
-`, "Wiki Test "+suffix, "wiki-test-"+suffix+"-").Scan(&workspaceID)
-	if err != nil {
-		t.Fatalf("create wiki test workspace: %v", err)
-	}
+	workspaceID := parseUUID(dbfx.Workspace(t, "Wiki Test "+suffix, "wiki-test-"+suffix+"-"+uuid.NewString(), testutil.Cols{
+		"issue_prefix": "WIK",
+	}))
+	cleanupCtx := context.WithoutCancel(ctx)
 	t.Cleanup(func() {
-		_ = db.New(testPool).DeleteWorkspaceWikiTwinData(context.Background(), workspaceID)
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM workspace WHERE id = $1`, workspaceID)
+		_ = db.New(testPool).DeleteWorkspaceWikiTwinData(cleanupCtx, workspaceID)
 	})
 	return workspaceID
 }

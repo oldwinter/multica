@@ -1,0 +1,130 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "@multica/core/i18n/react";
+import type { WikiRevision } from "@multica/core/wiki";
+import enWiki from "../locales/en/wiki.json";
+import { WikiHistoryDialog } from "./wiki-history-dialog";
+
+const revisions: WikiRevision[] = [
+  {
+    id: "revision-2", pageId: "page-1", revisionNumber: 2, path: "guide.md", title: "Guide",
+    content: "current", contentDigest: "sha256:2", actorType: "member", actorId: "member-1",
+    sourceKind: "human", sourceRefId: null, createdAt: "2026-08-23T11:00:00Z",
+  },
+  {
+    id: "revision-1", pageId: "page-1", revisionNumber: 1, path: "guide.md", title: "Guide",
+    content: "old", contentDigest: "sha256:1", actorType: "system", actorId: null,
+    sourceKind: "room_promotion", sourceRefId: "room-1", createdAt: "2026-08-23T10:00:00Z",
+  },
+];
+
+function renderHistory(onRestore = vi.fn(), history: WikiRevision[] = revisions) {
+  render(
+    <I18nProvider locale="en" resources={{ en: { wiki: enWiki } }}>
+      <WikiHistoryDialog
+        open
+        onOpenChange={vi.fn()}
+        revisions={history}
+        currentRevisionNumber={2}
+        isLoading={false}
+        isError={false}
+        isRestoring={false}
+        onRetry={vi.fn()}
+        onRestore={onRestore}
+      />
+    </I18nProvider>,
+  );
+  return onRestore;
+}
+
+describe("WikiHistoryDialog", () => {
+  it("compares immutable content and restores an older revision as a new write", () => {
+    const onRestore = renderHistory();
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "grid-cols-[minmax(0,1fr)]",
+      "max-lg:[&_button]:min-h-11",
+    );
+    expect(screen.getByText("current")).toBeInTheDocument();
+    expect(screen.getByText("old")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: enWiki.history.timeline })).toBeInTheDocument();
+    expect(screen.getByText("sha256:2")).toHaveClass("break-all");
+    expect(screen.getByText("sha256:1")).toHaveClass("break-all");
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("alertdialog")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByRole("alertdialog")).toHaveClass("max-lg:[&_button]:min-h-11");
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Revision 1 will become a new revision");
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(onRestore).toHaveBeenCalledWith("revision-1");
+  }, 15_000);
+
+  it("compares an older revision with the latest supplied revision and focuses the comparison", async () => {
+    const user = userEvent.setup();
+    const oldest = revisions[1]!;
+    const previous = revisions[0]!;
+    const latest: WikiRevision = {
+      ...previous, id: "revision-3", revisionNumber: 3, content: "latest", contentDigest: "sha256:3",
+    };
+    const onRestore = renderHistory(vi.fn(), [oldest, latest, previous]);
+    const comparison = screen.getByRole("region", { name: "Revision comparison" });
+    const selectors = within(comparison).getAllByRole("combobox");
+    const scrollIntoView = vi.spyOn(comparison, "scrollIntoView");
+    expect(within(comparison).getByText("current")).toBeInTheDocument();
+    expect(within(comparison).getByText("latest")).toBeInTheDocument();
+    expect(within(comparison).queryByText("old")).not.toBeInTheDocument();
+
+    await user.click(selectors[1]!);
+    await user.click(screen.getByRole("option", { name: "Revision 2" }));
+    expect(selectors[1]).toHaveTextContent("Revision 2");
+    expect(within(comparison).queryByText("latest")).not.toBeInTheDocument();
+
+    const timeline = screen.getByRole("region", { name: enWiki.history.timeline });
+    const rows = within(timeline).getAllByRole("listitem");
+    expect(within(rows[0]!).queryByRole("button", { name: "Compare with latest" })).not.toBeInTheDocument();
+    expect(within(timeline).getAllByRole("button", { name: "Compare with latest" })).toHaveLength(2);
+    expect(within(rows[1]!).queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+    const compare = within(rows[2]!).getByRole("button", { name: "Compare with latest" });
+    compare.focus();
+    await user.keyboard("{Enter}");
+
+    expect(selectors[0]).toHaveTextContent("Revision 1");
+    expect(selectors[1]).toHaveTextContent("Revision 3");
+    expect(within(comparison).getByText("old")).toBeInTheDocument();
+    expect(within(comparison).getByText("latest")).toBeInTheDocument();
+    expect(within(comparison).queryByText("current")).not.toBeInTheDocument();
+    expect(comparison).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    expect(onRestore).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    scrollIntoView.mockRestore();
+  });
+
+  it("offers no comparison shortcut when only one revision is available", () => {
+    renderHistory(vi.fn(), [revisions[0]!]);
+    expect(screen.queryByRole("button", { name: "Compare with latest" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("current")).toHaveLength(2);
+  });
+
+  it("keeps restore failures visible inside the history dialog", () => {
+    render(
+      <I18nProvider locale="en" resources={{ en: { wiki: enWiki } }}>
+        <WikiHistoryDialog
+          open
+          onOpenChange={vi.fn()}
+          revisions={revisions}
+          currentRevisionNumber={2}
+          isLoading={false}
+          isError={false}
+          isRestoring={false}
+          actionError="The page changed before restore."
+          onRetry={vi.fn()}
+          onRestore={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("The page changed before restore.");
+  });
+});

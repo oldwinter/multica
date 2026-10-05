@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS twin_deposition_workspace_task_idx;

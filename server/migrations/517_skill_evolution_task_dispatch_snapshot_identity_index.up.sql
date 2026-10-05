@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS skill_evolution_task_dispatch_snapshot_identity_uidx ON skill_evolution_task_dispatch_snapshot (workspace_id, task_id, runtime_id, task_dispatched_at);

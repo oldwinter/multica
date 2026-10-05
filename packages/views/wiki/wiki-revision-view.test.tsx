@@ -1,0 +1,136 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "@multica/core/i18n/react";
+import type { WikiRevision } from "@multica/core/wiki";
+import enWiki from "../locales/en/wiki.json";
+import { ImmutableWikiRevision } from "./wiki-revision-view";
+
+const revision: WikiRevision = {
+  id: "revision-2",
+  pageId: "page-1",
+  revisionNumber: 2,
+  path: "handbook/质量标准.md",
+  title: "跨工作区长期保留的质量标准与操作约束",
+  content: "# Exact content\n\n[Open source issue](/issues/MUL-1)",
+  contentDigest: "sha256:exact-content-digest",
+  actorType: "member",
+  actorId: "member-1",
+  sourceKind: "human",
+  sourceRefId: null,
+  createdAt: "2026-08-23T11:00:00Z",
+};
+
+function renderRevision(overrides: Partial<React.ComponentProps<typeof ImmutableWikiRevision>> = {}) {
+  const props: React.ComponentProps<typeof ImmutableWikiRevision> = {
+    revision,
+    isPending: false,
+    isError: false,
+    onRetry: vi.fn(),
+    onBack: vi.fn(),
+    citationPrefix: "wiki_page_revision",
+    personal: false,
+    ...overrides,
+  };
+  render(
+    <I18nProvider locale="en" resources={{ en: { wiki: enWiki } }}>
+      <ImmutableWikiRevision {...props} />
+    </I18nProvider>,
+  );
+  return props;
+}
+
+describe("ImmutableWikiRevision", () => {
+  it("renders exact read-only provenance and copies the canonical revision identity", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    renderRevision();
+
+    expect(screen.getByTestId("wiki-revision-page")).toHaveAttribute("data-wiki-interaction-region");
+    expect(screen.getByTestId("wiki-revision-page")).toHaveClass(
+      "max-lg:[&_button]:min-h-11",
+      "max-lg:[&_button]:min-w-11",
+    );
+    expect(screen.getByText("Read only")).toBeInTheDocument();
+    expect(screen.getByText("sha256:exact-content-digest")).toBeInTheDocument();
+    expect(screen.getByText("human by member")).toBeInTheDocument();
+    expect(document.querySelector("time")).toHaveAttribute("datetime", "2026-08-23T11:00:00Z");
+    expect(screen.getByRole("heading", { name: revision.title })).toHaveClass("break-words");
+    expect(screen.getByRole("link", { name: "Open source issue" })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/\/issues\/MUL-1$/),
+    );
+    fireEvent.click(screen.getByTitle("Copy revision citation"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("wiki_page_revision:revision-2"));
+  });
+
+  it("renders a recoverable error state for malformed or inaccessible revisions", () => {
+    const props = renderRevision({ revision: undefined, isError: true });
+    expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded");
+    expect(screen.queryByRole("group", { name: "Revision content view" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(props.onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("starts in preview and restores rendered content after viewing Markdown source", () => {
+    renderRevision();
+    const preview = screen.getByRole("button", { name: "Preview" });
+    const source = screen.getByRole("button", { name: "Markdown source" });
+
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(source).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("heading", { name: "Exact content" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Markdown source" })).not.toBeInTheDocument();
+
+    fireEvent.click(source);
+    expect(source).toHaveAttribute("aria-pressed", "true");
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("region", { name: "Markdown source" }).textContent).toBe(revision.content);
+    expect(screen.queryByRole("link", { name: "Open source issue" })).not.toBeInTheDocument();
+
+    fireEvent.click(preview);
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: "Open source issue" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Markdown source" })).not.toBeInTheDocument();
+  });
+
+  it("preserves whitespace, HTML, fenced code, and long lines as literal source", () => {
+    const content = `\n\t# Source  \r\n<script>alert("literal")</script>\n\n\`\`\`text\n${"long-line ".repeat(100)}\n\`\`\`\n\n`;
+    renderRevision({ revision: { ...revision, content } });
+    fireEvent.click(screen.getByRole("button", { name: "Markdown source" }));
+
+    const source = screen.getByRole("region", { name: "Markdown source" });
+    expect(source.tagName).toBe("PRE");
+    expect(source.querySelector("code")?.textContent).toBe(content);
+    expect(source.querySelector("script")).toBeNull();
+    expect(source).toHaveAttribute("tabindex", "0");
+    expect(source).toHaveClass("max-w-full", "overflow-x-auto");
+  });
+
+  it("keeps an empty source empty and labels the empty page separately", () => {
+    renderRevision({ revision: { ...revision, content: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Markdown source" }));
+
+    expect(screen.getByRole("region", { name: "Markdown source" }).textContent).toBe("");
+    expect(screen.getByText("Empty page")).toBeInTheDocument();
+  });
+
+  it("hides the view switch while a revision is loading", () => {
+    renderRevision({ isPending: true });
+    expect(screen.getByRole("status")).toHaveTextContent("Loading revision");
+    expect(screen.queryByRole("group", { name: "Revision content view" })).not.toBeInTheDocument();
+  });
+
+  it("labels personal immutable snapshots separately from shared evidence", () => {
+    renderRevision({ personal: true, citationPrefix: "personal_wiki_revision" });
+    expect(screen.getByText("Private evidence")).toBeInTheDocument();
+    expect(screen.getByText("personal_wiki_revision:revision-2")).toBeInTheDocument();
+    expect(screen.getByText(/permanently excluded/)).toBeInTheDocument();
+  });
+
+  it("allows a dashboard shell to own the main landmark", () => {
+    renderRevision({ rootElement: "div" });
+    expect(screen.getByTestId("wiki-revision-page").tagName).toBe("DIV");
+  });
+});

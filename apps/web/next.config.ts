@@ -39,6 +39,8 @@ const allowedDevOrigins = process.env.CORS_ALLOWED_ORIGINS
   : undefined;
 
 const nextConfig: NextConfig = {
+  // Repository guidance is maintained in the root AGENTS.md and CLAUDE.md.
+  agentRules: false,
   devIndicators: false,
   ...(process.env.STANDALONE === "true" ? { output: "standalone" as const } : {}),
   transpilePackages: ["@multica/core", "@multica/ui", "@multica/views"],
@@ -68,12 +70,20 @@ const nextConfig: NextConfig = {
       afterFiles: remoteApiUrl
         ? [
             {
+              source: "/v1/:path*",
+              destination: `${remoteApiUrl}/v1/:path*`,
+            },
+            {
               source: "/api/:path*",
               destination: `${remoteApiUrl}/api/:path*`,
             },
             {
               source: "/ws",
               destination: `${remoteApiUrl}/ws`,
+            },
+            {
+              source: "/health",
+              destination: `${remoteApiUrl}/health`,
             },
             {
               source: "/auth/:path*",
@@ -90,10 +100,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-// fumadocs-mdx@12 is incompatible with Next 16's Turbopack: its loader fails to
-// dynamic-import `.source/source.config.mjs` under the Turbopack Node evaluator
-// (see fumadocs#2658). `dev`/`build` scripts pass `--webpack` to opt out.
-// Drop the flag once fumadocs-mdx ships a Turbopack-compatible loader.
+// fumadocs-mdx@15 supplies loaders for both Turbopack development and Webpack builds.
 const withMDX = createMDX() as (config: NextConfig) => NextConfig;
 
 export default withMDX(nextConfig);

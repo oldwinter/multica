@@ -2,12 +2,12 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 )
 
@@ -104,19 +104,14 @@ func TestRoomHTTPWorkflowPersistsRefusalsAndHidesRuntimeState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	createRecorder := httptest.NewRecorder()
 	createRequest := newRequest(http.MethodPost, "/api/rooms", map[string]any{
 		"title": "Handler Room", "instructions": "Keep decisions explicit.",
 		"facilitator_agent_id": agentID, "daily_turn_limit": 5,
 	})
-	testHandler.CreateRoom(createRecorder, createRequest)
-	if createRecorder.Code != http.StatusCreated {
-		t.Fatalf("create Room: %d: %s", createRecorder.Code, createRecorder.Body.String())
-	}
 	var created roomDetailResponse
-	if err := json.Unmarshal(createRecorder.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
+	testutil.Call(t, testHandler.CreateRoom, createRequest).
+		Want(http.StatusCreated).
+		JSON(&created)
 	roomID := created.Room.ID
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE room_turn_id IN (SELECT id FROM room_turn WHERE room_id = $1)`, roomID)
@@ -128,20 +123,18 @@ func TestRoomHTTPWorkflowPersistsRefusalsAndHidesRuntimeState(t *testing.T) {
 		testPool.Exec(context.Background(), `DELETE FROM room WHERE id = $1`, roomID)
 	})
 
-	messageRecorder := httptest.NewRecorder()
 	messageRequest := newRequest(http.MethodPost, "/api/rooms/"+roomID+"/messages", map[string]any{
 		"body": "Assess the recovery boundary.", "idempotency_key": "handler-message-1",
 	})
 	messageRequest = withURLParam(messageRequest, "id", roomID)
-	testHandler.PostRoomMessage(messageRecorder, messageRequest)
-	if messageRecorder.Code != http.StatusCreated {
-		t.Fatalf("post Room message: %d: %s", messageRecorder.Code, messageRecorder.Body.String())
-	}
 	var messageResult struct {
 		Tasks []string `json:"tasks"`
 	}
-	if err := json.Unmarshal(messageRecorder.Body.Bytes(), &messageResult); err != nil || len(messageResult.Tasks) != 1 {
-		t.Fatalf("Room task response = %+v, err = %v", messageResult, err)
+	testutil.Call(t, testHandler.PostRoomMessage, messageRequest).
+		Want(http.StatusCreated).
+		JSON(&messageResult)
+	if len(messageResult.Tasks) != 1 {
+		t.Fatalf("Room task response = %+v", messageResult)
 	}
 	if _, err := testPool.Exec(ctx, `
 		UPDATE agent_task_queue
@@ -160,47 +153,59 @@ func TestRoomHTTPWorkflowPersistsRefusalsAndHidesRuntimeState(t *testing.T) {
 		t.Fatalf("synchronize Room task = %v, %v", changed, err)
 	}
 
-	getRecorder := httptest.NewRecorder()
 	getRequest := withURLParam(newRequest(http.MethodGet, "/api/rooms/"+roomID, nil), "id", roomID)
-	testHandler.GetRoom(getRecorder, getRequest)
-	if getRecorder.Code != http.StatusOK {
-		t.Fatalf("get Room: %d: %s", getRecorder.Code, getRecorder.Body.String())
-	}
-	if strings.Contains(getRecorder.Body.String(), "private-session") || strings.Contains(getRecorder.Body.String(), "/private/work") {
-		t.Fatalf("Room API leaked runtime continuity state: %s", getRecorder.Body.String())
-	}
 	var detail roomDetailResponse
-	if err := json.Unmarshal(getRecorder.Body.Bytes(), &detail); err != nil {
-		t.Fatal(err)
+	getResponse := testutil.Call(t, testHandler.GetRoom, getRequest).
+		Want(http.StatusOK).
+		JSON(&detail)
+	if strings.Contains(getResponse.Text(), "private-session") || strings.Contains(getResponse.Text(), "/private/work") {
+		t.Fatalf("Room API leaked runtime continuity state: %s", getResponse.Text())
 	}
 	if len(detail.Entries) != 2 || detail.Room.MemoryVersion != 1 {
 		t.Fatalf("Room detail entries/memory = %d/%d", len(detail.Entries), detail.Room.MemoryVersion)
 	}
 	resultEntryID := detail.Entries[1].ID
 
-	promoteRecorder := httptest.NewRecorder()
 	promoteRequest := withURLParam(newRequest(http.MethodPost, "/api/rooms/"+roomID+"/promotions", map[string]any{
 		"kind": "decision", "entry_id": resultEntryID,
 		"idempotency_key": "handler-decision-1", "title": "Atomic terminal projections",
 	}), "id", roomID)
-	testHandler.PromoteRoomArtifact(promoteRecorder, promoteRequest)
-	if promoteRecorder.Code != http.StatusCreated {
-		t.Fatalf("promote Room artifact: %d: %s", promoteRecorder.Code, promoteRecorder.Body.String())
+	testutil.Call(t, testHandler.PromoteRoomArtifact, promoteRequest).Want(http.StatusCreated)
+
+	wikiPromoteRequest := withURLParam(newRequest(http.MethodPost, "/api/rooms/"+roomID+"/promotions", map[string]any{
+		"kind": "wiki", "entry_id": resultEntryID,
+		"idempotency_key": "handler-wiki-1", "title": "Atomic terminal projections",
+	}), "id", roomID)
+	wikiRefusal := testutil.Call(t, testHandler.PromoteRoomArtifact, wikiPromoteRequest).
+		Want(http.StatusBadRequest)
+	if !strings.Contains(wikiRefusal.Text(), "invalid room input") {
+		t.Fatalf("unavailable Wiki proposal target response: %s", wikiRefusal.Text())
+	}
+	var wikiArtifactCount, wikiPageCount int
+	if err := testPool.QueryRow(ctx, `
+		SELECT count(*) FROM room_artifact
+		WHERE room_id = $1 AND kind = 'wiki' AND idempotency_key = 'handler-wiki-1'
+	`, roomID).Scan(&wikiArtifactCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(ctx, `
+		SELECT count(*) FROM wiki_page
+		WHERE workspace_id = $1 AND path LIKE 'rooms/' || $2 || '/%'
+	`, testWorkspaceID, roomID).Scan(&wikiPageCount); err != nil {
+		t.Fatal(err)
+	}
+	if wikiArtifactCount != 0 || wikiPageCount != 0 {
+		t.Fatalf("unavailable Wiki proposal target left artifact/page rows = %d/%d", wikiArtifactCount, wikiPageCount)
 	}
 
-	statusRecorder := httptest.NewRecorder()
 	statusRequest := withURLParam(newRequest(http.MethodPut, "/api/rooms/"+roomID+"/status", map[string]any{"status": "paused"}), "id", roomID)
-	testHandler.SetRoomStatus(statusRecorder, statusRequest)
-	if statusRecorder.Code != http.StatusOK {
-		t.Fatalf("pause Room: %d: %s", statusRecorder.Code, statusRecorder.Body.String())
-	}
-	pausedRecorder := httptest.NewRecorder()
+	testutil.Call(t, testHandler.SetRoomStatus, statusRequest).Want(http.StatusOK)
 	pausedRequest := withURLParam(newRequest(http.MethodPost, "/api/rooms/"+roomID+"/messages", map[string]any{
 		"body": "This message must remain visible.", "idempotency_key": "handler-message-paused",
 	}), "id", roomID)
-	testHandler.PostRoomMessage(pausedRecorder, pausedRequest)
-	if pausedRecorder.Code != http.StatusConflict || !strings.Contains(pausedRecorder.Body.String(), "room_paused") {
-		t.Fatalf("paused Room message: %d: %s", pausedRecorder.Code, pausedRecorder.Body.String())
+	pausedResponse := testutil.Call(t, testHandler.PostRoomMessage, pausedRequest).Want(http.StatusConflict)
+	if !strings.Contains(pausedResponse.Text(), "room_paused") {
+		t.Fatalf("paused Room message: %s", pausedResponse.Text())
 	}
 	var entryCount int
 	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM room_entry WHERE room_id = $1`, roomID).Scan(&entryCount); err != nil {

@@ -1,0 +1,70 @@
+{
+  "compressionlevel": -1,
+  "height": 60,
+  "infinite": false,
+  "layers": [
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "objectgroup",
+      "visible": true,
+      "objects": [
+        {
+          "id": 1,
+          "x": 0,
+          "y": 0,
+          "width": 1152,
+          "height": 960
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "walk",
+      "type": "objectgroup",
+      "visible": true,
+      "objects": [
+        {
+          "id": 2,
+          "x": 64,
+          "y": 64,
+          "width": 1024,
+          "height": 832
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "collision",
+      "type": "objectgroup",
+      "visible": false,
+      "objects": [
+        {
+          "id": 3,
+          "x": 0,
+          "y": 0,
+          "width": 1152,
+          "height": 48
+        },
+        {
+          "id": 4,
+          "x": 0,
+          "y": 912,
+          "width": 1152,
+          "height": 48
+        }
+      ]
+    }
+  ],
+  "nextlayerid": 4,
+  "nextobjectid": 10,
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "tiledversion": "1.11.2",
+  "tileheight": 16,
+  "tilesets": [],
+  "tilewidth": 16,
+  "type": "map",
+  "version": "1.10",
+  "width": 72
+}

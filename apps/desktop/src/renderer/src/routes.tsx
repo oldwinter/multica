@@ -5,7 +5,9 @@ import { IssueDetailPage } from "./pages/issue-detail-page";
 import { ProjectDetailPage } from "./pages/project-detail-page";
 import { AutopilotDetailPage } from "./pages/autopilot-detail-page";
 import { SkillDetailPage } from "./pages/skill-detail-page";
+import { SkillEvolutionPage } from "./pages/skill-evolution-page";
 import { AgentDetailPage } from "./pages/agent-detail-page";
+import { AiBuilderSessionPage } from "./pages/ai-builder-session-page";
 import { MemberDetailPage } from "./pages/member-detail-page";
 import {
   RuntimeDetailPage,
@@ -20,14 +22,26 @@ import { MyIssuesPage } from "@multica/views/my-issues";
 import { SkillsPage } from "@multica/views/skills";
 import { DesktopRuntimesPage } from "./components/desktop-runtimes-page";
 import { DesktopAgentsPage } from "./components/desktop-agents-page";
-import { AgentCreationStudio } from "@multica/views/agents";
+import {
+  AiCreateAgentPage,
+  ChooseCreateMethodPage,
+  ManualCreateAgentPage,
+} from "@multica/views/agents";
 import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
 import { RoomsPage } from "@multica/views/rooms";
+import { OfficePage } from "@multica/views/office";
 import { SettingsPage } from "@multica/views/settings";
 import { TwinsPage } from "@multica/views/twins";
-import { WikiDetailPage, WikiListPage } from "./pages/wiki-page";
+import {
+  PersonalWikiDetailPage,
+  PersonalWikiListPage,
+  PersonalWikiRevisionPage,
+  WikiDetailPage,
+  WikiListPage,
+  WikiRevisionPage,
+} from "./pages/wiki-page";
 import { useT } from "@multica/views/i18n";
 import { Download, Server } from "lucide-react";
 import { DaemonSettingsTab } from "./components/daemon-settings-tab";
@@ -44,10 +58,10 @@ function DesktopSettingsRoute() {
   const { t } = useT("settings");
   return (
     <SettingsPage
-      extraAccountTabs={[
+      extraDeviceTabs={[
         {
           value: "daemon",
-          label: "Daemon",
+          label: t(($) => $.desktop.daemon.title),
           icon: Server,
           content: <DaemonSettingsTab />,
         },
@@ -181,8 +195,32 @@ export const appRoutes: RouteObject[] = [
             element: <SkillDetailPage />,
             handle: { title: "Skill" },
           },
+          {
+            path: "skills/:id/evolution",
+            element: <SkillEvolutionPage />,
+            handle: { title: "Evolution" },
+          },
           { path: "agents", element: <DesktopAgentsPage />, handle: { title: "Agents" } },
-          { path: "agents/new", element: <AgentCreationStudio />, handle: { title: "Create Agent" } },
+          {
+            path: "agents/new",
+            element: <ChooseCreateMethodPage />,
+            handle: { title: "Create Agent" },
+          },
+          {
+            path: "agents/new/manual",
+            element: <ManualCreateAgentPage />,
+            handle: { title: "Create Agent" },
+          },
+          {
+            path: "agents/new/ai",
+            element: <AiCreateAgentPage />,
+            handle: { title: "Create Agent" },
+          },
+          {
+            path: "agents/new/ai/:sessionId",
+            element: <AiBuilderSessionPage />,
+            handle: { title: "Create Agent" },
+          },
           {
             path: "agents/:id",
             element: <AgentDetailPage />,
@@ -191,9 +229,29 @@ export const appRoutes: RouteObject[] = [
           { path: "twins", element: <TwinsPage />, handle: { title: "Twin" } },
           { path: "wiki", element: <WikiListPage />, handle: { title: "Wiki" } },
           {
+            path: "wiki/revisions/:revisionId",
+            element: <WikiRevisionPage />,
+            handle: { title: "Wiki Revision" },
+          },
+          {
             path: "wiki/:id",
             element: <WikiDetailPage />,
             handle: { title: "Wiki" },
+          },
+          {
+            path: "personal-wiki",
+            element: <PersonalWikiListPage />,
+            handle: { title: "Personal Wiki" },
+          },
+          {
+            path: "personal-wiki/revisions/:revisionId",
+            element: <PersonalWikiRevisionPage />,
+            handle: { title: "Personal Wiki Revision" },
+          },
+          {
+            path: "personal-wiki/:id",
+            element: <PersonalWikiDetailPage />,
+            handle: { title: "Personal Wiki" },
           },
           {
             path: "members/:id",
@@ -209,6 +267,7 @@ export const appRoutes: RouteObject[] = [
           { path: "inbox", element: <InboxPage />, handle: { title: "Inbox" } },
           { path: "chat", element: <ChatPage />, handle: { title: "Chat" } },
           { path: "rooms", element: <RoomsPage />, handle: { title: "Rooms" } },
+          { path: "office", element: <OfficePage />, handle: { title: "Office" } },
           {
             path: "attachments/:id/preview",
             element: <AttachmentPreviewRoute />,

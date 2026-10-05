@@ -1,8 +1,27 @@
 "use client";
 
-import { useMemo } from "react";
-import { Check, Monitor, Moon, Sun } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Check,
+  Copy,
+  Monitor,
+  Moon,
+  RefreshCw,
+  RotateCcw,
+  Sun,
+} from "lucide-react";
 import { toast } from "sonner";
+import { SemanticAppearanceFixture } from "@multica/ui/components/common/semantic-appearance-fixture";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@multica/ui/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -11,84 +30,197 @@ import {
   SelectValue,
 } from "@multica/ui/components/ui/select";
 import { Switch } from "@multica/ui/components/ui/switch";
+import { Button } from "@multica/ui/components/ui/button";
 import {
   RadioGroup,
   RadioGroupItem,
 } from "@multica/ui/components/ui/radio-group";
 import {
-  SKIN_IDS,
-  useSkin,
-  useTheme,
-  type Skin,
-} from "@multica/ui/components/common/theme-provider";
+  serializeAppearanceDiagnostics,
+  type AppearanceUndoReceipt,
+} from "@multica/core/appearance";
 import { cn } from "@multica/ui/lib/utils";
+import { copyText } from "@multica/ui/lib/clipboard";
 import {
-  DEFAULT_LOCALE,
-  SUPPORTED_LOCALES,
   type SupportedLocale,
 } from "@multica/core/i18n";
 import { useLocaleAdapter } from "@multica/core/i18n/react";
 import { useAuthStore } from "@multica/core/auth";
-import {
-  useCommentComposerStore,
-  useIssueLinkStore,
-} from "@multica/core/issues/stores";
+import { useCommentComposerStore, type RunningAgentReply } from "@multica/core/issues/stores";
 import { api } from "@multica/core/api";
 import { browserTimezone, timezoneOptions } from "../../common/timezone-select";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@multica/ui/components/ui/tabs";
+import { useNavigation } from "../../navigation";
+import { resolveSettingsLocation, settingsHref } from "./settings-navigation";
+import { IssueTab } from "./issue-tab";
+import { ChatTab } from "./chat-tab";
 import { useT } from "../../i18n";
+import {
+  APPEARANCE_OPTIONS,
+  SKIN_OPTIONS,
+  getAppearanceSyncMessage,
+  isRequestedAppearance,
+  isSkinId,
+  useAppearancePreferences,
+} from "../../appearance";
 import {
   SettingsCard,
   SettingsRow,
   SettingsSection,
   SettingsTab,
 } from "./settings-layout";
+import { resolveSettingsLocale } from "./preferences-locale";
 
 export function PreferencesTab() {
-  const { theme, setTheme } = useTheme();
-  const { skin, setSkin } = useSkin();
+  const { t } = useT("settings");
+  const navigation = useNavigation();
+  const requested = resolveSettingsLocation(navigation.searchParams).section;
+  const section =
+    requested === "issue" || requested === "chat" ? requested : "general";
+  return (
+    <SettingsTab
+      title={t(($) => $.page.tabs.preferences)}
+    >
+      <Tabs
+        value={section}
+        onValueChange={(next) =>
+          navigation.replace(
+            settingsHref(
+              navigation.pathname,
+              navigation.searchParams,
+              "preferences",
+              { section: String(next) },
+            ),
+          )
+        }
+      >
+        <TabsList
+          variant="line"
+          className="mb-6 max-w-full justify-start"
+          aria-label={t(($) => $.page.tabs.preferences)}
+        >
+          <TabsTrigger value="general">
+            {t(($) => $.preferences.general_title)}
+          </TabsTrigger>
+          <TabsTrigger value="issue">
+            {t(($) => $.preferences.issue_title)}
+          </TabsTrigger>
+          <TabsTrigger value="chat">{t(($) => $.page.tabs.chat)}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="general">
+          <GeneralPreferences />
+        </TabsContent>
+        <TabsContent value="issue">
+          <IssueTab />
+        </TabsContent>
+        <TabsContent value="chat">
+          <ChatTab />
+        </TabsContent>
+      </Tabs>
+    </SettingsTab>
+  );
+}
+
+function GeneralPreferences() {
+  const {
+    preferences,
+    diagnostics,
+    canRetry,
+    canCopyDiagnostics,
+    recoveryNoticePending,
+    selectSkin,
+    selectAppearance,
+    reset: resetAppearance,
+    undo: undoAppearance,
+    retry: retryAppearanceSync,
+    acknowledgeRecoveryNotice,
+  } = useAppearancePreferences();
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const localeReloadTimerRef = useRef<number | null>(null);
+  const skin = preferences.skin;
+  const theme = preferences.requestedAppearance;
   const { t, i18n } = useT("settings");
   const localeAdapter = useLocaleAdapter();
   const user = useAuthStore((s) => s.user);
 
+  useEffect(() => () => {
+    if (localeReloadTimerRef.current !== null) {
+      window.clearTimeout(localeReloadTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!recoveryNoticePending) return;
+    toast.warning(t(($) => $.preferences.appearance_sync.recovered), {
+      id: "settings-appearance-recovered",
+    });
+    acknowledgeRecoveryNotice();
+  }, [acknowledgeRecoveryNotice, recoveryNoticePending, t]);
+
+  const showAppearanceSaved = (receipt: AppearanceUndoReceipt | null) => {
+    if (!receipt) return;
+    toast.success(t(($) => $.auto_save.toast_saved), {
+      id: "settings-appearance-save",
+      action: {
+        label: t(($) => $.preferences.appearance_sync.undo),
+        onClick: () => {
+          void undoAppearance(receipt).then((outcome) => {
+            if (outcome === "expired") {
+              toast.warning(
+                t(($) => $.preferences.appearance_sync.undo_expired),
+                { id: "settings-appearance-undo" },
+              );
+              return;
+            }
+            toast.success(
+              t(($) => $.preferences.appearance_sync.undo_applied),
+              { id: "settings-appearance-undo" },
+            );
+          });
+        },
+      },
+    });
+  };
+
+  const handleCopyDiagnostics = async () => {
+    const copied = await copyText(serializeAppearanceDiagnostics(diagnostics));
+    toast[copied ? "success" : "error"](
+      copied
+        ? t(($) => $.preferences.appearance_sync.diagnostics_copied)
+        : t(($) => $.preferences.appearance_sync.diagnostics_copy_failed),
+      { id: "settings-appearance-diagnostics" },
+    );
+  };
+
   // i18next.language can be a region-tagged BCP-47 string (e.g. "en-US",
-  // "zh-Hans-CN") returned by intl-localematcher. Normalize to a supported
-  // locale before comparing — otherwise the radio shows neither option active.
-  const currentLocale: SupportedLocale = SUPPORTED_LOCALES.includes(
-    i18n.language as SupportedLocale,
-  )
-    ? (i18n.language as SupportedLocale)
-    : DEFAULT_LOCALE;
+  // "zh-Hans-CN") returned by intl-localematcher. Normalize it before
+  // comparing so the picker always exposes the actual selected option.
+  const currentLocale: SupportedLocale = resolveSettingsLocale(i18n.language);
 
-  const themeOptions = [
-    {
-      value: "system" as const,
-      label: t(($) => $.preferences.theme.system),
-      icon: Monitor,
-    },
-    {
-      value: "light" as const,
-      label: t(($) => $.preferences.theme.light),
-      icon: Sun,
-    },
-    {
-      value: "dark" as const,
-      label: t(($) => $.preferences.theme.dark),
-      icon: Moon,
-    },
-  ];
-
-  const skinOptions: Array<{ value: Skin; label: string; description: string }> =
-    SKIN_IDS.map((value) => ({
-      value,
-      label: t(($) => $.preferences.skin[value].name),
-      description: t(($) => $.preferences.skin[value].description),
-    }));
+  const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
+  const themeOptions = APPEARANCE_OPTIONS.map(({ value }) => ({
+    value,
+    label: t(($) => $.preferences.theme[value]),
+    icon: themeIcons[value],
+  }));
+  const skinOptions = SKIN_OPTIONS.map(({ value }) => ({
+    value,
+    label: t(($) => $.preferences.skin[value].name),
+    description: t(($) => $.preferences.skin[value].description),
+  }));
+  const syncMessage = getAppearanceSyncMessage(preferences);
 
   const languageOptions: { value: SupportedLocale; label: string }[] = [
     { value: "en", label: t(($) => $.preferences.language.english) },
     { value: "zh-Hans", label: t(($) => $.preferences.language.chinese) },
     { value: "ko", label: t(($) => $.preferences.language.korean) },
     { value: "ja", label: t(($) => $.preferences.language.japanese) },
+    { value: "fr", label: t(($) => $.preferences.language.french) },
   ];
 
   // Persist locally → sync to user.language → reload. Reload (vs in-place
@@ -116,18 +248,27 @@ export function PreferencesTab() {
     if (syncFailed) {
       toast.warning(t(($) => $.preferences.language.sync_failed));
       // Give the toast 2.5s of visible time before navigating away.
-      setTimeout(() => window.location.reload(), 2500);
+      localeReloadTimerRef.current = window.setTimeout(() => {
+        localeReloadTimerRef.current = null;
+        window.location.reload();
+      }, 2500);
       return;
     }
-    toast.success(t(($) => $.auto_save.toast_saved), {
-      id: "settings-auto-save",
-    });
+    toast.success(
+      t(($) => $.auto_save.toast_saved),
+      {
+        id: "settings-auto-save",
+      },
+    );
     // Keep the confirmation visible before the locale reload replaces the UI.
-    setTimeout(() => window.location.reload(), 900);
+    localeReloadTimerRef.current = window.setTimeout(() => {
+      localeReloadTimerRef.current = null;
+      window.location.reload();
+    }, 900);
   };
 
   return (
-    <SettingsTab title={t(($) => $.page.tabs.preferences)}>
+    <>
       <SettingsSection
         title={t(($) => $.preferences.appearance_title)}
         description={t(($) => $.preferences.appearance_hint)}
@@ -137,12 +278,10 @@ export function PreferencesTab() {
           aria-label={t(($) => $.preferences.skin.title)}
           value={skin}
           onValueChange={(value) => {
-            setSkin(value as Skin);
-            toast.success(t(($) => $.auto_save.toast_saved), {
-              id: "settings-auto-save",
-            });
+            if (!isSkinId(value)) return;
+            showAppearanceSaved(selectSkin(value));
           }}
-          className="grid gap-2 @xl:grid-cols-3"
+          className="grid gap-2 pe-chat-launcher @xl:grid-cols-3 @xl:pe-0"
         >
           {skinOptions.map((option) => {
             const selected = option.value === skin;
@@ -159,16 +298,27 @@ export function PreferencesTab() {
                     : "border-surface-border",
                 )}
               >
-                <span
-                  data-skin-preview={option.value}
-                  className="relative flex h-16 items-center justify-center overflow-hidden border-b border-inherit bg-[var(--skin-preview-canvas)]"
+                <SemanticAppearanceFixture
+                  skin={option.value}
+                  mode={preferences.resolvedAppearance}
+                  compact
+                  className="border-b border-inherit"
                   aria-hidden="true"
-                >
-                  <span className="absolute inset-x-3 top-3 h-px bg-[var(--skin-preview-line)]" />
-                  <span className="size-7 rounded-full bg-[var(--skin-preview-signal)]" />
-                  <span className="absolute bottom-3 left-3 h-px w-10 bg-[var(--skin-preview-ink)]" />
-                  <span className="absolute bottom-3 right-3 size-2 rounded-full bg-[var(--skin-preview-secondary)]" />
-                </span>
+                  labels={{
+                    reviewReady: t(($) => $.preferences.appearance_fixture.review_ready),
+                    updatedMomentsAgo: t(
+                      ($) => $.preferences.appearance_fixture.updated_moments_ago,
+                    ),
+                    selectedTask: t(($) => $.preferences.appearance_fixture.selected_task),
+                    assignee: t(($) => $.preferences.appearance_fixture.assignee),
+                    done: t(($) => $.preferences.appearance_fixture.done),
+                    watch: t(($) => $.preferences.appearance_fixture.watch),
+                    remove: t(($) => $.preferences.appearance_fixture.remove),
+                    summary: t(($) => $.preferences.appearance_fixture.summary),
+                    linkedTask: t(($) => $.preferences.appearance_fixture.linked_task),
+                    commandMenu: t(($) => $.preferences.appearance_fixture.command_menu),
+                  }}
+                />
                 <span className="flex min-h-16 items-start gap-2 px-3 py-2.5">
                   <span className="min-w-0 flex-1">
                     <span className="block text-body font-semibold text-foreground">
@@ -202,10 +352,8 @@ export function PreferencesTab() {
               aria-label={t(($) => $.preferences.theme.title)}
               value={theme}
               onValueChange={(value) => {
-                setTheme(value);
-                toast.success(t(($) => $.auto_save.toast_saved), {
-                  id: "settings-auto-save",
-                });
+                if (!isRequestedAppearance(value)) return;
+                showAppearanceSaved(selectAppearance(value));
               }}
               className="grid grid-cols-3 gap-1 rounded-lg bg-secondary p-1"
             >
@@ -233,9 +381,82 @@ export function PreferencesTab() {
             </RadioGroup>
           </SettingsRow>
         </SettingsCard>
+
+        <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-h-8 flex-wrap items-center gap-1">
+            <span
+              className="text-caption text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              {t(($) => $.preferences.appearance_sync[syncMessage])}
+            </span>
+            {canRetry && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-foreground"
+                onClick={retryAppearanceSync}
+              >
+                <RefreshCw className="size-3.5 text-warning" aria-hidden="true" />
+                {t(($) => $.preferences.appearance_sync.retry)}
+              </Button>
+            )}
+            {canCopyDiagnostics && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => void handleCopyDiagnostics()}
+              >
+                <Copy className="size-3.5" aria-hidden="true" />
+                {t(($) => $.preferences.appearance_sync.copy_diagnostics)}
+              </Button>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-muted-foreground"
+            onClick={() => setResetDialogOpen(true)}
+          >
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            {t(($) => $.preferences.appearance_sync.reset)}
+          </Button>
+        </div>
+
+        <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t(($) => $.preferences.appearance_sync.reset_title)}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(($) => $.preferences.appearance_sync.reset_description)}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t(($) => $.preferences.appearance_sync.cancel)}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  const receipt = resetAppearance();
+                  setResetDialogOpen(false);
+                  showAppearanceSaved(receipt);
+                }}
+              >
+                {t(($) => $.preferences.appearance_sync.reset_confirm)}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SettingsSection>
 
-      <SettingsSection title={t(($) => $.preferences.general_title)}>
+      <SettingsSection
+        title={t(($) => $.preferences.general_title)}
+        className="max-md:pe-chat-launcher"
+      >
         <SettingsCard>
           <SettingsRow
             label={t(($) => $.preferences.language.title)}
@@ -254,7 +475,11 @@ export function PreferencesTab() {
                 aria-label={t(($) => $.preferences.language.title)}
               >
                 <SelectValue>
-                  {languageOptions.find((option) => option.value === currentLocale)?.label}
+                  {
+                    languageOptions.find(
+                      (option) => option.value === currentLocale,
+                    )?.label
+                  }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent align="end">
@@ -268,13 +493,19 @@ export function PreferencesTab() {
           </SettingsRow>
 
           <TimezoneRow />
-
-          <StickyCommentBarRow />
-
-          <IssueLinkNewTabRow />
         </SettingsCard>
       </SettingsSection>
-    </SettingsTab>
+      <SettingsSection
+        title={t(($) => $.preferences.comments_title)}
+        description={t(($) => $.preferences.device_hint)}
+        className="mt-8"
+      >
+        <SettingsCard>
+          <StickyCommentBarRow />
+          <RunningAgentReplyRow />
+        </SettingsCard>
+      </SettingsSection>
+    </>
   );
 }
 
@@ -286,15 +517,17 @@ function StickyCommentBarRow() {
   return (
     <SettingsRow
       label={t(($) => $.preferences.sticky_comment_bar.title)}
-      description={t(($) => $.preferences.sticky_comment_bar.hint)}
     >
       <Switch
         checked={sticky}
         onCheckedChange={() => {
           toggleSticky();
-          toast.success(t(($) => $.auto_save.toast_saved), {
-            id: "settings-auto-save",
-          });
+          toast.success(
+            t(($) => $.auto_save.toast_saved),
+            {
+              id: "settings-auto-save",
+            },
+          );
         }}
         aria-label={t(($) => $.preferences.sticky_comment_bar.title)}
       />
@@ -302,26 +535,52 @@ function StickyCommentBarRow() {
   );
 }
 
-function IssueLinkNewTabRow() {
+function RunningAgentReplyRow() {
   const { t } = useT("settings");
-  const openInNewTab = useIssueLinkStore((s) => s.openInNewTab);
-  const setOpenInNewTab = useIssueLinkStore((s) => s.setOpenInNewTab);
+  const value = useCommentComposerStore((s) => s.runningAgentReply);
+  const setValue = useCommentComposerStore((s) => s.setRunningAgentReply);
+  const options: { value: RunningAgentReply; label: string }[] = [
+    { value: "steer", label: t(($) => $.preferences.running_agent_reply.steer) },
+    { value: "after_run", label: t(($) => $.preferences.running_agent_reply.after_run) },
+  ];
 
   return (
     <SettingsRow
-      label={t(($) => $.preferences.issue_link_new_tab.title)}
-      description={t(($) => $.preferences.issue_link_new_tab.hint)}
+      label={t(($) => $.preferences.running_agent_reply.title)}
+      description={t(($) => $.preferences.running_agent_reply.hint)}
+      size="select"
     >
-      <Switch
-        checked={openInNewTab}
-        onCheckedChange={(checked) => {
-          setOpenInNewTab(checked === true);
-          toast.success(t(($) => $.auto_save.toast_saved), {
-            id: "settings-auto-save",
-          });
+      <Select
+        items={options}
+        value={value}
+        onValueChange={(next) => {
+          if (!next || next === value) return;
+          setValue(next as RunningAgentReply);
+          toast.success(
+            t(($) => $.auto_save.toast_saved),
+            {
+              id: "settings-auto-save",
+            },
+          );
         }}
-        aria-label={t(($) => $.preferences.issue_link_new_tab.title)}
-      />
+      >
+        <SelectTrigger
+          size="sm"
+          className="w-full"
+          aria-label={t(($) => $.preferences.running_agent_reply.title)}
+        >
+          <SelectValue>
+            {options.find((option) => option.value === value)?.label}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent align="end">
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </SettingsRow>
   );
 }
@@ -352,9 +611,12 @@ function TimezoneRow() {
     try {
       const updated = await api.updateMe({ timezone: payload });
       setUser(updated);
-      toast.success(t(($) => $.auto_save.toast_saved), {
-        id: "settings-auto-save",
-      });
+      toast.success(
+        t(($) => $.auto_save.toast_saved),
+        {
+          id: "settings-auto-save",
+        },
+      );
     } catch (err) {
       toast.error(
         err instanceof Error && err.message
@@ -398,11 +660,18 @@ function TimezoneRow() {
           <SelectValue>{formatTZLabel(value)}</SelectValue>
         </SelectTrigger>
         <SelectContent align="end" className="max-h-72">
-          <SelectItem value={BROWSER_TZ_VALUE} className="font-mono text-caption">
+          <SelectItem
+            value={BROWSER_TZ_VALUE}
+            className="font-mono text-caption"
+          >
             {formatTZLabel(BROWSER_TZ_VALUE)}
           </SelectItem>
           {options.map((timezone) => (
-            <SelectItem key={timezone} value={timezone} className="font-mono text-caption">
+            <SelectItem
+              key={timezone}
+              value={timezone}
+              className="font-mono text-caption"
+            >
               {formatTZLabel(timezone)}
             </SelectItem>
           ))}

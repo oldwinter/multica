@@ -1,0 +1,1 @@
+ALTER TABLE skill_evolution_task_dispatch_snapshot DROP CONSTRAINT IF EXISTS skill_evolution_task_dispatch_snapshot_pkey;

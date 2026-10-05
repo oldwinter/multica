@@ -1,2 +1,3 @@
 export { useT } from "./use-t";
-export { useTimeAgo } from "./use-time-ago";
+export { useLocale } from "./use-locale";
+export { useTimeAgo, useTimeUntil } from "./use-time-ago";

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/events"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -26,14 +27,10 @@ type LMWikiTxStarter interface {
 	BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
 }
 
-type LMWikiAcceptanceHook interface {
-	AfterLMWikiAccepted(ctx context.Context, queries *db.Queries, revision db.LmWikiRevision) error
-}
-
 type WikiService struct {
-	Queries    *db.Queries
-	TxStarter  LMWikiTxStarter
-	OnAccepted LMWikiAcceptanceHook
+	Queries   *db.Queries
+	TxStarter LMWikiTxStarter
+	Events    *events.Bus
 }
 
 type LMWikiRefreshResult struct {
@@ -99,7 +96,13 @@ func (s *WikiService) refreshOnce(ctx context.Context, workspaceID pgtype.UUID, 
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return LMWikiRefreshResult{}, fmt.Errorf("load latest lm wiki revision: %w", err)
 	}
-	revision, err := qtx.CreateLMWikiRevision(ctx, db.CreateLMWikiRevisionParams{WorkspaceID: workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON, TriggerKind: trigger, RequestedByID: requestedBy})
+	revision, err := qtx.CreateLMWikiRevision(ctx, db.CreateLMWikiRevisionParams{
+		WorkspaceID: workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON,
+		SourcePolicyVersion:     snapshot.Content.EgressPolicy.PolicyVersion,
+		SourcePolicyDigest:      snapshot.Content.EgressPolicy.PolicyDigest,
+		RemoteGenerationEnabled: snapshot.Content.EgressPolicy.RemoteGenerationEnabled,
+		TriggerKind:             trigger, RequestedByID: requestedBy,
+	})
 	if err != nil {
 		return LMWikiRefreshResult{}, fmt.Errorf("create lm wiki revision: %w", err)
 	}
@@ -113,6 +116,7 @@ func (s *WikiService) refreshOnce(ctx context.Context, workspaceID pgtype.UUID, 
 	if err := tx.Commit(ctx); err != nil {
 		return LMWikiRefreshResult{}, fmt.Errorf("commit lm wiki refresh: %w", err)
 	}
+	s.publishLMWikiRevisionChanged(workspaceID, requestedBy, revision)
 	return LMWikiRefreshResult{Created: true, Revision: revision}, nil
 }
 
@@ -226,19 +230,24 @@ func (s *WikiService) Review(ctx context.Context, workspaceID, revisionID, revie
 		if latestErr != nil || latest.ID != revision.ID {
 			return LMWikiRevisionDetail{}, ErrLMWikiStale
 		}
+		policy, policyErr := loadLMWikiSourcePolicyState(ctx, qtx, workspaceID)
+		if policyErr != nil {
+			return LMWikiRevisionDetail{}, policyErr
+		}
+		if revision.SourcePolicyVersion != policy.PolicyVersion ||
+			revision.SourcePolicyDigest != policy.PolicyDigest ||
+			revision.RemoteGenerationEnabled != policy.RemoteGenerationEnabled {
+			return LMWikiRevisionDetail{}, ErrLMWikiStale
+		}
 	}
 	reasonValue := pgtype.Text{String: reason, Valid: reason != ""}
 	_, err = qtx.CreateLMWikiReview(ctx, db.CreateLMWikiReviewParams{WorkspaceID: workspaceID, Decision: decision, ReviewerID: reviewerID, Reason: reasonValue, RevisionID: revisionID})
 	if err != nil {
 		return LMWikiRevisionDetail{}, fmt.Errorf("create lm wiki review: %w", err)
 	}
-	if decision == "accepted" && s.OnAccepted != nil {
-		if err := s.OnAccepted.AfterLMWikiAccepted(ctx, qtx, revision); err != nil {
-			return LMWikiRevisionDetail{}, fmt.Errorf("after lm wiki accepted: %w", err)
-		}
-	}
 	if err := tx.Commit(ctx); err != nil {
 		return LMWikiRevisionDetail{}, fmt.Errorf("commit lm wiki review: %w", err)
 	}
+	s.publishLMWikiReviewChanged(workspaceID, reviewerID, revision, decision)
 	return s.Detail(ctx, workspaceID, revisionID)
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { AtSign, Loader2, RotateCw, Send } from "lucide-react";
 import type {
   PostRoomMessageInput,
@@ -25,6 +26,7 @@ interface RoomComposerProps {
   readonly participants: readonly RoomParticipant[];
   readonly agents: readonly Agent[];
   readonly draft: RoomComposerDraft;
+  readonly showStarters: boolean;
   readonly onBodyChange: (body: string) => void;
   readonly onMentionChange: (agentId: string, selected: boolean) => void;
   readonly onPost: (input: PostRoomMessageInput) => void;
@@ -35,11 +37,13 @@ export function RoomComposer({
   participants,
   agents,
   draft,
+  showStarters,
   onBodyChange,
   onMentionChange,
   onPost,
 }: RoomComposerProps) {
   const { t } = useT("rooms");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pending = draft.status === "pending";
   const failed = draft.status === "failed";
   const isArchived = roomStatus === "archived";
@@ -54,6 +58,11 @@ export function RoomComposer({
   );
   const selectedMentionAgentIds = new Set(draft.mentionAgentIds);
   const canSubmit = draft.body.trim().length > 0 && !pending && !isArchived;
+  const starters = [
+    ["unblock", t(($) => $.composer.starters.unblock)],
+    ["plan", t(($) => $.composer.starters.plan)],
+    ["challenge", t(($) => $.composer.starters.challenge)],
+  ] as const;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -84,6 +93,35 @@ export function RoomComposer({
           <RotateCw className="size-3.5" aria-hidden="true" />
           {t(($) => $.toast.message_failed)}
         </p>
+      ) : null}
+      {showStarters && !pending && !isArchived ? (
+        <div
+          className="mx-auto mb-2 w-full max-w-3xl"
+          role="group"
+          aria-label={t(($) => $.composer.starters_label)}
+        >
+          <p className="mb-1.5 text-caption text-muted-foreground">
+            {t(($) => $.composer.starters_label)}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {starters.map(([key, text]) => (
+              <Button
+                key={key}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-auto min-h-11 justify-start whitespace-normal px-3 py-2 text-left font-normal"
+                data-testid={`room-starter-${key}`}
+                onClick={() => {
+                  onBodyChange(text);
+                  textareaRef.current?.focus();
+                }}
+              >
+                {text}
+              </Button>
+            ))}
+          </div>
+        </div>
       ) : null}
       <div className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-lg border border-input bg-page-canvas p-2 shadow-[var(--surface-shadow)] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
         <DropdownMenu>
@@ -132,6 +170,7 @@ export function RoomComposer({
           </DropdownMenuContent>
         </DropdownMenu>
         <Textarea
+          ref={textareaRef}
           value={draft.body}
           disabled={pending || isArchived}
           rows={1}

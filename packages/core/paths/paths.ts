@@ -14,6 +14,14 @@
 
 const encode = (id: string) => encodeURIComponent(id);
 
+/**
+ * `?focus=` token that scrolls the agent's Instructions tab to its
+ * conversation-starters editor and flashes it. Lives here because it is URL
+ * vocabulary: `agentConversationStarters()` writes it and the tab reads it,
+ * and a shared constant is what stops the two from drifting apart.
+ */
+export const AGENT_FOCUS_CONVERSATION_STARTERS = "conversation_starters";
+
 function workspaceScoped(slug: string) {
   const ws = `/${encode(slug)}`;
   return {
@@ -27,16 +35,40 @@ function workspaceScoped(slug: string) {
     twins: () => `${ws}/twins`,
     wiki: () => `${ws}/wiki`,
     wikiPage: (id: string) => `${ws}/wiki/${encode(id)}`,
+    wikiRevision: (revisionId: string) => `${ws}/wiki/revisions/${encode(revisionId)}`,
+    personalWiki: () => `${ws}/personal-wiki`,
+    personalWikiPage: (id: string) => `${ws}/personal-wiki/${encode(id)}`,
+    personalWikiRevision: (revisionId: string) => `${ws}/personal-wiki/revisions/${encode(revisionId)}`,
     autopilotDetail: (id: string) => `${ws}/autopilots/${encode(id)}`,
     agents: () => `${ws}/agents`,
     newAgent: () => `${ws}/agents/new`,
+    // The two creation methods behind the chooser. Each is a real route so a
+    // half-filled form survives a refresh and can be linked to directly.
+    newAgentManual: () => `${ws}/agents/new/manual`,
+    newAgentAi: () => `${ws}/agents/new/ai`,
+    // One creation conversation. It is a durable object, not a step of the
+    // route above: it survives leaving the studio and is resumed later, so it
+    // owns an address instead of being a query param on the "start one" screen.
+    newAgentAiSession: (sessionId: string) =>
+      `${ws}/agents/new/ai/${encode(sessionId)}`,
     agentDetail: (id: string) => `${ws}/agents/${encode(id)}`,
+    // Deep link behind "customize" in a chat's empty state: the agent's
+    // Instructions tab, scrolled to the conversation starters that produced
+    // the buttons the viewer just looked at.
+    agentConversationStarters: (id: string) =>
+      `${ws}/agents/${encode(id)}?view=instructions&focus=${AGENT_FOCUS_CONVERSATION_STARTERS}`,
     memberDetail: (id: string) => `${ws}/members/${encode(id)}`,
     squads: () => `${ws}/squads`,
     squadDetail: (id: string) => `${ws}/squads/${encode(id)}`,
     inbox: () => `${ws}/inbox`,
     chat: () => `${ws}/chat`,
     rooms: () => `${ws}/rooms`,
+    office: () => `${ws}/office`,
+    roomDetail: (id: string) => `${ws}/rooms?room=${encode(id)}`,
+    chatWithAgent: (agentId: string) =>
+      `${ws}/chat?agent=${encode(agentId)}`,
+    chatSession: (sessionId: string) =>
+      `${ws}/chat?session=${encode(sessionId)}`,
     myIssues: () => `${ws}/my-issues`,
     runtimes: () => `${ws}/runtimes`,
     runtimeDetail: (id: string) => `${ws}/runtimes/${encode(id)}`,
@@ -58,6 +90,9 @@ export const paths = {
   invite: (id: string) => `/invite/${encode(id)}`,
   invitations: () => "/invitations",
   onboarding: () => "/onboarding",
+  personalWiki: () => "/personal-wiki",
+  personalWikiPage: (id: string) => `/personal-wiki/${encode(id)}`,
+  personalWikiRevision: (revisionId: string) => `/personal-wiki/revisions/${encode(revisionId)}`,
   authCallback: () => "/auth/callback",
   root: () => "/",
 };
@@ -68,7 +103,7 @@ export type WorkspacePaths = ReturnType<typeof workspaceScoped>;
 // A path is global if it equals or begins with any of these.
 // Note: `/workspaces/` (trailing slash) is the prefix — `workspaces` is reserved,
 // so any path starting with `/workspaces/...` is system-owned, not user-owned.
-const GLOBAL_PREFIXES = ["/login", "/workspaces/", "/invite/", "/invitations", "/onboarding", "/auth/", "/logout", "/signup"];
+const GLOBAL_PREFIXES = ["/login", "/workspaces/", "/invite/", "/invitations", "/onboarding", "/personal-wiki", "/auth/", "/logout", "/signup"];
 
 export function isGlobalPath(path: string): boolean {
   return GLOBAL_PREFIXES.some((p) => path === p || path.startsWith(p));

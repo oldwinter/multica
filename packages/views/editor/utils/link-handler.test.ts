@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   openLink,
   parseWorkspaceEntityLink,
+  resolveInternalLinkPath,
   toInternalAppPath,
 } from "./link-handler";
 
@@ -109,6 +110,55 @@ describe("openLink", () => {
   it("leaves a path that already carries a slug alone", () => {
     openLink("/other/issues/MUL-1", "acme", APP_ORIGIN);
     expect(navigatedPaths()).toEqual(["/other/issues/MUL-1"]);
+  });
+
+  it("defaults the disposition to push and carries an explicit click intent through the event", () => {
+    openLink("/acme/issues/MUL-1", "acme", APP_ORIGIN);
+    openLink("/acme/issues/MUL-2", "acme", APP_ORIGIN, "background-tab");
+    const details = dispatched.map(
+      (e) => (e as CustomEvent<{ path: string; disposition: string }>).detail,
+    );
+    expect(details).toEqual([
+      { path: "/acme/issues/MUL-1", disposition: "push" },
+      { path: "/acme/issues/MUL-2", disposition: "background-tab" },
+    ]);
+  });
+
+  it("ignores the intent for an external URL — it always hands off to the browser", () => {
+    openLink("https://github.com/a/b", "acme", APP_ORIGIN, "foreground-tab");
+    expect(dispatched).toHaveLength(0);
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://github.com/a/b",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+});
+
+describe("resolveInternalLinkPath", () => {
+  it("canonicalizes slugless links for browser-owned tab gestures", () => {
+    expect(resolveInternalLinkPath("/issues/MUL-1", "acme", APP_ORIGIN)).toBe(
+      "/acme/issues/MUL-1",
+    );
+    expect(
+      resolveInternalLinkPath(
+        `${APP_ORIGIN}/other/wiki/revisions/revision-1`,
+        "acme",
+        APP_ORIGIN,
+      ),
+    ).toBe("/other/wiki/revisions/revision-1");
+  });
+
+  it("recognizes a slugless Office route as an internal workspace page", () => {
+    expect(resolveInternalLinkPath("/office", "acme", APP_ORIGIN)).toBe(
+      "/acme/office",
+    );
+  });
+
+  it("rejects protocol-relative links as internal paths", () => {
+    expect(
+      resolveInternalLinkPath("//evil.example/issues/MUL-1", "acme", APP_ORIGIN),
+    ).toBeNull();
   });
 });
 

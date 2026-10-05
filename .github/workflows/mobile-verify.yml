@@ -16,6 +16,8 @@ name: Mobile Verify
 # Mobile's vitest suite is intentionally narrow (Node env, pure-function
 # tests under apps/mobile/lib/*.test.ts — see apps/mobile/vitest.config.ts).
 # RN component-level rendering is not exercised here.
+# Repository-wide radius checks run once in CI: frontend-build owns them when
+# selected, otherwise frontend-quality handles docs/mobile-only changes.
 
 on:
   push:
@@ -28,6 +30,8 @@ on:
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/mobile-verify.yml"
+      - ".github/workflows/downstream-features.yml"
+      - "scripts/test-downstream-feature.sh"
   pull_request:
     branches: [main]
     paths:
@@ -38,6 +42,8 @@ on:
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/mobile-verify.yml"
+      - ".github/workflows/downstream-features.yml"
+      - "scripts/test-downstream-feature.sh"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -45,7 +51,8 @@ concurrency:
 
 jobs:
   mobile:
-    runs-on: ubuntu-latest
+    # External fork PRs must not execute arbitrary code on the persistent host.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -56,7 +63,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
 
       - name: Install dependencies

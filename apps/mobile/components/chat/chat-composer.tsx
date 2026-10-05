@@ -29,11 +29,11 @@
 import { useCallback } from "react";
 import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { MessageComposer } from "@/components/composer/message-composer";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   /** Current draft text (controlled). Empty string = no draft. */
@@ -49,6 +49,8 @@ interface Props {
   /** True while an agent task is running for the active session. The
    *  composer swaps Send for Stop. */
   sending: boolean;
+  /** Queued tasks remain busy, but do not expose Stop without draft restore. */
+  allowStop?: boolean;
   /** Hard-disable typing + send. Used when there's no usable agent in the
    *  workspace or the session is archived (legacy). */
   disabled?: boolean;
@@ -64,10 +66,12 @@ export function ChatComposer({
   onSend,
   onStop,
   sending,
+  allowStop = true,
   disabled = false,
   disabledReason,
 }: Props) {
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
+  const { t } = useT("chat");
 
   const onSubmit = useCallback(
     async ({
@@ -100,19 +104,19 @@ export function ChatComposer({
         pathname: "/[workspace]/mention-picker",
         params: { workspace: wsSlug ?? "", mode: "chat" },
       }}
-      placeholder={sending ? "Agent is working…" : "Message…"}
+      placeholder={sending ? t("composer.working") : t("composer.message")}
       pillLabel={
         sending
-          ? "Agent is working…"
+          ? t("composer.working")
           : disabled
-            ? (disabledReason ?? "Chat unavailable")
-            : "Message…"
+            ? (disabledReason ?? t("composer.unavailable"))
+            : t("composer.message")
       }
       pillIcon="chatbubble-ellipses-outline"
       disabled={disabled}
       disabledReason={disabledReason}
       isSending={sending}
-      renderStop={() => <StopButton onPress={handleStop} />}
+      renderStop={allowStop ? () => <StopButton onPress={handleStop} /> : undefined}
       manageKeyboard={false}
     />
   );
@@ -120,6 +124,7 @@ export function ChatComposer({
 
 function StopButton({ onPress }: { onPress: () => void }) {
   const { theme } = useColorScheme();
+  const { t } = useT("chat");
   return (
     <Animated.View
       key="stop"
@@ -131,7 +136,7 @@ function StopButton({ onPress }: { onPress: () => void }) {
         className="h-8 w-8 items-center justify-center rounded-full bg-foreground active:opacity-80"
         hitSlop={12}
         accessibilityRole="button"
-        accessibilityLabel="Stop agent"
+        accessibilityLabel={t("composer.stop_agent")}
       >
         <View
           style={{

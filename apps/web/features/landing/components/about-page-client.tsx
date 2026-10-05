@@ -4,11 +4,13 @@ import Link from "next/link";
 import { LandingHeader } from "./landing-header";
 import { LandingFooter } from "./landing-footer";
 import { GitHubMark, githubUrl } from "./shared";
+import { InlineLinks } from "./inline-links";
 import { useLocale } from "../i18n";
 
 export function AboutPageClient() {
   const { t } = useLocale();
   const n = t.about.nameLine;
+  const team = t.about.team;
 
   return (
     <>
@@ -22,9 +24,9 @@ export function AboutPageClient() {
             <p>
               {n.prefix}
               <strong className="font-semibold text-foreground">
-                {n.mul}
+                {n.mult}
               </strong>
-              {n.tiplexed}
+              {n.iplexed}
               <strong className="font-semibold text-foreground">
                 {n.i}
               </strong>
@@ -48,12 +50,48 @@ export function AboutPageClient() {
               href={githubUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2.5 rounded-[12px] bg-[var(--landing-night)] px-5 py-3 text-body font-semibold text-white transition-colors hover:bg-[var(--landing-night-hover)]"
+              className="inline-flex items-center gap-2.5 rounded-(--landing-radius-action) bg-[var(--landing-night)] px-5 py-3 text-body font-semibold text-white transition-colors hover:bg-[var(--landing-night-hover)]"
             >
               <GitHubMark className="size-4" />
               {t.about.cta}
             </Link>
           </div>
+
+          <section className="mt-16 border-t border-border pt-12 sm:mt-20 sm:pt-16">
+            <h2 className="landing-serif text-[2rem] leading-[1.1] tracking-[-0.02em] sm:text-[2.4rem]">
+              {team.title}
+            </h2>
+            <div className="mt-6 space-y-6 text-body-lg leading-[1.8] text-muted-foreground sm:text-title-sm">
+              {team.paragraphs.map((p, i) => (
+                <p key={i}>
+                  <InlineLinks text={p} />
+                </p>
+              ))}
+            </div>
+            <dl className="mt-10 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2">
+              {team.contacts.map((contact) => {
+                const external = contact.href.startsWith("http");
+                return (
+                  <div key={contact.label} className="bg-surface p-6">
+                    <dt className="text-caption font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      {contact.label}
+                    </dt>
+                    <dd className="mt-2">
+                      <Link
+                        href={contact.href}
+                        {...(external
+                          ? { target: "_blank", rel: "noreferrer" }
+                          : {})}
+                        className="text-body-lg font-semibold text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground"
+                      >
+                        {contact.linkLabel}
+                      </Link>
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </section>
         </div>
       </main>
       <LandingFooter />

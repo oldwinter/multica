@@ -12,6 +12,8 @@ interface StaticImageAsset {
   blurDataURL?: string;
 }
 
+declare module "*.css";
+
 declare module "*.png" {
   const src: string | StaticImageAsset;
   export default src;

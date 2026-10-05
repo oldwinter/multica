@@ -13,6 +13,7 @@
  *   3. X-Request-ID per request + structured logger (debug + tracing)
  *   4. Bearer auth + X-Workspace-Slug — NOT cookie auth (no CSRF, no credentials)
  */
+import { Platform } from "react-native";
 import type {
   Agent,
   AgentTask,
@@ -26,6 +27,7 @@ import type {
   CreateProjectRequest,
   CreateProjectResourceRequest,
   InboxItem,
+  InboxWorkspaceUnread,
   Issue,
   IssueLabelsResponse,
   Label,
@@ -45,6 +47,7 @@ import type {
   RuntimeDevice,
   SearchIssuesResponse,
   SearchProjectsResponse,
+  ListIssueStatusesResponse,
   SendChatMessageResponse,
   Squad,
   NotificationPreferenceResponse,
@@ -56,13 +59,25 @@ import type {
   UpdateProjectRequest,
   User,
   Workspace,
+  WorkspaceSubscriptionSummary,
 } from "@multica/core/types";
 import {
+  AppConfigSchema,
+  EMPTY_APP_CONFIG,
+  EMPTY_REFRESH_SESSION_RESPONSE,
+  RefreshSessionResponseSchema,
+  EMPTY_LIST_ISSUE_STATUSES_RESPONSE,
   EMPTY_LIST_ISSUES_RESPONSE,
   EMPTY_TIMELINE_ENTRIES,
   IssueSchema,
   ListIssuesResponseSchema,
+  ListIssueStatusesResponseSchema,
   TimelineEntriesSchema,
+  WorkspaceSubscriptionSummarySchema,
+} from "@multica/core/api/schemas";
+import type {
+  AppConfigResponse,
+  RefreshSessionResponse,
 } from "@multica/core/api/schemas";
 import {
   ActiveTasksResponseSchema,
@@ -84,6 +99,7 @@ import {
   EMPTY_CHAT_SESSION_LIST,
   EMPTY_COMMENT,
   EMPTY_INBOX_LIST,
+  EMPTY_INBOX_UNREAD_SUMMARY,
   EMPTY_ISSUE_FALLBACK,
   EMPTY_LIST_LABELS_RESPONSE,
   EMPTY_LIST_PROJECT_RESOURCES_RESPONSE,
@@ -99,6 +115,7 @@ import {
   EMPTY_USER,
   EMPTY_WORKSPACE_LIST,
   InboxListSchema,
+  InboxUnreadSummarySchema,
   NotificationPreferenceResponseSchema,
   ListLabelsResponseSchema,
   ListProjectResourcesResponseSchema,
@@ -118,16 +135,88 @@ import {
   WorkspaceListSchema,
 } from "./schemas";
 import type { ZodType } from "zod";
+import type {
+  PostRoomMessageInput,
+  PromoteRoomRecommendationInput,
+  ReviewRoomSynthesisInput,
+  Room,
+  RoomArtifact,
+  RoomDetail,
+  RoomMessageResult,
+  RoomPreflight,
+  RoomRecommendationReview,
+  RoomRetrySynthesisResult,
+  RoomUsage,
+  RoomWakeResult,
+} from "./rooms-types";
+import {
+  EMPTY_ROOM,
+  EMPTY_ROOM_ARTIFACT,
+  EMPTY_ROOM_DETAIL,
+  EMPTY_ROOM_LIST,
+  EMPTY_ROOM_MESSAGE_RESULT,
+  EMPTY_ROOM_PREFLIGHT,
+  EMPTY_ROOM_RETRY_SYNTHESIS_RESULT,
+  EMPTY_ROOM_USAGE,
+  EMPTY_ROOM_WAKE_RESULT,
+  RecommendationReviewResponseSchema,
+  RoomArtifactSchema,
+  RoomDetailSchema,
+  RoomListSchema,
+  RoomMessageResultSchema,
+  RoomPreflightSchema,
+  RoomRetrySynthesisResultSchema,
+  RoomSchema,
+  RoomUsageSchema,
+  RoomWakeResultSchema,
+} from "./rooms-schema";
 import { getCurrentSlug } from "./workspace-store";
 import { parseWithFallback } from "@/lib/parse-response";
 import { createRequestId } from "@/lib/request-id";
+import { buildCommentUpdateBody } from "./revision";
+import {
+  EMPTY_WIKI_PAGE,
+  EMPTY_WIKI_PAGE_SUMMARIES,
+  EMPTY_WIKI_PROPOSAL,
+  EMPTY_WIKI_PROPOSALS,
+  EMPTY_WIKI_REVISIONS,
+  EMPTY_LM_WIKI_SOURCE_POLICY,
+  EMPTY_WIKI_KNOWLEDGE_READINESS,
+  LMWikiSourcePolicySchema,
+  WikiKnowledgeReadinessSchema,
+  WikiPageSchema,
+  WikiPageSummaryListSchema,
+  WikiProposalListSchema,
+  WikiProposalSchema,
+  WikiRevisionListSchema,
+  type CreateWikiPageInput,
+  type CreateWikiProposalInput,
+  type ListWikiPagesParams,
+  type LMWikiSourcePolicy,
+  type PinWikiRevisionAsLMWikiEvidenceInput,
+  type AcceptWikiProposalInput,
+  type RejectWikiProposalInput,
+  type UpdateWikiPageInput,
+  type WikiPage,
+  type WikiPageSummary,
+  type WikiProposal,
+  type WikiRevision,
+  type WikiKnowledgeReadiness,
+  buildAcceptWikiProposalBody,
+  buildCreateWikiPageBody,
+  buildCreateWikiProposalBody,
+  buildRejectWikiProposalBody,
+  buildPinWikiRevisionBody,
+  buildUpdateWikiPageBody,
+} from "./wiki-schema";
+import type { AppearanceUpdateRequest } from "@/lib/appearance-sync";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 if (!API_URL) {
   throw new Error(
-    "EXPO_PUBLIC_API_URL is not set. Add it to apps/mobile/.env.development.local " +
-      "(see apps/mobile/.env.staging for an example).",
+    "EXPO_PUBLIC_API_URL is not set. Add it to the apps/mobile env file for " +
+      "the variant you are running (see apps/mobile/README.md).",
   );
 }
 
@@ -185,6 +274,13 @@ class ApiClient {
     this.token = token;
   }
 
+  /** The bearer token in use, or null when signed out. Session renewal reads
+   *  it to confirm the session it started from is still the live one, and the
+   *  WS client reads it so a reconnect uses the current credential. */
+  getToken(): string | null {
+    return this.token;
+  }
+
   setOptions(options: ApiClientOptions) {
     this.options = { ...this.options, ...options };
   }
@@ -200,7 +296,7 @@ class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-Client-Platform": "mobile",
-      "X-Client-OS": "ios",
+      "X-Client-OS": Platform.OS,
       "X-Client-Version": "0.1.0",
       "X-Request-ID": rid,
       ...((init.headers as Record<string, string>) ?? {}),
@@ -376,6 +472,21 @@ class ApiClient {
     });
   }
 
+  /**
+   * Ask the server to extend this session if it has entered its renewal
+   * window (MUL-7436). The server owns that decision — the app never reads
+   * `exp`, so a device with a skewed clock behaves exactly like one without.
+   */
+  async refreshSession(): Promise<RefreshSessionResponse> {
+    return this.fetchValidatedWith(
+      "/api/auth/refresh",
+      RefreshSessionResponseSchema,
+      EMPTY_REFRESH_SESSION_RESPONSE,
+      { method: "POST" },
+      { endpoint: "refreshSession" },
+    );
+  }
+
   async getMe(opts?: { signal?: AbortSignal }): Promise<User> {
     return this.fetchValidated(
       "/api/me",
@@ -385,15 +496,67 @@ class ApiClient {
     );
   }
 
+  async getConfig(opts?: { signal?: AbortSignal }): Promise<AppConfigResponse> {
+    return this.fetchValidated<AppConfigResponse>(
+      "/api/config",
+      AppConfigSchema,
+      EMPTY_APP_CONFIG,
+      { ...opts, endpoint: "getConfig" },
+    );
+  }
+
+  async getWorkspaceSubscriptionSummary(opts?: {
+    signal?: AbortSignal;
+  }): Promise<WorkspaceSubscriptionSummary | null> {
+    return this.fetchValidated<WorkspaceSubscriptionSummary | null>(
+      "/api/cloud-subscriptions/summary",
+      WorkspaceSubscriptionSummarySchema,
+      null,
+      { ...opts, endpoint: "getWorkspaceSubscriptionSummary" },
+    );
+  }
+
   // PATCH /api/me — name, avatar_url, language. Server returns the updated
   // user; we parse so a partial drift doesn't bleed into the auth store.
   async updateMe(data: UpdateMeRequest): Promise<User> {
+    const { appearanceUpdatedAt, appearanceTokenVersion, ...fields } = data;
     return this.fetchValidatedWith(
       "/api/me",
       UserSchema,
       EMPTY_USER,
-      { method: "PATCH", body: JSON.stringify(data) },
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...fields,
+          ...(appearanceUpdatedAt === undefined
+            ? {}
+            : { appearance_updated_at: appearanceUpdatedAt }),
+          ...(appearanceTokenVersion === undefined
+            ? {}
+            : { appearance_token_version: appearanceTokenVersion }),
+        }),
+      },
       { endpoint: "updateMe" },
+    );
+  }
+
+  async updateAppearancePreferences(
+    data: AppearanceUpdateRequest,
+  ): Promise<User> {
+    return this.fetchValidatedWith(
+      "/api/me",
+      UserSchema,
+      EMPTY_USER,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          skin: data.skin,
+          appearance: data.appearance,
+          appearance_updated_at: data.appearanceUpdatedAt,
+          appearance_token_version: data.appearanceTokenVersion,
+        }),
+      },
+      { endpoint: "updateAppearancePreferences" },
     );
   }
 
@@ -448,6 +611,25 @@ class ApiClient {
     return parseWithFallback(raw, InboxListSchema, EMPTY_INBOX_LIST, {
       endpoint: "listInbox",
     });
+  }
+
+  /**
+   * Cross-workspace unread inbox counts, one entry per workspace with unread
+   * items. Backs the inbox tab badge — see lib/unread-counts.ts for why the
+   * badge reads this instead of counting `listInbox()` locally.
+   */
+  async getInboxUnreadSummary(opts?: {
+    signal?: AbortSignal;
+  }): Promise<InboxWorkspaceUnread[]> {
+    const raw = await this.fetch<unknown>("/api/inbox/unread-summary", {
+      signal: opts?.signal,
+    });
+    return parseWithFallback(
+      raw,
+      InboxUnreadSummarySchema,
+      EMPTY_INBOX_UNREAD_SUMMARY,
+      { endpoint: "getInboxUnreadSummary" },
+    );
   }
 
   async markInboxRead(id: string): Promise<InboxItem> {
@@ -718,6 +900,7 @@ class ApiClient {
     commentId: string,
     content: string,
     attachmentIds?: string[],
+    contentBase?: string,
   ): Promise<Comment> {
     return this.fetchValidatedWith(
       `/api/comments/${commentId}`,
@@ -725,19 +908,28 @@ class ApiClient {
       EMPTY_COMMENT,
       {
         method: "PUT",
-        body: JSON.stringify({
-          content,
-          ...(attachmentIds ? { attachment_ids: attachmentIds } : {}),
-        }),
+        body: JSON.stringify(
+          buildCommentUpdateBody(content, attachmentIds, contentBase),
+        ),
       },
       { endpoint: "updateComment" },
     );
   }
 
   // DELETE /api/comments/:id — 204 No Content on success; this.fetch
-  // already short-circuits 204 → undefined.
-  async deleteComment(commentId: string): Promise<void> {
-    await this.fetch<void>(`/api/comments/${commentId}`, { method: "DELETE" });
+  // already short-circuits 204 → undefined. `keepReplies` calls the route
+  // only servers that keep a deleted comment's replies expose (#8296): if the
+  // request reaches an older server it fails instead of deleting the replies
+  // too. Pass it only when the server declared
+  // `comment_delete_keep_replies_supported`. Mirrors packages/core/api/client.ts.
+  async deleteComment(
+    commentId: string,
+    opts: { keepReplies?: boolean } = {},
+  ): Promise<void> {
+    const path = opts.keepReplies === true
+      ? `/api/comments/${commentId}/keep-replies`
+      : `/api/comments/${commentId}`;
+    await this.fetch<void>(path, { method: "DELETE" });
   }
 
   // POST /api/comments/:id/resolve — marks the thread root resolved; only
@@ -866,6 +1058,205 @@ class ApiClient {
     );
   }
 
+  // --- Issue status catalog (MUL-6243) ---
+  /**
+   * The workspace's issue statuses — the 7 built-ins plus any custom ones an
+   * admin defined. Reads are open to every workspace member; the catalog
+   * mutations are owner/admin only and live on web's settings screen, which is
+   * why mobile ships the read alone.
+   *
+   * `include_archived` is on by design. Archiving retires a status from FUTURE
+   * assignment but leaves the issues already on it, and those issues must keep
+   * their real name, colour and category — dropping archived rows here would
+   * degrade them to a raw key with a guessed category. Pickers filter them out
+   * via `IssueStatusCatalog.activeStatuses` instead.
+   */
+  async listIssueStatuses(
+    includeArchived = false,
+    opts?: { signal?: AbortSignal },
+  ): Promise<ListIssueStatusesResponse> {
+    const query = includeArchived ? "?include_archived=true" : "";
+    return this.fetchValidated(
+      `/api/issue-statuses${query}`,
+      ListIssueStatusesResponseSchema,
+      EMPTY_LIST_ISSUE_STATUSES_RESPONSE,
+      { ...opts, endpoint: "GET /api/issue-statuses" },
+    );
+  }
+
+  // --- Rooms ---
+  async listRooms(opts?: { signal?: AbortSignal }): Promise<readonly Room[]> {
+    return this.fetchValidated(
+      "/api/rooms",
+      RoomListSchema,
+      EMPTY_ROOM_LIST,
+      { ...opts, endpoint: "GET /api/rooms" },
+    );
+  }
+
+  async getRoom(
+    roomId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<RoomDetail> {
+    return this.fetchValidated(
+      `/api/rooms/${roomId}`,
+      RoomDetailSchema,
+      EMPTY_ROOM_DETAIL,
+      { ...opts, endpoint: "GET /api/rooms/:id" },
+    );
+  }
+
+  async getRoomPreflight(
+    roomId: string,
+    opts?: { signal?: AbortSignal; source?: "manual" | "schedule" },
+  ): Promise<RoomPreflight> {
+    const source = opts?.source ?? "manual";
+    return this.fetchValidated(
+      `/api/rooms/${roomId}/preflight?source=${source}`,
+      RoomPreflightSchema,
+      EMPTY_ROOM_PREFLIGHT,
+      { ...opts, endpoint: "GET /api/rooms/:id/preflight" },
+    );
+  }
+
+  async getRoomUsage(
+    roomId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<RoomUsage> {
+    return this.fetchValidated(
+      `/api/rooms/${roomId}/usage`,
+      RoomUsageSchema,
+      EMPTY_ROOM_USAGE,
+      { ...opts, endpoint: "GET /api/rooms/:id/usage" },
+    );
+  }
+
+  async postRoomMessage(
+    roomId: string,
+    input: PostRoomMessageInput,
+  ): Promise<RoomMessageResult> {
+    return this.fetchValidatedWith(
+      `/api/rooms/${roomId}/messages`,
+      RoomMessageResultSchema,
+      EMPTY_ROOM_MESSAGE_RESULT,
+      { method: "POST", body: JSON.stringify(input) },
+      { endpoint: "POST /api/rooms/:id/messages" },
+    );
+  }
+
+  async wakeRoom(roomId: string, idempotencyKey: string): Promise<RoomWakeResult> {
+    return this.fetchValidatedWith(
+      `/api/rooms/${roomId}/wake`,
+      RoomWakeResultSchema,
+      EMPTY_ROOM_WAKE_RESULT,
+      {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: idempotencyKey }),
+      },
+      { endpoint: "POST /api/rooms/:id/wake" },
+    );
+  }
+
+  async setRoomStatus(
+    roomId: string,
+    status: "active" | "paused" | "archived",
+  ): Promise<Room> {
+    return this.fetchValidatedWith(
+      `/api/rooms/${roomId}/status`,
+      RoomSchema,
+      EMPTY_ROOM,
+      { method: "PUT", body: JSON.stringify({ status }) },
+      { endpoint: "PUT /api/rooms/:id/status" },
+    );
+  }
+
+  async retryRoomSynthesis(
+    roomId: string,
+    cycleId: string,
+    idempotencyKey: string,
+  ): Promise<RoomRetrySynthesisResult> {
+    return this.fetchValidatedWith(
+      `/api/rooms/${roomId}/cycles/${cycleId}/synthesis/retry`,
+      RoomRetrySynthesisResultSchema,
+      EMPTY_ROOM_RETRY_SYNTHESIS_RESULT,
+      {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: idempotencyKey }),
+      },
+      { endpoint: "POST /api/rooms/:id/cycles/:cycleId/synthesis/retry" },
+    );
+  }
+
+  async reviewRoomSynthesis(
+    roomId: string,
+    cycleId: string,
+    input: ReviewRoomSynthesisInput,
+  ): Promise<void> {
+    await this.fetch<unknown>(
+      `/api/rooms/${roomId}/cycles/${cycleId}/review`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  }
+
+  async cancelRoomCycle(
+    roomId: string,
+    cycleId: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    await this.fetch<unknown>(`/api/rooms/${roomId}/cycles/${cycleId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ idempotency_key: idempotencyKey }),
+    });
+  }
+
+  async promoteRoomRecommendation(
+    roomId: string,
+    input: PromoteRoomRecommendationInput,
+  ): Promise<RoomArtifact> {
+    return this.fetchValidatedWith(
+      `/api/rooms/${roomId}/promotions`,
+      RoomArtifactSchema,
+      EMPTY_ROOM_ARTIFACT,
+      { method: "POST", body: JSON.stringify(input) },
+      { endpoint: "POST /api/rooms/:id/promotions" },
+    );
+  }
+
+  async rejectRoomRecommendation(
+    roomId: string,
+    memoryRevisionId: string,
+    recommendationKey: string,
+    idempotencyKey: string,
+  ): Promise<RoomRecommendationReview> {
+    const result = await this.fetchValidatedWith(
+      `/api/rooms/${roomId}/memory-revisions/${memoryRevisionId}/recommendations/${recommendationKey}/review`,
+      RecommendationReviewResponseSchema,
+      {
+        recommendation_review: {
+          id: "",
+          memory_revision_id: memoryRevisionId,
+          recommendation_key: recommendationKey,
+          status: "unknown" as const,
+          reviewed_by_user_id: null,
+          artifact_id: null,
+          reviewed_at: "",
+        },
+      },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          action: "reject",
+          idempotency_key: idempotencyKey,
+        }),
+      },
+      {
+        endpoint:
+          "POST /api/rooms/:id/memory-revisions/:revisionId/recommendations/:key/review",
+      },
+    );
+    return result.recommendation_review;
+  }
+
   // --- Projects ---
   async listProjects(opts?: {
     signal?: AbortSignal;
@@ -942,6 +1333,195 @@ class ApiClient {
 
   async deleteProject(id: string): Promise<void> {
     await this.fetch<void>(`/api/projects/${id}`, { method: "DELETE" });
+  }
+
+  // --- Workspace Wiki ---
+  async listWikiPages(
+    params: ListWikiPagesParams,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiPageSummary[]> {
+    const search = new URLSearchParams({ scope: params.scope });
+    if (params.projectId) search.set("project_id", params.projectId);
+    return this.fetchValidated(
+      `/api/wiki/pages?${search.toString()}`,
+      WikiPageSummaryListSchema,
+      EMPTY_WIKI_PAGE_SUMMARIES,
+      { ...opts, endpoint: "GET /api/wiki/pages" },
+    );
+  }
+
+  async searchWikiPages(
+    query: string,
+    params: ListWikiPagesParams,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiPageSummary[]> {
+    const search = new URLSearchParams({ q: query, scope: params.scope });
+    if (params.projectId) search.set("project_id", params.projectId);
+    return this.fetchValidated(
+      `/api/wiki/search?${search.toString()}`,
+      WikiPageSummaryListSchema,
+      EMPTY_WIKI_PAGE_SUMMARIES,
+      { ...opts, endpoint: "GET /api/wiki/search" },
+    );
+  }
+
+  async getWikiPage(
+    id: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiPage> {
+    return this.fetchValidated(
+      `/api/wiki/pages/${encodeURIComponent(id)}`,
+      WikiPageSchema,
+      EMPTY_WIKI_PAGE,
+      { ...opts, endpoint: "GET /api/wiki/pages/:id" },
+    );
+  }
+
+  async getWikiKnowledgeReadiness(
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiKnowledgeReadiness> {
+    return this.fetchValidated(
+      "/api/wiki/knowledge-readiness",
+      WikiKnowledgeReadinessSchema,
+      EMPTY_WIKI_KNOWLEDGE_READINESS,
+      { ...opts, endpoint: "GET /api/wiki/knowledge-readiness" },
+    );
+  }
+
+  async pinWikiRevisionAsLMWikiEvidence(
+    input: PinWikiRevisionAsLMWikiEvidenceInput,
+  ): Promise<LMWikiSourcePolicy> {
+    return this.fetchValidatedWith(
+      `/api/lm-wiki/source-policy/wiki-pages/${encodeURIComponent(input.pageId)}/revisions/${encodeURIComponent(input.revisionId)}`,
+      LMWikiSourcePolicySchema,
+      EMPTY_LM_WIKI_SOURCE_POLICY,
+      {
+        method: "PUT",
+        body: JSON.stringify(buildPinWikiRevisionBody(input)),
+      },
+      { endpoint: "PUT /api/lm-wiki/source-policy/wiki-pages/:pageId/revisions/:revisionId" },
+    );
+  }
+
+  async createWikiPage(body: CreateWikiPageInput): Promise<WikiPage> {
+    return this.fetchValidatedWith(
+      "/api/wiki/pages",
+      WikiPageSchema,
+      EMPTY_WIKI_PAGE,
+      { method: "POST", body: JSON.stringify(buildCreateWikiPageBody(body)) },
+      { endpoint: "POST /api/wiki/pages" },
+    );
+  }
+
+  async updateWikiPage(
+    id: string,
+    body: UpdateWikiPageInput,
+  ): Promise<WikiPage> {
+    return this.fetchValidatedWith(
+      `/api/wiki/pages/${encodeURIComponent(id)}`,
+      WikiPageSchema,
+      EMPTY_WIKI_PAGE,
+      { method: "PUT", body: JSON.stringify(buildUpdateWikiPageBody(body)) },
+      { endpoint: "PUT /api/wiki/pages/:id" },
+    );
+  }
+
+  async deleteWikiPage(id: string): Promise<void> {
+    await this.fetch<void>(`/api/wiki/pages/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  async listWikiPageRevisions(
+    id: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiRevision[]> {
+    return this.fetchValidated(
+      `/api/wiki/pages/${encodeURIComponent(id)}/revisions`,
+      WikiRevisionListSchema,
+      EMPTY_WIKI_REVISIONS,
+      { ...opts, endpoint: "GET /api/wiki/pages/:id/revisions" },
+    );
+  }
+
+  async restoreWikiPageRevision(
+    pageId: string,
+    revisionId: string,
+    expectedRevisionNumber: number,
+  ): Promise<WikiPage> {
+    return this.fetchValidatedWith(
+      `/api/wiki/pages/${encodeURIComponent(pageId)}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      WikiPageSchema,
+      EMPTY_WIKI_PAGE,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expected_revision_number: expectedRevisionNumber,
+        }),
+      },
+      { endpoint: "POST /api/wiki/pages/:id/revisions/:revisionId/restore" },
+    );
+  }
+
+  async listWikiPageProposals(
+    id: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WikiProposal[]> {
+    return this.fetchValidated(
+      `/api/wiki/pages/${encodeURIComponent(id)}/proposals`,
+      WikiProposalListSchema,
+      EMPTY_WIKI_PROPOSALS,
+      { ...opts, endpoint: "GET /api/wiki/pages/:id/proposals" },
+    );
+  }
+
+  async createWikiPageProposal(
+    pageId: string,
+    body: CreateWikiProposalInput,
+  ): Promise<WikiProposal> {
+    return this.fetchValidatedWith(
+      `/api/wiki/pages/${encodeURIComponent(pageId)}/proposals`,
+      WikiProposalSchema,
+      EMPTY_WIKI_PROPOSAL,
+      {
+        method: "POST",
+        body: JSON.stringify(buildCreateWikiProposalBody(body)),
+      },
+      { endpoint: "POST /api/wiki/pages/:id/proposals" },
+    );
+  }
+
+  async acceptWikiPageProposal(
+    pageId: string,
+    proposalId: string,
+    body: AcceptWikiProposalInput,
+  ): Promise<WikiPage> {
+    const path = `/api/wiki/pages/${encodeURIComponent(pageId)}/proposals/${encodeURIComponent(proposalId)}/accept`;
+    return this.fetchValidatedWith(
+      path,
+      WikiPageSchema,
+      EMPTY_WIKI_PAGE,
+      { method: "POST", body: JSON.stringify(buildAcceptWikiProposalBody(body)) },
+      { endpoint: "POST /api/wiki/pages/:id/proposals/:proposalId/accept" },
+    );
+  }
+
+  async rejectWikiPageProposal(
+    pageId: string,
+    proposalId: string,
+    body: RejectWikiProposalInput,
+  ): Promise<WikiProposal> {
+    const path = `/api/wiki/pages/${encodeURIComponent(pageId)}/proposals/${encodeURIComponent(proposalId)}/reject`;
+    return this.fetchValidatedWith(
+      path,
+      WikiProposalSchema,
+      EMPTY_WIKI_PROPOSAL,
+      {
+        method: "POST",
+        body: JSON.stringify(buildRejectWikiProposalBody(body)),
+      },
+      { endpoint: "POST /api/wiki/pages/:id/proposals/:proposalId/reject" },
+    );
   }
 
   // --- Project resources ---
@@ -1202,7 +1782,7 @@ class ApiClient {
     const headers: Record<string, string> = {
       // No Content-Type — let fetch set the multipart boundary.
       "X-Client-Platform": "mobile",
-      "X-Client-OS": "ios",
+      "X-Client-OS": Platform.OS,
       "X-Client-Version": "0.1.0",
       "X-Request-ID": rid,
     };

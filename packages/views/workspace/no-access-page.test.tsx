@@ -4,10 +4,11 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
 import enWorkspace from "../locales/en/workspace.json";
+import enWiki from "../locales/en/wiki.json";
 import { NoAccessPage } from "./no-access-page";
 
 const TEST_RESOURCES = {
-  en: { common: enCommon, workspace: enWorkspace },
+  en: { common: enCommon, workspace: enWorkspace, wiki: enWiki },
 };
 
 const navigate = vi.fn();
@@ -70,6 +71,12 @@ describe("NoAccessPage", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /go to my workspaces/i }));
     expect(navigate).toHaveBeenCalledWith("/valid-team/issues");
+  });
+
+  it("keeps Personal Wiki reachable when no workspace resolves", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Personal Wiki" }));
+    expect(navigate).toHaveBeenCalledWith("/personal-wiki");
   });
 
   it("clears last_workspace_slug cookie on mount so the proxy stops looping us back", () => {

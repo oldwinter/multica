@@ -2,8 +2,10 @@ export type NotificationGroupKey =
   | "assignments"
   | "status_changes"
   | "comments"
+  | "mentions"
   | "updates"
   | "agent_activity"
+	| "rooms"
   | "system_notifications";
 
 export type NotificationGroupValue = "all" | "muted";

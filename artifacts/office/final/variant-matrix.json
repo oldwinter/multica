@@ -1,0 +1,119 @@
+{
+  "sourceHead": "6225a4ec3e9cb532a90ae8e3ac3cf49d27969c36",
+  "variants": [
+    {
+      "id": "tension-light-1024x768",
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "root": {
+        "className": "antialiased font-sans h-full __variable_e798ec __variable_c29908 __variable_139bc5 light",
+        "skin": "tension",
+        "colorScheme": "light",
+        "lang": "en"
+      },
+      "captures": [
+        {
+          "world": "studio",
+          "path": "artifacts/office/final/tension-light-1024x768-studio.png",
+          "canvasBox": {
+            "x": 8,
+            "y": 52,
+            "width": 708,
+            "height": 708
+          },
+          "selected": "true"
+        },
+        {
+          "world": "expedition",
+          "path": "artifacts/office/final/tension-light-1024x768-expedition.png",
+          "canvasBox": {
+            "x": 8,
+            "y": 52,
+            "width": 708,
+            "height": 708
+          },
+          "selected": "true"
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "relay-dark-1440x900",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "root": {
+        "className": "antialiased font-sans h-full __variable_e798ec __variable_c29908 __variable_139bc5 dark",
+        "skin": "relay",
+        "colorScheme": "dark",
+        "lang": "en"
+      },
+      "captures": [
+        {
+          "world": "studio",
+          "path": "artifacts/office/final/relay-dark-1440x900-studio.png",
+          "canvasBox": {
+            "x": 256,
+            "y": 52,
+            "width": 876,
+            "height": 840
+          },
+          "selected": "true"
+        },
+        {
+          "world": "expedition",
+          "path": "artifacts/office/final/relay-dark-1440x900-expedition.png",
+          "canvasBox": {
+            "x": 256,
+            "y": 52,
+            "width": 876,
+            "height": 840
+          },
+          "selected": "true"
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "field-light-zh-hans-1440x900",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "root": {
+        "className": "antialiased font-sans h-full __variable_e798ec __variable_c29908 __variable_139bc5 light",
+        "skin": "field",
+        "colorScheme": "light",
+        "lang": "zh-CN"
+      },
+      "captures": [
+        {
+          "world": "studio",
+          "path": "artifacts/office/final/field-light-zh-hans-1440x900-studio.png",
+          "canvasBox": {
+            "x": 256,
+            "y": 52,
+            "width": 876,
+            "height": 840
+          },
+          "selected": "true"
+        },
+        {
+          "world": "expedition",
+          "path": "artifacts/office/final/field-light-zh-hans-1440x900-expedition.png",
+          "canvasBox": {
+            "x": 256,
+            "y": 52,
+            "width": 876,
+            "height": 840
+          },
+          "selected": "true"
+        }
+      ],
+      "pageErrors": []
+    }
+  ]
+}

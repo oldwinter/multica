@@ -23,6 +23,10 @@ describe("resolveTabPresentation — pages", () => {
       visual: { kind: "icon", icon: "FolderKanban" },
       title: { kind: "nav", navKey: "projects" },
     });
+    expect(present("/acme/office")).toEqual({
+      visual: { kind: "icon", icon: "Building2" },
+      title: { kind: "nav", navKey: "office" },
+    });
   });
 });
 
@@ -37,7 +41,9 @@ describe("resolveTabPresentation — direct resources", () => {
         issue: { identifier: "MUL-1", title: "Fix", status: "in_progress" },
       }),
     ).toEqual({
-      visual: { kind: "issue-status", status: "in_progress" },
+      // `category` travels with the visual so the tab strip never has to guess
+      // the glyph for a custom status key. (MUL-6243)
+      visual: { kind: "issue-status", status: "in_progress", category: "started" },
       title: { kind: "text", text: "MUL-1: Fix" },
     });
   });

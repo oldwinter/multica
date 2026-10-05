@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
-
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/internal/service"
 )
+
+const twinHTTPSourceID = "00000000-0000-0000-0000-000000000001"
+const twinHTTPCitationKey = "issue:" + twinHTTPSourceID
 
 func TestTwinHTTPProposalSignOffIdempotency(t *testing.T) {
 	// Given
@@ -37,7 +39,7 @@ func TestTwinHTTPProposalSignOffIdempotency(t *testing.T) {
 	overview := fixture.request(t, fixture.memberID, http.MethodGet, "/api/twins", nil, "", "")
 
 	// Then
-	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"current_version":null`) {
+	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"current_version":null`) || !strings.Contains(empty.Body.String(), `"pending_proposal":null`) {
 		t.Fatalf("empty overview = %d %s", empty.Code, empty.Body.String())
 	}
 	if created.Code != http.StatusCreated || !createdBody.Created || createdBody.Proposal.Kind != "initial" {
@@ -46,7 +48,7 @@ func TestTwinHTTPProposalSignOffIdempotency(t *testing.T) {
 	if repeated.Code != http.StatusOK || !strings.Contains(repeated.Body.String(), `"created":false`) || !strings.Contains(repeated.Body.String(), createdBody.Proposal.ID) {
 		t.Fatalf("repeated proposal = %d %s", repeated.Code, repeated.Body.String())
 	}
-	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"citation_key":"issue:test"`) {
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"citation_key":"`+twinHTTPCitationKey+`"`) {
 		t.Fatalf("proposal detail = %d %s", detail.Code, detail.Body.String())
 	}
 	if accepted.Code != http.StatusCreated || !acceptedBody.Created || acceptedBody.Version.VersionNumber != 1 {
@@ -91,33 +93,84 @@ func TestTwinAuthorizationAndValidation(t *testing.T) {
 	assertTwinHTTPStatus(t, opposite, http.StatusConflict, "twin_proposal_already_decided")
 }
 
+func TestTwinHTTPCorrectionMustReplaceTheReviewHead(t *testing.T) {
+	fixture := newTwinHTTPFixture(t)
+	created := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals", map[string]string{"wiki_revision_id": uuidToString(fixture.revisionID)}, "", "")
+	var createdBody struct {
+		Proposal twinProposalResponse `json:"proposal"`
+	}
+	decodeTwinTestResponse(t, created, &createdBody)
+	var content service.TwinProposalContent
+	if err := json.Unmarshal(createdBody.Proposal.Content, &content); err != nil || len(content.Assertions) == 0 {
+		t.Fatalf("decode editable proposal content = %#v, err = %v", content, err)
+	}
+	content.Assertions[0].Text += " Record focused evidence."
+	request := map[string]any{"edited_assertions": content.Assertions}
+
+	memberWrite := fixture.request(t, fixture.memberID, http.MethodPost, "/api/twins/proposals/"+createdBody.Proposal.ID+"/correct", request, "proposalId", createdBody.Proposal.ID)
+	corrected := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals/"+createdBody.Proposal.ID+"/correct", request, "proposalId", createdBody.Proposal.ID)
+	var correctedBody struct {
+		Created  bool                 `json:"created"`
+		Proposal twinProposalResponse `json:"proposal"`
+	}
+	decodeTwinTestResponse(t, corrected, &correctedBody)
+	replayed := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals/"+createdBody.Proposal.ID+"/correct", request, "proposalId", createdBody.Proposal.ID)
+	predecessor := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals/"+createdBody.Proposal.ID+"/accept", nil, "proposalId", createdBody.Proposal.ID)
+	signed := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals/"+correctedBody.Proposal.ID+"/accept", nil, "proposalId", correctedBody.Proposal.ID)
+
+	assertTwinHTTPStatus(t, memberWrite, http.StatusForbidden, "")
+	if corrected.Code != http.StatusCreated || !correctedBody.Created || correctedBody.Proposal.Kind != "correction" || correctedBody.Proposal.ReplacesProposalID == nil || *correctedBody.Proposal.ReplacesProposalID != createdBody.Proposal.ID {
+		t.Fatalf("corrected proposal = %d %#v", corrected.Code, correctedBody)
+	}
+	if replayed.Code != http.StatusOK || !strings.Contains(replayed.Body.String(), `"created":false`) || !strings.Contains(replayed.Body.String(), correctedBody.Proposal.ID) {
+		t.Fatalf("replayed correction = %d %s", replayed.Code, replayed.Body.String())
+	}
+	assertTwinHTTPStatus(t, predecessor, http.StatusConflict, "twin_proposal_superseded")
+	assertTwinHTTPStatus(t, signed, http.StatusCreated, "")
+}
+
 type twinHTTPFixture struct {
-	workspaceID pgtype.UUID
-	revisionID  pgtype.UUID
-	memberID    string
+	workspaceID  pgtype.UUID
+	revisionID   pgtype.UUID
+	memberID     string
+	egressPolicy service.LMWikiEgressPolicy
 }
 
 func newTwinHTTPFixture(t *testing.T) twinHTTPFixture {
 	t.Helper()
+	configureTwinHTTPGenerator(t)
 	ctx := context.Background()
 	workspaceID := createLMWikiTestWorkspace(t, ctx, "twin-http")
 	if _, err := testPool.Exec(ctx, `INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`, workspaceID, testUserID); err != nil {
 		t.Fatalf("create Twin owner: %v", err)
 	}
 	memberID := createTwinHTTPMember(t, workspaceID)
-	content := json.RawMessage(`{"schema_version":1,"issues":[{"citation_key":"issue:test","id":"00000000-0000-0000-0000-000000000001","number":1,"title":"Test issue","description":"Evidence","status":"todo","priority":"high"}],"projects":[],"project_resources":[],"autopilot_runs":[]}`)
-	queries := db.New(testPool)
-	revision, err := queries.CreateLMWikiRevision(ctx, db.CreateLMWikiRevisionParams{WorkspaceID: workspaceID, SourceDigest: twinWikiDigest, Content: content, TriggerKind: "manual", RequestedByID: parseUUID(testUserID)})
-	if err != nil {
-		t.Fatalf("create Twin HTTP Wiki: %v", err)
+	fixture := twinHTTPFixture{workspaceID: workspaceID, memberID: memberID}
+	fixture.egressPolicy = configureTwinHTTPEgressPolicy(t, workspaceID)
+	fixture.revisionID = createTwinHTTPRevision(t, fixture, "Test issue", true)
+	return fixture
+}
+
+type twinHTTPProposalGenerator struct{}
+
+func (twinHTTPProposalGenerator) Generate(_ context.Context, input service.TwinProposalGenerationInput) (service.TwinProposalCandidate, error) {
+	assertions := make([]service.TwinAssertion, 0, len(input.BuilderInput.Citations))
+	for _, citation := range input.BuilderInput.Citations {
+		assertions = append(assertions, service.TwinAssertion{
+			ID: "fixture:" + citation.CitationKey, Type: service.TwinAssertionProcedure, Text: citation.Label,
+			Applicability:     service.TwinAssertionApplicability{IssueID: citation.SourceID},
+			EvidenceCitations: []string{citation.CitationKey}, Confidence: 0.9,
+			Provenance: service.TwinAssertionProvenance{Kind: service.TwinProvenanceModel, Generator: "http-fixture-model"},
+		})
 	}
-	if err := queries.CreateLMWikiCitations(ctx, db.CreateLMWikiCitationsParams{WorkspaceID: workspaceID, RevisionID: revision.ID, Citations: wikiCitationJSON(t, parseUUID("00000000-0000-0000-0000-000000000001"), "issue:test")}); err != nil {
-		t.Fatalf("create Twin HTTP citation: %v", err)
-	}
-	if _, err := queries.CreateLMWikiReview(ctx, db.CreateLMWikiReviewParams{WorkspaceID: workspaceID, RevisionID: revision.ID, Decision: "accepted", ReviewerID: parseUUID(testUserID)}); err != nil {
-		t.Fatalf("accept Twin HTTP Wiki: %v", err)
-	}
-	return twinHTTPFixture{workspaceID: workspaceID, revisionID: revision.ID, memberID: memberID}
+	return service.TwinProposalCandidate{Assertions: assertions}, nil
+}
+
+func configureTwinHTTPGenerator(t *testing.T) {
+	t.Helper()
+	previous := testHandler.TwinService.ProposalGenerator
+	testHandler.TwinService.ProposalGenerator = twinHTTPProposalGenerator{}
+	t.Cleanup(func() { testHandler.TwinService.ProposalGenerator = previous })
 }
 
 func createTwinHTTPMember(t *testing.T, workspaceID pgtype.UUID) string {
@@ -153,6 +206,8 @@ func (f twinHTTPFixture) request(t *testing.T, userID, method, path string, body
 		testHandler.AcceptTwinProposal(recorder, request)
 	case strings.HasSuffix(path, "/reject"):
 		testHandler.RejectTwinProposal(recorder, request)
+	case strings.HasSuffix(path, "/correct"):
+		testHandler.CorrectTwinProposal(recorder, request)
 	default:
 		testHandler.CreateTwinProposal(recorder, request)
 	}

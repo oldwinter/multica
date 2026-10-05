@@ -36,6 +36,20 @@ import (
 // internal/external payload boundary in one reviewable place.
 var internalOnlyPayloadKeys = map[string][]string{
 	protocol.EventIssueUpdated: {"prev_description", "prev_title"},
+	// task:failed error text is consumed synchronously by channel outbounds.
+	// It may contain provider/runtime detail that belongs in the originating
+	// chat transcript, not in the workspace-wide realtime fanout.
+	protocol.EventTaskFailed: {"error"},
+}
+
+var wikiRealtimeEvents = map[string]bool{
+	protocol.EventWikiPageCreated:      true,
+	protocol.EventWikiPageUpdated:      true,
+	protocol.EventWikiPageDeleted:      true,
+	protocol.EventWikiRevisionCreated:  true,
+	protocol.EventWikiRevisionRestored: true,
+	protocol.EventWikiProposalCreated:  true,
+	protocol.EventWikiProposalReviewed: true,
 }
 
 // projectOutbound returns payload with the event type's internal-only keys
@@ -46,6 +60,13 @@ var internalOnlyPayloadKeys = map[string][]string{
 // forwarder may yet read it, so mutating it in place would be a landmine.
 func projectOutbound(eventType string, payload any) any {
 	keys := internalOnlyPayloadKeys[eventType]
+	if wikiRealtimeEvents[eventType] {
+		// Map payloads are supported at the event-bus boundary for compatibility
+		// with handlers that have not adopted protocol.WikiEventPayload yet.
+		// The typed payload omits RecipientID through json:"-"; map payloads need
+		// the same projection explicitly.
+		keys = append(keys, "recipient_id")
+	}
 	if len(keys) == 0 {
 		return payload
 	}
@@ -61,6 +82,37 @@ func projectOutbound(eventType string, payload any) any {
 		delete(projected, k)
 	}
 	return projected
+}
+
+// wikiRealtimeRoute validates the shared Wiki routing envelope. New Wiki
+// events fail closed when scope metadata is malformed: a personal event must
+// never fall through to workspace fanout simply because its recipient is
+// absent. Map support keeps the event-bus boundary tolerant while producers
+// migrate to protocol.WikiEventPayload.
+func wikiRealtimeRoute(payload any) (scope, recipientID string, ok bool) {
+	switch value := payload.(type) {
+	case protocol.WikiEventPayload:
+		scope, recipientID = value.Scope, value.RecipientID
+	case *protocol.WikiEventPayload:
+		if value == nil {
+			return "", "", false
+		}
+		scope, recipientID = value.Scope, value.RecipientID
+	case map[string]any:
+		scope, _ = value["scope"].(string)
+		recipientID, _ = value["recipient_id"].(string)
+	default:
+		return "", "", false
+	}
+
+	switch scope {
+	case "workspace", "project":
+		return scope, "", true
+	case "user":
+		return scope, recipientID, recipientID != ""
+	default:
+		return "", "", false
+	}
 }
 
 // registerListeners wires up event bus listeners for WS broadcasting.
@@ -83,6 +135,8 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		protocol.EventInboxBatchArchived: true,
 		protocol.EventInvitationCreated:  true,
 		protocol.EventInvitationRevoked:  true,
+		protocol.EventChatSessionCreated: true,
+		protocol.EventChatSessionUpdated: true,
 	}
 
 	// Helper: marshal event and send to a specific user.
@@ -171,6 +225,53 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		}
 	})
 
+	// Wiki events share event types across workspace/project and personal
+	// scopes. Personal pages are cross-workspace and private, so route them to
+	// every connection owned by the target user instead of any workspace room.
+	for eventType := range wikiRealtimeEvents {
+		bus.Subscribe(eventType, func(e events.Event) {
+			scope, recipientID, ok := wikiRealtimeRoute(e.Payload)
+			if !ok || scope != "user" {
+				return
+			}
+			sendToRecipient(b, e, recipientID)
+		})
+	}
+
+	// invitation:accepted / invitation:declined — also send to the invitee so
+	// their pending list updates. The actor is the invitee on every producer
+	// path, but they are usually NOT in the workspace room yet: a client binds
+	// its socket to the workspace it currently has open, so a user concluding
+	// an invitation with no workspace open (or a different one open) never
+	// receives the broadcast below and their stale pending row survives until
+	// restart (#8432). Pass excludeWorkspace so clients already in the room
+	// (reached via BroadcastToWorkspace in SubscribeAll) don't get it twice.
+	// invitation:revoked keeps its invitee_user_id routing above: its actor is
+	// the revoking admin, not the affected invitee.
+	for _, eventType := range []string{protocol.EventInvitationAccepted, protocol.EventInvitationDeclined} {
+		bus.Subscribe(eventType, func(e events.Event) {
+			if e.ActorID == "" {
+				return
+			}
+			data, err := json.Marshal(map[string]any{"type": e.Type, "payload": projectOutbound(e.Type, e.Payload), "actor_id": e.ActorID, "actor_type": e.ActorType})
+			if err != nil {
+				return
+			}
+			realtime.M.RecordEvent(e.Type)
+			b.SendToUser(e.ActorID, data, e.WorkspaceID)
+		})
+	}
+
+	// A Chat session is creator-private. Its initial title may be derived from
+	// the creator's first message, so the list-invalidation event must not be
+	// broadcast to every workspace member. ActorID is the creator on every
+	// producer path for this event.
+	for _, eventType := range []string{protocol.EventChatSessionCreated, protocol.EventChatSessionUpdated} {
+		bus.Subscribe(eventType, func(e events.Event) {
+			sendToRecipient(b, e, e.ActorID)
+		})
+	}
+
 	// member:added — also send to the invited user so they discover the new workspace.
 	// Pass excludeWorkspace so clients already in the target room (reached via
 	// BroadcastToWorkspace in SubscribeAll) don't receive the event twice.
@@ -204,6 +305,12 @@ func registerListeners(bus *events.Bus, b realtime.Broadcaster) {
 		// Skip personal events — they are handled by type-specific listeners above.
 		if personalEvents[e.Type] {
 			return
+		}
+		if wikiRealtimeEvents[e.Type] {
+			scope, _, ok := wikiRealtimeRoute(e.Payload)
+			if !ok || scope == "user" {
+				return
+			}
 		}
 
 		msg := map[string]any{

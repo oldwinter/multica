@@ -22,7 +22,7 @@
  */
 import { useRef } from "react";
 import { Tabs } from "expo-router";
-import { Image } from "expo-image";
+import { PlatformSymbol } from "@/components/ui/platform-symbol";
 import { View } from "react-native";
 import type { TriggerRef } from "@rn-primitives/dropdown-menu";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -32,6 +32,7 @@ import {
   useChatUnreadMessageCount,
 } from "@/lib/unread-counts";
 import { MoreTabDropdownAnchor } from "@/components/nav/more-tab-dropdown";
+import { useT } from "@/lib/i18n";
 
 // Only override backgroundColor — @react-navigation/elements Badge internally
 // sets borderRadius = size/2, height = size, minWidth = size, so a single
@@ -40,7 +41,7 @@ import { MoreTabDropdownAnchor } from "@/components/nav/more-tab-dropdown";
 // luminance by Badge itself (white on brand blue).
 export default function TabsLayout() {
   const { theme } = useColorScheme();
-  const t = theme;
+  const { t } = useT("navigation");
   const badgeStyle = { backgroundColor: theme.brand };
 
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -64,23 +65,23 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: t.foreground,
-          tabBarInactiveTintColor: t.mutedForeground,
-          tabBarStyle: { backgroundColor: t.background },
+          tabBarActiveTintColor: theme.foreground,
+          tabBarInactiveTintColor: theme.mutedForeground,
+          tabBarStyle: { backgroundColor: theme.background },
           tabBarLabelStyle: { fontSize: 11 },
         }}
       >
         <Tabs.Screen
           name="inbox"
           options={{
-            title: "Inbox",
+            title: t("tabs.inbox"),
             tabBarBadge: inboxBadge,
             tabBarBadgeStyle: badgeStyle,
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:tray.fill" : "sf:tray"}
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name={focused ? "tray.fill" : "tray"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -88,12 +89,12 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="my-issues"
           options={{
-            title: "My Issues",
+            title: t("tabs.my_issues"),
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:checklist" : "sf:checklist.unchecked"}
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name={focused ? "checklist" : "checklist.unchecked"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -101,14 +102,14 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="chat"
           options={{
-            title: "Chat",
+            title: t("tabs.chat"),
             tabBarBadge: chatBadge,
             tabBarBadgeStyle: badgeStyle,
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:bubble.left.fill" : "sf:bubble.left"}
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name={focused ? "bubble.left.fill" : "bubble.left"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -116,12 +117,12 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="more"
           options={{
-            title: "More",
+            title: t("tabs.more"),
             tabBarIcon: ({ color, size }) => (
-              <Image
-                source="sf:ellipsis"
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <PlatformSymbol
+                name="ellipsis"
+                color={color}
+                size={size}
               />
             ),
           }}

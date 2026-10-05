@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/multica-ai/multica/server/internal/service"
 )
 
 func TestLMWikiHTTPEmptyAndProtectedRoutes(t *testing.T) {
@@ -68,9 +71,238 @@ func TestLMWikiHTTPEmptyAndProtectedRoutes(t *testing.T) {
 	}
 }
 
+func TestWikiKnowledgeActivationHTTPExactPinReadinessAndStalePolicy(t *testing.T) {
+	resetLMWikiHTTPFixture(t)
+	create := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/wiki/pages", strings.NewReader(`{
+		"scope":"workspace","path":"lm-wiki-http-activation.md","title":"Activation policy","content":"private-body-must-not-leak"
+	}`))
+	if create.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(create.Body)
+		create.Body.Close()
+		t.Fatalf("create activation Wiki page status = %d body = %s", create.StatusCode, body)
+	}
+	var page struct {
+		ID                    string `json:"id"`
+		CurrentRevisionID     string `json:"current_revision_id"`
+		CurrentRevisionNumber int64  `json:"current_revision_number"`
+	}
+	decodeLMWikiHTTP(t, create, &page)
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM lm_wiki_source_wiki_page WHERE workspace_id = $1 AND page_id = $2`, testWorkspaceID, page.ID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM wiki_page_revision WHERE workspace_id = $1 AND page_id = $2`, testWorkspaceID, page.ID)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM wiki_page WHERE workspace_id = $1 AND id = $2`, testWorkspaceID, page.ID)
+	})
+
+	var initialPolicy struct {
+		PolicyVersion int64  `json:"policy_version"`
+		PolicyDigest  string `json:"policy_digest"`
+	}
+	policyResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/lm-wiki/source-policy", nil)
+	decodeLMWikiHTTP(t, policyResponse, &initialPolicy)
+
+	memberID, memberToken := createLMWikiHTTPUser(t, "activation-member")
+	if _, err := testPool.Exec(context.Background(), `INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'member')`, testWorkspaceID, memberID); err != nil {
+		t.Fatalf("add activation member: %v", err)
+	}
+	memberPin := lmWikiHTTPRequest(t, memberToken, testWorkspaceID, http.MethodPut,
+		"/api/lm-wiki/source-policy/wiki-pages/"+page.ID+"/revisions/"+page.CurrentRevisionID,
+		strings.NewReader(`{"expected_policy_version":0,"expected_policy_digest":"`+initialPolicy.PolicyDigest+`"}`))
+	memberPin.Body.Close()
+	if memberPin.StatusCode != http.StatusForbidden {
+		t.Fatalf("member pin status = %d, want 403", memberPin.StatusCode)
+	}
+	memberReadiness := lmWikiHTTPRequest(t, memberToken, testWorkspaceID, http.MethodGet, "/api/wiki/knowledge-readiness", nil)
+	if memberReadiness.StatusCode != http.StatusOK {
+		memberReadiness.Body.Close()
+		t.Fatalf("member readiness status = %d, want 200", memberReadiness.StatusCode)
+	}
+	var memberReadinessResult struct {
+		CanManage bool `json:"can_manage"`
+	}
+	decodeLMWikiHTTP(t, memberReadiness, &memberReadinessResult)
+	if memberReadinessResult.CanManage {
+		t.Fatal("member readiness unexpectedly granted source-policy management")
+	}
+
+	pinBody := `{"expected_policy_version":0,"expected_policy_digest":"` + initialPolicy.PolicyDigest + `"}`
+	pin := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPut,
+		"/api/lm-wiki/source-policy/wiki-pages/"+page.ID+"/revisions/"+page.CurrentRevisionID,
+		strings.NewReader(pinBody))
+	if pin.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(pin.Body)
+		pin.Body.Close()
+		t.Fatalf("pin exact Wiki revision status = %d body = %s", pin.StatusCode, body)
+	}
+	var pinnedPolicy struct {
+		PolicyVersion           int64                          `json:"policy_version"`
+		PolicyDigest            string                         `json:"policy_digest"`
+		SourceClasses           []string                       `json:"source_classes"`
+		WikiPages               []service.LMWikiSourceWikiPage `json:"wiki_pages"`
+		RemoteGenerationEnabled bool                           `json:"remote_generation_enabled"`
+	}
+	decodeLMWikiHTTP(t, pin, &pinnedPolicy)
+	if len(pinnedPolicy.WikiPages) != 1 || pinnedPolicy.WikiPages[0].RevisionNumber != 1 {
+		t.Fatalf("pinned policy = %+v", pinnedPolicy)
+	}
+	repeated := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPut,
+		"/api/lm-wiki/source-policy/wiki-pages/"+page.ID+"/revisions/"+page.CurrentRevisionID,
+		strings.NewReader(pinBody))
+	var repeatedPolicy struct {
+		PolicyVersion int64 `json:"policy_version"`
+	}
+	decodeLMWikiHTTP(t, repeated, &repeatedPolicy)
+	if repeated.StatusCode != http.StatusOK || repeatedPolicy.PolicyVersion != pinnedPolicy.PolicyVersion {
+		t.Fatalf("repeated pin status = %d policy version = %d", repeated.StatusCode, repeatedPolicy.PolicyVersion)
+	}
+
+	update := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPut, "/api/wiki/pages/"+page.ID, strings.NewReader(`{
+		"content":"new immutable revision","expected_revision_number":1
+	}`))
+	if update.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(update.Body)
+		update.Body.Close()
+		t.Fatalf("create newer Wiki revision status = %d body = %s", update.StatusCode, body)
+	}
+	decodeLMWikiHTTP(t, update, &page)
+
+	readinessResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/wiki/knowledge-readiness", nil)
+	readinessBody, err := io.ReadAll(readinessResponse.Body)
+	readinessResponse.Body.Close()
+	if err != nil || readinessResponse.StatusCode != http.StatusOK {
+		t.Fatalf("read readiness status = %d err = %v", readinessResponse.StatusCode, err)
+	}
+	for _, forbidden := range []string{`"content"`, `"path"`, "private-body-must-not-leak"} {
+		if strings.Contains(string(readinessBody), forbidden) {
+			t.Fatalf("readiness leaked %q: %s", forbidden, readinessBody)
+		}
+	}
+	var readiness struct {
+		CanManage bool `json:"can_manage"`
+		Sources   []struct {
+			PageID string `json:"page_id"`
+			State  string `json:"state"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(readinessBody, &readiness); err != nil {
+		t.Fatalf("decode readiness: %v", err)
+	}
+	if !readiness.CanManage || wikiKnowledgeHTTPSourceState(readiness.Sources, page.ID) != "newer_revision_available" {
+		t.Fatalf("newer revision readiness = %+v", readiness)
+	}
+
+	policyUpdateBody, err := json.Marshal(map[string]any{
+		"source_classes": pinnedPolicy.SourceClasses, "wiki_pages": pinnedPolicy.WikiPages,
+		"remote_generation_enabled": true, "expected_policy_version": pinnedPolicy.PolicyVersion,
+		"expected_policy_digest": pinnedPolicy.PolicyDigest,
+	})
+	if err != nil {
+		t.Fatalf("marshal policy update: %v", err)
+	}
+	policyUpdate := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPut, "/api/lm-wiki/source-policy", bytes.NewReader(policyUpdateBody))
+	if policyUpdate.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(policyUpdate.Body)
+		policyUpdate.Body.Close()
+		t.Fatalf("concurrent policy update status = %d body = %s", policyUpdate.StatusCode, body)
+	}
+	var currentPolicy struct {
+		PolicyVersion int64  `json:"policy_version"`
+		PolicyDigest  string `json:"policy_digest"`
+	}
+	decodeLMWikiHTTP(t, policyUpdate, &currentPolicy)
+
+	stalePin := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPut,
+		"/api/lm-wiki/source-policy/wiki-pages/"+page.ID+"/revisions/"+page.CurrentRevisionID,
+		strings.NewReader(`{"expected_policy_version":`+fmt.Sprint(pinnedPolicy.PolicyVersion)+`,"expected_policy_digest":"`+pinnedPolicy.PolicyDigest+`"}`))
+	var staleResult struct {
+		Code          string `json:"code"`
+		CurrentPolicy struct {
+			PolicyVersion int64 `json:"policy_version"`
+		} `json:"current_policy"`
+	}
+	decodeLMWikiHTTP(t, stalePin, &staleResult)
+	if stalePin.StatusCode != http.StatusConflict || staleResult.Code != "wiki_source_policy_stale" || staleResult.CurrentPolicy.PolicyVersion != currentPolicy.PolicyVersion {
+		t.Fatalf("stale pin status = %d response = %+v", stalePin.StatusCode, staleResult)
+	}
+
+	freshPin := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPut,
+		"/api/lm-wiki/source-policy/wiki-pages/"+page.ID+"/revisions/"+page.CurrentRevisionID,
+		strings.NewReader(`{"expected_policy_version":`+fmt.Sprint(currentPolicy.PolicyVersion)+`,"expected_policy_digest":"`+currentPolicy.PolicyDigest+`"}`))
+	if freshPin.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(freshPin.Body)
+		freshPin.Body.Close()
+		t.Fatalf("fresh pin status = %d body = %s", freshPin.StatusCode, body)
+	}
+	freshPin.Body.Close()
+
+	refresh := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/refresh", nil)
+	refresh.Body.Close()
+	if refresh.StatusCode != http.StatusCreated {
+		t.Fatalf("refresh after pin status = %d", refresh.StatusCode)
+	}
+	pinnedReadiness := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/wiki/knowledge-readiness", nil)
+	var pinnedResult struct {
+		Sources []struct {
+			PageID string `json:"page_id"`
+			State  string `json:"state"`
+		} `json:"sources"`
+		MaintenanceItems []struct {
+			Kind string `json:"kind"`
+		} `json:"maintenance_items"`
+	}
+	decodeLMWikiHTTP(t, pinnedReadiness, &pinnedResult)
+	if wikiKnowledgeHTTPSourceState(pinnedResult.Sources, page.ID) != "pinned_current" {
+		t.Fatalf("pinned readiness = %+v", pinnedResult.Sources)
+	}
+
+	deleted := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodDelete, "/api/wiki/pages/"+page.ID, nil)
+	deleted.Body.Close()
+	if deleted.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete pinned page status = %d", deleted.StatusCode)
+	}
+	deletedReadiness := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/wiki/knowledge-readiness", nil)
+	var deletedResult struct {
+		Sources []struct {
+			PageID string `json:"page_id"`
+			State  string `json:"state"`
+		} `json:"sources"`
+	}
+	decodeLMWikiHTTP(t, deletedReadiness, &deletedResult)
+	if wikiKnowledgeHTTPSourceState(deletedResult.Sources, page.ID) != "source_deleted" {
+		t.Fatalf("deleted readiness = %+v", deletedResult.Sources)
+	}
+}
+
+func wikiKnowledgeHTTPSourceState(sources []struct {
+	PageID string `json:"page_id"`
+	State  string `json:"state"`
+}, pageID string) string {
+	for _, source := range sources {
+		if source.PageID == pageID {
+			return source.State
+		}
+	}
+	return ""
+}
+
 func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	resetLMWikiHTTPFixture(t)
-	projectID, resourceID := seedLMWikiHTTPSources(t)
+	previousGenerator := testHandler.TwinService.ProposalGenerator
+	testHandler.TwinService.ProposalGenerator = service.InventoryTwinProposalGenerator{}
+	t.Cleanup(func() { testHandler.TwinService.ProposalGenerator = previousGenerator })
+	sources := seedLMWikiHTTPSources(t)
+	policyResponse := lmWikiHTTPRequest(
+		t,
+		testToken,
+		testWorkspaceID,
+		http.MethodPut,
+		"/api/lm-wiki/source-policy",
+		strings.NewReader(`{"source_classes":["autopilot_run","issue","project","project_resource"],"wiki_pages":[],"remote_generation_enabled":true}`),
+	)
+	defer policyResponse.Body.Close()
+	if policyResponse.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(policyResponse.Body)
+		t.Fatalf("enable Twin generation policy status = %d body = %s", policyResponse.StatusCode, body)
+	}
 	badRefresh := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/refresh", bytes.NewBufferString(`{}`))
 	defer badRefresh.Body.Close()
 	if badRefresh.StatusCode != http.StatusBadRequest {
@@ -103,13 +335,26 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 		}
 	}
 	var detail struct {
-		Citations []json.RawMessage `json:"citations"`
+		Citations []struct {
+			CitationKey string `json:"citation_key"`
+		} `json:"citations"`
 	}
 	if err := json.Unmarshal(detailBody, &detail); err != nil {
 		t.Fatalf("decode detail response: %v", err)
 	}
-	if len(detail.Citations) != 4 {
-		t.Fatalf("citation count = %d, want 4", len(detail.Citations))
+	citationKeys := make(map[string]struct{}, len(detail.Citations))
+	for _, citation := range detail.Citations {
+		citationKeys[citation.CitationKey] = struct{}{}
+	}
+	for _, expected := range []string{
+		"autopilot_run:" + sources.AutopilotRunID,
+		"issue:" + sources.IssueID,
+		"project:" + sources.ProjectID,
+		"project_resource:" + sources.ResourceID,
+	} {
+		if _, ok := citationKeys[expected]; !ok {
+			t.Fatalf("citations are missing %q: %+v", expected, detail.Citations)
+		}
 	}
 	malformedID := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/lm-wiki/revisions/not-a-uuid", nil)
 	defer malformedID.Body.Close()
@@ -162,6 +407,28 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	if repeatedAccept.StatusCode != http.StatusOK {
 		t.Fatalf("repeated accept status = %d", repeatedAccept.StatusCode)
 	}
+	afterAcceptResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/twins", nil)
+	var afterAccept struct {
+		Pending   *json.RawMessage  `json:"pending_proposal"`
+		Proposals []json.RawMessage `json:"proposals"`
+	}
+	decodeLMWikiHTTP(t, afterAcceptResponse, &afterAccept)
+	if afterAcceptResponse.StatusCode != http.StatusOK || afterAccept.Pending != nil || len(afterAccept.Proposals) != 0 {
+		t.Fatalf("Twin overview before explicit proposal = %+v, status = %d", afterAccept, afterAcceptResponse.StatusCode)
+	}
+	proposalResponse := lmWikiHTTPRequest(
+		t,
+		testToken,
+		testWorkspaceID,
+		http.MethodPost,
+		"/api/twins/proposals",
+		strings.NewReader(`{"wiki_revision_id":"`+first.Revision.ID+`"}`),
+	)
+	defer proposalResponse.Body.Close()
+	if proposalResponse.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(proposalResponse.Body)
+		t.Fatalf("explicit Twin proposal status = %d body = %s", proposalResponse.StatusCode, body)
+	}
 	twinResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodGet, "/api/twins", nil)
 	var twinOverview struct {
 		Pending struct {
@@ -173,7 +440,7 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	}
 	decodeLMWikiHTTP(t, twinResponse, &twinOverview)
 	if twinResponse.StatusCode != http.StatusOK || twinOverview.Pending.Kind != "initial" || twinOverview.Pending.SourceWikiRevisionID != first.Revision.ID || twinOverview.Pending.Review != nil || len(twinOverview.Versions) != 0 {
-		t.Fatalf("automatic Twin overview = %+v, status = %d", twinOverview, twinResponse.StatusCode)
+		t.Fatalf("explicit Twin overview = %+v, status = %d", twinOverview, twinResponse.StatusCode)
 	}
 
 	if _, err := testPool.Exec(context.Background(), `UPDATE issue SET title = 'LM Wiki HTTP changed issue', updated_at = now() WHERE workspace_id = $1 AND title = 'LM Wiki HTTP safe issue'`, testWorkspaceID); err != nil {
@@ -198,13 +465,13 @@ func TestLMWikiHTTPLifecycleSourcesAndConflicts(t *testing.T) {
 	if heads.Accepted.ID != first.Revision.ID || heads.Pending.ID != second.Revision.ID {
 		t.Fatalf("overview heads = %+v", heads)
 	}
-	if _, err := testPool.Exec(context.Background(), `DELETE FROM project_resource WHERE id = $1 AND workspace_id = $2`, resourceID, testWorkspaceID); err != nil {
+	if _, err := testPool.Exec(context.Background(), `DELETE FROM project_resource WHERE id = $1 AND workspace_id = $2`, sources.ResourceID, testWorkspaceID); err != nil {
 		t.Fatalf("delete LM Wiki source: %v", err)
 	}
 	thirdResponse := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/refresh", nil)
 	var third lmWikiHTTPRefresh
 	decodeLMWikiHTTP(t, thirdResponse, &third)
-	if strings.Contains(string(third.Revision.Content), resourceID) || !strings.Contains(string(third.Revision.Content), projectID) {
+	if strings.Contains(string(third.Revision.Content), sources.ResourceID) || !strings.Contains(string(third.Revision.Content), sources.ProjectID) {
 		t.Fatalf("third revision did not reflect source deletion: %s", third.Revision.Content)
 	}
 	longReason := lmWikiHTTPRequest(t, testToken, testWorkspaceID, http.MethodPost, "/api/lm-wiki/revisions/"+third.Revision.ID+"/reject", bytes.NewBufferString(`{"reason":"`+strings.Repeat("x", 2001)+`"}`))

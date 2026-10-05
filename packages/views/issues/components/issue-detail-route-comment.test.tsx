@@ -53,6 +53,7 @@ describe("IssueDetailRoute comment permalink", () => {
       back: vi.fn(),
       pathname: "/acme/issues/MUL-1",
       searchParams: new URLSearchParams("comment=reply-7"),
+      hash: "",
       getShareableUrl: (path: string) => `https://app.example${path}`,
     };
 

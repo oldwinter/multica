@@ -16,12 +16,11 @@ import { useT } from "../i18n";
 export function WorkspaceLoader({ name }: { name?: string | null }) {
   const { t } = useT("layout");
   return (
-    <div
+    <main
       className="flex h-svh w-full items-center justify-center bg-background"
-      aria-live="polite"
-      role="status"
+      aria-busy="true"
     >
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-4" aria-live="polite" role="status">
         <MulticaIcon className="size-8 animate-pulse" />
         {name ? (
           <p className="text-body text-muted-foreground">
@@ -32,6 +31,6 @@ export function WorkspaceLoader({ name }: { name?: string | null }) {
           <p className="text-body text-muted-foreground">{t(($) => $.workspace_loader.loading_workspace)}</p>
         )}
       </div>
-    </div>
+    </main>
   );
 }
