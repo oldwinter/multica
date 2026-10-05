@@ -2,13 +2,13 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -26,7 +26,7 @@ func TestTwinHTTPCurrentEvolutionAndVersionDetail(t *testing.T) {
 	decodeTwinTestResponse(t, accepted, &signed)
 	alreadyCurrent := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals", map[string]string{"wiki_revision_id": uuidToString(fixture.revisionID)}, "", "")
 	versionDetail := fixture.request(t, fixture.memberID, http.MethodGet, "/api/twins/versions/"+signed.Version.ID, nil, "versionId", signed.Version.ID)
-	newerWiki := createTwinHTTPRevision(t, fixture, "New issue", 'b', true)
+	newerWiki := createTwinHTTPRevision(t, fixture, "New issue", true)
 	evolution := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals", map[string]string{"wiki_revision_id": uuidToString(newerWiki)}, "", "")
 	var evolutionBody struct {
 		Proposal twinProposalResponse `json:"proposal"`
@@ -36,7 +36,7 @@ func TestTwinHTTPCurrentEvolutionAndVersionDetail(t *testing.T) {
 	overview := fixture.request(t, fixture.memberID, http.MethodGet, "/api/twins", nil, "", "")
 
 	assertTwinHTTPStatus(t, alreadyCurrent, http.StatusConflict, "twin_already_current")
-	if versionDetail.Code != http.StatusOK || !strings.Contains(versionDetail.Body.String(), `"citation_key":"issue:test"`) || !strings.Contains(versionDetail.Body.String(), uuidToString(fixture.revisionID)) {
+	if versionDetail.Code != http.StatusOK || !strings.Contains(versionDetail.Body.String(), `"citation_key":"`+twinHTTPCitationKey+`"`) || !strings.Contains(versionDetail.Body.String(), uuidToString(fixture.revisionID)) {
 		t.Fatalf("version detail = %d %s", versionDetail.Code, versionDetail.Body.String())
 	}
 	if evolution.Code != http.StatusCreated || evolutionBody.Proposal.Kind != "evolution" || evolutionBody.Proposal.BaseTwinVersionID == nil || *evolutionBody.Proposal.BaseTwinVersionID != signed.Version.ID {
@@ -54,7 +54,7 @@ func TestTwinHTTPConflictAndReviewValidationCodes(t *testing.T) {
 		unaccepted := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals", map[string]string{"wiki_revision_id": uuidToString(fixture.revisionID)}, "", "")
 		assertTwinHTTPStatus(t, unaccepted, http.StatusConflict, "wiki_revision_not_accepted")
 
-		acceptedWiki := createTwinHTTPRevision(t, fixture, "Accepted issue", 'c', true)
+		acceptedWiki := createTwinHTTPRevision(t, fixture, "Accepted issue", true)
 		created := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals", map[string]string{"wiki_revision_id": uuidToString(acceptedWiki)}, "", "")
 		var body struct {
 			Proposal twinProposalResponse `json:"proposal"`
@@ -73,7 +73,7 @@ func TestTwinHTTPConflictAndReviewValidationCodes(t *testing.T) {
 			Proposal twinProposalResponse `json:"proposal"`
 		}
 		decodeTwinTestResponse(t, created, &body)
-		createTwinHTTPRevision(t, fixture, "Latest issue", 'd', true)
+		createTwinHTTPRevision(t, fixture, "Latest issue", true)
 		stale := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals/"+body.Proposal.ID+"/accept", nil, "proposalId", body.Proposal.ID)
 		assertTwinHTTPStatus(t, stale, http.StatusConflict, "twin_wiki_stale")
 	})
@@ -86,7 +86,7 @@ func TestTwinHTTPConflictAndReviewValidationCodes(t *testing.T) {
 		}
 		decodeTwinTestResponse(t, initial, &initialBody)
 		fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals/"+initialBody.Proposal.ID+"/accept", nil, "proposalId", initialBody.Proposal.ID)
-		newerWiki := createTwinHTTPRevision(t, fixture, "Evolution issue", 'e', true)
+		newerWiki := createTwinHTTPRevision(t, fixture, "Evolution issue", true)
 		evolution := fixture.request(t, testUserID, http.MethodPost, "/api/twins/proposals", map[string]string{"wiki_revision_id": uuidToString(newerWiki)}, "", "")
 		var evolutionBody struct {
 			Proposal twinProposalResponse `json:"proposal"`
@@ -126,32 +126,60 @@ func advanceTwinHTTPBase(t *testing.T, fixture twinHTTPFixture, evolutionID stri
 
 func newTwinHTTPUnacceptedFixture(t *testing.T) twinHTTPFixture {
 	t.Helper()
+	configureTwinHTTPGenerator(t)
 	ctx := context.Background()
 	workspaceID := createLMWikiTestWorkspace(t, ctx, "twin-http-unaccepted")
 	if _, err := testPool.Exec(ctx, `INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'owner')`, workspaceID, testUserID); err != nil {
 		t.Fatal(err)
 	}
 	fixture := twinHTTPFixture{workspaceID: workspaceID, memberID: createTwinHTTPMember(t, workspaceID)}
-	fixture.revisionID = createTwinHTTPRevision(t, fixture, "Pending issue", 'a', false)
+	fixture.egressPolicy = configureTwinHTTPEgressPolicy(t, workspaceID)
+	fixture.revisionID = createTwinHTTPRevision(t, fixture, "Pending issue", false)
 	return fixture
 }
 
-func createTwinHTTPRevision(t *testing.T, fixture twinHTTPFixture, title string, digestByte byte, accepted bool) pgtype.UUID {
+func configureTwinHTTPEgressPolicy(t *testing.T, workspaceID pgtype.UUID) service.LMWikiEgressPolicy {
 	t.Helper()
-	content, err := json.Marshal(map[string]any{"schema_version": 1, "issues": []map[string]any{{"citation_key": "issue:test", "id": "00000000-0000-0000-0000-000000000001", "number": 1, "title": title, "description": "Evidence", "status": "todo", "priority": "high"}}, "projects": []any{}, "project_resources": []any{}, "autopilot_runs": []any{}})
+	queries := db.New(testPool)
+	state, err := service.NewWikiService(queries, testPool).UpdateSourcePolicy(
+		context.Background(), workspaceID, parseUUID(testUserID),
+		service.LMWikiSourcePolicy{SourceClasses: []string{"issue"}, RemoteGenerationEnabled: true},
+	)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("authorize Twin HTTP evidence: %v", err)
+	}
+	return service.LMWikiEgressPolicy{
+		RemoteGenerationEnabled: state.RemoteGenerationEnabled,
+		PolicyVersion:           state.PolicyVersion, PolicyDigest: state.PolicyDigest,
+	}
+}
+
+func createTwinHTTPRevision(t *testing.T, fixture twinHTTPFixture, title string, accepted bool) pgtype.UUID {
+	t.Helper()
+	snapshot, err := service.BuildLMWikiSnapshot(service.LMWikiSourceSnapshot{
+		EgressPolicy: fixture.egressPolicy,
+		Issues: []service.LMWikiIssue{{
+			ID: twinHTTPSourceID, Number: 1, Title: title,
+			Description: "Evidence", Status: "todo", Priority: "high",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("build Twin HTTP evidence: %v", err)
 	}
 	queries := db.New(testPool)
-	revision, err := queries.CreateLMWikiRevision(context.Background(), db.CreateLMWikiRevisionParams{WorkspaceID: fixture.workspaceID, SourceDigest: "sha256:" + strings.Repeat(string(digestByte), 64), Content: content, TriggerKind: "manual", RequestedByID: parseUUID(testUserID)})
+	revision, err := queries.CreateLMWikiRevision(context.Background(), db.CreateLMWikiRevisionParams{
+		WorkspaceID: fixture.workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON,
+		SourcePolicyVersion: fixture.egressPolicy.PolicyVersion, SourcePolicyDigest: fixture.egressPolicy.PolicyDigest,
+		RemoteGenerationEnabled: true, TriggerKind: "manual", RequestedByID: parseUUID(testUserID),
+	})
 	if err != nil {
 		t.Fatalf("create Twin HTTP revision: %v", err)
 	}
-	if err := queries.CreateLMWikiCitations(context.Background(), db.CreateLMWikiCitationsParams{WorkspaceID: fixture.workspaceID, RevisionID: revision.ID, Citations: wikiCitationJSON(t, parseUUID("00000000-0000-0000-0000-000000000001"), "issue:test")}); err != nil {
+	if err := queries.CreateLMWikiCitations(context.Background(), db.CreateLMWikiCitationsParams{WorkspaceID: fixture.workspaceID, RevisionID: revision.ID, Citations: wikiCitationJSON(t, parseUUID(twinHTTPSourceID), twinHTTPCitationKey)}); err != nil {
 		t.Fatalf("create Twin HTTP revision citation: %v", err)
 	}
 	if accepted {
-		if _, err := queries.CreateLMWikiReview(context.Background(), db.CreateLMWikiReviewParams{WorkspaceID: fixture.workspaceID, RevisionID: revision.ID, Decision: "accepted", ReviewerID: parseUUID(testUserID)}); err != nil {
+		if _, err := service.NewWikiService(queries, testPool).Review(context.Background(), fixture.workspaceID, revision.ID, parseUUID(testUserID), "accepted", ""); err != nil {
 			t.Fatalf("accept Twin HTTP revision: %v", err)
 		}
 	}

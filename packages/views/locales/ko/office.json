@@ -1,0 +1,117 @@
+{
+  "toolbar": {
+    "title": "오피스",
+    "world_control": "오피스 월드",
+    "worlds": {
+      "studio": "스튜디오",
+      "expedition": "원정 기지"
+    },
+    "scene_counts": "장면에 표시된 대상",
+    "counts": {
+      "agents": "에이전트 {{shown}}/{{total}}",
+      "squads": "스쿼드 {{shown}}/{{total}}",
+      "issues": "태스크 {{shown}}/{{total}}"
+    },
+    "roster_toggle": "명단 전환",
+    "fit": "전체 보기",
+    "zoom_out": "축소",
+    "zoom_in": "확대"
+  },
+  "poster": {
+    "studio_title": "스튜디오 신호 플로어",
+    "studio_description": "에이전트 작업대, 스쿼드 보드, 활성 태스크 신호를 하나의 운영 화면에서 확인합니다.",
+    "expedition_title": "원정 현장 기지",
+    "expedition_description": "같은 워크스페이스 정보를 현장 작업대, 경로 보드, 신호 비콘으로 보여 줍니다.",
+    "renderer_fallback": "비주얼 장면을 사용할 수 없습니다. 전체 명단은 계속 사용할 수 있습니다."
+  },
+  "states": {
+    "loading_title": "오피스 불러오는 중",
+    "unavailable_title": "오피스 데이터를 사용할 수 없습니다",
+    "unavailable_body": "에이전트 목록을 불러오지 못했습니다. 다시 시도해 오피스를 복구하세요.",
+    "retry": "다시 시도",
+    "empty_title": "오피스가 조용합니다",
+    "empty_body": "표시할 활성 에이전트, 스쿼드 또는 태스크 신호가 없습니다.",
+    "refreshing": "워크스페이스 정보 새로 고치는 중",
+    "partial_title": "일부 오피스 세부 정보를 사용할 수 없습니다",
+    "partial_body": "사용 가능한 워크스페이스 정보만 표시하며 누락된 세부 정보는 추측하지 않습니다.",
+    "stale_title": "마지막으로 확인한 오피스 데이터 표시 중",
+    "stale_body": "업데이트를 새로 고치지 못했습니다. 개수와 링크는 사용할 수 있지만 장면은 실시간이 아닙니다.",
+    "gaps": {
+      "availability": "에이전트 가용성",
+      "workload": "에이전트 작업량",
+      "squads": "스쿼드",
+      "issue_briefs": "태스크 세부 정보",
+      "selected_squad": "선택한 스쿼드 멤버십"
+    }
+  },
+  "roster": {
+    "title": "오피스 명단",
+    "tabs": {
+      "agents": "에이전트",
+      "squads": "스쿼드",
+      "issues": "활성 태스크"
+    },
+    "empty": {
+      "agents": "표시할 에이전트가 없습니다",
+      "squads": "표시할 스쿼드가 없습니다",
+      "issues": "활성 태스크가 없습니다"
+    },
+    "preview": "멤버 미리보기",
+    "members": "멤버 {{count}}명",
+    "leader": "리더: {{name}}",
+    "leader_unknown": "리더를 사용할 수 없음",
+    "active_issue_count": "활성 태스크 {{count}}개",
+    "executing_agent_count": "실행 중인 에이전트 {{count}}명",
+    "unresolved_issue": "태스크 세부 정보를 사용할 수 없음",
+    "selected": "선택됨"
+  },
+  "presence": {
+    "availability": "가용성",
+    "workload": "작업량",
+    "online": "온라인",
+    "unstable": "불안정",
+    "offline": "오프라인",
+    "idle": "유휴",
+    "queued": "대기열",
+    "working": "작업 중",
+    "loading": "불러오는 중",
+    "unavailable": "사용 불가",
+    "running_count": "실행 중 {{count}}개",
+    "queued_count": "대기 중 {{count}}개",
+    "capacity": "용량 {{count}}"
+  },
+  "inspector": {
+    "back": "명단으로 돌아가기",
+    "agent_title": "에이전트",
+    "squad_title": "스쿼드",
+    "issue_title": "활성 태스크",
+    "description": "설명",
+    "active_issues": "활성 태스크",
+    "open_agent": "에이전트 열기",
+    "open_squad": "스쿼드 열기",
+    "open_issue": "태스크 열기",
+    "leader": "리더",
+    "member_count": "전체 멤버 수",
+    "member_preview": "멤버 미리보기",
+    "members": "멤버",
+    "members_loading": "전체 멤버십 불러오는 중",
+    "members_unavailable": "전체 멤버십을 사용할 수 없습니다",
+    "retry_members": "멤버십 다시 시도",
+    "member_agent": "에이전트",
+    "member_human": "멤버",
+    "member_unknown": "알 수 없는 멤버",
+    "assigned_squad": "담당 스쿼드",
+    "executing_agents": "실행 중인 에이전트",
+    "none": "없음",
+    "unresolved_title": "태스크 {{id}}",
+    "unresolved_body": "이 태스크는 활성 상태이지만 제목과 상태를 사용할 수 없습니다.",
+    "missing_title": "선택한 대상을 사용할 수 없습니다",
+    "missing_body": "이 대상은 현재 오피스 스냅샷에 없습니다."
+  },
+  "a11y": {
+    "agent_row": "에이전트 {{name}} 선택",
+    "squad_row": "스쿼드 {{name}} 선택",
+    "issue_row": "태스크 {{name}} 선택",
+    "selection_disappeared": "선택한 오피스 대상을 더 이상 사용할 수 없습니다."
+  }
+}

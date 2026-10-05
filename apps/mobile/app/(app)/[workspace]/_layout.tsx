@@ -10,13 +10,17 @@ import { useIssuesRealtime } from "@/data/realtime/use-issues-realtime";
 import { useMyIssuesRealtime } from "@/data/realtime/use-my-issues-realtime";
 import { useChatSessionsRealtime } from "@/data/realtime/use-chat-sessions-realtime";
 import { useProjectsRealtime } from "@/data/realtime/use-projects-realtime";
+import { useRoomsRealtime } from "@/data/realtime/use-rooms-realtime";
 import { usePinsRealtime } from "@/data/realtime/use-pins-realtime";
 import { usePresenceRealtime } from "@/data/realtime/use-presence-realtime";
+import { useWikiRealtime } from "@/data/realtime/use-wiki-realtime";
 import { useWorkspacePresencePrefetch } from "@/lib/use-workspace-presence-prefetch";
 import { ModalCloseButton } from "@/components/ui/modal-close-button";
 import { useNewIssueDraftResetOnWorkspaceChange } from "@/data/stores/new-issue-draft-store";
 import { useNewProjectDraftResetOnWorkspaceChange } from "@/data/stores/new-project-draft-store";
 import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-session-picker-store";
+import { wikiProjectPickerScreenOptions } from "@/data/wiki-navigation";
+import { useT } from "@/lib/i18n";
 
 /**
  * Shared Stack.Screen options for every iOS formSheet-presented sheet route.
@@ -52,6 +56,9 @@ const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>["options"] = {
   headerShown: false,
 };
 
+const WIKI_PROJECT_PICKER_OPTIONS =
+  wikiProjectPickerScreenOptions(SHEET_OPTIONS);
+
 /**
  * Cold-start deep-link anchor. Expo Router otherwise treats whatever
  * route resolves the URL as the root of the stack — if the user opens a
@@ -78,6 +85,8 @@ function RealtimeSubscriptions() {
   useMyIssuesRealtime();
   useChatSessionsRealtime();
   useProjectsRealtime();
+  useWikiRealtime();
+  useRoomsRealtime();
   usePinsRealtime();
   // Presence: warm the three queries up front so avatars don't flash a
   // dotless first render, and listen for daemon/agent/task events to keep
@@ -101,6 +110,7 @@ function RealtimeSubscriptions() {
  */
 export default function WorkspaceLayout() {
   const { workspace: slug } = useLocalSearchParams<{ workspace: string }>();
+  const { t } = useT("navigation");
   const { data: workspaces, isLoading } = useQuery(workspaceListOptions());
   const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
 
@@ -135,21 +145,30 @@ export default function WorkspaceLayout() {
         <Stack.Screen
           name="issue/[id]"
           options={{
-            title: "Issue",
-            headerBackTitle: "Back",
+            title: t("navigation:routes.issue"),
+            headerBackTitle: t("back"),
           }}
         />
         <Stack.Screen
           name="project/[id]"
           options={{
-            title: "Project",
-            headerBackTitle: "Back",
+            title: t("navigation:routes.project"),
+            headerBackTitle: t("back"),
           }}
         />
         <Stack.Screen
+          name="room/[id]"
+          options={{
+            title: "Room",
+            headerBackTitle: "Rooms",
+          }}
+        />
+        <Stack.Screen name="room/[id]/review" options={SHEET_OPTIONS} />
+        <Stack.Screen name="room/[id]/promotion" options={SHEET_OPTIONS} />
+        <Stack.Screen
           name="project/[id]/edit"
           options={{
-            title: "Edit Project",
+            title: t("navigation:routes.edit_project"),
             presentation: "modal",
             headerLeft: () => <ModalCloseButton />,
           }}
@@ -157,7 +176,7 @@ export default function WorkspaceLayout() {
         <Stack.Screen
           name="issue/[id]/edit"
           options={{
-            title: "Edit Issue",
+            title: t("navigation:routes.edit_issue"),
             presentation: "modal",
             headerLeft: () => <ModalCloseButton />,
           }}
@@ -165,11 +184,12 @@ export default function WorkspaceLayout() {
         <Stack.Screen
           name="project/new"
           options={{
-            title: "New Project",
+            title: t("navigation:routes.new_project"),
             presentation: "modal",
             headerLeft: () => <ModalCloseButton />,
           }}
         />
+        <Stack.Screen name="inbox/[id]" options={SHEET_OPTIONS} />
         {/* Issue-detail formSheet pickers. All share the same sheet config:
             explicit numeric detents to dodge expo/expo#42904+#42965 (the
             `fitToContents` zero-size / padding bugs on iOS 26 + Expo 55),
@@ -195,7 +215,7 @@ export default function WorkspaceLayout() {
           options={{
             ...SHEET_OPTIONS,
             headerShown: true,
-            title: "Assignee",
+            title: t("navigation:routes.assignee"),
           }}
         />
         <Stack.Screen
@@ -207,7 +227,7 @@ export default function WorkspaceLayout() {
           options={{
             ...SHEET_OPTIONS,
             headerShown: true,
-            title: "Mention",
+            title: t("navigation:routes.mention"),
           }}
         />
         <Stack.Screen
@@ -245,7 +265,7 @@ export default function WorkspaceLayout() {
         />
         {/* New-issue draft formSheet pickers — stacked on top of the
             new-issue.tsx Stack.Screen (which is itself a `modal`).
-            Expo Router 55 / RN Screens 4 support a formSheet pushed on top
+            Expo Router 57 / RN Screens 4 support a formSheet pushed on top
             of a modal in the same Stack. */}
         <Stack.Screen
           name="new-issue-picker/status"
@@ -260,7 +280,7 @@ export default function WorkspaceLayout() {
           options={{
             ...SHEET_OPTIONS,
             headerShown: true,
-            title: "Assignee",
+            title: t("navigation:routes.assignee"),
           }}
         />
         <Stack.Screen
@@ -291,36 +311,101 @@ export default function WorkspaceLayout() {
         <Stack.Screen name="switch-workspace" options={SHEET_OPTIONS} />
         <Stack.Screen
           name="more/issues"
-          options={{ title: "Issues", headerBackTitle: "Back" }}
+            options={{
+              title: t("navigation:routes.issues"),
+              headerBackTitle: t("back"),
+            }}
         />
         <Stack.Screen
           name="more/projects"
-          options={{ title: "Projects", headerBackTitle: "Back" }}
+            options={{
+              title: t("navigation:routes.projects"),
+              headerBackTitle: t("back"),
+            }}
+        />
+        <Stack.Screen
+          name="more/wiki"
+          options={{ title: "Wiki", headerBackTitle: "Back" }}
+        />
+        <Stack.Screen
+          name="wiki/project-picker"
+          options={WIKI_PROJECT_PICKER_OPTIONS}
+        />
+        <Stack.Screen
+          name="wiki/new"
+          options={{
+            title: "New Wiki Page",
+            presentation: "modal",
+            headerLeft: () => <ModalCloseButton />,
+          }}
+        />
+        <Stack.Screen
+          name="wiki/[id]"
+          options={{ title: "Wiki Page", headerBackTitle: "Wiki" }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/edit"
+          options={{
+            title: "Edit Wiki Page",
+            presentation: "modal",
+            headerLeft: () => <ModalCloseButton />,
+          }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/history"
+          options={{ title: "Revision History", headerBackTitle: "Page" }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/proposals"
+          options={{ title: "Agent Proposals", headerBackTitle: "Page" }}
+        />
+        <Stack.Screen
+          name="wiki/[id]/proposal/[proposalId]"
+          options={{ title: "Review Proposal", headerBackTitle: "Proposals" }}
+        />
+        <Stack.Screen
+          name="more/rooms"
+          options={{ title: "Rooms", headerBackTitle: "Back" }}
         />
         <Stack.Screen
           name="more/agents"
-          options={{ title: "Agents", headerBackTitle: "Back" }}
+            options={{
+              title: t("navigation:routes.agents"),
+              headerBackTitle: t("back"),
+            }}
         />
         <Stack.Screen
           name="more/pins"
-          options={{ title: "Pinned", headerBackTitle: "Back" }}
+            options={{
+              title: t("navigation:routes.pinned"),
+              headerBackTitle: t("back"),
+            }}
         />
         <Stack.Screen
           name="more/settings"
-          options={{ title: "Settings", headerBackTitle: "Back" }}
+            options={{
+              title: t("navigation:routes.settings"),
+              headerBackTitle: t("back"),
+            }}
         />
         <Stack.Screen
           name="more/settings/profile"
-          options={{ title: "Profile", headerBackTitle: "Settings" }}
+            options={{
+              title: t("navigation:routes.profile"),
+              headerBackTitle: t("navigation:routes.settings"),
+            }}
         />
         <Stack.Screen
           name="more/settings/notifications"
-          options={{ title: "Notifications", headerBackTitle: "Settings" }}
+            options={{
+              title: t("navigation:routes.notifications"),
+              headerBackTitle: t("navigation:routes.settings"),
+            }}
         />
         <Stack.Screen
           name="new-issue"
           options={{
-            title: "New Issue",
+            title: t("navigation:routes.new_issue"),
             presentation: "modal",
             headerLeft: () => <ModalCloseButton />,
           }}
@@ -328,7 +413,7 @@ export default function WorkspaceLayout() {
         <Stack.Screen
           name="search"
           options={{
-            title: "Search",
+            title: t("navigation:routes.search"),
             presentation: "modal",
             headerLeft: () => <ModalCloseButton />,
           }}

@@ -11,6 +11,9 @@ export const localeLabels: Record<Locale, string> = {
   "zh-Hans": "\u4e2d\u6587",
   ko: "\ud55c\uad6d\uc5b4",
   ja: "\u65e5\u672c\u8a9e",
+  // The landing dictionary has no French variant yet, so `locales` above still
+  // offers four languages; this label only satisfies the Record type.
+  fr: "FR",
 };
 
 export function toLandingDictionaryLocale(
@@ -32,6 +35,14 @@ type FeatureSection = {
   cards: { title: string; description: string }[];
 };
 
+// Long-form page copy. Paragraphs and bullets may embed `[label](href)`
+// links, rendered by InlineLinks.
+export type DocumentSection = {
+  heading: string;
+  paragraphs?: string[];
+  bullets?: string[];
+};
+
 type FooterGroup = {
   label: string;
   links: { label: string; href: string }[];
@@ -50,6 +61,7 @@ export type LandingDict = {
     navigation: string;
     openMenu: string;
     closeMenu: string;
+    skipToContent: string;
   };
   hero: {
     headlineLine1: string;
@@ -82,6 +94,7 @@ export type LandingDict = {
     headlineLine2: string;
     description: string;
     cta: string;
+    licensingCta: string;
     highlights: { title: string; description: string }[];
   };
   faq: {
@@ -103,8 +116,8 @@ export type LandingDict = {
     title: string;
     nameLine: {
       prefix: string;
-      mul: string;
-      tiplexed: string;
+      mult: string;
+      iplexed: string;
       i: string;
       nformationAnd: string;
       c: string;
@@ -114,6 +127,31 @@ export type LandingDict = {
     };
     paragraphs: string[];
     cta: string;
+    team: {
+      title: string;
+      paragraphs: string[];
+      contacts: { label: string; linkLabel: string; href: string }[];
+    };
+  };
+  licensing: {
+    title: string;
+    intro: string[];
+    rule: { title: string; text: string };
+    scenarios: {
+      title: string;
+      scenarioColumn: string;
+      licenseColumn: string;
+      required: string;
+      notRequired: string;
+      items: { scenario: string; example?: string; required: boolean }[];
+    };
+    sections: DocumentSection[];
+  };
+  privacy: {
+    title: string;
+    lastUpdated: string;
+    intro: string[];
+    sections: DocumentSection[];
   };
   changelog: {
     title: string;
@@ -180,6 +218,9 @@ export type LandingDict = {
       title: string;
       sub: string;
       installLabel: string;
+      platformGroup: string;
+      platformMacosLinux: string;
+      platformWindows: string;
       startLabel: string;
       sshNote: string;
       copyLabel: string;
@@ -198,8 +239,6 @@ export type LandingDict = {
     pageDescription: string;
     eyebrow: string;
     title: string;
-    subtitle: string;
-    notice: { badge: string; body: string };
     fields: {
       firstName: string;
       lastName: string;
@@ -210,7 +249,6 @@ export type LandingDict = {
       countryRegion: string;
       useCase: string;
       goals: string;
-      goalsHint: string;
       selectPlaceholder: string;
       submit: string;
       submitting: string;

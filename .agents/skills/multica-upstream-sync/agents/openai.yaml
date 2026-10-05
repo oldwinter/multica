@@ -1,0 +1,3 @@
+interface:
+  display_name: "Multica Upstream Sync"
+  short_description: "Prevent and resolve downstream sync conflicts"

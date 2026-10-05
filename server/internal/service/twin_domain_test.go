@@ -26,13 +26,13 @@ func TestTwinBuilder_buildsEvidenceBackedInitialProposal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTwinProposal() error = %v", err)
 	}
-	if build.Content.SchemaVersion != 1 || build.Content.SourceWikiRevisionID != "wiki-1" || build.Content.SourceDigest != wiki.SourceDigest || build.Content.Name != "Workspace Twin" {
+	if build.Content.SchemaVersion != 2 || build.Content.SourceWikiRevisionID != "wiki-1" || build.Content.SourceDigest != wiki.SourceDigest || build.Content.Name != "Workspace Twin" {
 		t.Fatalf("proposal identity = %#v", build.Content)
 	}
-	assertTwinAssertion(t, build.Content.Assertions, "issue:issue-1", "sha256:14010093cc1fe311bc74f9a928684b6104c150b95be6c3ed6b52c7b8776dcc06", "Issue 7: Ship it", "Release plan", "todo")
-	assertTwinAssertion(t, build.Content.Assertions, "project:project-1", "sha256:e090d40a9c209a93abee361597fd98837767598f346e99129b3084ea91fa5011", "Project: Roadmap", "Plan work", "in_progress")
-	assertTwinAssertion(t, build.Content.Assertions, "project_resource:repo-1", "sha256:4bc85d793a72c2f33a3d5eda379e99c656382516e8bcef706c39627f10f0b106", "Repository: github.com/acme/repo", "Main", "")
-	assertTwinAssertion(t, build.Content.Assertions, "autopilot_run:run-1", "sha256:dbbd54428d855662e073f070798c281ae6f72c78bbcd914852985114b3e80001", "Autopilot Daily sync completed", "Daily sync", "completed")
+	assertTwinAssertion(t, build.Content.Assertions, "issue:issue-1", "sha256:14010093cc1fe311bc74f9a928684b6104c150b95be6c3ed6b52c7b8776dcc06", "Issue 7: Ship it", TwinAssertionApplicability{IssueID: "issue-1"})
+	assertTwinAssertion(t, build.Content.Assertions, "project:project-1", "sha256:e090d40a9c209a93abee361597fd98837767598f346e99129b3084ea91fa5011", "Project: Roadmap", TwinAssertionApplicability{ProjectID: "project-1"})
+	assertTwinAssertion(t, build.Content.Assertions, "project_resource:repo-1", "sha256:4bc85d793a72c2f33a3d5eda379e99c656382516e8bcef706c39627f10f0b106", "Repository: github.com/acme/repo", TwinAssertionApplicability{ProjectID: "project-1"})
+	assertTwinAssertion(t, build.Content.Assertions, "autopilot_run:run-1", "sha256:dbbd54428d855662e073f070798c281ae6f72c78bbcd914852985114b3e80001", "Autopilot Daily sync completed", TwinAssertionApplicability{Keywords: []string{"autopilot"}})
 	if len(build.Content.Topics) != 1 || build.Content.Topics[0].IssueID != "issue-1" || build.Content.Topics[0].IssueNumber != 7 || build.Content.Topics[0].CitationKeys[0] != "issue:issue-1" {
 		t.Fatalf("topics = %#v, want only the nonterminal issue", build.Content.Topics)
 	}
@@ -40,8 +40,8 @@ func TestTwinBuilder_buildsEvidenceBackedInitialProposal(t *testing.T) {
 		t.Fatalf("initial diff = %#v", build.Content.Diff)
 	}
 	for _, assertion := range build.Content.Assertions {
-		if !containsTwinCitation(wiki.Citations, assertion.CitationKeys[0]) {
-			t.Fatalf("assertion %q references missing citation %q", assertion.ID, assertion.CitationKeys[0])
+		if !containsTwinCitation(wiki.Citations, assertion.EvidenceCitations[0]) {
+			t.Fatalf("assertion %q references missing citation %q", assertion.ID, assertion.EvidenceCitations[0])
 		}
 	}
 }
@@ -59,7 +59,7 @@ func TestTwinBuilder_diffsAgainstPriorAssertions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTwinProposal() error = %v", err)
 	}
-	if len(build.Content.Diff.Added) != 0 || len(build.Content.Diff.Removed) != 1 || build.Content.Diff.Removed[0] != "sha256:obsolete" || len(build.Content.Diff.Unchanged) != 1 || build.Content.Diff.Unchanged[0] != priorID {
+	if len(build.Content.Diff.Added) != 0 || len(build.Content.Diff.Removed) != 1 || build.Content.Diff.Removed[0] != "sha256:obsolete" || len(build.Content.Diff.Changed) != 1 || build.Content.Diff.Changed[0] != priorID {
 		t.Fatalf("evolution diff = %#v", build.Content.Diff)
 	}
 }
@@ -99,7 +99,7 @@ func TestTwinBuilder_returnsTypedErrorsForMissingCitationAndOversizeContent(t *t
 	}{
 		{"invalid input", TwinBuilderInput{}, ErrTwinInvalidInput},
 		{"missing citation", TwinBuilderInput{SourceWikiRevisionID: "wiki-1", SourceDigest: "sha256:source", Content: LMWikiContent{SchemaVersion: 1, Issues: []lmWikiIssueContent{{CitationKey: "issue:missing", ID: "missing"}}}}, ErrTwinCitationMissing},
-		{"oversize", TwinBuilderInput{SourceWikiRevisionID: "wiki-1", SourceDigest: "sha256:source", Content: LMWikiContent{SchemaVersion: 1, Issues: []lmWikiIssueContent{{CitationKey: "issue:large", ID: "large", Title: strings.Repeat("x", 2*1024*1024)}}}, Citations: []LMWikiCitation{{CitationKey: "issue:large"}}}, ErrTwinContentTooLarge},
+		{"oversize assertion", TwinBuilderInput{SourceWikiRevisionID: "wiki-1", SourceDigest: "sha256:source", Content: LMWikiContent{SchemaVersion: 1, Issues: []lmWikiIssueContent{{CitationKey: "issue:large", ID: "large", Title: strings.Repeat("x", twinMaxAssertionTextRunes+1)}}}, Citations: []LMWikiCitation{{CitationKey: "issue:large", SourceType: "issue", SourceID: "large"}}}, ErrTwinInvalidAssertion},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Given
@@ -122,17 +122,21 @@ func mustTwinWiki(t *testing.T, sources LMWikiSourceSnapshot) LMWikiCanonicalSna
 	return wiki
 }
 
-func assertTwinAssertion(t *testing.T, assertions []TwinAssertion, citationKey, id, text, summary, status string) {
+func assertTwinAssertion(t *testing.T, assertions []TwinAssertion, citationKey, id, text string, applicability TwinAssertionApplicability) {
 	t.Helper()
 	for _, assertion := range assertions {
-		if assertion.CitationKeys[0] == citationKey {
-			if assertion.ID != id || assertion.Text != text || assertion.SourceSummary != summary || assertion.SourceStatus != status {
+		if assertion.EvidenceCitations[0] == citationKey {
+			if assertion.ID != id || assertion.Type != TwinAssertionProcedure || assertion.Text != text || !equalTwinApplicability(assertion.Applicability, applicability) || assertion.Confidence != 1 || assertion.Provenance.Kind != TwinProvenanceDeterministicInventory {
 				t.Fatalf("assertion for %q = %#v", citationKey, assertion)
 			}
 			return
 		}
 	}
 	t.Fatalf("missing assertion for %q", citationKey)
+}
+
+func equalTwinApplicability(left, right TwinAssertionApplicability) bool {
+	return left.TaskID == right.TaskID && left.WorkspaceID == right.WorkspaceID && left.AgentID == right.AgentID && left.ProjectID == right.ProjectID && left.IssueID == right.IssueID && strings.Join(left.Keywords, "\x00") == strings.Join(right.Keywords, "\x00")
 }
 
 func containsTwinCitation(citations []LMWikiCitation, key string) bool {

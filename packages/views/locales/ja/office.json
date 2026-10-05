@@ -1,0 +1,117 @@
+{
+  "toolbar": {
+    "title": "オフィス",
+    "world_control": "オフィスの世界",
+    "worlds": {
+      "studio": "スタジオ",
+      "expedition": "遠征基地"
+    },
+    "scene_counts": "シーンに表示される対象",
+    "counts": {
+      "agents": "エージェント {{shown}}/{{total}}",
+      "squads": "スクワッド {{shown}}/{{total}}",
+      "issues": "タスク {{shown}}/{{total}}"
+    },
+    "roster_toggle": "名簿を切り替え",
+    "fit": "全体表示",
+    "zoom_out": "縮小",
+    "zoom_in": "拡大"
+  },
+  "poster": {
+    "studio_title": "スタジオ信号フロア",
+    "studio_description": "エージェントの作業場所、スクワッドボード、進行中のタスク信号を一つの運用ビューで確認できます。",
+    "expedition_title": "遠征フィールド基地",
+    "expedition_description": "同じワークスペースの事実を、野外拠点、経路ボード、信号ビーコンで表します。",
+    "renderer_fallback": "ビジュアルシーンを利用できません。完全な名簿は引き続き利用できます。"
+  },
+  "states": {
+    "loading_title": "オフィスを読み込み中",
+    "unavailable_title": "オフィスデータを利用できません",
+    "unavailable_body": "エージェント一覧を読み込めませんでした。再試行してオフィスを復元してください。",
+    "retry": "再試行",
+    "empty_title": "オフィスは静かです",
+    "empty_body": "表示できるアクティブなエージェント、スクワッド、タスク信号はありません。",
+    "refreshing": "ワークスペースの事実を更新中",
+    "partial_title": "一部のオフィス詳細を利用できません",
+    "partial_body": "利用できるワークスペースの事実のみを表示し、不明な詳細は補いません。",
+    "stale_title": "最後に取得したオフィスデータを表示中",
+    "stale_body": "更新できませんでした。件数とリンクは利用できますが、シーンはライブではありません。",
+    "gaps": {
+      "availability": "エージェントの稼働状況",
+      "workload": "エージェントの作業負荷",
+      "squads": "スクワッド",
+      "issue_briefs": "タスクの詳細",
+      "selected_squad": "選択したスクワッドのメンバー"
+    }
+  },
+  "roster": {
+    "title": "オフィス名簿",
+    "tabs": {
+      "agents": "エージェント",
+      "squads": "スクワッド",
+      "issues": "進行中のタスク"
+    },
+    "empty": {
+      "agents": "表示するエージェントはありません",
+      "squads": "表示するスクワッドはありません",
+      "issues": "進行中のタスクはありません"
+    },
+    "preview": "メンバープレビュー",
+    "members": "メンバー {{count}} 人",
+    "leader": "リーダー: {{name}}",
+    "leader_unknown": "リーダーを利用できません",
+    "active_issue_count": "進行中のタスク {{count}} 件",
+    "executing_agent_count": "実行中のエージェント {{count}} 人",
+    "unresolved_issue": "タスクの詳細を利用できません",
+    "selected": "選択中"
+  },
+  "presence": {
+    "availability": "稼働状況",
+    "workload": "作業負荷",
+    "online": "オンライン",
+    "unstable": "不安定",
+    "offline": "オフライン",
+    "idle": "待機中",
+    "queued": "キュー待ち",
+    "working": "作業中",
+    "loading": "読み込み中",
+    "unavailable": "利用不可",
+    "running_count": "実行中 {{count}} 件",
+    "queued_count": "キュー待ち {{count}} 件",
+    "capacity": "容量 {{count}}"
+  },
+  "inspector": {
+    "back": "名簿に戻る",
+    "agent_title": "エージェント",
+    "squad_title": "スクワッド",
+    "issue_title": "進行中のタスク",
+    "description": "説明",
+    "active_issues": "進行中のタスク",
+    "open_agent": "エージェントを開く",
+    "open_squad": "スクワッドを開く",
+    "open_issue": "タスクを開く",
+    "leader": "リーダー",
+    "member_count": "全メンバー数",
+    "member_preview": "メンバープレビュー",
+    "members": "メンバー",
+    "members_loading": "全メンバー情報を読み込み中",
+    "members_unavailable": "全メンバー情報を利用できません",
+    "retry_members": "メンバー情報を再試行",
+    "member_agent": "エージェント",
+    "member_human": "メンバー",
+    "member_unknown": "不明なメンバー",
+    "assigned_squad": "担当スクワッド",
+    "executing_agents": "実行中のエージェント",
+    "none": "なし",
+    "unresolved_title": "タスク {{id}}",
+    "unresolved_body": "このタスクは進行中ですが、タイトルとステータスを利用できません。",
+    "missing_title": "選択した対象を利用できません",
+    "missing_body": "この対象は現在のオフィススナップショットに存在しません。"
+  },
+  "a11y": {
+    "agent_row": "エージェント {{name}} を選択",
+    "squad_row": "スクワッド {{name}} を選択",
+    "issue_row": "タスク {{name}} を選択",
+    "selection_disappeared": "選択したオフィスの対象を利用できなくなりました。"
+  }
+}

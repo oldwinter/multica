@@ -1,0 +1,4107 @@
+{
+  "id": "expedition",
+  "contractVersion": 1,
+  "layoutVersion": 4,
+  "map": {
+    "asset": "./assets/map.json",
+    "width": 78,
+    "height": 64,
+    "tileSize": 16,
+    "layers": [
+      {
+        "name": "ground",
+        "type": "objectgroup"
+      },
+      {
+        "name": "walk",
+        "type": "objectgroup"
+      },
+      {
+        "name": "collision",
+        "type": "objectgroup"
+      }
+    ]
+  },
+  "assets": {
+    "atlas": "./assets/atlas.png",
+    "poster": "./assets/poster.png",
+    "atlasSize": {
+      "width": 384,
+      "height": 384
+    },
+    "posterSize": {
+      "width": 768,
+      "height": 432
+    },
+    "frames": {
+      "expedition-v0-idle-0": {
+        "x": 0,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-idle-1": {
+        "x": 48,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-wait-0": {
+        "x": 96,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-wait-1": {
+        "x": 144,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-work-0": {
+        "x": 192,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-work-1": {
+        "x": 240,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-walk-0": {
+        "x": 288,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-walk-1": {
+        "x": 336,
+        "y": 0,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-unstable-0": {
+        "x": 0,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-unstable-1": {
+        "x": 48,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-offline-0": {
+        "x": 96,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-offline-1": {
+        "x": 144,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-completion-0": {
+        "x": 192,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-completion-1": {
+        "x": 240,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-failure-0": {
+        "x": 288,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v0-failure-1": {
+        "x": 336,
+        "y": 48,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-idle-0": {
+        "x": 0,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-idle-1": {
+        "x": 48,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-wait-0": {
+        "x": 96,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-wait-1": {
+        "x": 144,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-work-0": {
+        "x": 192,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-work-1": {
+        "x": 240,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-walk-0": {
+        "x": 288,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-walk-1": {
+        "x": 336,
+        "y": 96,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-unstable-0": {
+        "x": 0,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-unstable-1": {
+        "x": 48,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-offline-0": {
+        "x": 96,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-offline-1": {
+        "x": 144,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-completion-0": {
+        "x": 192,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-completion-1": {
+        "x": 240,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-failure-0": {
+        "x": 288,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v1-failure-1": {
+        "x": 336,
+        "y": 144,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-idle-0": {
+        "x": 0,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-idle-1": {
+        "x": 48,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-wait-0": {
+        "x": 96,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-wait-1": {
+        "x": 144,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-work-0": {
+        "x": 192,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-work-1": {
+        "x": 240,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-walk-0": {
+        "x": 288,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-walk-1": {
+        "x": 336,
+        "y": 192,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-unstable-0": {
+        "x": 0,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-unstable-1": {
+        "x": 48,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-offline-0": {
+        "x": 96,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-offline-1": {
+        "x": 144,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-completion-0": {
+        "x": 192,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-completion-1": {
+        "x": 240,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-failure-0": {
+        "x": 288,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v2-failure-1": {
+        "x": 336,
+        "y": 240,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-idle-0": {
+        "x": 0,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-idle-1": {
+        "x": 48,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-wait-0": {
+        "x": 96,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-wait-1": {
+        "x": 144,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-work-0": {
+        "x": 192,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-work-1": {
+        "x": 240,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-walk-0": {
+        "x": 288,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-walk-1": {
+        "x": 336,
+        "y": 288,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-unstable-0": {
+        "x": 0,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-unstable-1": {
+        "x": 48,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-offline-0": {
+        "x": 96,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-offline-1": {
+        "x": 144,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-completion-0": {
+        "x": 192,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-completion-1": {
+        "x": 240,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-failure-0": {
+        "x": 288,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      },
+      "expedition-v3-failure-1": {
+        "x": 336,
+        "y": 336,
+        "width": 48,
+        "height": 48
+      }
+    }
+  },
+  "anchors": {
+    "agentStations": [
+      {
+        "id": "agent-1",
+        "x": 172,
+        "y": 226
+      },
+      {
+        "id": "agent-2",
+        "x": 232,
+        "y": 188
+      },
+      {
+        "id": "agent-3",
+        "x": 298,
+        "y": 206
+      },
+      {
+        "id": "agent-4",
+        "x": 338,
+        "y": 262
+      },
+      {
+        "id": "agent-5",
+        "x": 302,
+        "y": 322
+      },
+      {
+        "id": "agent-6",
+        "x": 238,
+        "y": 336
+      },
+      {
+        "id": "agent-7",
+        "x": 176,
+        "y": 312
+      },
+      {
+        "id": "agent-8",
+        "x": 252,
+        "y": 264
+      },
+      {
+        "id": "agent-9",
+        "x": 532,
+        "y": 276
+      },
+      {
+        "id": "agent-10",
+        "x": 592,
+        "y": 238
+      },
+      {
+        "id": "agent-11",
+        "x": 658,
+        "y": 256
+      },
+      {
+        "id": "agent-12",
+        "x": 698,
+        "y": 312
+      },
+      {
+        "id": "agent-13",
+        "x": 662,
+        "y": 372
+      },
+      {
+        "id": "agent-14",
+        "x": 598,
+        "y": 386
+      },
+      {
+        "id": "agent-15",
+        "x": 536,
+        "y": 362
+      },
+      {
+        "id": "agent-16",
+        "x": 612,
+        "y": 314
+      },
+      {
+        "id": "agent-17",
+        "x": 902,
+        "y": 236
+      },
+      {
+        "id": "agent-18",
+        "x": 962,
+        "y": 198
+      },
+      {
+        "id": "agent-19",
+        "x": 1028,
+        "y": 216
+      },
+      {
+        "id": "agent-20",
+        "x": 1068,
+        "y": 272
+      },
+      {
+        "id": "agent-21",
+        "x": 1032,
+        "y": 332
+      },
+      {
+        "id": "agent-22",
+        "x": 968,
+        "y": 346
+      },
+      {
+        "id": "agent-23",
+        "x": 906,
+        "y": 322
+      },
+      {
+        "id": "agent-24",
+        "x": 982,
+        "y": 274
+      },
+      {
+        "id": "agent-25",
+        "x": 282,
+        "y": 686
+      },
+      {
+        "id": "agent-26",
+        "x": 342,
+        "y": 648
+      },
+      {
+        "id": "agent-27",
+        "x": 408,
+        "y": 666
+      },
+      {
+        "id": "agent-28",
+        "x": 448,
+        "y": 722
+      },
+      {
+        "id": "agent-29",
+        "x": 412,
+        "y": 782
+      },
+      {
+        "id": "agent-30",
+        "x": 348,
+        "y": 796
+      },
+      {
+        "id": "agent-31",
+        "x": 286,
+        "y": 772
+      },
+      {
+        "id": "agent-32",
+        "x": 362,
+        "y": 724
+      },
+      {
+        "id": "agent-33",
+        "x": 802,
+        "y": 726
+      },
+      {
+        "id": "agent-34",
+        "x": 862,
+        "y": 688
+      },
+      {
+        "id": "agent-35",
+        "x": 928,
+        "y": 706
+      },
+      {
+        "id": "agent-36",
+        "x": 968,
+        "y": 762
+      },
+      {
+        "id": "agent-37",
+        "x": 932,
+        "y": 822
+      },
+      {
+        "id": "agent-38",
+        "x": 868,
+        "y": 836
+      },
+      {
+        "id": "agent-39",
+        "x": 806,
+        "y": 812
+      },
+      {
+        "id": "agent-40",
+        "x": 882,
+        "y": 764
+      }
+    ],
+    "squadBoards": [
+      {
+        "id": "squad-1",
+        "x": 66,
+        "y": 118
+      },
+      {
+        "id": "squad-2",
+        "x": 246,
+        "y": 70
+      },
+      {
+        "id": "squad-3",
+        "x": 446,
+        "y": 52
+      },
+      {
+        "id": "squad-4",
+        "x": 780,
+        "y": 66
+      },
+      {
+        "id": "squad-5",
+        "x": 1010,
+        "y": 76
+      },
+      {
+        "id": "squad-6",
+        "x": 1190,
+        "y": 156
+      },
+      {
+        "id": "squad-7",
+        "x": 1180,
+        "y": 884
+      },
+      {
+        "id": "squad-8",
+        "x": 1002,
+        "y": 948
+      },
+      {
+        "id": "squad-9",
+        "x": 742,
+        "y": 966
+      },
+      {
+        "id": "squad-10",
+        "x": 470,
+        "y": 950
+      },
+      {
+        "id": "squad-11",
+        "x": 188,
+        "y": 944
+      },
+      {
+        "id": "squad-12",
+        "x": 70,
+        "y": 686
+      }
+    ],
+    "activeIssues": [
+      {
+        "id": "issue-1",
+        "x": 112,
+        "y": 414
+      },
+      {
+        "id": "issue-2",
+        "x": 220,
+        "y": 366
+      },
+      {
+        "id": "issue-3",
+        "x": 328,
+        "y": 410
+      },
+      {
+        "id": "issue-4",
+        "x": 440,
+        "y": 360
+      },
+      {
+        "id": "issue-5",
+        "x": 544,
+        "y": 404
+      },
+      {
+        "id": "issue-6",
+        "x": 650,
+        "y": 364
+      },
+      {
+        "id": "issue-7",
+        "x": 756,
+        "y": 414
+      },
+      {
+        "id": "issue-8",
+        "x": 862,
+        "y": 370
+      },
+      {
+        "id": "issue-9",
+        "x": 968,
+        "y": 414
+      },
+      {
+        "id": "issue-10",
+        "x": 1074,
+        "y": 374
+      },
+      {
+        "id": "issue-11",
+        "x": 1168,
+        "y": 426
+      },
+      {
+        "id": "issue-12",
+        "x": 1124,
+        "y": 560
+      },
+      {
+        "id": "issue-13",
+        "x": 1040,
+        "y": 626
+      },
+      {
+        "id": "issue-14",
+        "x": 952,
+        "y": 580
+      },
+      {
+        "id": "issue-15",
+        "x": 868,
+        "y": 636
+      },
+      {
+        "id": "issue-16",
+        "x": 782,
+        "y": 594
+      },
+      {
+        "id": "issue-17",
+        "x": 698,
+        "y": 650
+      },
+      {
+        "id": "issue-18",
+        "x": 612,
+        "y": 608
+      },
+      {
+        "id": "issue-19",
+        "x": 528,
+        "y": 664
+      },
+      {
+        "id": "issue-20",
+        "x": 442,
+        "y": 622
+      },
+      {
+        "id": "issue-21",
+        "x": 356,
+        "y": 678
+      },
+      {
+        "id": "issue-22",
+        "x": 270,
+        "y": 636
+      },
+      {
+        "id": "issue-23",
+        "x": 184,
+        "y": 690
+      },
+      {
+        "id": "issue-24",
+        "x": 98,
+        "y": 650
+      },
+      {
+        "id": "issue-25",
+        "x": 124,
+        "y": 438
+      },
+      {
+        "id": "issue-26",
+        "x": 232,
+        "y": 390
+      },
+      {
+        "id": "issue-27",
+        "x": 340,
+        "y": 434
+      },
+      {
+        "id": "issue-28",
+        "x": 452,
+        "y": 384
+      },
+      {
+        "id": "issue-29",
+        "x": 556,
+        "y": 428
+      },
+      {
+        "id": "issue-30",
+        "x": 662,
+        "y": 388
+      },
+      {
+        "id": "issue-31",
+        "x": 768,
+        "y": 438
+      },
+      {
+        "id": "issue-32",
+        "x": 874,
+        "y": 394
+      },
+      {
+        "id": "issue-33",
+        "x": 980,
+        "y": 438
+      },
+      {
+        "id": "issue-34",
+        "x": 1086,
+        "y": 398
+      },
+      {
+        "id": "issue-35",
+        "x": 1180,
+        "y": 450
+      },
+      {
+        "id": "issue-36",
+        "x": 1136,
+        "y": 584
+      },
+      {
+        "id": "issue-37",
+        "x": 1052,
+        "y": 650
+      },
+      {
+        "id": "issue-38",
+        "x": 964,
+        "y": 604
+      },
+      {
+        "id": "issue-39",
+        "x": 880,
+        "y": 660
+      },
+      {
+        "id": "issue-40",
+        "x": 794,
+        "y": 618
+      },
+      {
+        "id": "issue-41",
+        "x": 710,
+        "y": 674
+      },
+      {
+        "id": "issue-42",
+        "x": 624,
+        "y": 632
+      },
+      {
+        "id": "issue-43",
+        "x": 540,
+        "y": 688
+      },
+      {
+        "id": "issue-44",
+        "x": 454,
+        "y": 646
+      },
+      {
+        "id": "issue-45",
+        "x": 368,
+        "y": 702
+      },
+      {
+        "id": "issue-46",
+        "x": 282,
+        "y": 660
+      },
+      {
+        "id": "issue-47",
+        "x": 196,
+        "y": 714
+      },
+      {
+        "id": "issue-48",
+        "x": 110,
+        "y": 674
+      }
+    ],
+    "dispatch": [
+      {
+        "id": "dispatch",
+        "x": 622,
+        "y": 552
+      }
+    ],
+    "overflow": [
+      {
+        "id": "overflow-agents",
+        "x": 548,
+        "y": 954
+      },
+      {
+        "id": "overflow-squads",
+        "x": 622,
+        "y": 954
+      },
+      {
+        "id": "overflow-issues",
+        "x": 696,
+        "y": 954
+      }
+    ],
+    "camera": [
+      {
+        "id": "camera",
+        "x": 624,
+        "y": 512
+      }
+    ]
+  },
+  "clips": {
+    "idle": {
+      "variants": [
+        [
+          "expedition-v0-idle-0",
+          "expedition-v0-idle-1"
+        ],
+        [
+          "expedition-v1-idle-0",
+          "expedition-v1-idle-1"
+        ],
+        [
+          "expedition-v2-idle-0",
+          "expedition-v2-idle-1"
+        ],
+        [
+          "expedition-v3-idle-0",
+          "expedition-v3-idle-1"
+        ]
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "wait": {
+      "variants": [
+        [
+          "expedition-v0-wait-0",
+          "expedition-v0-wait-1"
+        ],
+        [
+          "expedition-v1-wait-0",
+          "expedition-v1-wait-1"
+        ],
+        [
+          "expedition-v2-wait-0",
+          "expedition-v2-wait-1"
+        ],
+        [
+          "expedition-v3-wait-0",
+          "expedition-v3-wait-1"
+        ]
+      ],
+      "fps": 10,
+      "loop": true
+    },
+    "work": {
+      "variants": [
+        [
+          "expedition-v0-work-0",
+          "expedition-v0-work-1"
+        ],
+        [
+          "expedition-v1-work-0",
+          "expedition-v1-work-1"
+        ],
+        [
+          "expedition-v2-work-0",
+          "expedition-v2-work-1"
+        ],
+        [
+          "expedition-v3-work-0",
+          "expedition-v3-work-1"
+        ]
+      ],
+      "fps": 12,
+      "loop": true
+    },
+    "walk": {
+      "variants": [
+        [
+          "expedition-v0-walk-0",
+          "expedition-v0-walk-1"
+        ],
+        [
+          "expedition-v1-walk-0",
+          "expedition-v1-walk-1"
+        ],
+        [
+          "expedition-v2-walk-0",
+          "expedition-v2-walk-1"
+        ],
+        [
+          "expedition-v3-walk-0",
+          "expedition-v3-walk-1"
+        ]
+      ],
+      "fps": 14,
+      "loop": true
+    },
+    "unstable": {
+      "variants": [
+        [
+          "expedition-v0-unstable-0",
+          "expedition-v0-unstable-1"
+        ],
+        [
+          "expedition-v1-unstable-0",
+          "expedition-v1-unstable-1"
+        ],
+        [
+          "expedition-v2-unstable-0",
+          "expedition-v2-unstable-1"
+        ],
+        [
+          "expedition-v3-unstable-0",
+          "expedition-v3-unstable-1"
+        ]
+      ],
+      "fps": 16,
+      "loop": true
+    },
+    "offline": {
+      "variants": [
+        [
+          "expedition-v0-offline-0",
+          "expedition-v0-offline-1"
+        ],
+        [
+          "expedition-v1-offline-0",
+          "expedition-v1-offline-1"
+        ],
+        [
+          "expedition-v2-offline-0",
+          "expedition-v2-offline-1"
+        ],
+        [
+          "expedition-v3-offline-0",
+          "expedition-v3-offline-1"
+        ]
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "completion": {
+      "variants": [
+        [
+          "expedition-v0-completion-0",
+          "expedition-v0-completion-1"
+        ],
+        [
+          "expedition-v1-completion-0",
+          "expedition-v1-completion-1"
+        ],
+        [
+          "expedition-v2-completion-0",
+          "expedition-v2-completion-1"
+        ],
+        [
+          "expedition-v3-completion-0",
+          "expedition-v3-completion-1"
+        ]
+      ],
+      "fps": 10,
+      "loop": false
+    },
+    "failure": {
+      "variants": [
+        [
+          "expedition-v0-failure-0",
+          "expedition-v0-failure-1"
+        ],
+        [
+          "expedition-v1-failure-0",
+          "expedition-v1-failure-1"
+        ],
+        [
+          "expedition-v2-failure-0",
+          "expedition-v2-failure-1"
+        ],
+        [
+          "expedition-v3-failure-0",
+          "expedition-v3-failure-1"
+        ]
+      ],
+      "fps": 12,
+      "loop": false
+    }
+  },
+  "palette": [
+    "#1c2922",
+    "#516b48",
+    "#315c87",
+    "#eb7768",
+    "#8ea392",
+    "#343a3e",
+    "#d8c98f",
+    "#0d1518",
+    "#47788d",
+    "#737873",
+    "#e4b95f",
+    "#efe2ae",
+    "#24415f",
+    "#6d875b"
+  ],
+  "lighting": {
+    "light": {
+      "ambient": "#d7c887",
+      "overlayAlpha": 0.06
+    },
+    "dark": {
+      "ambient": "#0c1318",
+      "overlayAlpha": 0.34
+    }
+  },
+  "visuals": {
+    "actorSilhouette": "faceted-field-companion",
+    "stationStyle": "radial-stone-workbench",
+    "props": [
+      "route-beacon",
+      "canvas-shelter",
+      "stone-workbench",
+      "field-map",
+      "supply-crate",
+      "survey-standard",
+      "water-channel"
+    ],
+    "backdropColor": 0,
+    "decor": [
+      {
+        "kind": "rect",
+        "x": 0,
+        "y": 0,
+        "width": 1248,
+        "height": 1024,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          0,
+          744,
+          176,
+          696,
+          332,
+          760,
+          430,
+          884,
+          374,
+          1024,
+          0,
+          1024
+        ],
+        "color": 8
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          0,
+          802,
+          150,
+          758,
+          286,
+          806,
+          368,
+          912,
+          334,
+          1024,
+          0,
+          1024
+        ],
+        "color": 12
+      },
+      {
+        "kind": "line",
+        "points": [
+          8,
+          778,
+          168,
+          732,
+          318,
+          790,
+          394,
+          886
+        ],
+        "width": 8,
+        "color": 11
+      },
+      {
+        "kind": "line",
+        "points": [
+          250,
+          260,
+          610,
+          310,
+          980,
+          270,
+          880,
+          760,
+          360,
+          720,
+          250,
+          260
+        ],
+        "width": 34,
+        "color": 9
+      },
+      {
+        "kind": "line",
+        "points": [
+          250,
+          260,
+          610,
+          310,
+          980,
+          270,
+          880,
+          760,
+          360,
+          720,
+          250,
+          260
+        ],
+        "width": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          96,
+          134,
+          222,
+          104,
+          342,
+          142,
+          392,
+          244,
+          342,
+          354,
+          198,
+          386,
+          94,
+          314,
+          58,
+          220
+        ],
+        "color": 5
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          450,
+          156,
+          610,
+          112,
+          752,
+          174,
+          804,
+          310,
+          746,
+          424,
+          588,
+          458,
+          454,
+          384,
+          410,
+          260
+        ],
+        "color": 5
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          842,
+          112,
+          1020,
+          96,
+          1152,
+          174,
+          1178,
+          306,
+          1104,
+          390,
+          930,
+          414,
+          824,
+          330,
+          798,
+          218
+        ],
+        "color": 5
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          168,
+          578,
+          348,
+          526,
+          498,
+          600,
+          530,
+          756,
+          438,
+          858,
+          248,
+          872,
+          128,
+          754
+        ],
+        "color": 5
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          700,
+          580,
+          900,
+          520,
+          1088,
+          598,
+          1142,
+          768,
+          1044,
+          894,
+          820,
+          908,
+          678,
+          790
+        ],
+        "color": 5
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          130,
+          122,
+          246,
+          54,
+          356,
+          132,
+          318,
+          214,
+          166,
+          210
+        ],
+        "color": 2
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          146,
+          128,
+          246,
+          72,
+          246,
+          198,
+          172,
+          198
+        ],
+        "color": 12
+      },
+      {
+        "kind": "line",
+        "points": [
+          246,
+          66,
+          246,
+          210
+        ],
+        "width": 8,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          882,
+          430,
+          1010,
+          356,
+          1136,
+          444,
+          1082,
+          526,
+          920,
+          522
+        ],
+        "color": 2
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          900,
+          438,
+          1010,
+          376,
+          1010,
+          512,
+          930,
+          510
+        ],
+        "color": 12
+      },
+      {
+        "kind": "line",
+        "points": [
+          1010,
+          370,
+          1010,
+          532
+        ],
+        "width": 8,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          520,
+          486,
+          706,
+          468,
+          780,
+          566,
+          700,
+          650,
+          518,
+          630,
+          466,
+          548
+        ],
+        "color": 9
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          542,
+          504,
+          688,
+          496,
+          742,
+          558,
+          678,
+          620,
+          536,
+          604,
+          498,
+          546
+        ],
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 558,
+        "y": 522,
+        "width": 166,
+        "height": 62,
+        "color": 12
+      },
+      {
+        "kind": "rect",
+        "x": 576,
+        "y": 536,
+        "width": 130,
+        "height": 34,
+        "color": 2
+      },
+      {
+        "kind": "line",
+        "points": [
+          590,
+          544,
+          620,
+          558,
+          650,
+          548,
+          684,
+          562
+        ],
+        "width": 5,
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 62,
+        "y": 448,
+        "width": 86,
+        "height": 62,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 70,
+        "y": 456,
+        "width": 32,
+        "height": 22,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 110,
+        "y": 456,
+        "width": 30,
+        "height": 22,
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 82,
+        "y": 486,
+        "width": 58,
+        "height": 16,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 1090,
+        "y": 470,
+        "width": 92,
+        "height": 74,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 1098,
+        "y": 478,
+        "width": 36,
+        "height": 28,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 1142,
+        "y": 478,
+        "width": 32,
+        "height": 28,
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 1098,
+        "y": 514,
+        "width": 76,
+        "height": 22,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 524,
+        "y": 864,
+        "width": 86,
+        "height": 62,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 532,
+        "y": 872,
+        "width": 32,
+        "height": 22,
+        "color": 1
+      },
+      {
+        "kind": "rect",
+        "x": 572,
+        "y": 872,
+        "width": 30,
+        "height": 22,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 544,
+        "y": 902,
+        "width": 58,
+        "height": 16,
+        "color": 10
+      },
+      {
+        "kind": "line",
+        "points": [
+          76,
+          420,
+          188,
+          362,
+          302,
+          410
+        ],
+        "width": 8,
+        "color": 3
+      },
+      {
+        "kind": "line",
+        "points": [
+          1024,
+          570,
+          1112,
+          620,
+          1182,
+          706
+        ],
+        "width": 8,
+        "color": 3
+      },
+      {
+        "kind": "line",
+        "points": [
+          438,
+          880,
+          474,
+          936,
+          532,
+          968
+        ],
+        "width": 8,
+        "color": 3
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          130,
+          198,
+          160,
+          184,
+          207,
+          196,
+          218,
+          228,
+          190,
+          248,
+          138,
+          243
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 141,
+        "y": 202,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 153,
+        "y": 206,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 165,
+        "y": 218,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          190,
+          160,
+          220,
+          146,
+          267,
+          158,
+          278,
+          190,
+          250,
+          210,
+          198,
+          205
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 201,
+        "y": 164,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 213,
+        "y": 168,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 225,
+        "y": 180,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          256,
+          178,
+          286,
+          164,
+          333,
+          176,
+          344,
+          208,
+          316,
+          228,
+          264,
+          223
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 267,
+        "y": 182,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 279,
+        "y": 186,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 291,
+        "y": 198,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          296,
+          234,
+          326,
+          220,
+          373,
+          232,
+          384,
+          264,
+          356,
+          284,
+          304,
+          279
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 307,
+        "y": 238,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 319,
+        "y": 242,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 331,
+        "y": 254,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          260,
+          294,
+          290,
+          280,
+          337,
+          292,
+          348,
+          324,
+          320,
+          344,
+          268,
+          339
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 271,
+        "y": 298,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 283,
+        "y": 302,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 295,
+        "y": 314,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          196,
+          308,
+          226,
+          294,
+          273,
+          306,
+          284,
+          338,
+          256,
+          358,
+          204,
+          353
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 207,
+        "y": 312,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 219,
+        "y": 316,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 231,
+        "y": 328,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          134,
+          284,
+          164,
+          270,
+          211,
+          282,
+          222,
+          314,
+          194,
+          334,
+          142,
+          329
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 145,
+        "y": 288,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 157,
+        "y": 292,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 169,
+        "y": 304,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          210,
+          236,
+          240,
+          222,
+          287,
+          234,
+          298,
+          266,
+          270,
+          286,
+          218,
+          281
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 221,
+        "y": 240,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 233,
+        "y": 244,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 245,
+        "y": 256,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          490,
+          248,
+          520,
+          234,
+          567,
+          246,
+          578,
+          278,
+          550,
+          298,
+          498,
+          293
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 501,
+        "y": 252,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 513,
+        "y": 256,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 525,
+        "y": 268,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          550,
+          210,
+          580,
+          196,
+          627,
+          208,
+          638,
+          240,
+          610,
+          260,
+          558,
+          255
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 561,
+        "y": 214,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 573,
+        "y": 218,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 585,
+        "y": 230,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          616,
+          228,
+          646,
+          214,
+          693,
+          226,
+          704,
+          258,
+          676,
+          278,
+          624,
+          273
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 627,
+        "y": 232,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 639,
+        "y": 236,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 651,
+        "y": 248,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          656,
+          284,
+          686,
+          270,
+          733,
+          282,
+          744,
+          314,
+          716,
+          334,
+          664,
+          329
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 667,
+        "y": 288,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 679,
+        "y": 292,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 691,
+        "y": 304,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          620,
+          344,
+          650,
+          330,
+          697,
+          342,
+          708,
+          374,
+          680,
+          394,
+          628,
+          389
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 631,
+        "y": 348,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 643,
+        "y": 352,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 655,
+        "y": 364,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          556,
+          358,
+          586,
+          344,
+          633,
+          356,
+          644,
+          388,
+          616,
+          408,
+          564,
+          403
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 567,
+        "y": 362,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 579,
+        "y": 366,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 591,
+        "y": 378,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          494,
+          334,
+          524,
+          320,
+          571,
+          332,
+          582,
+          364,
+          554,
+          384,
+          502,
+          379
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 505,
+        "y": 338,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 517,
+        "y": 342,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 529,
+        "y": 354,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          570,
+          286,
+          600,
+          272,
+          647,
+          284,
+          658,
+          316,
+          630,
+          336,
+          578,
+          331
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 581,
+        "y": 290,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 593,
+        "y": 294,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 605,
+        "y": 306,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          860,
+          208,
+          890,
+          194,
+          937,
+          206,
+          948,
+          238,
+          920,
+          258,
+          868,
+          253
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 871,
+        "y": 212,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 883,
+        "y": 216,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 895,
+        "y": 228,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          920,
+          170,
+          950,
+          156,
+          997,
+          168,
+          1008,
+          200,
+          980,
+          220,
+          928,
+          215
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 931,
+        "y": 174,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 943,
+        "y": 178,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 955,
+        "y": 190,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          986,
+          188,
+          1016,
+          174,
+          1063,
+          186,
+          1074,
+          218,
+          1046,
+          238,
+          994,
+          233
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 997,
+        "y": 192,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 1009,
+        "y": 196,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 1021,
+        "y": 208,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1026,
+          244,
+          1056,
+          230,
+          1103,
+          242,
+          1114,
+          274,
+          1086,
+          294,
+          1034,
+          289
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 1037,
+        "y": 248,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 1049,
+        "y": 252,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 1061,
+        "y": 264,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          990,
+          304,
+          1020,
+          290,
+          1067,
+          302,
+          1078,
+          334,
+          1050,
+          354,
+          998,
+          349
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 1001,
+        "y": 308,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 1013,
+        "y": 312,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 1025,
+        "y": 324,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          926,
+          318,
+          956,
+          304,
+          1003,
+          316,
+          1014,
+          348,
+          986,
+          368,
+          934,
+          363
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 937,
+        "y": 322,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 949,
+        "y": 326,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 961,
+        "y": 338,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          864,
+          294,
+          894,
+          280,
+          941,
+          292,
+          952,
+          324,
+          924,
+          344,
+          872,
+          339
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 875,
+        "y": 298,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 887,
+        "y": 302,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 899,
+        "y": 314,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          940,
+          246,
+          970,
+          232,
+          1017,
+          244,
+          1028,
+          276,
+          1000,
+          296,
+          948,
+          291
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 951,
+        "y": 250,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 963,
+        "y": 254,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 975,
+        "y": 266,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          240,
+          658,
+          270,
+          644,
+          317,
+          656,
+          328,
+          688,
+          300,
+          708,
+          248,
+          703
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 251,
+        "y": 662,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 263,
+        "y": 666,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 275,
+        "y": 678,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          300,
+          620,
+          330,
+          606,
+          377,
+          618,
+          388,
+          650,
+          360,
+          670,
+          308,
+          665
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 311,
+        "y": 624,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 323,
+        "y": 628,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 335,
+        "y": 640,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          366,
+          638,
+          396,
+          624,
+          443,
+          636,
+          454,
+          668,
+          426,
+          688,
+          374,
+          683
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 377,
+        "y": 642,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 389,
+        "y": 646,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 401,
+        "y": 658,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          406,
+          694,
+          436,
+          680,
+          483,
+          692,
+          494,
+          724,
+          466,
+          744,
+          414,
+          739
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 417,
+        "y": 698,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 429,
+        "y": 702,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 441,
+        "y": 714,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          370,
+          754,
+          400,
+          740,
+          447,
+          752,
+          458,
+          784,
+          430,
+          804,
+          378,
+          799
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 381,
+        "y": 758,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 393,
+        "y": 762,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 405,
+        "y": 774,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          306,
+          768,
+          336,
+          754,
+          383,
+          766,
+          394,
+          798,
+          366,
+          818,
+          314,
+          813
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 317,
+        "y": 772,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 329,
+        "y": 776,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 341,
+        "y": 788,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          244,
+          744,
+          274,
+          730,
+          321,
+          742,
+          332,
+          774,
+          304,
+          794,
+          252,
+          789
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 255,
+        "y": 748,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 267,
+        "y": 752,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 279,
+        "y": 764,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          320,
+          696,
+          350,
+          682,
+          397,
+          694,
+          408,
+          726,
+          380,
+          746,
+          328,
+          741
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 331,
+        "y": 700,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 343,
+        "y": 704,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 355,
+        "y": 716,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          760,
+          698,
+          790,
+          684,
+          837,
+          696,
+          848,
+          728,
+          820,
+          748,
+          768,
+          743
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 771,
+        "y": 702,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 783,
+        "y": 706,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 795,
+        "y": 718,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          820,
+          660,
+          850,
+          646,
+          897,
+          658,
+          908,
+          690,
+          880,
+          710,
+          828,
+          705
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 831,
+        "y": 664,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 843,
+        "y": 668,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 855,
+        "y": 680,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          886,
+          678,
+          916,
+          664,
+          963,
+          676,
+          974,
+          708,
+          946,
+          728,
+          894,
+          723
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 897,
+        "y": 682,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 909,
+        "y": 686,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 921,
+        "y": 698,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          926,
+          734,
+          956,
+          720,
+          1003,
+          732,
+          1014,
+          764,
+          986,
+          784,
+          934,
+          779
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 937,
+        "y": 738,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 949,
+        "y": 742,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 961,
+        "y": 754,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          890,
+          794,
+          920,
+          780,
+          967,
+          792,
+          978,
+          824,
+          950,
+          844,
+          898,
+          839
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 901,
+        "y": 798,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 913,
+        "y": 802,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 925,
+        "y": 814,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          826,
+          808,
+          856,
+          794,
+          903,
+          806,
+          914,
+          838,
+          886,
+          858,
+          834,
+          853
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 837,
+        "y": 812,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 849,
+        "y": 816,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 861,
+        "y": 828,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          764,
+          784,
+          794,
+          770,
+          841,
+          782,
+          852,
+          814,
+          824,
+          834,
+          772,
+          829
+        ],
+        "color": 9
+      },
+      {
+        "kind": "rect",
+        "x": 775,
+        "y": 788,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 787,
+        "y": 792,
+        "width": 38,
+        "height": 5,
+        "color": 4
+      },
+      {
+        "kind": "rect",
+        "x": 799,
+        "y": 804,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          840,
+          736,
+          870,
+          722,
+          917,
+          734,
+          928,
+          766,
+          900,
+          786,
+          848,
+          781
+        ],
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 851,
+        "y": 740,
+        "width": 62,
+        "height": 12,
+        "color": 6
+      },
+      {
+        "kind": "rect",
+        "x": 863,
+        "y": 744,
+        "width": 38,
+        "height": 5,
+        "color": 2
+      },
+      {
+        "kind": "rect",
+        "x": 875,
+        "y": 756,
+        "width": 14,
+        "height": 10,
+        "color": 0
+      },
+      {
+        "kind": "rect",
+        "x": 63,
+        "y": 124,
+        "width": 6,
+        "height": 62,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          66,
+          106,
+          82,
+          124,
+          66,
+          134,
+          50,
+          124
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 58,
+        "y": 176,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 64,
+        "y": 116,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 443,
+        "y": 40,
+        "width": 6,
+        "height": 52,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          446,
+          22,
+          462,
+          40,
+          446,
+          50,
+          430,
+          40
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 438,
+        "y": 82,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 444,
+        "y": 32,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 777,
+        "y": 52,
+        "width": 6,
+        "height": 66,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          780,
+          34,
+          796,
+          52,
+          780,
+          62,
+          764,
+          52
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 772,
+        "y": 108,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 778,
+        "y": 44,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 1187,
+        "y": 166,
+        "width": 6,
+        "height": 58,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1190,
+          148,
+          1206,
+          166,
+          1190,
+          176,
+          1174,
+          166
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 1182,
+        "y": 214,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 1188,
+        "y": 158,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 1157,
+        "y": 766,
+        "width": 6,
+        "height": 72,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1160,
+          748,
+          1176,
+          766,
+          1160,
+          776,
+          1144,
+          766
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 1152,
+        "y": 828,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 1158,
+        "y": 758,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 739,
+        "y": 896,
+        "width": 6,
+        "height": 56,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          742,
+          878,
+          758,
+          896,
+          742,
+          906,
+          726,
+          896
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 734,
+        "y": 942,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 740,
+        "y": 888,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 185,
+        "y": 870,
+        "width": 6,
+        "height": 64,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          188,
+          852,
+          204,
+          870,
+          188,
+          880,
+          172,
+          870
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 180,
+        "y": 924,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 186,
+        "y": 862,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "rect",
+        "x": 81,
+        "y": 576,
+        "width": 6,
+        "height": 52,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          84,
+          558,
+          100,
+          576,
+          84,
+          586,
+          68,
+          576
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 76,
+        "y": 618,
+        "width": 16,
+        "height": 10,
+        "color": 5
+      },
+      {
+        "kind": "rect",
+        "x": 82,
+        "y": 568,
+        "width": 4,
+        "height": 8,
+        "color": 10
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          408,
+          192,
+          418,
+          168,
+          437,
+          161,
+          454,
+          180,
+          446,
+          202,
+          422,
+          208
+        ],
+        "color": 13
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          422,
+          188,
+          430,
+          174,
+          442,
+          190,
+          434,
+          200
+        ],
+        "color": 4
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          768,
+          424,
+          778,
+          400,
+          797,
+          393,
+          814,
+          412,
+          806,
+          434,
+          782,
+          440
+        ],
+        "color": 1
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          782,
+          420,
+          790,
+          406,
+          802,
+          422,
+          794,
+          432
+        ],
+        "color": 4
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1116,
+          368,
+          1126,
+          344,
+          1145,
+          337,
+          1162,
+          356,
+          1154,
+          378,
+          1130,
+          384
+        ],
+        "color": 13
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1130,
+          364,
+          1138,
+          350,
+          1150,
+          366,
+          1142,
+          376
+        ],
+        "color": 4
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          552,
+          752,
+          562,
+          728,
+          581,
+          721,
+          598,
+          740,
+          590,
+          762,
+          566,
+          768
+        ],
+        "color": 1
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          566,
+          748,
+          574,
+          734,
+          586,
+          750,
+          578,
+          760
+        ],
+        "color": 4
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1060,
+          938,
+          1070,
+          914,
+          1089,
+          907,
+          1106,
+          926,
+          1098,
+          948,
+          1074,
+          954
+        ],
+        "color": 13
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1074,
+          934,
+          1082,
+          920,
+          1094,
+          936,
+          1086,
+          946
+        ],
+        "color": 4
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          200,
+          520,
+          210,
+          496,
+          229,
+          489,
+          246,
+          508,
+          238,
+          530,
+          214,
+          536
+        ],
+        "color": 1
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          214,
+          516,
+          222,
+          502,
+          234,
+          518,
+          226,
+          528
+        ],
+        "color": 4
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          89,
+          554,
+          96,
+          544,
+          103,
+          554,
+          96,
+          564
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 94,
+        "y": 564,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          197,
+          570,
+          204,
+          560,
+          211,
+          570,
+          204,
+          580
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 202,
+        "y": 580,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          305,
+          586,
+          312,
+          576,
+          319,
+          586,
+          312,
+          596
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 310,
+        "y": 596,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          413,
+          554,
+          420,
+          544,
+          427,
+          554,
+          420,
+          564
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 418,
+        "y": 564,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          521,
+          570,
+          528,
+          560,
+          535,
+          570,
+          528,
+          580
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 526,
+        "y": 580,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          629,
+          586,
+          636,
+          576,
+          643,
+          586,
+          636,
+          596
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 634,
+        "y": 596,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          737,
+          554,
+          744,
+          544,
+          751,
+          554,
+          744,
+          564
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 742,
+        "y": 564,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          845,
+          570,
+          852,
+          560,
+          859,
+          570,
+          852,
+          580
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 850,
+        "y": 580,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          953,
+          586,
+          960,
+          576,
+          967,
+          586,
+          960,
+          596
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 958,
+        "y": 596,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      },
+      {
+        "kind": "polygon",
+        "points": [
+          1061,
+          554,
+          1068,
+          544,
+          1075,
+          554,
+          1068,
+          564
+        ],
+        "color": 3
+      },
+      {
+        "kind": "rect",
+        "x": 1066,
+        "y": 564,
+        "width": 4,
+        "height": 18,
+        "color": 6
+      }
+    ]
+  },
+  "hitRegions": [
+    {
+      "role": "agent",
+      "polygon": [
+        -18,
+        -24,
+        18,
+        -24,
+        22,
+        18,
+        -22,
+        18
+      ]
+    },
+    {
+      "role": "squad",
+      "polygon": [
+        -28,
+        -20,
+        28,
+        -20,
+        28,
+        20,
+        -28,
+        20
+      ]
+    },
+    {
+      "role": "issue",
+      "polygon": [
+        -14,
+        -14,
+        14,
+        -14,
+        14,
+        14,
+        -14,
+        14
+      ]
+    }
+  ],
+  "provenance": "../PROVENANCE.json"
+}

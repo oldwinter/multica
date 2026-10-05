@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS twin_proposal_workspace_identity_uidx ON twin_proposal (workspace_id, kind, source_wiki_revision_id, COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid));

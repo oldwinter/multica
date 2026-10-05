@@ -25,6 +25,8 @@ export interface SystemNotificationPayload {
   itemId: string;
   /** `?issue=<…>` selector for the inbox page (issue id, else the item id). */
   issueKey: string;
+	/** Exact Room route for lifecycle items; absent keeps the Inbox fallback. */
+	targetPath?: string;
   title: string;
   body: string;
 }

@@ -51,7 +51,7 @@ func (s *Service) DispatchDue(ctx context.Context, now time.Time, limit int32) (
 			ID:         roomRow.ID, WorkspaceID: roomRow.WorkspaceID, ExpectedNextWakeAt: roomRow.NextWakeAt,
 		}); advanceErr == nil {
 			result.RoomsAdvanced++
-			s.publish("room:updated", advanced, pgtype.UUID{}, map[string]any{"room": advanced})
+			s.publish(EventRoomUpdated, advanced, pgtype.UUID{}, roomEventPayload(advanced))
 		} else if !errors.Is(advanceErr, pgx.ErrNoRows) {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("advance due Room %s: %w", util.UUIDToString(roomRow.ID), advanceErr)

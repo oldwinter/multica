@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import {
   getCoreRowModel,
   useReactTable,
@@ -6,7 +6,7 @@ import {
   type ColumnSizingState,
 } from "@tanstack/react-table";
 import * as React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DataTable } from "@multica/ui/components/ui/data-table";
 
 type Row = { status: string; owner: string };
@@ -88,6 +88,16 @@ function setup() {
 }
 
 describe("DataTable column resize", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
   it("commits nothing when the handle is clicked without dragging", () => {
     const { onSizingChange, handle } = setup();
 

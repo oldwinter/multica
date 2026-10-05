@@ -36,9 +36,23 @@ Multica Desktop은 macOS, Windows, Linux에서 사용할 수 있습니다. Web �
 Desktop 내장 CLI는 앱이 런타임을 관리할 때만 사용합니다. 터미널에서 `multica issue` 같은 명령도 실행하려면 [빠른 시작 2단계](/cloud-quickstart#2-컴퓨터-연결)에 따라 CLI를 별도로 설치하세요.
 </Callout>
 
+<Callout type="warning">
+일부 커뮤니티 또는 다운스트림 macOS 패키지는 Developer ID 서명과 Apple 공증이 없습니다. 신뢰하는 GitHub 저장소에서 설치 패키지를 내려받은 경우에만 경고를 직접 해제하세요.
+</Callout>
+
+### macOS: 서명되지 않은 빌드 열기
+
+macOS에서 개발자를 확인할 수 없거나 앱에 악성 소프트웨어가 있는지 확인할 수 없다고 표시되는 경우:
+
+1. Multica를 한 번 열어 본 뒤 경고를 닫습니다.
+2. **Apple 메뉴 → 시스템 설정 → 개인정보 보호 및 보안**을 열고 **보안**까지 아래로 스크롤합니다.
+3. 차단된 Multica 옆의 **확인 없이 열기**를 클릭하고 인증한 다음 **열기**를 다시 확인합니다.
+
+macOS는 해당 Multica에만 예외를 기록하므로 다음부터는 정상적으로 실행할 수 있습니다. 이 버튼은 앱이 한 번 차단된 뒤에만 나타나며 제한된 시간 동안만 표시될 수 있습니다. Gatekeeper를 시스템 전체에서 비활성화하지 마세요. 화면 문구는 [Apple의 최신 안내](https://support.apple.com/102445)를 확인하세요.
+
 ## 데스크톱 탭
 
-Desktop은 워크스페이스마다 탭을 따로 저장합니다. 예를 들어 워크스페이스 A에서 이슈 세 개를 연 뒤 워크스페이스 B로 전환하면 B의 탭이 표시됩니다. A로 돌아오면 이전 세 탭이 그대로 남아 있습니다.
+Desktop은 워크스페이스마다 탭을 따로 저장합니다. 예를 들어 워크스페이스 A에서 태스크 세 개를 연 뒤 워크스페이스 B로 전환하면 B의 탭이 표시됩니다. A로 돌아오면 이전 세 탭이 그대로 남아 있습니다.
 
 같은 리소스는 현재 워크스페이스에서 한 번만 열립니다. 탭은 순서를 바꾸고, 고정하고, 닫을 수 있으며 각각의 앞으로 가기, 뒤로 가기, 스크롤 위치도 유지됩니다. 현재 배포 환경의 앱 링크를 클릭하거나 붙여 넣으면 브라우저로 이동하지 않고 탭에서 바로 열립니다.
 
@@ -65,12 +79,21 @@ Desktop 설정에서 실행 상태와 로그를 확인할 수 있습니다. 도�
 - Windows arm64와 macOS x64(Intel)는 각각 별도 업데이트 소스를 사용합니다.
 - 나머지 아키텍처는 기본 업데이트 소스를 사용합니다.
 - 앱이 업데이트 소스를 자동으로 맞추므로 직접 선택할 필요가 없습니다.
+- 서명되지 않은 커뮤니티 또는 다운스트림 macOS 앱은 자동 업데이트할 수 없습니다. 새 `.dmg`를 매번 직접 설치하세요.
 - Linux 자동 업데이트는 `.AppImage`에서만 작동합니다. `.deb`와 `.rpm`은 새 설치 패키지를 내려받아 덮어씁니다.
 - 자동 업데이트에 실패해도 다운로드 페이지에서 해당 설치 패키지를 받아 덮어쓸 수 있습니다.
 
 ## 자체 호스팅 인스턴스 연결
 
-Desktop은 기본적으로 Multica Cloud에 연결됩니다. 자체 호스팅 인스턴스에 연결하려면 사용자 디렉터리에 `~/.multica/desktop.json`을 만듭니다.
+Desktop은 기본적으로 Multica Cloud에 연결됩니다. 자체 호스팅 인스턴스에 연결하려면 사용자 디렉터리의 `.multica` 안에 `desktop.json`을 만듭니다.
+
+| 플랫폼 | 경로 |
+| --- | --- |
+| macOS | `/Users/<사용자>/.multica/desktop.json` |
+| Linux | `/home/<사용자>/.multica/desktop.json` |
+| Windows | `C:\Users\<사용자>\.multica\desktop.json` |
+
+위 경로는 기본 위치입니다. 홈 디렉터리를 옮겼거나 리디렉션한 경우에는 실제 경로를 사용하세요.
 
 ```json
 {
@@ -78,6 +101,10 @@ Desktop은 기본적으로 Multica Cloud에 연결됩니다. 자체 호스팅 �
   "apiUrl": "https://api.example.com"
 }
 ```
+
+<Callout type="warning">
+이 파일은 CLI의 `~/.multica/config.json`과 **다른 파일**이며 키 이름도 다릅니다. CLI는 `server_url`을, Desktop은 `apiUrl`을 사용합니다. Desktop은 CLI 설정을 읽지 않고 `~/.multica/profiles/desktop-<host>/` 아래에 별도의 daemon 프로필을 관리합니다. `config.json`을 수정해도 Desktop이 연결하는 서버는 바뀌지 않습니다.
+</Callout>
 
 `apiUrl`은 backend의 공개 주소로 필수이며 `http` 또는 `https`를 사용해야 합니다. 다음 두 주소는 생략할 수 있으며 Desktop이 자동으로 추론합니다.
 
@@ -99,11 +126,37 @@ Desktop은 기본적으로 Multica Cloud에 연결됩니다. 자체 호스팅 �
 }
 ```
 
-저장한 뒤 Desktop을 다시 시작합니다. 설정 파일이 존재하지만 JSON, 버전, URL이 유효하지 않으면 앱에 설정 오류가 표시되고 Cloud에 자동 연결되지 않습니다. 해당 파일을 삭제하고 다시 시작하면 기본 Cloud 설정으로 돌아갑니다.
+저장한 뒤 Desktop을 다시 시작합니다. 이 설정은 시작할 때 한 번만 읽습니다. 두 가지 실패는 다르게 나타나므로 이를 보고 빠르게 구분할 수 있습니다.
+
+- **파일을 찾지 못한 경우**(디렉터리가 다르거나 파일 이름이 `desktop.json`이 아닌 경우): Desktop은 기본 Cloud 설정을 사용하고 오류를 표시하지 않습니다. 따라서 Desktop이 여전히 Cloud 주소를 표시하고 설정 오류도 없다면, 파일이 Desktop이 찾는 위치에 없다는 뜻입니다.
+- **파일은 찾았지만 유효하지 않은 경우**(JSON, 버전, URL에 문제가 있는 경우): Desktop에 설정 오류가 표시되며 Cloud로 자동 폴백하지 않습니다.
+
+해당 파일을 삭제하고 다시 시작하면 기본 Cloud 설정으로 돌아갑니다.
 
 <Callout type="warning">
 Desktop은 브라우저와 실행 컴퓨터에서 모두 접근할 수 있는 주소에만 연결할 수 있습니다. 원격 자체 호스팅 인스턴스에 HTTPS가 없거나 WebSocket 프록시가 설정되지 않으면 Desktop이 연결되지 않습니다. 전체 설정은 [자체 호스팅 빠른 시작](/self-host-quickstart#3-접근-방식-선택)을 참고하세요.
 </Callout>
+
+### Windows: 파일 이름과 인코딩 확인
+
+Windows에서는 편집기의 두 가지 기본 동작 때문에 Desktop이 사용할 수 없는 파일이 조용히 만들어집니다.
+
+- **메모장이 `.txt`를 덧붙입니다.** `desktop.json`으로 저장해도 실제로는 `desktop.json.txt`가 될 수 있으며, Desktop은 이를 파일이 없는 것으로 처리합니다. 파일 탐색기에서 파일 확장명 표시를 켜거나 저장 대화 상자에서 *모든 파일*을 선택하세요. 실제 파일 이름을 확인하려면 PowerShell에서 `Get-ChildItem "$env:USERPROFILE\.multica" -Filter "desktop.json*"`를 실행하세요. `Name` 열이 정확히 `desktop.json`이어야 합니다.
+- **PowerShell 리디렉션은 UTF-16이나 BOM을 씁니다.** `> desktop.json`과 `Out-File`은 파싱할 수 없는 인코딩을 만들 수 있으며, 설정 오류로 나타납니다.
+
+두 가지를 모두 피하려면 PowerShell에서 한 번에 파일을 만듭니다.
+
+```powershell
+$dir = "$env:USERPROFILE\.multica"
+New-Item -ItemType Directory -Force $dir | Out-Null
+$json = @'
+{
+  "schemaVersion": 1,
+  "apiUrl": "https://api.example.com"
+}
+'@
+[System.IO.File]::WriteAllText("$dir\desktop.json", $json)
+```
 
 ## Windows Defender가 Multica를 바이러스로 탐지하는 경우
 

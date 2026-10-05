@@ -17,7 +17,7 @@ import {
   type RoomComposerDrafts,
 } from "@multica/core/rooms";
 
-function claimAndUpdateDrafts(
+function initializeScopedDrafts(
   scope: RoomComposerDraftScope,
   update: (drafts: RoomComposerDrafts) => RoomComposerDrafts,
 ) {
@@ -67,18 +67,23 @@ export function useRoomComposerDrafts(activeRoomId: string) {
 
   useEffect(() => {
     if (!activeRoomId || !scope) return;
-    const ensureDraft = () => {
-      claimAndUpdateDrafts(scope, (current) =>
+    const ensureOwnedDraft = () => {
+      updateOwnedDrafts(scope, (current) =>
         ensureRoomComposerDraft(current, activeRoomId, createSafeId()),
       );
     };
-    ensureDraft();
-    return useRoomComposerDraftStore.persist.onFinishHydration(ensureDraft);
+    initializeScopedDrafts(scope, (current) =>
+      ensureRoomComposerDraft(current, activeRoomId, createSafeId()),
+    );
+    // A workspace switch can start rehydration before the previous Room
+    // component's passive-effect cleanup runs. The old listener must never
+    // reclaim a store that hydration has already assigned to the new scope.
+    return useRoomComposerDraftStore.persist.onFinishHydration(ensureOwnedDraft);
   }, [activeRoomId, scope]);
 
   const updateBody = useCallback((roomId: string, body: string) => {
     if (!scope) return;
-    claimAndUpdateDrafts(scope, (current) =>
+    updateOwnedDrafts(scope, (current) =>
       updateRoomComposerBody(current, roomId, body, createSafeId()),
     );
   }, [scope]);
@@ -86,7 +91,7 @@ export function useRoomComposerDrafts(activeRoomId: string) {
   const updateMention = useCallback(
     (roomId: string, agentId: string, selected: boolean) => {
       if (!scope) return;
-      claimAndUpdateDrafts(scope, (current) =>
+      updateOwnedDrafts(scope, (current) =>
         updateRoomComposerMention(
           current,
           roomId,

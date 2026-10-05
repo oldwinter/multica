@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   createPin: vi.fn(),
   deletePin: vi.fn(),
   openModal: vi.fn(),
+  openCreateIssue: vi.fn(),
   projectViewState: {
     viewMode: "compact",
     sortField: "name",
@@ -100,6 +101,10 @@ vi.mock("@multica/core/modals", () => ({
   useModalStore: {
     getState: () => ({ open: mocks.openModal }),
   },
+}));
+
+vi.mock("@multica/core/issues/stores", () => ({
+  openCreateIssueWithPreference: mocks.openCreateIssue,
 }));
 
 vi.mock("@multica/ui/components/ui/dropdown-menu", () => ({
@@ -210,6 +215,7 @@ function makeAdapter(
     back: vi.fn(),
     pathname: "/test-workspace/projects",
     searchParams: new URLSearchParams(),
+    hash: "",
     getShareableUrl: (p) => p,
     ...overrides,
   };
@@ -242,11 +248,30 @@ beforeEach(() => {
   mocks.createPin.mockClear();
   mocks.deletePin.mockClear();
   mocks.openModal.mockClear();
+  mocks.openCreateIssue.mockClear();
   mocks.projectViewState.viewMode = "compact";
   mocks.projectViewState.sortField = "name";
   mocks.projectViewState.sortDirection = "asc";
   mocks.projectViewState.hiddenColumns = [];
   mocks.projectViewState.filters = { statuses: [], priorities: [], leads: [] };
+});
+
+describe("ProjectsPage project actions", () => {
+  it.each(["compact", "comfortable"] as const)(
+    "starts an issue in the selected project from the %s view",
+    async (viewMode) => {
+      const user = userEvent.setup();
+      mocks.projectViewState.viewMode = viewMode;
+      renderProjects();
+
+      await user.click(screen.getByRole("button", { name: "New issue" }));
+
+      expect(mocks.openCreateIssue).toHaveBeenCalledWith({
+        project_id: PROJECT.id,
+      });
+      expect(mocks.openCreateIssue).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe("ProjectsPage compact row navigation", () => {
@@ -303,9 +328,9 @@ describe("ProjectsPage compact row navigation", () => {
 
     expect(middleClick.defaultPrevented).toBe(true);
     expect(openInNewTab).toHaveBeenCalledTimes(3);
-    expect(openInNewTab).toHaveBeenNthCalledWith(1, "/test-workspace/projects/project-1");
-    expect(openInNewTab).toHaveBeenNthCalledWith(2, "/test-workspace/projects/project-1");
-    expect(openInNewTab).toHaveBeenNthCalledWith(3, "/test-workspace/projects/project-1");
+    expect(openInNewTab).toHaveBeenNthCalledWith(1, "/test-workspace/projects/project-1", "Launch Plan");
+    expect(openInNewTab).toHaveBeenNthCalledWith(2, "/test-workspace/projects/project-1", "Launch Plan");
+    expect(openInNewTab).toHaveBeenNthCalledWith(3, "/test-workspace/projects/project-1", "Launch Plan");
     expect(push).not.toHaveBeenCalled();
   });
 

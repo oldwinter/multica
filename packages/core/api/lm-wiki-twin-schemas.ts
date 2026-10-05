@@ -3,6 +3,7 @@ import type {
   LMWikiOverview,
   TwinOverview,
 } from "../twins/types";
+import type { TwinDepositionEvidence } from "../twins/execution-types";
 
 const NonEmptyString = z.string().min(1);
 const ContentSchema = z.object({}).loose();
@@ -89,6 +90,7 @@ export const TwinProposalSchema = z.object({
   content: ContentSchema,
   content_digest: z.string(),
   requested_by_id: z.string().nullable().optional().default(null),
+  replaces_proposal_id: z.string().nullable().optional().default(null),
   created_at: z.string(),
   review: TwinProposalReviewSchema.nullable().optional().default(null),
   signed_version: TwinVersionSchema.nullable().optional().default(null),
@@ -106,6 +108,23 @@ export const TwinProposalDetailSchema = z.object({
   proposal: TwinProposalSchema,
   source_revision: LMWikiRevisionSchema,
   citations: z.array(LMWikiCitationSchema).optional().default([]),
+  run_evidence: z.object({
+    task_id: z.string().uuid(),
+    base_twin_version_id: z.string().uuid(),
+    evidence_digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    task_status: z.string().default(""),
+    completed_at: z.string().nullable().optional().default(null),
+    feedback_rating: z.enum(["helped", "irrelevant", "mismatch"]).nullable().optional().default(null),
+    safe_metadata: ContentSchema.optional().default({}),
+  }).loose().optional().catch(undefined).transform((value): TwinDepositionEvidence | undefined => value ? ({
+    taskId: value.task_id,
+    baseTwinVersionId: value.base_twin_version_id,
+    evidenceDigest: value.evidence_digest,
+    taskStatus: value.task_status,
+    completedAt: value.completed_at,
+    feedbackRating: value.feedback_rating,
+    safeMetadata: value.safe_metadata,
+  }) : undefined),
 }).loose();
 
 export const TwinVersionDetailSchema = z.object({

@@ -1,0 +1,1 @@
+-- Validation only changes catalog state; migration 513 owns the constraint shape.

@@ -23,7 +23,39 @@ WITH inserted AS (
     ON CONFLICT (
         workspace_id, kind, source_wiki_revision_id,
         (COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
-    ) DO NOTHING
+    ) WHERE kind IN ('initial', 'evolution') DO NOTHING
+    RETURNING *
+)
+SELECT * FROM inserted
+UNION ALL
+SELECT proposal.*
+FROM twin_proposal proposal
+WHERE proposal.workspace_id = sqlc.arg(workspace_id)
+  AND proposal.kind = sqlc.arg(kind)
+  AND proposal.source_wiki_revision_id = sqlc.arg(source_wiki_revision_id)
+  AND proposal.base_twin_version_id IS NOT DISTINCT FROM sqlc.narg(base_twin_version_id)
+LIMIT 1;
+
+-- name: CreateTwinProposalV2 :one
+WITH inserted AS (
+    INSERT INTO twin_proposal (
+        workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+        schema_version, content, content_digest, requested_by_id
+    )
+    SELECT sqlc.arg(workspace_id), sqlc.arg(kind), source.id,
+           sqlc.narg(base_twin_version_id), 2, sqlc.arg(content),
+           sqlc.arg(content_digest), sqlc.narg(requested_by_id)
+    FROM lm_wiki_revision source
+    LEFT JOIN twin_version base
+      ON base.workspace_id = sqlc.arg(workspace_id)
+     AND base.id = sqlc.narg(base_twin_version_id)
+    WHERE source.workspace_id = sqlc.arg(workspace_id)
+      AND source.id = sqlc.arg(source_wiki_revision_id)
+      AND (sqlc.narg(base_twin_version_id)::uuid IS NULL OR base.id IS NOT NULL)
+    ON CONFLICT (
+        workspace_id, kind, source_wiki_revision_id,
+        (COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
+    ) WHERE kind IN ('initial', 'evolution') DO NOTHING
     RETURNING *
 )
 SELECT * FROM inserted
@@ -43,10 +75,61 @@ WHERE workspace_id = sqlc.arg(workspace_id)
   AND source_wiki_revision_id = sqlc.arg(source_wiki_revision_id)
   AND base_twin_version_id IS NOT DISTINCT FROM sqlc.narg(base_twin_version_id);
 
+-- name: CreateTwinDepositionProposalV2 :one
+INSERT INTO twin_proposal (
+    workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+    schema_version, content, content_digest, requested_by_id
+)
+SELECT sqlc.arg(workspace_id), 'deposition', source.id, base.id,
+       2, sqlc.arg(content), sqlc.arg(content_digest), sqlc.arg(requested_by_id)
+FROM twin_version base
+JOIN lm_wiki_revision source
+  ON source.workspace_id = base.workspace_id
+ AND source.id = base.source_wiki_revision_id
+WHERE base.workspace_id = sqlc.arg(workspace_id)
+  AND base.id = sqlc.arg(base_twin_version_id)
+  AND source.id = sqlc.arg(source_wiki_revision_id)
+RETURNING *;
+
+-- name: CreateTwinProposalCorrectionV2 :one
+WITH inserted AS (
+    INSERT INTO twin_proposal (
+        workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+        schema_version, content, content_digest, requested_by_id,
+        replaces_proposal_id
+    )
+    SELECT target.workspace_id, 'correction', target.source_wiki_revision_id,
+           target.base_twin_version_id, 2, sqlc.arg(content),
+           sqlc.arg(content_digest), sqlc.arg(requested_by_id), target.id
+    FROM twin_proposal target
+    LEFT JOIN twin_proposal_review review
+      ON review.workspace_id = target.workspace_id
+     AND review.proposal_id = target.id
+    WHERE target.workspace_id = sqlc.arg(workspace_id)
+      AND target.id = sqlc.arg(replaces_proposal_id)
+      AND target.kind IN ('initial', 'evolution', 'correction')
+      AND review.id IS NULL
+    ON CONFLICT (workspace_id, replaces_proposal_id)
+      WHERE replaces_proposal_id IS NOT NULL DO NOTHING
+    RETURNING *
+)
+SELECT * FROM inserted
+UNION ALL
+SELECT proposal.*
+FROM twin_proposal proposal
+WHERE proposal.workspace_id = sqlc.arg(workspace_id)
+  AND proposal.replaces_proposal_id = sqlc.arg(replaces_proposal_id)
+LIMIT 1;
+
 -- name: GetTwinProposal :one
 SELECT * FROM twin_proposal
 WHERE workspace_id = sqlc.arg(workspace_id)
   AND id = sqlc.arg(id);
+
+-- name: GetTwinProposalReplacement :one
+SELECT * FROM twin_proposal
+WHERE workspace_id = sqlc.arg(workspace_id)
+  AND replaces_proposal_id = sqlc.arg(proposal_id);
 
 -- name: GetPendingTwinProposal :one
 SELECT proposal.*

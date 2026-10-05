@@ -17,6 +17,7 @@ type twinProposalResponse struct {
 	Content              json.RawMessage             `json:"content"`
 	ContentDigest        string                      `json:"content_digest"`
 	RequestedByID        *string                     `json:"requested_by_id"`
+	ReplacesProposalID   *string                     `json:"replaces_proposal_id"`
 	CreatedAt            time.Time                   `json:"created_at"`
 	Review               *twinProposalReviewResponse `json:"review"`
 	SignedVersion        *twinVersionResponse        `json:"signed_version"`
@@ -48,6 +49,17 @@ type twinProposalDetailResponse struct {
 	Proposal       twinProposalResponse     `json:"proposal"`
 	SourceRevision lmWikiRevisionResponse   `json:"source_revision"`
 	Citations      []lmWikiCitationResponse `json:"citations"`
+	RunEvidence    *twinRunEvidenceResponse `json:"run_evidence,omitempty"`
+}
+
+type twinRunEvidenceResponse struct {
+	TaskID            string         `json:"task_id"`
+	BaseTwinVersionID string         `json:"base_twin_version_id"`
+	EvidenceDigest    string         `json:"evidence_digest"`
+	TaskStatus        string         `json:"task_status"`
+	CompletedAt       *time.Time     `json:"completed_at"`
+	FeedbackRating    *string        `json:"feedback_rating"`
+	SafeMetadata      map[string]any `json:"safe_metadata"`
 }
 
 type twinVersionDetailResponse struct {
@@ -76,7 +88,7 @@ type twinVersionResultResponse struct {
 }
 
 func mapTwinProposal(proposal db.TwinProposal, review *db.TwinProposalReview, version *db.TwinVersion) twinProposalResponse {
-	response := twinProposalResponse{ID: uuidToString(proposal.ID), Kind: proposal.Kind, SourceWikiRevisionID: uuidToString(proposal.SourceWikiRevisionID), BaseTwinVersionID: optionalUUID(proposal.BaseTwinVersionID), SchemaVersion: proposal.SchemaVersion, Content: json.RawMessage(proposal.Content), ContentDigest: proposal.ContentDigest, RequestedByID: optionalUUID(proposal.RequestedByID), CreatedAt: proposal.CreatedAt.Time}
+	response := twinProposalResponse{ID: uuidToString(proposal.ID), Kind: proposal.Kind, SourceWikiRevisionID: uuidToString(proposal.SourceWikiRevisionID), BaseTwinVersionID: optionalUUID(proposal.BaseTwinVersionID), SchemaVersion: proposal.SchemaVersion, Content: json.RawMessage(proposal.Content), ContentDigest: proposal.ContentDigest, RequestedByID: optionalUUID(proposal.RequestedByID), ReplacesProposalID: optionalUUID(proposal.ReplacesProposalID), CreatedAt: proposal.CreatedAt.Time}
 	if review != nil {
 		response.Review = &twinProposalReviewResponse{ID: uuidToString(review.ID), Decision: review.Decision, ReviewerID: uuidToString(review.ReviewerID), Reason: optionalText(review.Reason), CreatedAt: review.CreatedAt.Time}
 	}
@@ -92,7 +104,16 @@ func mapTwinVersion(version db.TwinVersion) twinVersionResponse {
 }
 
 func mapTwinProposalDetail(detail service.TwinProposalDetail) twinProposalDetailResponse {
-	return twinProposalDetailResponse{Proposal: mapTwinProposal(detail.Proposal, detail.Review, detail.Version), SourceRevision: mapLMWikiRevision(detail.SourceRevision, nil), Citations: mapTwinCitations(detail.Citations)}
+	response := twinProposalDetailResponse{Proposal: mapTwinProposal(detail.Proposal, detail.Review, detail.Version), SourceRevision: mapLMWikiRevision(detail.SourceRevision, nil), Citations: mapTwinCitations(detail.Citations)}
+	if detail.RunEvidence != nil {
+		response.RunEvidence = &twinRunEvidenceResponse{
+			TaskID: uuidToString(detail.RunEvidence.TaskID), BaseTwinVersionID: uuidToString(detail.RunEvidence.BaseTwinVersionID),
+			EvidenceDigest: detail.RunEvidence.EvidenceDigest, TaskStatus: detail.RunEvidence.TaskStatus,
+			CompletedAt: optionalTime(detail.RunEvidence.CompletedAt), FeedbackRating: optionalText(detail.RunEvidence.FeedbackRating),
+			SafeMetadata: map[string]any{},
+		}
+	}
+	return response
 }
 
 func mapTwinVersionDetail(detail service.TwinVersionDetail) twinVersionDetailResponse {

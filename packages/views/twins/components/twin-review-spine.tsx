@@ -49,7 +49,7 @@ export function TwinReviewSpine({ steps }: { steps: readonly TwinReviewStep[] })
           return (
             <li
               key={step.id}
-              className="flex min-w-0 items-center gap-3 border-b border-border p-3 last:border-b-0 sm:border-r lg:[&:nth-child(3n)]:border-r-0"
+              className="flex min-w-0 items-start gap-3 border-b border-border p-3 transition-colors last:border-b-0 data-[state=complete]:bg-muted/20 data-[state=current]:bg-brand/5 data-[state=current]:text-brand sm:items-center sm:border-r lg:[&:nth-child(3n)]:border-r-0"
               data-state={step.state}
               data-testid="twin-review-step"
             >
@@ -57,8 +57,8 @@ export function TwinReviewSpine({ steps }: { steps: readonly TwinReviewStep[] })
                 className={step.state === "current" ? "size-4 shrink-0 text-brand motion-reduce:animate-none" : "size-4 shrink-0 text-muted-foreground"}
                 aria-hidden="true"
               />
-              <span className="min-w-0 flex-1 text-body font-medium text-foreground">{stepLabel(step.id)}</span>
-              <Badge variant="outline" className="shrink-0">{stateLabel(step.state)}</Badge>
+              <span className="min-w-0 flex-1 break-words text-body font-medium text-foreground">{stepLabel(step.id)}</span>
+              <Badge variant="outline" className="shrink-0 whitespace-normal text-center">{stateLabel(step.state)}</Badge>
             </li>
           );
         })}

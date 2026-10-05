@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS lm_wiki_source_wiki_page_identity_uidx;

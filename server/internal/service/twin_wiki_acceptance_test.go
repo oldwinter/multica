@@ -13,16 +13,22 @@ import (
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-func TestWikiAcceptanceCreatesReviewableTwinLifecycle(t *testing.T) {
+func TestAcceptedWikiBuildsReviewableTwinOnlyAfterExplicitRequest(t *testing.T) {
 	fixture := newTwinServiceFixture(t)
 	wiki := NewWikiService(fixture.queries, fixture.pool)
-	wiki.OnAccepted = fixture.service
 	firstWiki := fixture.wikiIssues(t, LMWikiIssue{ID: uuidString(fixture.workspaceID), Number: 1, Title: "Keep", Status: "todo"})
 
 	if _, err := wiki.Review(fixture.ctx, fixture.workspaceID, firstWiki.ID, fixture.actorID, "accepted", ""); err != nil {
 		t.Fatalf("accept first Wiki: %v", err)
 	}
-	initial := fixture.onlyProposal(t)
+	if proposals := fixture.proposals(t); len(proposals) != 0 {
+		t.Fatalf("automatic proposals after Wiki acceptance = %d, want 0", len(proposals))
+	}
+	generated, err := fixture.service.EnsureProposal(fixture.ctx, fixture.workspaceID, firstWiki.ID, fixture.actorID)
+	if err != nil {
+		t.Fatalf("explicitly build initial Twin: %v", err)
+	}
+	initial := generated.Proposal
 	if initial.Kind != "initial" || initial.BaseTwinVersionID.Valid {
 		t.Fatalf("initial proposal = %#v", initial)
 	}
@@ -57,6 +63,9 @@ func TestWikiAcceptanceCreatesReviewableTwinLifecycle(t *testing.T) {
 	)
 	if _, err := wiki.Review(fixture.ctx, fixture.workspaceID, secondWiki.ID, fixture.actorID, "accepted", ""); err != nil {
 		t.Fatalf("accept second Wiki: %v", err)
+	}
+	if _, err := fixture.service.EnsureProposal(fixture.ctx, fixture.workspaceID, secondWiki.ID, fixture.actorID); err != nil {
+		t.Fatalf("explicitly build evolution Twin: %v", err)
 	}
 	evolution := fixture.latestProposal(t)
 	if evolution.Kind != "evolution" || evolution.BaseTwinVersionID != firstVersion.Version.ID || evolution.SourceWikiRevisionID != secondWiki.ID {
@@ -130,6 +139,9 @@ func TestWikiAcceptanceCreatesReviewableTwinLifecycle(t *testing.T) {
 	if _, err := wiki.Review(fixture.ctx, fixture.workspaceID, thirdWiki.ID, fixture.actorID, "accepted", ""); err != nil {
 		t.Fatalf("accept third Wiki: %v", err)
 	}
+	if _, err := fixture.service.EnsureProposal(fixture.ctx, fixture.workspaceID, thirdWiki.ID, fixture.actorID); err != nil {
+		t.Fatalf("explicitly build third Twin: %v", err)
+	}
 	thirdProposal := fixture.latestProposal(t)
 	thirdContent := decodeTwinProposal(t, thirdProposal.Content)
 	if got, want := thirdContent.Diff.Removed, []string{firstContent.Assertions[0].ID}; !slices.Equal(got, want) {
@@ -151,34 +163,31 @@ func TestWikiAcceptanceCreatesReviewableTwinLifecycle(t *testing.T) {
 	}
 }
 
-func TestWikiAcceptanceRollsBackWhenTwinProposalBuildFails(t *testing.T) {
+func TestWikiAcceptanceCommitsWhenExplicitTwinGenerationFails(t *testing.T) {
 	fixture := newTwinServiceFixture(t)
+	generationFailure := errors.New("model unavailable")
+	fixture.service.ProposalGenerator = DeterministicTwinProposalGenerator{Err: generationFailure}
 	wiki := NewWikiService(fixture.queries, fixture.pool)
-	wiki.OnAccepted = fixture.service
-	revision, err := fixture.queries.CreateLMWikiRevision(fixture.ctx, db.CreateLMWikiRevisionParams{
-		WorkspaceID: fixture.workspaceID, SourceDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Content: json.RawMessage(`{"schema_version":2}`), TriggerKind: "manual", RequestedByID: fixture.actorID,
-	})
-	if err != nil {
-		t.Fatalf("create invalid Wiki: %v", err)
-	}
+	revision := fixture.wikiRevision(t, "Accepted independently")
 
-	_, err = wiki.Review(fixture.ctx, fixture.workspaceID, revision.ID, fixture.actorID, "accepted", "")
-	if !errors.Is(err, ErrTwinInvalidInput) {
-		t.Fatalf("accept invalid Wiki error = %v, want ErrTwinInvalidInput", err)
+	if _, err := wiki.Review(fixture.ctx, fixture.workspaceID, revision.ID, fixture.actorID, "accepted", ""); err != nil {
+		t.Fatalf("accept Wiki despite unavailable model: %v", err)
 	}
-	if _, err := fixture.queries.GetLMWikiReview(fixture.ctx, db.GetLMWikiReviewParams{WorkspaceID: fixture.workspaceID, RevisionID: revision.ID}); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("Wiki review after rollback error = %v, want pgx.ErrNoRows", err)
+	if _, err := fixture.service.EnsureProposal(fixture.ctx, fixture.workspaceID, revision.ID, fixture.actorID); !errors.Is(err, generationFailure) {
+		t.Fatalf("explicit Twin generation error = %v, want %v", err, generationFailure)
+	}
+	review, err := fixture.queries.GetLMWikiReview(fixture.ctx, db.GetLMWikiReviewParams{WorkspaceID: fixture.workspaceID, RevisionID: revision.ID})
+	if err != nil || review.Decision != "accepted" {
+		t.Fatalf("persisted Wiki review = %#v, %v", review, err)
 	}
 	if proposals := fixture.proposals(t); len(proposals) != 0 {
-		t.Fatalf("proposals after rollback = %d, want 0", len(proposals))
+		t.Fatalf("proposals after model failure = %d, want 0", len(proposals))
 	}
 }
 
-func TestConcurrentWikiAcceptanceCreatesOneTwinProposal(t *testing.T) {
+func TestConcurrentWikiAcceptanceLeavesTwinBuildExplicit(t *testing.T) {
 	fixture := newTwinServiceFixture(t)
 	wiki := NewWikiService(fixture.queries, fixture.pool)
-	wiki.OnAccepted = fixture.service
 	revision := fixture.wikiRevision(t, "Concurrent acceptance")
 	const workers = 8
 	start := make(chan struct{})
@@ -201,18 +210,22 @@ func TestConcurrentWikiAcceptanceCreatesOneTwinProposal(t *testing.T) {
 			t.Fatalf("concurrent Wiki acceptance: %v", err)
 		}
 	}
-	if proposals := fixture.proposals(t); len(proposals) != 1 {
-		t.Fatalf("proposal count = %d, want 1", len(proposals))
+	if proposals := fixture.proposals(t); len(proposals) != 0 {
+		t.Fatalf("proposal count = %d, want 0 without explicit Build", len(proposals))
 	}
 }
 
 func (f twinServiceFixture) wikiIssues(t *testing.T, issues ...LMWikiIssue) db.LmWikiRevision {
 	t.Helper()
-	snapshot, err := BuildLMWikiSnapshot(LMWikiSourceSnapshot{Issues: issues})
+	snapshot, err := BuildLMWikiSnapshot(LMWikiSourceSnapshot{EgressPolicy: f.egressPolicy, Issues: issues})
 	if err != nil {
 		t.Fatalf("build Wiki snapshot: %v", err)
 	}
-	revision, err := f.queries.CreateLMWikiRevision(f.ctx, db.CreateLMWikiRevisionParams{WorkspaceID: f.workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON, TriggerKind: "manual", RequestedByID: f.actorID})
+	revision, err := f.queries.CreateLMWikiRevision(f.ctx, db.CreateLMWikiRevisionParams{
+		WorkspaceID: f.workspaceID, SourceDigest: snapshot.SourceDigest, Content: snapshot.CanonicalJSON,
+		SourcePolicyVersion: f.egressPolicy.PolicyVersion, SourcePolicyDigest: f.egressPolicy.PolicyDigest,
+		RemoteGenerationEnabled: true, TriggerKind: "manual", RequestedByID: f.actorID,
+	})
 	if err != nil {
 		t.Fatalf("create Wiki revision: %v", err)
 	}
@@ -261,5 +274,3 @@ func decodeTwinProposal(t *testing.T, content []byte) TwinProposalContent {
 	}
 	return proposal
 }
-
-var _ LMWikiAcceptanceHook = (*TwinService)(nil)

@@ -2,30 +2,89 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/attributionbackfill"
+	"github.com/multica-ai/multica/server/internal/chatoriginbackfill"
+	"github.com/multica-ai/multica/server/internal/dbstartup"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/migrations"
 	"github.com/multica-ai/multica/server/internal/taskusagebackfill"
 )
 
-// preMigrationHook runs work that must happen before a specific
-// migration is applied during `migrate up`. Hooks are idempotent and
+// preMigrationHook runs work that must happen before a specific migration is
+// applied in the direction whose hook map selected it. Hooks are idempotent and
 // must not depend on the migration loop's session-pinned advisory lock
 // — they run on the pool, not on the loop's pinned conn, so they can
 // safely acquire other session-level locks (e.g. advisory lock 4246
 // for the task_usage hourly rollup).
 //
-// Returning an error aborts the migration run. The corresponding
-// migration is NOT recorded in schema_migrations, so the next run will
-// retry the hook + migration.
+// Returning an error aborts the migration run. The corresponding migration is
+// not added to (up) or removed from (down) schema_migrations, so the next run
+// retries the hook + migration.
 type preMigrationHook func(ctx context.Context, pool *pgxpool.Pool) error
+
+// migrationCondition decides whether a pending migration's SQL should execute.
+// A false result still records the migration as applied (or rolled back), which
+// lets one migration encode environment-specific DDL without blocking later
+// versions. Conditions must be read-only and idempotent; schema changes belong
+// in the migration file so they remain visible to review and rollback tooling.
+type migrationCondition func(ctx context.Context, conn *pgxpool.Conn) (apply bool, reason string, err error)
+
+// usableIndexRequirement describes the exact index shape that may replace a
+// fallback. Checking only extension or relation existence is unsafe: historical
+// pg_bigm migrations swallowed CREATE INDEX errors, and an interrupted
+// concurrent build can leave an INVALID relation with the expected name.
+type usableIndexRequirement struct {
+	IndexRegclass string
+	TableRegclass string
+	AccessMethod  string
+	OperatorClass string
+	Expression    string
+	Extension     string
+}
+
+var commentContentBigramIndex = usableIndexRequirement{
+	IndexRegclass: "public.idx_comment_content_bigm",
+	TableRegclass: "public.comment",
+	AccessMethod:  "gin",
+	OperatorClass: "gin_bigm_ops",
+	Expression:    "lower(content)",
+	Extension:     "pg_bigm",
+}
+
+// extensionOperatorClass names an operator class a migration writes literally
+// into a CREATE INDEX, together with the extension that must own it. A
+// migration cannot both build concurrently and swallow a missing extension in a
+// DO ... EXCEPTION block, so the ones that need an optional opclass are gated on
+// this instead.
+type extensionOperatorClass struct {
+	AccessMethod  string
+	OperatorClass string
+	Extension     string
+}
+
+// issuePropertiesBigramOperatorClass gates migration 446. pg_bigm ships with
+// neither core Postgres nor the pgvector image CI and self-hosted deployments
+// run, so the index it builds is best-effort; the contains prefilter it
+// accelerates stays correct without it.
+var issuePropertiesBigramOperatorClass = extensionOperatorClass{
+	AccessMethod:  "gin",
+	OperatorClass: "gin_bigm_ops",
+	Extension:     "pg_bigm",
+}
+
+// Alias used by newer optional search-index migrations.
+var pgBigmOperatorClass = issuePropertiesBigramOperatorClass
 
 // preMigrationHooks wires migration version → hook. The version key is
 // the file basename without the `.up.sql` suffix, matching what
@@ -48,9 +107,879 @@ type preMigrationHook func(ctx context.Context, pool *pgxpool.Pool) error
 // VALIDATE, so a stuck-at-197 instance auto-heals on `migrate up` with no
 // manual SQL. A higher-numbered migration cannot help — the instance never
 // reaches a version above the failing 198.
-var preMigrationHooks = map[string]preMigrationHook{
-	"103_drop_legacy_daily_rollups":                         runTaskUsageHourlyHook,
-	"198_agent_task_attribution_strict_constraint_validate": runAttributionStrictHook,
+//
+// GH #6388: migration 257 builds a replacement unique index concurrently. A
+// failed build can leave an INVALID relation that IF NOT EXISTS would otherwise
+// mistake for a successful retry. The hook removes only that invalid leftover;
+// migration 257 can then rebuild it while the valid v1 index remains in place.
+//
+// MUL-5823: migration 261 replaces the terminal-task partial index the same
+// way, so it carries the same hazard — an INVALID v2 leftover recorded as
+// success would let migration 262 drop the still-valid v1, leaving all four
+// dashboard rollups on a full table scan.
+// concurrentIndexCleanups maps a migration version to the index it builds with
+// CREATE INDEX CONCURRENTLY. Every entry gets an invalid-index cleanup hook, so
+// an interrupted build cannot be mistaken for success on retry.
+//
+// The mapping is data rather than individual hand-written hook registrations so a
+// test can check each entry against the index its migration file actually
+// creates — a typo here would be invisible at runtime, because a hook that names
+// a nonexistent index is a silent no-op.
+//
+// MUL-5999: migrations 273–277 each build one index concurrently, three of them
+// on hot tables (agent_task_queue is the largest table in the database). They
+// carry the same hazard as 257 / 261: an interrupted build leaves an INVALID
+// index of the same name, `IF NOT EXISTS` then skips the rebuild, the runner
+// records the migration as applied, and the queries that need the index silently
+// stay on a full scan — the exact regression these migrations exist to fix.
+//
+// MUL-6288: registration used to be opt-in per batch, so 316 / 317 / 326 / 328 /
+// 330 / 331 shipped without a hook and the hazard came back. The map is now
+// total — every up migration that builds an index concurrently is listed, the
+// same invariant `concurrentDownIndexCleanups` already holds for rollbacks — and
+// TestEveryConcurrentUpBuildHasCleanup fails the build if a new migration is
+// added without its entry. Registering the already-applied historical
+// migrations costs one to_regclass lookup each, and only on a database where
+// they are still pending: a fresh self-hosted install, which is exactly where an
+// interrupted build would otherwise leave a permanently unusable index.
+var concurrentIndexCleanups = map[string]string{
+	"535_github_pr_address_index":                               "idx_github_pull_request_pr_owner_repo",
+	"539_task_supplement_request_index":                         "task_supplement_task_request_uidx",
+	"540_task_supplement_capability_index":                      "task_supplement_capability_task_uidx",
+	"541_task_supplement_comment_index":                         "task_supplement_comment_uidx",
+	"546_issue_pr_automation_workspace_index":                   "idx_issue_pr_automation_workspace",
+	"547_issue_pull_request_exclusion_workspace_index":          "idx_issue_pull_request_exclusion_workspace",
+	"548_task_supplement_comment_task_index":                    "task_supplement_comment_task_uidx",
+	"510_wakeup_id":                                             "issue_wakeup_id_idx",
+	"511_wakeup_issue":                                          "issue_wakeup_issue_idx",
+	"512_wakeup_due":                                            "issue_wakeup_due_idx",
+	"513_wakeup_receipt_id":                                     "issue_wakeup_receipt_id_idx",
+	"514_wakeup_receipt_key":                                    "issue_wakeup_receipt_key_idx",
+	"515_wakeup_receipt_pending":                                "issue_wakeup_receipt_pending_idx",
+	"519_wakeup_event_issue":                                    "idx_wakeup_event_issue",
+	"521_wakeup_workspace_summary":                              "idx_wakeup_workspace_enabled",
+	"522_wakeup_run_lookup":                                     "agent_task_wakeup_lookup_idx",
+	"524_wakeup_workspace_history":                              "issue_wakeup_workspace_history_idx",
+	"525_wakeup_active_runs":                                    "agent_task_wakeup_active_idx",
+	"526_wakeup_terminal_runs":                                  "agent_task_wakeup_terminal_idx",
+	"527_wakeup_receipt_expiry":                                 "issue_wakeup_receipt_expiry_idx",
+	"529_wakeup_pending_event":                                  "issue_wakeup_pending_event_idx",
+	"503_channel_reply_delivery_turn_index":                     "idx_channel_reply_delivery_turn",
+	"504_channel_reply_delivery_installation_index":             "idx_channel_reply_delivery_installation",
+	"505_channel_reply_delivery_binding_index":                  "idx_channel_reply_delivery_binding",
+	"495_issue_to_label_label_id_index":                         "issue_to_label_label_idx",
+	"496_chat_session_agent_id_index":                           "idx_chat_session_agent_id",
+	"497_agent_task_queue_delegated_failure_evidence_index":     "idx_agent_task_queue_delegated_failure_evidence",
+	"498_chat_session_runtime_id_index":                         "idx_chat_session_runtime_id",
+	"486_maintenance_job_id_index":                              "idx_maintenance_job_id",
+	"487_maintenance_job_idempotency_index":                     "idx_maintenance_job_idempotency",
+	"488_maintenance_job_active_index":                          "idx_maintenance_job_active",
+	"035_task_queue_issue_id_index":                             "idx_agent_task_queue_issue_id",
+	"067_task_queue_claim_candidate_index":                      "idx_agent_task_queue_claim_candidates",
+	"074_task_usage_updated_at_index":                           "idx_task_usage_updated_at",
+	"075_task_usage_created_at_index":                           "idx_task_usage_created_at",
+	"078_task_usage_created_at_legacy_index":                    "idx_task_usage_created_at_legacy",
+	"080_agent_task_queue_queued_index":                         "idx_agent_task_queue_queued_created_at",
+	"106_member_user_workspace_index":                           "idx_member_user_workspace",
+	"114_agent_task_queue_running_started_at_index":             "idx_agent_task_queue_running_started_at",
+	"115_agent_runtime_last_seen_at_index":                      "idx_agent_runtime_last_seen_at",
+	"119_user_created_at_index":                                 "idx_user_created_at",
+	"125_agent_task_queue_dispatched_prepare_index":             "idx_agent_task_queue_dispatched_prepare",
+	"135_comment_workspace_index":                               "idx_comment_workspace",
+	"138_issue_title_trgm_index":                                "idx_issue_title_trgm",
+	"139_issue_description_trgm_index":                          "idx_issue_description_trgm",
+	"140_comment_content_trgm_index":                            "idx_comment_content_trgm",
+	"141_project_title_trgm_index":                              "idx_project_title_trgm",
+	"142_project_description_trgm_index":                        "idx_project_description_trgm",
+	"143_agent_task_queue_chat_pending_v2":                      "idx_agent_task_queue_chat_pending_v2",
+	"153_chat_pinned_agent_user_ws_index":                       "idx_chat_pinned_agent_user_ws",
+	"156_chat_session_pinned_index":                             "idx_chat_session_pinned",
+	"160_chat_message_input_owner_index":                        "idx_chat_message_input_owner",
+	"165_attachment_task_id_index":                              "idx_attachment_task",
+	"167_resource_label_namespace_index":                        "issue_label_workspace_type_name_lower_idx",
+	"168_resource_label_type_index":                             "issue_label_workspace_type_idx",
+	"169_agent_label_lookup_index":                              "agent_to_label_label_idx",
+	"170_skill_label_lookup_index":                              "skill_to_label_label_idx",
+	"172_agent_system_identity_index":                           "agent_system_identity_unique",
+	"177_autopilot_run_webhook_delivery_index":                  "uq_autopilot_run_webhook_delivery",
+	"178_webhook_delivery_queue_index":                          "idx_webhook_delivery_queue",
+	"181_task_chat_finalize_deferred_index":                     "idx_task_chat_finalize_deferred",
+	"183_chat_draft_restore_index":                              "idx_chat_draft_restore_session",
+	"187_autopilot_rule_version_index":                          "idx_autopilot_rule_version_active",
+	"192_issue_properties_gin_index":                            "idx_issue_properties_gin",
+	"194_issue_property_workspace_name_index":                   "idx_issue_property_ws_name",
+	"195_issue_property_workspace_index":                        "idx_issue_property_workspace",
+	"200_inbox_archived_listing_index":                          "idx_inbox_recipient_archived_created",
+	"201_inbox_active_by_issue_index":                           "idx_inbox_active_by_issue",
+	"203_issue_workspace_assignee_index":                        "idx_issue_workspace_assignee",
+	"204_issue_workspace_parent_index":                          "idx_issue_workspace_parent",
+	"205_issue_workspace_position_index":                        "idx_issue_workspace_position",
+	"208_client_usage_daily_unique_index":                       "client_usage_daily_identity_date_uidx",
+	"210_client_usage_daily_query_index":                        "client_usage_daily_activity_client_user_idx",
+	"211_client_usage_daily_workspace_index":                    "client_usage_daily_workspace_idx",
+	"215_chat_session_project_index":                            "idx_chat_session_project",
+	"217_vcs_connection_workspace_index":                        "idx_vcs_connection_workspace",
+	"218_vcs_pull_request_workspace_index":                      "idx_vcs_pull_request_workspace",
+	"219_vcs_pull_request_connection_index":                     "idx_vcs_pull_request_connection",
+	"220_issue_vcs_pull_request_pr_index":                       "idx_issue_vcs_pull_request_pr",
+	"221_vcs_commit_status_lookup_index":                        "idx_vcs_commit_status_lookup",
+	"223_github_pr_check_run_pr_ordinal_index":                  "github_pull_request_check_run_pr_ordinal_idx",
+	"228_channel_media_pending_object_key_index":                "channel_media_pending_object_storage_key_uidx",
+	"230_channel_media_pending_object_claim_index":              "idx_channel_media_pending_object_claim",
+	"231_agent_task_queue_terminal_completed_at_index":          "idx_agent_task_queue_terminal_completed_at",
+	"232_channel_media_pending_object_due_index":                "idx_channel_media_pending_object_due",
+	"233_agent_task_queue_agent_terminal_latest_index":          "idx_agent_task_queue_agent_terminal_latest",
+	"238_quick_action_workspace_index":                          "idx_quick_action_workspace_status_usage",
+	"241_comment_parent_lookup_index":                           "idx_comment_workspace_issue_parent",
+	"244_issue_dependency_issue_index":                          "idx_issue_dependency_issue_id",
+	"245_issue_dependency_depends_on_index":                     "idx_issue_dependency_depends_on_issue_id",
+	"246_inbox_item_issue_index":                                "idx_inbox_item_issue_id",
+	"247_comment_parent_index":                                  "idx_comment_parent_id",
+	"248_agent_task_trigger_comment_index":                      "idx_agent_task_queue_trigger_comment_id",
+	"252_twin_profile_workspace_index":                          "twin_profile_workspace_id_idx",
+	"253_twin_profile_id_index":                                 "twin_profile_pkey",
+	"255_agent_task_queue_chat_pending_deferred_v3":             "idx_agent_task_queue_chat_pending_v3",
+	"256_wiki_page_id_index":                                    "wiki_page_pkey",
+	"257_agent_task_queue_channel_media_pending_unique_v2":      "idx_one_pending_task_per_issue_agent_v2",
+	"257_wiki_page_workspace_list_index":                        "wiki_page_workspace_scope_idx",
+	"258_wiki_page_workspace_path_unique":                       "wiki_page_workspace_path_uidx",
+	"259_wiki_page_project_path_unique":                         "wiki_page_project_path_uidx",
+	"260_wiki_page_user_path_unique":                            "wiki_page_user_path_uidx",
+	"261_agent_task_queue_terminal_completed_at_v2":             "idx_agent_task_queue_terminal_completed_at_v2",
+	"264_wiki_page_user_path_global_unique":                     "wiki_page_user_path_uidx",
+	"266_lm_wiki_revision_id_index":                             "lm_wiki_revision_id_uidx",
+	"266_issue_view_owner_index":                                "idx_issue_view_owner",
+	"267_lm_wiki_citation_id_index":                             "lm_wiki_citation_id_uidx",
+	"267_issue_view_shared_index":                               "idx_issue_view_shared",
+	"268_lm_wiki_review_id_index":                               "lm_wiki_review_id_uidx",
+	"270_lm_wiki_revision_number_index":                         "lm_wiki_revision_workspace_number_uidx",
+	"271_lm_wiki_revision_created_index":                        "lm_wiki_revision_workspace_created_idx",
+	"272_lm_wiki_citation_source_index":                         "lm_wiki_citation_workspace_source_uidx",
+	"273_lm_wiki_citation_ordinal_index":                        "lm_wiki_citation_workspace_ordinal_uidx",
+	"273_agent_task_queue_runtime_id_index":                     "idx_agent_task_queue_runtime_id",
+	"274_lm_wiki_review_revision_index":                         "lm_wiki_review_workspace_revision_uidx",
+	"274_task_token_workspace_id_index":                         "idx_task_token_workspace_id",
+	"275_task_token_agent_id_index":                             "idx_task_token_agent_id",
+	"276_chat_draft_restore_task_id_index":                      "idx_chat_draft_restore_task_id",
+	"276_twin_proposal_id_index":                                "twin_proposal_id_uidx",
+	"277_autopilot_run_task_id_index":                           "idx_autopilot_run_task_id",
+	"277_twin_proposal_review_id_index":                         "twin_proposal_review_id_uidx",
+	"278_agent_task_queue_agent_id_keyset_index":                "idx_agent_task_queue_agent_id_keyset",
+	"278_twin_version_id_index":                                 "twin_version_id_uidx",
+	"279_agent_task_queue_issue_id_keyset_index":                "idx_agent_task_queue_issue_id_keyset",
+	"280_twin_proposal_identity_index":                          "twin_proposal_workspace_identity_uidx",
+	"281_agent_workspace_id_keyset_index":                       "idx_agent_workspace_id_keyset",
+	"281_twin_proposal_created_index":                           "twin_proposal_workspace_created_idx",
+	"282_issue_workspace_id_keyset_index":                       "idx_issue_workspace_id_keyset",
+	"282_twin_proposal_review_index":                            "twin_proposal_review_workspace_proposal_uidx",
+	"283_agent_runtime_workspace_id_keyset_index":               "idx_agent_runtime_workspace_id_keyset",
+	"283_twin_version_number_index":                             "twin_version_workspace_number_uidx",
+	"284_twin_version_proposal_index":                           "twin_version_workspace_proposal_uidx",
+	"286_plugin_identity_key_index":                             "idx_plugin_identity_key",
+	"286_room_id_index":                                         "room_id_uidx",
+	"287_plugin_release_version_index":                          "idx_plugin_release_version",
+	"287_room_participant_id_index":                             "room_participant_id_uidx",
+	"288_plugin_installation_workspace_plugin_index":            "idx_plugin_installation_workspace_plugin_active",
+	"288_room_entry_id_index":                                   "room_entry_id_uidx",
+	"289_plugin_contribution_key_index":                         "idx_plugin_contribution_release_key",
+	"289_room_cycle_id_index":                                   "room_cycle_id_uidx",
+	"290_plugin_contribution_ordinal_index":                     "idx_plugin_contribution_release_ordinal",
+	"290_room_turn_id_index":                                    "room_turn_id_uidx",
+	"291_plugin_grant_revision_index":                           "idx_plugin_grant_revision",
+	"291_room_artifact_id_index":                                "room_artifact_id_uidx",
+	"292_plugin_binding_revision_index":                         "idx_plugin_binding_revision",
+	"293_plugin_installation_workspace_index":                   "idx_plugin_installation_workspace",
+	"293_room_workspace_index":                                  "room_workspace_idx",
+	"294_room_participant_identity_index":                       "room_participant_identity_uidx",
+	"295_plugin_artifact_file_index":                            "idx_plugin_artifact_file_release_path",
+	"295_room_entry_ordinal_index":                              "room_entry_ordinal_uidx",
+	"296_plugin_snapshot_revision_index":                        "idx_plugin_snapshot_workspace_revision",
+	"296_room_cycle_sequence_index":                             "room_cycle_sequence_uidx",
+	"297_plugin_execution_task_index":                           "idx_plugin_execution_manifest_task",
+	"297_room_cycle_wake_index":                                 "room_cycle_wake_uidx",
+	"298_plugin_health_index":                                   "idx_plugin_health_installation_observed",
+	"298_room_active_cycle_index":                               "room_active_cycle_uidx",
+	"299_agent_task_plugin_manifest_index":                      "idx_agent_task_plugin_execution_manifest",
+	"299_room_turn_participant_index":                           "room_turn_participant_uidx",
+	"300_room_artifact_kind_index":                              "room_artifact_kind_uidx",
+	"301_room_due_index":                                        "room_due_idx",
+	"302_agent_task_room_turn_index":                            "agent_task_room_turn_attempt_uidx",
+	"303_room_artifact_room_index":                              "room_artifact_room_idx",
+	"304_room_turn_room_index":                                  "room_turn_room_idx",
+	"305_dingtalk_group_route_installation_conversation_unique": "idx_dingtalk_group_route_installation_conversation",
+	"305_room_participant_room_index":                           "room_participant_room_idx",
+	"306_dingtalk_group_route_workspace_index":                  "idx_dingtalk_group_route_workspace",
+	"307_agent_task_room_turn_lookup_index":                     "agent_task_room_turn_idx",
+	"307_dingtalk_group_route_id_unique":                        "idx_dingtalk_group_route_id_unique",
+	"308_room_entry_turn_result_index":                          "room_entry_turn_result_uidx",
+	"384_create_dingtalk_group_presence_identity_index":         "idx_dingtalk_group_presence_installation_conversation",
+	"385_create_dingtalk_group_presence_activity_index":         "idx_dingtalk_group_presence_workspace_activity",
+	"388_create_dingtalk_bot_identity_installation_index":       "idx_dingtalk_bot_identity_installation",
+	"309_agent_runtime_id_index":                                "idx_agent_runtime_id",
+	"311_plugin_identity_scoped_key_index":                      "idx_plugin_identity_scoped_key",
+	"316_workspace_mcp_server_name_unique":                      "idx_workspace_mcp_server_workspace_name",
+	"317_agent_mcp_server_server_index":                         "idx_agent_mcp_server_server",
+	"320_plugin_installation_config_revision_index":             "idx_plugin_installation_config_contribution_revision",
+	"321_plugin_installation_config_workspace_index":            "idx_plugin_installation_config_workspace",
+	"322_plugin_remote_mcp_secret_revision_index":               "idx_plugin_remote_mcp_secret_revision",
+	"323_plugin_remote_mcp_secret_workspace_index":              "idx_plugin_remote_mcp_secret_workspace",
+	"324_plugin_remote_mcp_one_active_secret_index":             "idx_plugin_remote_mcp_one_active_secret",
+	"326_plugin_remote_mcp_oauth_state_expiry_index":            "plugin_remote_mcp_oauth_state_expiry_idx",
+	"328_workspace_share_link_id_uidx":                          "workspace_share_link_pkey_uidx",
+	"330_workspace_share_link_active_ws_uidx":                   "workspace_share_link_active_ws_uidx",
+	"331_workspace_share_link_code_uidx":                        "workspace_share_link_code_uidx",
+	"333_issue_status_pkey_index":                               "issue_status_pkey_uidx",
+	"335_issue_status_workspace_key_index":                      "idx_issue_status_workspace_key",
+	"336_issue_status_workspace_name_index":                     "idx_issue_status_workspace_name_active",
+	"343_comment_delegated_failure_pending_index":               "idx_comment_delegated_failure_pending",
+	"345_plugin_installation_workspace_key_index":               "idx_plugin_installation_workspace_key",
+	"346_plugin_storage_scope_key_index":                        "idx_plugin_storage_scope_key",
+	"347_plugin_secret_installation_key_index":                  "idx_plugin_secret_installation_key",
+	"349_agent_task_queue_chat_terminal_resume_index":           "idx_agent_task_queue_chat_terminal_resume",
+	"350_agent_task_queue_chat_retired_session_index":           "idx_agent_task_queue_chat_retired_session",
+	"353_autopilot_quota_period_scope_index":                    "uq_autopilot_quota_period_scope",
+	"354_autopilot_quota_reservation_id_index":                  "autopilot_quota_reservation_pkey_uidx",
+	"355_autopilot_quota_reservation_key_index":                 "uq_autopilot_quota_reservation_key",
+	"356_autopilot_run_quota_reservation_index":                 "uq_autopilot_run_quota_reservation",
+	"357_webhook_delivery_replay_idempotency_index":             "uq_webhook_delivery_replay_idempotency",
+	"358_autopilot_quota_reservation_state_index":               "idx_autopilot_quota_reservation_state",
+	"361_issue_last_activity_index":                             "idx_issue_workspace_last_activity",
+	"363_plugin_invocation_installation_index":                  "idx_plugin_invocation_installation_created",
+	"364_plugin_invocation_created_at_index":                    "idx_plugin_invocation_created_at",
+	"378_channel_chat_context_generation_key":                   "channel_chat_context_generation_session_revision_idx",
+	"390_agent_task_queue_dispatched_reclaim_v2_index":          "idx_agent_task_queue_dispatched_reclaim_v2",
+	"393_plugin_package_workspace_key_index":                    "idx_plugin_package_workspace_key",
+	"394_plugin_package_version_unique_index":                   "idx_plugin_package_version_unique",
+	"395_plugin_package_version_package_index":                  "idx_plugin_package_version_package",
+	"396_plugin_package_file_path_index":                        "idx_plugin_package_file_path",
+	"397_plugin_installation_package_version_index":             "idx_plugin_installation_package_version",
+	"398_issue_workspace_status_position_index":                 "idx_issue_workspace_status_position",
+	"400_plugin_hook_schedule_installation_key_index":           "idx_plugin_hook_schedule_installation_key",
+	"401_plugin_hook_schedule_enabled_index":                    "idx_plugin_hook_schedule_enabled",
+	"404_room_memory_revision_id_index":                         "room_memory_revision_id_uidx",
+	"406_room_memory_revision_version_index":                    "room_memory_revision_version_uidx",
+	"407_room_cycle_phase_index":                                "room_cycle_phase_idx",
+	"408_room_artifact_memory_revision_index":                   "room_artifact_memory_revision_idx",
+	"410_room_recommendation_review_id_index":                   "room_recommendation_review_id_uidx",
+	"412_room_recommendation_review_identity_index":             "room_recommendation_review_identity_uidx",
+	"415_wiki_page_revision_id_index":                           "wiki_page_revision_id_uidx",
+	"416_wiki_page_revision_number_index":                       "wiki_page_revision_page_number_uidx",
+	"417_wiki_page_revision_list_index":                         "wiki_page_revision_page_created_idx",
+	"418_wiki_page_search_index":                                "wiki_page_search_fts_idx",
+	"419_wiki_page_proposal_id_index":                           "wiki_page_edit_proposal_id_uidx",
+	"420_wiki_page_proposal_idempotency_index":                  "wiki_page_edit_proposal_idempotency_uidx",
+	"421_wiki_page_proposal_list_index":                         "wiki_page_edit_proposal_page_status_idx",
+	"422_lm_wiki_source_policy_index":                           "lm_wiki_source_policy_workspace_uidx",
+	"423_lm_wiki_source_page_index":                             "lm_wiki_source_wiki_page_identity_uidx",
+	"425_twin_binding_id_index":                                 "twin_binding_id_uidx",
+	"426_twin_task_attribution_id_index":                        "twin_task_attribution_id_uidx",
+	"427_twin_run_feedback_id_index":                            "twin_run_feedback_id_uidx",
+	"428_twin_deposition_id_index":                              "twin_deposition_id_uidx",
+	"430_twin_binding_scope_index":                              "twin_binding_workspace_scope_uidx",
+	"431_twin_task_attribution_claim_index":                     "twin_task_attribution_claim_uidx",
+	"432_twin_run_feedback_task_index":                          "twin_run_feedback_workspace_task_uidx",
+	"433_twin_deposition_proposal_index":                        "twin_deposition_workspace_proposal_uidx",
+	"434_twin_deposition_task_index":                            "twin_deposition_workspace_task_idx",
+	"439_twin_proposal_identity_partial_index":                  "twin_proposal_workspace_identity_uidx",
+	"440_twin_deposition_request_index":                         "twin_deposition_workspace_request_uidx",
+	"443_twin_proposal_replacement_index":                       "twin_proposal_workspace_replacement_uidx",
+	"445_room_turn_kind_attempt_index":                          "room_turn_kind_attempt_uidx",
+	"447_room_synthesis_retry_key_index":                        "room_synthesis_retry_key_uidx",
+	"450_room_memory_review_key_index":                          "room_memory_review_key_uidx",
+	"461_room_inbox_active_identity_index":                      "idx_inbox_room_active_identity",
+	"462_room_inbox_cleanup_index":                              "idx_inbox_room_cleanup",
+	"481_twin_activation_preview_checkpoint_index":              "twin_activation_preview_checkpoint_lookup_idx",
+	"408_issue_source_context_id_index":                         "idx_issue_source_context_id",
+	"409_issue_source_context_issue_index":                      "idx_issue_source_context_issue",
+	"410_issue_source_context_origin_task_index":                "idx_issue_source_context_origin_task",
+	"411_attachment_source_context_index":                       "idx_attachment_source_context",
+	"412_issue_source_context_object_intent_key_index":          "idx_issue_source_context_object_intent_key",
+	"413_issue_source_context_object_intent_due_index":          "idx_issue_source_context_object_intent_due",
+	"414_issue_source_context_object_intent_context_index":      "idx_issue_source_context_object_intent_context",
+	"416_seat_capacity_operation_token_index":                   "idx_seat_capacity_outbox_operation_token",
+	"418_seat_capacity_due_index":                               "idx_seat_capacity_outbox_due",
+	"419_seat_capacity_share_join_index":                        "idx_seat_capacity_outbox_share_join",
+	"421_channel_chat_active_route_index":                       "idx_channel_chat_session_binding_active_route",
+	"423_channel_task_delivery_pkey_index":                      "channel_task_delivery_pkey",
+	"426_channel_outbound_message_id_index":                     "idx_channel_outbound_message_id",
+	"428_channel_task_delivery_binding_index":                   "idx_channel_task_delivery_binding",
+	"429_channel_task_delivery_installation_index":              "idx_channel_task_delivery_installation",
+	"430_channel_outbound_message_binding_index":                "idx_channel_outbound_message_binding_route",
+	"438_agent_runtime_online_last_seen_index":                  "idx_agent_runtime_online_last_seen",
+	"439_agent_runtime_offline_last_seen_index":                 "idx_agent_runtime_offline_last_seen",
+	"440_github_pr_head_sha_index":                              "idx_github_pull_request_head_sha",
+	"443_issue_project_status_index":                            "idx_issue_project_status",
+	"445_comment_delegated_failure_unsettled_index":             "idx_comment_delegated_failure_unsettled",
+	"446_issue_properties_bigm_index":                           "idx_issue_properties_bigm",
+	"452_agent_task_pending_thread_unique":                      "idx_one_pending_task_per_issue_agent_thread",
+	"459_chat_message_assistant_task_index":                     "idx_chat_message_assistant_task",
+	"460_agent_task_queue_autopilot_run_created_at_index":       "idx_agent_task_queue_autopilot_run_created_at",
+	"465_agent_task_queue_chat_with_session_index":              "idx_agent_task_queue_chat_with_session_created_at",
+	"466_activity_log_member_assignee_frequency_index":          "idx_activity_log_member_assignee_frequency",
+	"472_agent_task_queue_chat_session_index":                   "idx_agent_task_queue_chat_session",
+	"474_dingtalk_bot_identity_workspace_index":                 "idx_dingtalk_bot_identity_workspace",
+	"480_instance_telemetry_state_singleton_index":              "instance_telemetry_state_singleton_uidx",
+	"482_agent_task_queue_telemetry_started_index":              "idx_agent_task_queue_telemetry_started",
+	"484_issue_triage_state_index":                              "idx_issue_triage_state",
+	"483_agent_task_queue_manual_rerun_index":                   "idx_agent_task_queue_manual_rerun_source",
+	"484_skill_evolution_loop_id_index":                         "skill_evolution_loop_id_uidx",
+	"485_skill_evolution_revision_id_index":                     "skill_evolution_revision_id_uidx",
+	"486_skill_evolution_revision_file_id_index":                "skill_evolution_revision_file_id_uidx",
+	"487_skill_evolution_proposal_id_index":                     "skill_evolution_proposal_id_uidx",
+	"488_skill_evolution_evidence_id_index":                     "skill_evolution_evidence_id_uidx",
+	"489_skill_evolution_evaluation_id_index":                   "skill_evolution_evaluation_id_uidx",
+	"490_skill_evolution_review_id_index":                       "skill_evolution_review_id_uidx",
+	"491_skill_evolution_release_id_index":                      "skill_evolution_release_id_uidx",
+	"492_skill_evolution_task_attribution_id_index":             "skill_evolution_task_attribution_id_uidx",
+	"493_task_run_review_id_index":                              "task_run_review_id_uidx",
+	"494_skill_evolution_loop_skill_index":                      "skill_evolution_loop_workspace_skill_uidx",
+	"495_skill_evolution_revision_hash_index":                   "skill_evolution_revision_workspace_skill_hash_uidx",
+	"496_skill_evolution_revision_file_path_index":              "skill_evolution_revision_file_workspace_path_uidx",
+	"497_skill_evolution_proposal_generation_index":             "skill_evolution_proposal_generation_uidx",
+	"498_skill_evolution_proposal_active_index":                 "skill_evolution_proposal_active_uidx",
+	"499_skill_evolution_evidence_identity_index":               "skill_evolution_evidence_identity_uidx",
+	"500_skill_evolution_evaluation_idempotency_index":          "skill_evolution_evaluation_idempotency_uidx",
+	"501_skill_evolution_review_idempotency_index":              "skill_evolution_review_idempotency_uidx",
+	"502_skill_evolution_release_idempotency_index":             "skill_evolution_release_idempotency_uidx",
+	"503_skill_evolution_task_attribution_identity_index":       "skill_evolution_task_attribution_identity_uidx",
+	"504_skill_evolution_loop_schedule_index":                   "skill_evolution_loop_schedule_idx",
+	"505_skill_evolution_revision_skill_index":                  "skill_evolution_revision_skill_created_idx",
+	"506_skill_evolution_proposal_skill_index":                  "skill_evolution_proposal_skill_created_idx",
+	"507_skill_evolution_release_skill_index":                   "skill_evolution_release_skill_created_idx",
+	"508_skill_evolution_task_attribution_task_index":           "skill_evolution_task_attribution_task_idx",
+	"509_task_run_review_workspace_index":                       "task_run_review_workspace_created_idx",
+	"510_task_run_review_task_index":                            "task_run_review_task_created_idx",
+	"512_agent_task_queue_manual_rerun_agent_index":             "idx_agent_task_queue_manual_rerun_agent_created",
+	"516_skill_evolution_task_dispatch_snapshot_id_index":       "skill_evolution_task_dispatch_snapshot_id_uidx",
+	"517_skill_evolution_task_dispatch_snapshot_identity_index": "skill_evolution_task_dispatch_snapshot_identity_uidx",
+	"521_wiki_page_room_proposal_idempotency_index":             "wiki_page_edit_proposal_room_idempotency_uidx",
+	"524_task_run_review_idempotency_index":                     "task_run_review_idempotency_uidx",
+	"527_skill_evolution_loop_schedule_index_is_enabled":        "skill_evolution_loop_schedule_is_enabled_idx",
+	"537_issue_duplicate_of_index":                              "idx_issue_duplicate_of",
+}
+
+// concurrentDownIndexCleanups covers every migration whose down direction
+// rebuilds an index with CREATE INDEX CONCURRENTLY. An interrupted rollback
+// can leave an INVALID relation behind. IF NOT EXISTS would then silently skip
+// the retry, while a bare CREATE would stay wedged on "already exists"; both
+// cases need direction-specific cleanup before the rollback can retry safely.
+var concurrentDownIndexCleanups = map[string]string{
+	"444_room_turn_identity_index_drop":                     "room_turn_participant_uidx",
+	"144_drop_agent_task_queue_chat_pending_v1":             "idx_agent_task_queue_chat_pending",
+	"171_drop_legacy_label_namespace_index":                 "issue_label_workspace_name_lower_idx",
+	"256_drop_agent_task_queue_chat_pending_v2":             "idx_agent_task_queue_chat_pending_v2",
+	"258_drop_pending_issue_agent_v1":                       "idx_one_pending_task_per_issue_agent",
+	"262_drop_agent_task_queue_terminal_completed_at_v1":    "idx_agent_task_queue_terminal_completed_at",
+	"263_wiki_page_user_path_unique_drop":                   "wiki_page_user_path_uidx",
+	"422_channel_chat_route_history":                        "channel_chat_session_binding_installation_id_channel_chat_i_key",
+	"300_drop_redundant_issue_workspace_number_index":       "idx_issue_workspace_number",
+	"301_drop_redundant_sys_cron_job_plan_index":            "idx_sys_cron_exec_job_plan",
+	"302_drop_redundant_channel_chat_session_binding_index": "idx_channel_chat_session_binding_session",
+	"303_drop_redundant_lark_chat_session_binding_index":    "idx_lark_chat_session_binding_session",
+	"312_drop_global_plugin_identity_key_index":             "idx_plugin_identity_key",
+	"371_comment_content_search_index_strategy":             "idx_comment_content_trgm",
+	"375_drop_issue_last_activity_index":                    "idx_issue_workspace_last_activity",
+	"391_drop_agent_task_queue_dispatched_prepare_index":    "idx_agent_task_queue_dispatched_prepare",
+	"438_drop_twin_proposal_identity_index":                 "twin_proposal_workspace_identity_uidx",
+	"437_drop_agent_runtime_last_seen_at_index":             "idx_agent_runtime_last_seen_at",
+	"450_drop_comment_delegated_failure_pending_index":      "idx_comment_delegated_failure_pending",
+	"453_drop_pending_issue_agent_unique":                   "idx_one_pending_task_per_issue_agent_v2",
+	"548_task_supplement_comment_task_index":                "task_supplement_comment_uidx",
+	"454_drop_comment_content_bigm_index":                   "idx_comment_content_bigm",
+	"455_drop_comment_content_trgm_index":                   "idx_comment_content_trgm",
+	"463_drop_issue_description_bigm_index":                 "idx_issue_description_bigm",
+	"464_drop_issue_description_trgm_index":                 "idx_issue_description_trgm",
+	"473_drop_agent_task_queue_chat_with_session_index":     "idx_agent_task_queue_chat_with_session_created_at",
+}
+
+var preMigrationHooks = func() map[string]preMigrationHook {
+	hooks := map[string]preMigrationHook{
+		"103_drop_legacy_daily_rollups":                         runTaskUsageHourlyHook,
+		"198_agent_task_attribution_strict_constraint_validate": runAttributionStrictHook,
+		"422_channel_chat_route_history":                        applyChannelChatRouteHistoryHook,
+		"431_chat_explicit_origin_backfill":                     runChatOriginBackfillHook,
+	}
+	for version, index := range concurrentIndexCleanups {
+		hooks[version] = cleanupInvalidConcurrentIndexHook(index)
+	}
+	return hooks
+}()
+
+var preRollbackHooks = func() map[string]preMigrationHook {
+	hooks := make(map[string]preMigrationHook, len(concurrentDownIndexCleanups)+len(sourceContextMigrationVersions)+2)
+	for version, index := range concurrentDownIndexCleanups {
+		hooks[version] = cleanupInvalidConcurrentIndexHook(index)
+	}
+	hooks["438_drop_twin_proposal_identity_index"] = chainMigrationHooks(
+		hooks["438_drop_twin_proposal_identity_index"],
+		blockTwinProposalIdentityRollbackHook(pgx.Identifier{"public", "twin_proposal"}.Sanitize()),
+	)
+
+	// Migration 418 restores the v1 one-turn-per-participant invariant. A v2
+	// database may legitimately contain retries or synthesis attempts with the
+	// same (cycle_id, agent_id), so never let CREATE UNIQUE INDEX discover that
+	// incompatibility after starting the build. Clean up an interrupted prior
+	// build first, then fail with an actionable, data-preserving diagnostic.
+	const roomTurnIdentityVersion = "444_room_turn_identity_index_drop"
+	hooks[roomTurnIdentityVersion] = chainMigrationHooks(
+		hooks[roomTurnIdentityVersion],
+		preflightRoomTurnIdentityRollback,
+	)
+
+	// Source-context indexes are split into one-statement concurrent
+	// migrations. Register the guard on every step so a rollback from any
+	// partially applied version fails before dropping its first live index.
+	for _, version := range sourceContextMigrationVersions {
+		hooks[version] = ensureSourceContextRollbackSafe
+	}
+	hooks["430_channel_outbound_message_binding_index"] = refuseChannelChatRouteHistoryRollback
+	return hooks
+}()
+
+func chainMigrationHooks(hooks ...preMigrationHook) preMigrationHook {
+	return func(ctx context.Context, pool *pgxpool.Pool) error {
+		for _, hook := range hooks {
+			if hook == nil {
+				continue
+			}
+			if err := hook(ctx, pool); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// Migration 412's down direction restores the old all-kind proposal identity
+// index. Deposition replacements intentionally reuse that old identity, so a
+// database with append-only replacement history cannot safely represent the
+// pre-413 schema. Fail before starting the concurrent index build instead of
+// leaving an INVALID index and an opaque unique-violation retry loop.
+func blockTwinProposalIdentityRollbackHook(tableName string) preMigrationHook {
+	return func(ctx context.Context, pool *pgxpool.Pool) error {
+		var conflicts bool
+		err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM `+tableName+`
+				GROUP BY workspace_id, kind, source_wiki_revision_id,
+				         COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid)
+				HAVING count(*) > 1
+			)
+		`).Scan(&conflicts)
+		if err != nil {
+			return fmt.Errorf("inspect Twin proposal history before rollback: %w", err)
+		}
+		if conflicts {
+			return errors.New("rollback blocked: Twin proposal replacement history cannot be represented by the pre-413 identity index; remain on migration 413+ or use an approved data migration")
+		}
+		return nil
+	}
+}
+
+func preflightRoomTurnIdentityRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	var duplicateGroups, turnCount int64
+	var cycleID, agentID string
+	err := pool.QueryRow(ctx, `
+		WITH duplicate_turns AS (
+			SELECT cycle_id, agent_id, count(*) AS turn_count
+			FROM room_turn
+			GROUP BY cycle_id, agent_id
+			HAVING count(*) > 1
+		), ranked_duplicates AS (
+			SELECT cycle_id, agent_id, turn_count, count(*) OVER () AS duplicate_groups
+			FROM duplicate_turns
+			ORDER BY turn_count DESC, cycle_id, agent_id
+			LIMIT 1
+		)
+		SELECT duplicate_groups, cycle_id::text, agent_id::text, turn_count
+		FROM ranked_duplicates
+	`).Scan(&duplicateGroups, &cycleID, &agentID, &turnCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect Room turns before restoring the v1 identity index: %w", err)
+	}
+
+	return fmt.Errorf(
+		"cannot roll back 444_room_turn_identity_index_drop: room_turn contains %d duplicate (cycle_id, agent_id) group(s), including cycle_id=%s agent_id=%s with %d turns; the v1 unique index cannot represent v2 retry/synthesis history. Recovery: keep the v2 schema, or back up each duplicate group plus agent_task_queue.room_turn_id, room_entry.turn_id, room_artifact.turn_id, room_cycle.synthesis_turn_id, and room_memory_revision.synthesis_turn_id references; choose one legacy-compatible turn per cycle/agent; archive or relink every dependent row before removing extra turns; then verify `SELECT cycle_id, agent_id, count(*) FROM room_turn GROUP BY cycle_id, agent_id HAVING count(*) > 1` returns no rows and rerun migrate down",
+		duplicateGroups,
+		cycleID,
+		agentID,
+		turnCount,
+	)
+}
+
+var sourceContextMigrationVersions = []string{
+	"407_issue_source_context",
+	"408_issue_source_context_id_index",
+	"409_issue_source_context_issue_index",
+	"410_issue_source_context_origin_task_index",
+	"411_attachment_source_context_index",
+	"412_issue_source_context_object_intent_key_index",
+	"413_issue_source_context_object_intent_due_index",
+	"414_issue_source_context_object_intent_context_index",
+}
+
+type rowQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func refuseChannelChatRouteHistoryRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	return refuseChannelChatRouteHistoryRollbackWith(ctx, pool)
+}
+
+func runChatOriginBackfillHook(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := chatoriginbackfill.Hook(ctx, pool, chatoriginbackfill.HookOptions{})
+	return err
+}
+
+func refuseChannelChatRouteHistoryRollbackWith(ctx context.Context, query rowQuerier) error {
+	var channelChatRouteStateExists bool
+	if err := query.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM channel_chat_session_binding AS binding
+			LEFT JOIN chat_session AS session ON session.id = binding.chat_session_id
+			WHERE binding.retired_at IS NOT NULL
+			   OR session.explicitly_created_at IS NOT NULL
+		)
+	`).Scan(&channelChatRouteStateExists); err != nil {
+		return fmt.Errorf("check channel chat route state: %w", err)
+	}
+	if channelChatRouteStateExists {
+		return errors.New("cannot roll back channel chat routes after /new has created a channel Chat")
+	}
+	return nil
+}
+
+var upMigrationConditions = map[string]migrationCondition{
+	// Preserve applied history; pending 469 is superseded by the bounded expand
+	// migration. SaaS backfills separately; self-host converges in 491.
+	"469_issue_status_lifecycle_categories": skipMigration("superseded by 478 expansion and 491 convergence (MUL-7365)"),
+	// Current search no longer consumes an issue-description GIN. Fresh installs
+	// should not build the historical fallback only to retire it at migration 464.
+	"139_issue_description_trgm_index": skipMigration("issue description search indexes are retired by migration 464"),
+	// Current search no longer consumes a comment-content GIN. Fresh installs
+	// should not build the historical fallback only to retire it at migration 455.
+	"140_comment_content_trgm_index": skipMigration("comment content search indexes are retired by migration 455"),
+	// Existing pg_bigm deployments already have both indexes. Remove the
+	// fallback only after proving the preferred index has the exact usable shape;
+	// pg_bigm-less self-hosted databases keep trgm and record 371 as a no-op.
+	"371_comment_content_search_index_strategy": whenIndexUsable(commentContentBigramIndex),
+	// The schema-qualified hook applies the published 422 DDL without letting
+	// its unqualified DROP INDEX fall through to a later search_path schema.
+	"422_channel_chat_route_history":  migrationAppliedByHook("schema-qualified route-history cleanup"),
+	"446_issue_properties_bigm_index": whenOperatorClassAvailable(issuePropertiesBigramOperatorClass),
+}
+
+var downMigrationConditions = map[string]migrationCondition{
+	"454_drop_comment_content_bigm_index":   whenOperatorClassAvailable(pgBigmOperatorClass),
+	"455_drop_comment_content_trgm_index":   whenOperatorClassUnavailable(pgBigmOperatorClass),
+	"463_drop_issue_description_bigm_index": whenOperatorClassAvailable(pgBigmOperatorClass),
+}
+
+func migrationAppliedByHook(reason string) migrationCondition {
+	return func(context.Context, *pgxpool.Conn) (bool, string, error) {
+		return false, reason, nil
+	}
+}
+
+func applyChannelChatRouteHistoryHook(ctx context.Context, pool *pgxpool.Pool) error {
+	var schema string
+	if err := pool.QueryRow(ctx, "SELECT current_schema()").Scan(&schema); err != nil {
+		return fmt.Errorf("read channel chat route schema: %w", err)
+	}
+	tableName := pgx.Identifier{schema, "channel_chat_session_binding"}.Sanitize()
+	constraintName := pgx.Identifier{"channel_chat_session_binding_installation_id_channel_chat_i_key"}.Sanitize()
+	indexName := pgx.Identifier{schema, "channel_chat_session_binding_installation_id_channel_chat_i_key"}.Sanitize()
+	if _, err := pool.Exec(ctx, "ALTER TABLE "+tableName+" DROP CONSTRAINT IF EXISTS "+constraintName); err != nil {
+		return fmt.Errorf("drop channel chat route uniqueness constraint: %w", err)
+	}
+	if _, err := pool.Exec(ctx, "DROP INDEX IF EXISTS "+indexName); err != nil {
+		return fmt.Errorf("drop channel chat route uniqueness index: %w", err)
+	}
+	return nil
+}
+
+// legacyMigrationVersionAliases preserves the schema_migrations identities of
+// the four downstream outcome-loop features across two historical renumbering
+// passes. Those filenames reached self-hosted databases before upstream added
+// migrations in the same numeric range. Replaying the renamed SQL is unsafe:
+// most statements intentionally are not idempotent and would fail on existing
+// columns, tables, or indexes.
+//
+// Keep this map explicit and append-only. A match means the exact migration was
+// already applied under an older filename; runMigrations records the current
+// identity without executing its SQL. New migrations must use a fresh prefix
+// and must never be added here merely to avoid resolving a real DDL conflict.
+var legacyMigrationVersionAliases = map[string][]string{
+	"403_room_outcome_lifecycle":                    {"400_room_outcome_lifecycle", "377_room_outcome_lifecycle"},
+	"404_room_memory_revision_id_index":             {"401_room_memory_revision_id_index", "378_room_memory_revision_id_index"},
+	"405_room_memory_revision_primary_key":          {"402_room_memory_revision_primary_key", "379_room_memory_revision_primary_key"},
+	"406_room_memory_revision_version_index":        {"403_room_memory_revision_version_index", "380_room_memory_revision_version_index"},
+	"407_room_cycle_phase_index":                    {"404_room_cycle_phase_index", "381_room_cycle_phase_index"},
+	"408_room_artifact_memory_revision_index":       {"405_room_artifact_memory_revision_index", "382_room_artifact_memory_revision_index"},
+	"409_room_recommendation_review":                {"406_room_recommendation_review", "383_room_recommendation_review"},
+	"410_room_recommendation_review_id_index":       {"407_room_recommendation_review_id_index", "384_room_recommendation_review_id_index"},
+	"411_room_recommendation_review_primary_key":    {"408_room_recommendation_review_primary_key", "385_room_recommendation_review_primary_key"},
+	"412_room_recommendation_review_identity_index": {"409_room_recommendation_review_identity_index", "386_room_recommendation_review_identity_index"},
+	"413_user_appearance_preferences":               {"410_user_appearance_preferences", "387_user_appearance_preferences"},
+	"414_wiki_knowledge_loop":                       {"420_wiki_knowledge_loop", "388_wiki_knowledge_loop"},
+	"415_wiki_page_revision_id_index":               {"421_wiki_page_revision_id_index", "389_wiki_page_revision_id_index"},
+	"416_wiki_page_revision_number_index":           {"422_wiki_page_revision_number_index", "390_wiki_page_revision_number_index"},
+	"417_wiki_page_revision_list_index":             {"423_wiki_page_revision_list_index", "391_wiki_page_revision_list_index"},
+	"418_wiki_page_search_index":                    {"424_wiki_page_search_index", "392_wiki_page_search_index"},
+	"419_wiki_page_proposal_id_index":               {"425_wiki_page_proposal_id_index", "393_wiki_page_proposal_id_index"},
+	"420_wiki_page_proposal_idempotency_index":      {"426_wiki_page_proposal_idempotency_index", "394_wiki_page_proposal_idempotency_index"},
+	"421_wiki_page_proposal_list_index":             {"427_wiki_page_proposal_list_index", "395_wiki_page_proposal_list_index"},
+	"422_lm_wiki_source_policy_index":               {"428_lm_wiki_source_policy_index", "396_lm_wiki_source_policy_index"},
+	"423_lm_wiki_source_page_index":                 {"429_lm_wiki_source_page_index", "397_lm_wiki_source_page_index"},
+	"424_twin_execution_tables":                     {"430_twin_execution_tables", "398_twin_execution_tables"},
+	"425_twin_binding_id_index":                     {"431_twin_binding_id_index", "399_twin_binding_id_index"},
+	"426_twin_task_attribution_id_index":            {"432_twin_task_attribution_id_index", "400_twin_task_attribution_id_index"},
+	"427_twin_run_feedback_id_index":                {"433_twin_run_feedback_id_index", "401_twin_run_feedback_id_index"},
+	"428_twin_deposition_id_index":                  {"434_twin_deposition_id_index", "402_twin_deposition_id_index"},
+	"429_twin_execution_primary_keys":               {"435_twin_execution_primary_keys", "403_twin_execution_primary_keys"},
+	"430_twin_binding_scope_index":                  {"436_twin_binding_scope_index", "404_twin_binding_scope_index"},
+	"431_twin_task_attribution_claim_index":         {"437_twin_task_attribution_claim_index", "405_twin_task_attribution_claim_index"},
+	"432_twin_run_feedback_task_index":              {"438_twin_run_feedback_task_index", "406_twin_run_feedback_task_index"},
+	"433_twin_deposition_proposal_index":            {"439_twin_deposition_proposal_index", "407_twin_deposition_proposal_index"},
+	"434_twin_deposition_task_index":                {"440_twin_deposition_task_index", "408_twin_deposition_task_index"},
+	"435_twin_schema_v2_and_deposition":             {"441_twin_schema_v2_and_deposition", "409_twin_schema_v2_and_deposition"},
+	"436_agent_task_twin_use_snapshot":              {"442_agent_task_twin_use_snapshot", "410_agent_task_twin_use_snapshot"},
+	"437_twin_deposition_replacement":               {"443_twin_deposition_replacement", "411_twin_deposition_replacement"},
+	"438_drop_twin_proposal_identity_index":         {"444_drop_twin_proposal_identity_index", "412_drop_twin_proposal_identity_index"},
+	"439_twin_proposal_identity_partial_index":      {"445_twin_proposal_identity_partial_index", "413_twin_proposal_identity_partial_index"},
+	"440_twin_deposition_request_index":             {"446_twin_deposition_request_index", "414_twin_deposition_request_index"},
+	"441_twin_deposition_edit_digest":               {"447_twin_deposition_edit_digest", "415_twin_deposition_edit_digest"},
+	"442_twin_proposal_correction":                  {"448_twin_proposal_correction", "416_twin_proposal_correction"},
+	"443_twin_proposal_replacement_index":           {"449_twin_proposal_replacement_index", "417_twin_proposal_replacement_index"},
+	"444_room_turn_identity_index_drop":             {"450_room_turn_identity_index_drop", "418_room_turn_identity_index_drop"},
+	"445_room_turn_kind_attempt_index":              {"451_room_turn_kind_attempt_index", "419_room_turn_kind_attempt_index"},
+	"446_room_lifecycle_idempotency":                {"452_room_lifecycle_idempotency", "420_room_lifecycle_idempotency"},
+	"447_room_synthesis_retry_key_index":            {"453_room_synthesis_retry_key_index", "421_room_synthesis_retry_key_index"},
+	"448_room_capability_rollout":                   {"454_room_capability_rollout", "422_room_capability_rollout"},
+	"449_room_artifact_recommendation_key":          {"455_room_artifact_recommendation_key", "423_room_artifact_recommendation_key"},
+	"450_room_memory_review_key_index":              {"456_room_memory_review_key_index", "424_room_memory_review_key_index"},
+	"451_room_memory_revision_creator":              {"457_room_memory_revision_creator", "425_room_memory_revision_creator"},
+	"452_room_cycle_cost_limit":                     {"458_room_cycle_cost_limit", "426_room_cycle_cost_limit"},
+	"453_room_spend_limit_refusal":                  {"459_room_spend_limit_refusal", "427_room_spend_limit_refusal"},
+	"454_wiki_knowledge_primary_keys":               {"460_wiki_knowledge_primary_keys", "428_wiki_knowledge_primary_keys"},
+}
+
+func hooksForDirection(direction string) map[string]preMigrationHook {
+	switch direction {
+	case "up":
+		return preMigrationHooks
+	case "down":
+		return preRollbackHooks
+	default:
+		return nil
+	}
+}
+
+func ensureSourceContextRollbackSafe(ctx context.Context, pool *pgxpool.Pool) error {
+	var dataExists bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM issue_source_context)
+		    OR EXISTS (SELECT 1 FROM attachment WHERE source_context_id IS NOT NULL)
+		    OR EXISTS (SELECT 1 FROM issue_source_context_object_intent)
+	`).Scan(&dataExists); err != nil {
+		return fmt.Errorf("inspect source-context rollback ownership: %w", err)
+	}
+	if dataExists {
+		return errors.New("cannot roll back issue source context while captured data or stored objects still exist; remove source-context captures and their stored objects through application cleanup, then retry")
+	}
+	return nil
+}
+
+func conditionsForDirection(direction string) map[string]migrationCondition {
+	if direction == "up" {
+		return upMigrationConditions
+	}
+	if direction == "down" {
+		return downMigrationConditions
+	}
+	return nil
+}
+
+func whenIndexUsable(requirement usableIndexRequirement) migrationCondition {
+	return func(ctx context.Context, conn *pgxpool.Conn) (bool, string, error) {
+		usable, err := indexIsUsable(ctx, conn, requirement)
+		if err != nil {
+			return false, "", err
+		}
+		if !usable {
+			return false, fmt.Sprintf("preferred index %s is unavailable or unusable", requirement.IndexRegclass), nil
+		}
+		return true, "", nil
+	}
+}
+
+func skipMigration(reason string) migrationCondition {
+	return func(context.Context, *pgxpool.Conn) (bool, string, error) {
+		return false, reason, nil
+	}
+}
+
+func whenIndexNotUsable(requirement usableIndexRequirement) migrationCondition {
+	return func(ctx context.Context, conn *pgxpool.Conn) (bool, string, error) {
+		usable, err := indexIsUsable(ctx, conn, requirement)
+		if err != nil {
+			return false, "", err
+		}
+		if usable {
+			return false, fmt.Sprintf("preferred index %s is ready", requirement.IndexRegclass), nil
+		}
+		return true, "", nil
+	}
+}
+
+// whenOperatorClassAvailable lets a migration's SQL run only where the operator
+// class it names is installed, owned by the expected extension, and visible on
+// the search_path the migration itself will resolve the unqualified name
+// against — the condition runs on the same pinned connection as the SQL.
+//
+// Checking the extension alone would be weaker: an opclass in a schema outside
+// the search_path still fails the CREATE INDEX, which would abort the run.
+func whenOperatorClassAvailable(opclass extensionOperatorClass) migrationCondition {
+	return func(ctx context.Context, conn *pgxpool.Conn) (bool, string, error) {
+		var available bool
+		if err := conn.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM pg_opclass opc
+				JOIN pg_am am ON am.oid = opc.opcmethod
+				JOIN pg_depend dep
+				  ON dep.classid = 'pg_opclass'::regclass
+				 AND dep.objid = opc.oid
+				 AND dep.refclassid = 'pg_extension'::regclass
+				 AND dep.deptype = 'e'
+				JOIN pg_extension ext ON ext.oid = dep.refobjid
+				WHERE opc.opcname = $1
+				  AND am.amname = $2
+				  AND ext.extname = $3
+				  AND pg_opclass_is_visible(opc.oid)
+			)
+		`, opclass.OperatorClass, opclass.AccessMethod, opclass.Extension).Scan(&available); err != nil {
+			return false, "", fmt.Errorf("inspect operator class %q: %w", opclass.OperatorClass, err)
+		}
+		if !available {
+			return false, fmt.Sprintf("operator class %s (%s) is not installed", opclass.OperatorClass, opclass.Extension), nil
+		}
+		return true, "", nil
+	}
+}
+
+func whenOperatorClassUnavailable(opclass extensionOperatorClass) migrationCondition {
+	availableCondition := whenOperatorClassAvailable(opclass)
+	return func(ctx context.Context, conn *pgxpool.Conn) (bool, string, error) {
+		available, _, err := availableCondition(ctx, conn)
+		if err != nil {
+			return false, "", err
+		}
+		if available {
+			return false, fmt.Sprintf("operator class %s (%s) is installed", opclass.OperatorClass, opclass.Extension), nil
+		}
+		return true, "", nil
+	}
+}
+
+// indexIsUsable fails closed: every property needed by the search query must
+// match before a fallback index may be skipped or removed. In particular, the
+// preferred relation must be a live, ready, valid, non-partial GIN expression
+// index owned by the expected extension. A same-named stale or drifted index is
+// treated as unusable, preserving the fallback.
+func indexIsUsable(ctx context.Context, conn *pgxpool.Conn, requirement usableIndexRequirement) (bool, error) {
+	var usable bool
+	err := conn.QueryRow(ctx, `
+		SELECT COALESCE(
+			idx.relkind = 'i'
+			AND i.indisvalid
+			AND i.indisready
+			AND i.indislive
+			AND NOT i.indisunique
+			AND i.indpred IS NULL
+			AND i.indexprs IS NOT NULL
+			AND i.indrelid = to_regclass($2)
+			AND i.indnkeyatts = 1
+			AND i.indnatts = 1
+			AND am.amname = $3
+			AND opc.opcname = $4
+			AND pg_get_indexdef(i.indexrelid, 1, FALSE) = $5
+			AND EXISTS (
+				SELECT 1
+				FROM pg_depend dep
+				JOIN pg_extension ext ON ext.oid = dep.refobjid
+				WHERE dep.classid = 'pg_opclass'::regclass
+				  AND dep.objid = opc.oid
+				  AND dep.refclassid = 'pg_extension'::regclass
+				  AND dep.deptype = 'e'
+				  AND ext.extname = $6
+			),
+			FALSE
+		)
+		FROM pg_class idx
+		LEFT JOIN pg_index i ON i.indexrelid = idx.oid
+		LEFT JOIN pg_am am ON am.oid = idx.relam
+		-- pg_index.indclass is an int2vector, whose subscripts start at zero.
+		LEFT JOIN pg_opclass opc ON opc.oid = i.indclass[0]
+		WHERE idx.oid = to_regclass($1)
+	`,
+		requirement.IndexRegclass,
+		requirement.TableRegclass,
+		requirement.AccessMethod,
+		requirement.OperatorClass,
+		requirement.Expression,
+		requirement.Extension,
+	).Scan(&usable)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect preferred index %q: %w", requirement.IndexRegclass, err)
+	}
+	return usable, nil
+}
+
+// cleanupInvalidConcurrentIndexHook removes an INVALID index left by an
+// interrupted or failed CREATE INDEX CONCURRENTLY before the migration retries.
+// Without this guard, CREATE INDEX ... IF NOT EXISTS would treat the leftover
+// relation as success and allow a later migration to drop the still-valid old
+// index. Non-index relations fail closed instead of being dropped implicitly.
+func cleanupInvalidConcurrentIndexHook(indexRegclass string) preMigrationHook {
+	return func(ctx context.Context, pool *pgxpool.Pool) error {
+		var schemaName, relationName string
+		var isIndex, isValid bool
+		err := pool.QueryRow(ctx, `
+			SELECT n.nspname, c.relname, c.relkind = 'i', COALESCE(i.indisvalid, FALSE)
+			FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			LEFT JOIN pg_index i ON i.indexrelid = c.oid
+			WHERE c.oid = to_regclass($1)
+		`, indexRegclass).Scan(&schemaName, &relationName, &isIndex, &isValid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("inspect concurrent index %q: %w", indexRegclass, err)
+		}
+		if !isIndex {
+			return fmt.Errorf("relation %q exists but is not an index", indexRegclass)
+		}
+		if isValid {
+			return nil
+		}
+
+		qualifiedName := pgx.Identifier{schemaName, relationName}.Sanitize()
+		if _, err := pool.Exec(ctx, "DROP INDEX CONCURRENTLY IF EXISTS "+qualifiedName); err != nil {
+			return fmt.Errorf("drop invalid concurrent index %s: %w", qualifiedName, err)
+		}
+		slog.Warn("removed invalid index before migration retry", "index", qualifiedName)
+		return nil
+	}
 }
 
 func runTaskUsageHourlyHook(ctx context.Context, pool *pgxpool.Pool) error {
@@ -127,8 +1056,18 @@ type runOptions struct {
 	// receives the pool (not the loop's pinned conn) so it can take
 	// its own session-level locks. nil or missing entries mean "no
 	// hook" and the migration runs straight through. Production main()
-	// passes preMigrationHooks; tests leave this nil.
+	// passes the direction-specific hook map; tests leave this nil unless they
+	// exercise a hook.
 	Hooks map[string]preMigrationHook
+	// Conditions maps migration version → a read-only gate that decides
+	// whether the SQL file should execute. A false result still advances the
+	// migration ledger, allowing later migrations to run in environments where
+	// this version's DDL is intentionally unnecessary.
+	Conditions map[string]migrationCondition
+	// VersionAliases maps the current migration identity to older published
+	// identities for the same SQL. Production passes the frozen downstream map;
+	// tests may inject a small fixture map. Never use aliases for different DDL.
+	VersionAliases map[string][]string
 }
 
 func main() {
@@ -150,18 +1089,19 @@ func main() {
 		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
 	}
 
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dbURL)
+	startupSettings := dbstartup.SettingsFromEnv()
+	poolConfig, err := dbstartup.ParsePoolConfig(dbURL, startupSettings.ConnectTimeout)
+	if err != nil {
+		slog.Error("unable to connect to database", "error", err)
+		os.Exit(1)
+	}
+	poolConfig.ConnConfig.OnNotice = logMigrationNotice
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		slog.Error("unable to connect to database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		slog.Error("unable to ping database", "error", err)
-		os.Exit(1)
-	}
 
 	files, err := migrations.Files(direction)
 	if err != nil {
@@ -169,16 +1109,82 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := runMigrations(ctx, pool, runOptions{
-		Direction: direction,
-		Files:     files,
-		Hooks:     preMigrationHooks,
-	}); err != nil {
-		slog.Error("migration run failed", "error", err)
+	options := runOptions{
+		Direction:      direction,
+		Files:          files,
+		Hooks:          hooksForDirection(direction),
+		Conditions:     conditionsForDirection(direction),
+		VersionAliases: legacyMigrationVersionAliases,
+	}
+	startupCtx, stopStartup := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopStartup()
+	retryOptions := startupSettings.RetryOptions()
+	retryOptions.ShouldRetry = dbstartup.IsTransientDatabaseError
+	retryOptions.OnRetry = func(event dbstartup.RetryEvent) {
+		slog.Warn("database unavailable before migrations; retrying",
+			"attempt", event.Attempt,
+			"retry_in", event.Delay,
+			"error", event.Err,
+		)
+	}
+	if err := dbstartup.Retry(startupCtx, retryOptions, pool.Ping); err != nil {
+		slog.Error("unable to ping database", "error", err)
+		os.Exit(1)
+	}
+
+	migrationErr := runMigrations(startupCtx, pool, options)
+	if migrationErr != nil && startupSettings.StartupTimeout > 0 && dbstartup.IsTransientDatabaseError(migrationErr) {
+		slog.Warn("migration interrupted by database unavailability; retrying", "error", migrationErr)
+		migrationRetryOptions := startupSettings.RetryOptions()
+		migrationRetryOptions.ShouldRetry = dbstartup.IsTransientDatabaseError
+		migrationRetryOptions.AllowOperationPastTimeout = true
+		migrationRetryOptions.OnRetry = func(event dbstartup.RetryEvent) {
+			slog.Warn("database unavailable during migration retry",
+				"attempt", event.Attempt,
+				"retry_in", event.Delay,
+				"error", event.Err,
+			)
+		}
+		migrationErr = dbstartup.Retry(startupCtx, migrationRetryOptions, func(attemptCtx context.Context) error {
+			if err := pool.Ping(attemptCtx); err != nil {
+				return fmt.Errorf("ping database: %w", err)
+			}
+			return runMigrations(attemptCtx, pool, options)
+		})
+	}
+	if migrationErr != nil {
+		slog.Error("migration run failed", "error", migrationErr)
 		os.Exit(1)
 	}
 
 	fmt.Println("Done.")
+}
+
+// migrationReportPrefix marks a notice a migration raises on purpose to say
+// what it changed, e.g.
+//
+//	RAISE NOTICE 'migration report: renamed % row(s)', n;
+//
+// Only these reach the migration log. The server's own notices cannot be told
+// apart from a deliberate RAISE by condition code — "does not exist, skipping"
+// and the rename notice of ADD CONSTRAINT ... USING INDEX both carry SQLSTATE
+// 00000 — so the marker is explicit.
+const migrationReportPrefix = "migration report: "
+
+// migrationReport returns the text of a notice raised with
+// migrationReportPrefix, and false for every other notice.
+func migrationReport(notice *pgconn.Notice) (string, bool) {
+	return strings.CutPrefix(notice.Message, migrationReportPrefix)
+}
+
+// logMigrationNotice forwards migration reports to the migration log. pgx
+// drops server notices unless a handler is set, so without it the per-row
+// report a data-repair migration prints (e.g. 476) never reached whoever ran
+// the deploy.
+func logMigrationNotice(_ *pgconn.PgConn, notice *pgconn.Notice) {
+	if report, ok := migrationReport(notice); ok {
+		slog.Info("migration report", "message", report)
+	}
 }
 
 // runMigrations applies (direction="up") or rolls back (direction="down")
@@ -261,10 +1267,24 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 
 	for _, file := range opts.Files {
 		version := migrations.ExtractVersion(file)
+		aliases := opts.VersionAliases[version]
 
 		var exists bool
 		if err := conn.QueryRow(ctx, existsSQL, version).Scan(&exists); err != nil {
 			return fmt.Errorf("check migration %q: %w", version, err)
+		}
+		legacyVersion := ""
+		if !exists {
+			for _, alias := range aliases {
+				var aliasExists bool
+				if err := conn.QueryRow(ctx, existsSQL, alias).Scan(&aliasExists); err != nil {
+					return fmt.Errorf("check legacy migration %q for %q: %w", alias, version, err)
+				}
+				if aliasExists {
+					legacyVersion = alias
+					break
+				}
+			}
 		}
 
 		if opts.Direction == "up" {
@@ -272,8 +1292,15 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 				fmt.Printf("  skip  %s (already applied)\n", version)
 				continue
 			}
+			if legacyVersion != "" {
+				if _, err := conn.Exec(ctx, insertSQL, version); err != nil {
+					return fmt.Errorf("record migration alias %q for %q: %w", legacyVersion, version, err)
+				}
+				fmt.Printf("  skip  %s (already applied as %s; recorded current identity)\n", version, legacyVersion)
+				continue
+			}
 		} else {
-			if !exists {
+			if !exists && legacyVersion == "" {
 				fmt.Printf("  skip  %s (not applied)\n", version)
 				continue
 			}
@@ -290,29 +1317,46 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool, opts runOptions) err
 		// colliding with migrationAdvisoryLockKey. Hook failures
 		// abort the run before schema_migrations is updated, so the
 		// same version retries cleanly on the next invocation.
-		if opts.Direction == "up" {
-			if hook, ok := opts.Hooks[version]; ok && hook != nil {
-				slog.Info("running pre-migration hook", "version", version)
-				if err := hook(ctx, pool); err != nil {
-					return fmt.Errorf("pre-migration hook for %q: %w", version, err)
-				}
+		if hook, ok := opts.Hooks[version]; ok && hook != nil {
+			slog.Info("running pre-migration hook", "version", version, "direction", opts.Direction)
+			if err := hook(ctx, pool); err != nil {
+				return fmt.Errorf("pre-migration hook for %q (%s): %w", version, opts.Direction, err)
 			}
 		}
 
-		if _, err := conn.Exec(ctx, string(sql)); err != nil {
-			return fmt.Errorf("apply migration %q: %w", file, err)
+		applySQL := true
+		conditionReason := ""
+		if condition, ok := opts.Conditions[version]; ok && condition != nil {
+			applySQL, conditionReason, err = condition(ctx, conn)
+			if err != nil {
+				return fmt.Errorf("evaluate migration condition for %q (%s): %w", version, opts.Direction, err)
+			}
+		}
+
+		if applySQL {
+			if _, err := conn.Exec(ctx, string(sql)); err != nil {
+				return fmt.Errorf("apply migration %q: %w", file, err)
+			}
 		}
 
 		if opts.Direction == "up" {
 			_, err = conn.Exec(ctx, insertSQL, version)
 		} else {
-			_, err = conn.Exec(ctx, deleteSQL, version)
+			for _, recordedVersion := range append([]string{version}, aliases...) {
+				if _, err = conn.Exec(ctx, deleteSQL, recordedVersion); err != nil {
+					break
+				}
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("record migration %q: %w", version, err)
 		}
 
-		fmt.Printf("  %s  %s\n", opts.Direction, version)
+		if applySQL {
+			fmt.Printf("  %s  %s\n", opts.Direction, version)
+		} else {
+			fmt.Printf("  %s  %s (SQL skipped: %s)\n", opts.Direction, version, conditionReason)
+		}
 	}
 
 	return nil

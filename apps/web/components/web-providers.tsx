@@ -2,16 +2,21 @@
 
 import { useMemo } from "react";
 import { CoreProvider } from "@multica/core/platform";
+import { useAuthStore } from "@multica/core/auth";
 import { createBrowserCookieLocaleAdapter } from "@multica/core/i18n/browser";
 import type { LocaleResources, SupportedLocale } from "@multica/core/i18n";
 import { useWelcomeStore } from "@multica/core/onboarding";
 import packageJson from "../package.json";
 import { WebNavigationProvider } from "@/platform/navigation";
+import { WebScrollRestorationProvider } from "@/platform/scroll-restoration";
 import {
   setLoggedInCookie,
   clearLoggedInCookie,
 } from "@/features/auth/auth-cookie";
 import { detectWebOS } from "@/platform/client-os";
+import { webAppearanceAdapter } from "@/platform/appearance-adapter";
+import { AppearanceSyncBridge } from "@multica/views/appearance";
+import { useUserLocaleSyncEnabled } from "@/platform/user-locale-sync";
 
 // Legacy token in localStorage → keep this session in token mode so users who
 // logged in before the cookie-auth migration stay authed. They migrate to
@@ -43,6 +48,26 @@ function deriveWsUrl(): string | undefined {
 const WEB_VERSION =
   process.env.NEXT_PUBLIC_APP_VERSION || packageJson.version || "dev";
 
+function WebAppearanceBridge({ children }: { children: React.ReactNode }) {
+  const account = useAuthStore((state) => state.user);
+  const updateAccountAppearance = useAuthStore(
+    (state) => state.updateAppearancePreferences,
+  );
+  const refreshAccountAppearance = useAuthStore(
+    (state) => state.refreshAppearancePreferences,
+  );
+  return (
+    <AppearanceSyncBridge
+      adapter={webAppearanceAdapter}
+      account={account}
+      updateAccountAppearance={updateAccountAppearance}
+      refreshAccountAppearance={refreshAccountAppearance}
+    >
+      {children}
+    </AppearanceSyncBridge>
+  );
+}
+
 export function WebProviders({
   children,
   locale,
@@ -57,6 +82,7 @@ export function WebProviders({
   wsUrl?: string;
 }) {
   const cookieAuth = !hasLegacyToken();
+  const syncUserLocale = useUserLocaleSyncEnabled();
   // Stable identity reference so downstream effects keyed on it don't see a
   // new object on every parent render.
   const identity = useMemo(
@@ -84,8 +110,13 @@ export function WebProviders({
       locale={locale}
       resources={resources}
       localeAdapter={localeAdapter}
+      syncUserLocale={syncUserLocale}
     >
-      <WebNavigationProvider>{children}</WebNavigationProvider>
+      <WebAppearanceBridge>
+        <WebNavigationProvider>
+          <WebScrollRestorationProvider>{children}</WebScrollRestorationProvider>
+        </WebNavigationProvider>
+      </WebAppearanceBridge>
     </CoreProvider>
   );
 }

@@ -1,12 +1,23 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import type { RoomArtifact } from "@multica/core/rooms";
 import {
   artifactHref,
   countTodayTurns,
+  cycleStatusClass,
   latestRefusedCycle,
+  roomRefusalKey,
+  roomStatusClass,
+  roomStatusDotClass,
 } from "./room-display";
 
 describe("room display helpers", () => {
+  it("keeps active badge text readable on the success tint", () => {
+    expect(roomStatusClass("active")).toContain("text-foreground");
+    expect(roomStatusClass("active")).not.toContain("text-success");
+  });
+
   it("counts only turns created during the current UTC day", () => {
     const detail = {
       turns: [
@@ -46,4 +57,25 @@ describe("room display helpers", () => {
     expect(artifactHref(artifact("wiki"), paths)).toBe("/wiki/target");
     expect(artifactHref(artifact("decision"), paths)).toBeNull();
   });
+
+  it("normalizes refusal aliases and unknown values to stable local presentation keys", () => {
+    expect(roomRefusalKey("active_cycle")).toBe("cycle_active");
+    expect(roomRefusalKey("cycle_active")).toBe("cycle_active");
+    expect(roomRefusalKey("future_reason")).toBe("preflight_required");
+    expect(roomRefusalKey(null)).toBe("preflight_required");
+  });
+
+  it("keeps unknown room statuses visually muted", () => {
+    expect(roomStatusClass("future_status")).toContain("text-muted-foreground");
+  });
+
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "treats inherited object key %s as an unknown display value",
+    (value) => {
+      expect(roomStatusClass(value)).toBe("bg-muted text-muted-foreground");
+      expect(roomStatusDotClass(value)).toBe("bg-muted-foreground");
+      expect(cycleStatusClass(value)).toBe("text-muted-foreground");
+      expect(roomRefusalKey(value)).toBe("preflight_required");
+    },
+  );
 });

@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS twin_activation_preview_checkpoint_lookup_idx;

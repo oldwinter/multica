@@ -1,0 +1,126 @@
+name: Downstream Feature Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  downstream-features:
+    # A single job keeps each feature visible while sharing dependency setup.
+    # External fork PRs stay on ephemeral runners.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '"ubuntu-latest"' || '["self-hosted","Linux","X64","multica"]') }}
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: multica_features
+          POSTGRES_USER: multica
+          POSTGRES_PASSWORD: multica
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U multica -d multica_features"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379/tcp
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure isolated service endpoints
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+        run: |
+          echo "DATABASE_URL=postgres://multica:multica@localhost:${POSTGRES_PORT}/multica_features?sslmode=disable" >> "$GITHUB_ENV"
+          echo "REDIS_TEST_URL=redis://localhost:${REDIS_PORT}/1" >> "$GITHUB_ENV"
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: ${{ runner.environment != 'self-hosted' }}
+          cache-dependency-path: server/go.sum
+
+      - name: Use disk-backed Go temp directory
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run migrations
+        id: migrations
+        run: cd server && go run ./cmd/migrate up
+
+      - name: Rooms outcome loop
+        id: rooms
+        if: ${{ !cancelled() && steps.migrations.outcome == 'success' }}
+        run: scripts/test-downstream-feature.sh rooms
+
+      - name: Wiki knowledge loop
+        id: wiki
+        if: ${{ !cancelled() && steps.migrations.outcome == 'success' }}
+        run: scripts/test-downstream-feature.sh wiki
+
+      - name: Twin execution loop
+        id: twin
+        if: ${{ !cancelled() && steps.migrations.outcome == 'success' }}
+        run: scripts/test-downstream-feature.sh twin
+
+      - name: Named skins experience loop
+        id: appearance
+        if: ${{ !cancelled() && steps.migrations.outcome == 'success' }}
+        run: scripts/test-downstream-feature.sh appearance
+
+      - name: Downstream contracts
+        id: contracts
+        if: ${{ !cancelled() && steps.migrations.outcome == 'success' }}
+        run: scripts/test-downstream-feature.sh contracts
+
+      - name: Publish feature gate summary
+        if: ${{ always() }}
+        env:
+          ROOMS_OUTCOME: ${{ steps.rooms.outcome }}
+          WIKI_OUTCOME: ${{ steps.wiki.outcome }}
+          TWIN_OUTCOME: ${{ steps.twin.outcome }}
+          APPEARANCE_OUTCOME: ${{ steps.appearance.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
+        run: |
+          {
+            echo "## Downstream feature gates"
+            echo
+            echo "| Product loop | Result |"
+            echo "| --- | --- |"
+            echo "| Rooms outcome loop | $ROOMS_OUTCOME |"
+            echo "| Wiki knowledge loop | $WIKI_OUTCOME |"
+            echo "| Twin execution loop | $TWIN_OUTCOME |"
+            echo "| Named skins experience loop | $APPEARANCE_OUTCOME |"
+            echo "| Downstream contracts | $CONTRACTS_OUTCOME |"
+          } >> "$GITHUB_STEP_SUMMARY"

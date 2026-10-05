@@ -2,7 +2,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setCurrentWorkspace } from "@multica/core/platform";
-import { useRoomComposerDraftStore } from "@multica/core/rooms";
+import {
+  ROOM_COMPOSER_DRAFT_STORAGE_KEY,
+  useRoomComposerDraftStore,
+} from "@multica/core/rooms";
 
 const authRef = vi.hoisted(() => ({ userId: "user-a" as string | null }));
 const workspaceRef = vi.hoisted(() => ({ id: "workspace-shared" }));
@@ -104,5 +107,52 @@ describe("useRoomComposerDrafts session isolation", () => {
         },
       },
     });
+  });
+
+  it("does not let an old workspace hydration listener overwrite the new workspace", async () => {
+    const { result, rerender } = renderHook(() =>
+      useRoomComposerDrafts("room-private"),
+    );
+    expect(result.current.draft?.body).toBe("Alice's unsent message");
+
+    localStorage.setItem(
+      `${ROOM_COMPOSER_DRAFT_STORAGE_KEY}:beta`,
+      JSON.stringify({
+        state: {
+          draft: {
+            ownerUserId: "user-a",
+            ownerWorkspaceId: "workspace-beta",
+            rooms: {
+              "room-private": {
+                body: "Beta workspace draft",
+                mentionAgentIds: [],
+                idempotencyKey: "beta-key",
+                status: "idle",
+              },
+            },
+          },
+        },
+        version: 0,
+      }),
+    );
+
+    await act(async () => {
+      // Keep the old hook rendered while rehydration completes to reproduce
+      // the render/microtask/passive-cleanup ordering used by app layouts.
+      setCurrentWorkspace("beta", "workspace-beta");
+      await flush();
+    });
+
+    expect(useRoomComposerDraftStore.getState().draft).toMatchObject({
+      ownerUserId: "user-a",
+      ownerWorkspaceId: "workspace-beta",
+      rooms: {
+        "room-private": { body: "Beta workspace draft" },
+      },
+    });
+
+    workspaceRef.id = "workspace-beta";
+    rerender();
+    expect(result.current.draft?.body).toBe("Beta workspace draft");
   });
 });

@@ -22,8 +22,10 @@ const INBOX_GROUP_KEYS = [
   "assignments",
   "status_changes",
   "comments",
+  "mentions",
   "updates",
   "agent_activity",
+  "rooms",
 ] as const;
 type InboxGroupKey = (typeof INBOX_GROUP_KEYS)[number];
 
@@ -93,7 +95,6 @@ export function NotificationsTab() {
         <SettingsCard>
           <SettingsRow
             label={t(($) => $.notifications.system.label)}
-            description={t(($) => $.notifications.system.hint)}
           >
               <Switch
                 checked={systemEnabled}

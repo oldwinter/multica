@@ -127,6 +127,18 @@ var (
 		"other":             "other",
 	}
 
+	knownEmailRateLimitActions = map[string]string{
+		"workspace_invitation": "workspace_invitation",
+		"other":                "other",
+	}
+
+	knownEmailRateLimitGates = map[string]string{
+		"actor":     "actor",
+		"workspace": "workspace",
+		"recipient": "recipient",
+		"other":     "other",
+	}
+
 	knownGithubEventKinds = map[string]string{
 		"pull_request":              "pull_request",
 		"pull_request_review":       "pull_request_review",
@@ -220,6 +232,70 @@ var (
 		"agents_page": "agents_page",
 		"unknown":     "unknown",
 		"other":       "other",
+	}
+
+	knownTwinProposalKinds = map[string]string{
+		"initial":    "initial",
+		"evolution":  "evolution",
+		"deposition": "deposition",
+		"unknown":    "unknown",
+	}
+
+	knownTwinStates = map[string]string{
+		"succeeded": "succeeded",
+		"failed":    "failed",
+		"blocked":   "blocked",
+		"compiled":  "compiled",
+		"excluded":  "excluded",
+		"previewed": "previewed",
+		"injected":  "injected",
+		"skipped":   "skipped",
+		"unknown":   "unknown",
+	}
+
+	knownTwinPolicyScopes = map[string]string{
+		"one_off":   "one_off",
+		"issue":     "issue",
+		"project":   "project",
+		"agent":     "agent",
+		"workspace": "workspace",
+		"unknown":   "unknown",
+	}
+
+	knownTwinDecisions = map[string]string{
+		"signed":             "signed",
+		"accepted":           "accepted",
+		"rejected":           "rejected",
+		"revision_requested": "revision_requested",
+		"unknown":            "unknown",
+	}
+
+	knownTwinFeedbackRatings = map[string]string{
+		"helped":     "helped",
+		"irrelevant": "irrelevant",
+		"mismatch":   "mismatch",
+		"unknown":    "unknown",
+	}
+
+	knownTwinRevisionKinds = map[string]string{
+		"none":                "none",
+		"instruction_related": "instruction_related",
+		"other":               "other",
+		"unknown":             "unknown",
+	}
+
+	knownTwinExclusionCodes = map[string]string{
+		"none":                "none",
+		"kill_switch":         "kill_switch",
+		"policy_off":          "policy_off",
+		"no_signed_version":   "no_signed_version",
+		"ineligible_task":     "ineligible_task",
+		"stale_version":       "stale_version",
+		"unauthorized":        "unauthorized",
+		"local_only":          "local_only",
+		"budget":              "budget",
+		"unsupported_runtime": "unsupported_runtime",
+		"unknown":             "unknown",
 	}
 )
 
@@ -347,6 +423,14 @@ func NormalizeWebhookRateLimitGate(value string) string {
 	return normalizeFromAllowList(value, knownWebhookRateLimitGates, "other")
 }
 
+func NormalizeEmailRateLimitAction(value string) string {
+	return normalizeFromAllowList(value, knownEmailRateLimitActions, "other")
+}
+
+func NormalizeEmailRateLimitGate(value string) string {
+	return normalizeFromAllowList(value, knownEmailRateLimitGates, "other")
+}
+
 func NormalizeGithubEventKind(value string) string {
 	return normalizeFromAllowList(value, knownGithubEventKinds, "other")
 }
@@ -416,4 +500,32 @@ func NormalizeContactSalesSource(value string) string {
 
 func NormalizeChatOutputLocalPathKind(value string) string {
 	return normalizeFromAllowList(value, knownChatOutputLocalPathKinds, "other")
+}
+
+func NormalizeTwinProposalKind(value string) string {
+	return normalizeFromAllowList(value, knownTwinProposalKinds, "unknown")
+}
+
+func NormalizeTwinState(value string) string {
+	return normalizeFromAllowList(value, knownTwinStates, "unknown")
+}
+
+func NormalizeTwinPolicyScope(value string) string {
+	return normalizeFromAllowList(value, knownTwinPolicyScopes, "unknown")
+}
+
+func NormalizeTwinDecision(value string) string {
+	return normalizeFromAllowList(value, knownTwinDecisions, "unknown")
+}
+
+func NormalizeTwinFeedbackRating(value string) string {
+	return normalizeFromAllowList(value, knownTwinFeedbackRatings, "unknown")
+}
+
+func NormalizeTwinRevisionKind(value string) string {
+	return normalizeFromAllowList(value, knownTwinRevisionKinds, "unknown")
+}
+
+func NormalizeTwinExclusionCode(value string) string {
+	return normalizeFromAllowList(value, knownTwinExclusionCodes, "unknown")
 }

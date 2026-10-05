@@ -16,6 +16,10 @@ const BASE_USER: User = {
   language: null,
   profile_description: "",
   timezone: null,
+  skin: null,
+  appearance: null,
+  appearanceUpdatedAt: null,
+  appearanceTokenVersion: null,
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-01-01T00:00:00Z",
 };

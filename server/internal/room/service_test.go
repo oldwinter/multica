@@ -29,9 +29,17 @@ type recordingNotifier struct {
 
 type testArtifactTargets struct{}
 
+type testAgentRuntimeLookup struct {
+	queries *db.Queries
+}
+
+func (l testAgentRuntimeLookup) Get(ctx context.Context, id pgtype.UUID) (db.AgentRuntime, error) {
+	return l.queries.GetAgentRuntime(ctx, id)
+}
+
 func (*testArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, _ pgx.Tx, queries *db.Queries, artifact db.RoomArtifact) (pgtype.UUID, error) {
 	switch artifact.Kind {
-	case "issue":
+	case "issue", "implementation_defect":
 		number, err := queries.IncrementIssueCounter(ctx, artifact.WorkspaceID)
 		if err != nil {
 			return pgtype.UUID{}, err
@@ -48,17 +56,19 @@ func (*testArtifactTargets) CreateRoomArtifactTarget(ctx context.Context, _ pgx.
 		if err != nil {
 			return pgtype.UUID{}, err
 		}
-		issue, err = queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
+		_, err = queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
 			Key: "room_artifact_id", Value: metadata, ID: issue.ID, WorkspaceID: artifact.WorkspaceID,
 		})
 		return issue.ID, err
-	case "wiki":
+	case "wiki", "knowledge":
 		page, err := queries.CreateWikiPage(ctx, db.CreateWikiPageParams{
 			WorkspaceID: artifact.WorkspaceID, Scope: "workspace",
 			Path:  path.Join("rooms", util.UUIDToString(artifact.RoomID), util.UUIDToString(artifact.ID)+".md"),
 			Title: artifact.Title, Content: artifact.Body, CreatedBy: artifact.CreatedByUserID,
 		})
 		return page.ID, err
+	case "decision":
+		return artifact.ID, nil
 	default:
 		return pgtype.UUID{}, fmt.Errorf("unexpected artifact kind %q", artifact.Kind)
 	}
@@ -195,12 +205,24 @@ func newServiceFixture(t *testing.T) serviceFixture {
 	}
 
 	fixture.events = &recordingEvents{}
-	fixture.service = NewService(db.New(pool), pool, fixture.notifier, &testArtifactTargets{}, fixture.events)
+	fixture.service = NewService(
+		db.New(pool),
+		pool,
+		func(queries *db.Queries) AgentRuntimeLookup {
+			return testAgentRuntimeLookup{queries: queries}
+		},
+		fixture.notifier,
+		&testArtifactTargets{},
+		fixture.events,
+	)
 	t.Cleanup(func() {
+		pool.Exec(context.Background(), `DELETE FROM inbox_item WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM agent_task_queue WHERE room_turn_id IN (SELECT id FROM room_turn WHERE workspace_id = $1)`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM wiki_page WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM issue WHERE workspace_id = $1`, fixture.workspaceID)
+		pool.Exec(context.Background(), `DELETE FROM room_recommendation_review WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_artifact WHERE workspace_id = $1`, fixture.workspaceID)
+		pool.Exec(context.Background(), `DELETE FROM room_memory_revision WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_turn WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_cycle WHERE workspace_id = $1`, fixture.workspaceID)
 		pool.Exec(context.Background(), `DELETE FROM room_entry WHERE workspace_id = $1`, fixture.workspaceID)
@@ -240,6 +262,28 @@ func TestCreateExpandsSquadParticipants(t *testing.T) {
 		if participant.ParticipantType == "agent" && !participant.SourceSquadID.Valid {
 			t.Fatalf("squad agent participant missing source squad: %+v", participant)
 		}
+	}
+}
+
+func TestCreateScheduledCopyStartsPausedWithoutLifecycleData(t *testing.T) {
+	fixture := newServiceFixture(t)
+	interval := int32(60)
+	created, err := fixture.service.Create(context.Background(), CreateInput{
+		WorkspaceID: fixture.workspaceID, ActorUserID: fixture.userID,
+		Title: "Copied recurring Room", Objective: "A separate objective",
+		FacilitatorAgentID:      fixture.leaderID,
+		Participants:            []ParticipantInput{{Type: "agent", ID: fixture.workerID}},
+		ScheduleIntervalMinutes: &interval,
+		StartPaused:             true,
+	})
+	if err != nil {
+		t.Fatalf("Create scheduled copy: %v", err)
+	}
+	if created.Room.Status != "paused" || !created.Room.NextWakeAt.Valid {
+		t.Fatalf("scheduled copy = %#v", created.Room)
+	}
+	if len(created.Entries) != 0 || len(created.Cycles) != 0 || len(created.MemoryRevisions) != 0 || len(created.Artifacts) != 0 || created.Room.MemoryVersion != 0 {
+		t.Fatalf("scheduled copy retained lifecycle data: %#v", created)
 	}
 }
 
@@ -356,6 +400,38 @@ func TestMultiTargetWakeReservesWholeDailyBudget(t *testing.T) {
 	}
 	if result.Cycle.Status != "refused" || result.Cycle.RefusalReason.String != "budget_exhausted" || len(result.Tasks) != 0 {
 		t.Fatalf("multi-target budget result = %+v", result)
+	}
+}
+
+func TestCostBudgetRefusesUnderfundedCycleAndPartitionsTaskCeiling(t *testing.T) {
+	fixture := newServiceFixture(t)
+	ctx := context.Background()
+	underfunded := createSingleOutcomeRoom(t, fixture, "Underfunded cost Room", 1)
+	preflight, err := fixture.service.Preflight(ctx, roomTestPreflightInput(fixture, underfunded.Room.ID, "manual"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preflight.Allowed || preflight.RefusalReason != "budget_exhausted" || preflight.ExpectedMaxTurns != 2 {
+		t.Fatalf("underfunded preflight = %+v", preflight)
+	}
+
+	funded := createSingleOutcomeRoom(t, fixture, "Funded cost Room", 3)
+	wake, err := fixture.service.Wake(ctx, WakeInput{
+		WorkspaceID: fixture.workspaceID, RoomID: funded.Room.ID, ActorUserID: fixture.userID,
+		Source: "manual", WakeKey: "manual:partition-cost-ceiling",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Cycle.CostLimitTicks.Valid || wake.Cycle.CostLimitTicks.Int64 != 3 || len(wake.Tasks) != 1 {
+		t.Fatalf("funded wake = %+v", wake)
+	}
+	context, err := protocol.ParseRoomTaskContext(wake.Tasks[0].Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if context.CostLimitTicks == nil || *context.CostLimitTicks != 2 || wake.Tasks[0].MaxAttempts != 1 {
+		t.Fatalf("participant budget/max attempts = context %+v task %+v", context, wake.Tasks[0])
 	}
 }
 
@@ -796,7 +872,7 @@ func TestPausedAndBudgetExhaustedWakesPersistRefusal(t *testing.T) {
 	}
 }
 
-func TestDispatchDueAdvancesOnceAndPersistsPausedRefusal(t *testing.T) {
+func TestDispatchDueAdvancesOnceAndSkipsPausedRooms(t *testing.T) {
 	fixture := newServiceFixture(t)
 	interval := int32(5)
 	now := time.Date(2026, 8, 13, 4, 40, 0, 0, time.UTC)
@@ -860,20 +936,19 @@ func TestDispatchDueAdvancesOnceAndPersistsPausedRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pausedResult.RoomsAdvanced != 1 || pausedResult.CyclesRefused != 1 || pausedResult.TasksQueued != 0 {
+	if pausedResult != (DueResult{}) {
 		t.Fatalf("paused due result = %+v", pausedResult)
 	}
-	var refusal string
+	var pausedCycles int
 	var pausedNext time.Time
 	if err := fixture.pool.QueryRow(context.Background(), `
-		SELECT cycle.refusal_reason, room.next_wake_at
-		FROM room_cycle cycle JOIN room ON room.id = cycle.room_id
-		WHERE cycle.room_id = $1
-	`, paused.Room.ID).Scan(&refusal, &pausedNext); err != nil {
+		SELECT (SELECT count(*) FROM room_cycle WHERE room_id = $1),
+		       (SELECT next_wake_at FROM room WHERE id = $1)
+	`, paused.Room.ID).Scan(&pausedCycles, &pausedNext); err != nil {
 		t.Fatal(err)
 	}
-	if refusal != "room_paused" || !pausedNext.After(now) || fixture.notifier.count() != 1 {
-		t.Fatalf("paused schedule state = refusal %q next %s notifications %d", refusal, pausedNext, fixture.notifier.count())
+	if pausedCycles != 0 || !pausedNext.Equal(pausedPlan.UTC()) || fixture.notifier.count() != 1 {
+		t.Fatalf("paused schedule state = cycles %d next %s notifications %d", pausedCycles, pausedNext, fixture.notifier.count())
 	}
 }
 
@@ -1134,7 +1209,7 @@ func TestPromoteCompletedEntryIsIdempotentForEveryTarget(t *testing.T) {
 	}
 	entryID := detail.Entries[0].ID
 
-	for _, kind := range []string{"issue", "wiki", "decision"} {
+	for _, kind := range []string{"implementation_defect", "knowledge", "decision"} {
 		t.Run(kind, func(t *testing.T) {
 			input := PromotionInput{
 				WorkspaceID: fixture.workspaceID, RoomID: created.Room.ID,
@@ -1156,9 +1231,9 @@ func TestPromoteCompletedEntryIsIdempotentForEveryTarget(t *testing.T) {
 
 			var targetCount int
 			switch kind {
-			case "issue":
+			case "implementation_defect":
 				err = fixture.pool.QueryRow(context.Background(), `SELECT count(*) FROM issue WHERE id = $1 AND workspace_id = $2`, first.Artifact.TargetID, fixture.workspaceID).Scan(&targetCount)
-			case "wiki":
+			case "knowledge":
 				err = fixture.pool.QueryRow(context.Background(), `SELECT count(*) FROM wiki_page WHERE id = $1 AND workspace_id = $2`, first.Artifact.TargetID, fixture.workspaceID).Scan(&targetCount)
 			case "decision":
 				if first.Artifact.TargetID != first.Artifact.ID {

@@ -32,6 +32,8 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
 
 vi.mock("../navigation", () => ({
   useNavigation: () => ({ push: vi.fn(), openInNewTab: vi.fn() }),
+  useOptionalNavigation: () => ({ push: vi.fn(), openInNewTab: vi.fn() }),
+  resolveClickIntent: () => "push",
   useAppOrigin: () => APP_ORIGIN,
   AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => (
     <a href={href}>{children}</a>
@@ -86,6 +88,33 @@ describe("RichContent link routing", () => {
     screen.getByText("MUL-1").click();
 
     expect(navigatedPaths).toEqual(["/acme/issues/MUL-1"]);
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("resolves slugless operational and Wiki links in the current workspace", () => {
+    renderContent([
+      "[Issue](/issues/MUL-1)",
+      "[Project](/projects/project-1)",
+      "[Room](/rooms?room=room-1)",
+      "[Wiki](/wiki/revisions/revision-1)",
+    ].join(" "));
+
+    for (const label of ["Issue", "Project", "Room", "Wiki"]) {
+      expect(screen.getByText(label).closest("a")?.getAttribute("href")).toMatch(
+        /^\/test\/(issues|projects|rooms|wiki)/,
+      );
+    }
+
+    for (const label of ["Issue", "Project", "Room", "Wiki"]) {
+      screen.getByText(label).click();
+    }
+
+    expect(navigatedPaths).toEqual([
+      "/test/issues/MUL-1",
+      "/test/projects/project-1",
+      "/test/rooms?room=room-1",
+      "/test/wiki/revisions/revision-1",
+    ]);
     expect(openSpy).not.toHaveBeenCalled();
   });
 

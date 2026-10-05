@@ -1,16 +1,24 @@
 /**
  * @vitest-environment jsdom
  */
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook } from "@testing-library/react";
+import { QueryClient, QueryClientProvider, type InvalidateQueryFilters } from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { WSClient } from "../api/ws-client";
 import { defaultStorage } from "../platform/storage";
 import { issueKeys } from "../issues/queries";
+import { inboxKeys } from "../inbox/queries";
 import { roomKeys } from "../rooms";
+import { chatKeys } from "../chat/queries";
+import { runtimeKeys } from "../runtimes/queries";
 import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
+import { issueStatusKeys } from "../issue-statuses/queries";
+import { officeKeys } from "../office/queries";
+import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
+import { wikiKeys as lmWikiKeys } from "../twins/queries";
+import type { Issue } from "../types";
 import {
   markWorkspaceDeletePending,
   unmarkWorkspaceDeletePending,
@@ -58,6 +66,33 @@ function createWrapper(qc: QueryClient) {
   };
 }
 
+function makeIssue(): Issue {
+  return {
+    id: "issue-1",
+    workspace_id: "ws-1",
+    number: 1,
+    identifier: "MUL-1",
+    title: "Issue One",
+    description: null,
+    status: "todo",
+    priority: "medium",
+    assignee_type: null,
+    assignee_id: null,
+    creator_type: "member",
+    creator_id: "member-1",
+    parent_issue_id: null,
+    project_id: null,
+    position: 0,
+    stage: null,
+    start_date: null,
+    due_date: null,
+    metadata: {},
+    properties: {},
+    created_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-01T00:00:00Z",
+  };
+}
+
 describe("useRealtimeSync — ws instance change", () => {
   let qc: QueryClient;
   let stores: RealtimeSyncStores;
@@ -99,14 +134,13 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it("invalidates exactly once when a new ws instance appears after null gap", () => {
+  it("invalidates Office Issue briefs once when a new ws instance appears after null gap", async () => {
     const ws1 = createMockWs();
     const { rerender } = renderHook(
       ({ ws }) => useRealtimeSync(ws, stores),
       { initialProps: { ws: ws1 as WSClient | null }, wrapper: createWrapper(qc) },
     );
 
-    // Simulate workspace switch: ws -> null -> new ws
     invalidateSpy.mockClear();
     rerender({ ws: null });
     expect(invalidateSpy).not.toHaveBeenCalled();
@@ -114,7 +148,17 @@ describe("useRealtimeSync — ws instance change", () => {
     const ws2 = createMockWs();
     rerender({ ws: ws2 });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(31);
+    const targetKey = JSON.stringify(officeKeys.issueBriefsAll("ws-1"));
+    const officeInvalidations = invalidateSpy.mock.calls.filter(
+      (call: [{ queryKey?: unknown }, ...unknown[]]) =>
+        JSON.stringify(call[0].queryKey) === targetKey,
+    );
+    expect(officeInvalidations).toHaveLength(1);
+    // The summary cancels its in-flight request before invalidating. Await
+    // that query explicitly; unrelated workspace projections may grow.
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: inboxKeys.unreadSummary() }),
+    ));
   });
 
   it("does not re-invalidate when rerendered with the same ws instance", () => {
@@ -149,6 +193,37 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(["labels", "ws-1"]);
     expect(calls).toContainEqual(["workspaces", "ws-1", "invitations"]);
     expect(calls).toContainEqual(roomKeys.all("ws-1"));
+    expect(calls).toContainEqual(workspaceWikiKeys.all("ws-1"));
+    expect(calls).toContainEqual(lmWikiKeys.all("ws-1"));
+    // A catalog edit made while this client was disconnected is otherwise
+    // invisible for the query's whole 5-minute staleTime.
+    expect(calls).toContainEqual(issueStatusKeys.all("ws-1"));
+    expect(calls).toContainEqual(officeKeys.issueBriefsAll("ws-1"));
+  });
+
+  it("invalidates agent projections when a daemon changes liveness", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), {
+        wrapper: createWrapper(qc),
+      });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]?.[0];
+      expect(onAny).toBeDefined();
+
+      invalidateSpy.mockClear();
+      onAny!({ type: "daemon:register", payload: {} } as never);
+      vi.advanceTimersByTime(100);
+
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: runtimeKeys.all("ws-1"),
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: workspaceKeys.agents("ws-1"),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("invalidates per-issue caches (no wsId in key) on ws instance change", () => {
@@ -197,6 +272,162 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(["chat", "pending-task"]);
     expect(calls).toContainEqual(["task-messages"]);
   });
+
+  it("invalidates per-chat-session caches after an established ws reconnects", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const reconnect = vi.mocked(ws.onReconnect).mock.calls[0]?.[0];
+    expect(reconnect).toBeDefined();
+
+    invalidateSpy.mockClear();
+    reconnect!();
+
+    const calls = invalidateSpy.mock.calls.map((call: [{ queryKey?: unknown }, ...unknown[]]) => call[0].queryKey);
+    expect(calls).toContainEqual(chatKeys.messagesAll());
+    expect(calls).toContainEqual(chatKeys.messagesPageAll());
+    expect(calls).toContainEqual(chatKeys.pendingTaskAll());
+    expect(calls).toContainEqual(officeKeys.issueBriefsAll("ws-1"));
+  });
+
+  it.each([
+    ["issue:created", { issue: makeIssue() }],
+    ["issue:updated", { issue: makeIssue() }],
+    ["issue:deleted", { issue_id: "issue-1" }],
+  ])("invalidates Office Issue briefs on %s", (event, payload) => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const handler = vi
+      .mocked(ws.on)
+      .mock.calls.find(([eventType]) => eventType === event)?.[1];
+    expect(handler).toBeDefined();
+
+    invalidateSpy.mockClear();
+    (handler as (value: unknown) => void)(payload);
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: officeKeys.issueBriefsAll("ws-1"),
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: officeKeys.issueBriefsAll("ws-other"),
+    });
+  });
+
+  it("invalidates one issue attachment cache after detached channel media binds", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const attachmentChanged = vi
+      .mocked(ws.on)
+      .mock.calls.find(([event]) => event === "issue_attachments:changed")?.[1];
+    expect(attachmentChanged).toBeDefined();
+
+    (attachmentChanged as (payload: unknown) => void)({ issue_id: "issue-1" });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: issueKeys.attachments("issue-1"),
+    });
+  });
+  it("refetches the status catalog after an admin changes it elsewhere", async () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]?.[0];
+    expect(onAny).toBeDefined();
+
+    onAny!({ type: "issue_status:changed", payload: { action: "created" } } as never);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: issueStatusKeys.all("ws-1"),
+    });
+    const groupRefresh = invalidateSpy.mock.calls.find(([options]: [InvalidateQueryFilters?]) => options?.predicate);
+    expect(groupRefresh?.[0]?.queryKey).toEqual([...issueKeys.tableAll("ws-1"), "groups"]);
+    const predicate = groupRefresh![0]!.predicate!;
+    expect(predicate({ queryKey: ["issues", "ws-1", "table-query", "groups", {}, { kind: "status" }] } as never)).toBe(true);
+    expect(predicate({ queryKey: ["issues", "ws-1", "table-query", "groups", {}, { kind: "assignee" }] } as never)).toBe(false);
+    // Deliberately NOT the issue caches. A row stores the status KEY; its name,
+    // color and category are resolved from the catalog at render time, so no
+    // cached issue field can go stale here. Dragging every board and list along
+    // would turn one admin rename into a workspace-wide refetch storm on every
+    // connected client. (MUL-6458)
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: issueKeys.all("ws-1"),
+    });
+  });
+
+  it("ignores removed DingTalk group-route events", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]?.[0];
+    expect(onAny).toBeDefined();
+
+    onAny!({ type: "dingtalk_group_route:updated", payload: {} } as never);
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the current workspace chat list when a channel creates a session", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const sessionCreated = vi
+      .mocked(ws.on)
+      .mock.calls.find(([event]) => event === "chat:session_created")?.[1];
+    expect(sessionCreated).toBeDefined();
+
+    (sessionCreated as (payload: unknown) => void)({
+      workspace_id: "ws-1",
+      chat_session_id: "channel-session-1",
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatKeys.sessions("ws-1"),
+    });
+
+		invalidateSpy.mockClear();
+		(sessionCreated as (payload: unknown) => void)({
+			workspace_id: "ws-2",
+			chat_session_id: "other-workspace-session",
+		});
+		expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRealtimeSync — queued chat promotion", () => {
+  it("refetches the transcript when a queued prompt starts running", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ws = createMockWs();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useRealtimeSync(ws, createStores()), {
+      wrapper: createWrapper(qc),
+    });
+    const dispatch = vi
+      .mocked(ws.on)
+      .mock.calls.find(([event]) => event === "task:dispatch")?.[1];
+    expect(dispatch).toBeDefined();
+
+    invalidate.mockClear();
+    (dispatch as (payload: unknown) => void)({
+      task_id: "task-follow-up",
+      chat_session_id: "session-1",
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: chatKeys.messages("session-1"),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: chatKeys.messagesPage("session-1"),
+    });
+  });
 });
 
 describe("useRealtimeSync — Table server membership invalidation", () => {
@@ -233,22 +464,71 @@ describe("useRealtimeSync — Table server membership invalidation", () => {
     });
   });
 
-  it("invalidates Room queries after a Room event", () => {
-    vi.useFakeTimers();
+  it("invalidates Room queries after a malformed Room entry event", () => {
     const ws = createMockWs();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const roomEntry = vi.mocked(ws.on).mock.calls
+      .find(([event]) => event === "room:entry")?.[1];
+    expect(roomEntry).toBeDefined();
+
+    roomEntry!({});
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: roomKeys.all("ws-1"),
+    });
+  });
+
+  it("routes known Wiki events through the targeted handler", () => {
+    const ws = createMockWs();
+    const detailKey = workspaceWikiKeys.detail("ws-1", "page-1");
+    qc.setQueryData(detailKey, {});
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
+    });
+    const pageUpdated = vi
+      .mocked(ws.on)
+      .mock.calls.find(([event]) => event === "wiki:page_updated")?.[1];
+    expect(pageUpdated).toBeDefined();
+
+    (pageUpdated as (payload: unknown) => void)({
+      page_id: "page-1",
+      scope: "workspace",
+      revision_id: "revision-2",
+      revision_number: 2,
+    });
+
+    expect(qc.getQueryState(detailKey)?.isInvalidated).toBe(true);
+  });
+
+  it("uses the Wiki prefix fallback for an unknown future event", () => {
+    vi.useFakeTimers();
+    const ws = createMockWs();
+    const listKey = workspaceWikiKeys.list("ws-1", { scope: "workspace" });
+    qc.setQueryData(listKey, []);
     renderHook(() => useRealtimeSync(ws, stores), {
       wrapper: createWrapper(qc),
     });
     const onAny = vi.mocked(ws.onAny).mock.calls[0]?.[0];
     expect(onAny).toBeDefined();
 
-    onAny!({ type: "room:entry", payload: {} });
+    onAny!({ type: "wiki:future_lifecycle", payload: {} } as never);
     vi.advanceTimersByTime(100);
 
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: roomKeys.all("ws-1"),
+    expect(qc.getQueryState(listKey)?.isInvalidated).toBe(true);
+  });
+
+  it("registers the recommendation review handler", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), {
+      wrapper: createWrapper(qc),
     });
+
+    expect(vi.mocked(ws.on).mock.calls.some(
+      ([event]) => event === "room:recommendation_review",
+    )).toBe(true);
   });
 
   it("invalidates Table queries after a property definition changes", () => {

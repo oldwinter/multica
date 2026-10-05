@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/multica-ai/multica/server/pkg/dbid"
 )
 
 // ErrLeaseLost is returned by heartbeat / terminal-update primitives
@@ -63,6 +64,73 @@ func tryClaim(
 	dbTime time.Time,
 	runnerID string,
 ) (claim, error) {
+	if scope.Kind != ScopeKindWorkspace {
+		return tryClaimOnDB(ctx, pool, job, scope, planTime, dbTime, runnerID)
+	}
+
+	workspaceID, err := uuid.Parse(scope.ID)
+	if err != nil {
+		return claim{}, fmt.Errorf("scheduler: parse workspace scope %q: %w", scope.ID, err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return claim{}, fmt.Errorf("scheduler: begin workspace claim: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	exists, err := lockWorkspaceScopeForClaim(ctx, tx, workspaceID)
+	if err != nil {
+		return claim{}, err
+	}
+	if !exists {
+		return claim{Conflicted: true}, nil
+	}
+
+	claimed, err := tryClaimOnDB(ctx, tx, job, scope, planTime, dbTime, runnerID)
+	if err != nil {
+		return claim{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return claim{}, fmt.Errorf("scheduler: commit workspace claim: %w", err)
+	}
+	return claimed, nil
+}
+
+type claimDB interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+// lockWorkspaceScopeForClaim is the claim side of workspace teardown's
+// explicit row-lock protocol. DeleteWorkspace holds FOR UPDATE before it runs
+// module cleanup. Keeping this FOR KEY SHARE lock through the execution write
+// means either deletion commits first and no claim row is written, or the
+// claim commits first and deletion's later cleanup observes that row.
+func lockWorkspaceScopeForClaim(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) (bool, error) {
+	var locked uuid.UUID
+	err := tx.QueryRow(ctx, `
+		SELECT id
+		  FROM workspace
+		 WHERE id = $1
+		 FOR KEY SHARE
+	`, workspaceID).Scan(&locked)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return false, fmt.Errorf("scheduler: lock workspace scope: %w", err)
+}
+
+func tryClaimOnDB(
+	ctx context.Context,
+	database claimDB,
+	job *JobSpec,
+	scope Scope,
+	planTime time.Time,
+	dbTime time.Time,
+	runnerID string,
+) (claim, error) {
 	// Fresh-insert path. ON CONFLICT DO NOTHING means losers do not
 	// touch the existing row — we follow up with the steal/retry path
 	// only if this insert was a conflict.
@@ -72,13 +140,15 @@ func tryClaim(
 			status, attempt, max_attempts,
 			runner_id, lease_token,
 			heartbeat_at, stale_after,
-			started_at, updated_at
+			started_at, updated_at,
+			id
 		) VALUES (
 			$1, $2, $3, $4,
 			'RUNNING', 1, $5,
 			$6, gen_random_uuid(),
 			$7::timestamptz, $7::timestamptz + make_interval(secs => $8),
-			$7::timestamptz, $7::timestamptz
+			$7::timestamptz, $7::timestamptz,
+			COALESCE($9::uuid, gen_random_uuid())
 		)
 		ON CONFLICT ON CONSTRAINT uq_sys_cron_execution DO NOTHING
 		RETURNING id, lease_token, attempt
@@ -89,11 +159,15 @@ func tryClaim(
 	}
 
 	var c claim
-	err := pool.QueryRow(ctx, insertSQL,
+	err := database.QueryRow(ctx, insertSQL,
 		job.Name, scope.Kind, scope.ID, planTime,
 		job.MaxAttempts,
 		runnerID,
 		dbTime, staleSecs,
+		// Execution rows are append-only and high-churn, so the id is a v7 for
+		// primary-key locality. lease_token stays gen_random_uuid(): it is a
+		// claim token, and it must not carry a guessable timestamp.
+		dbid.NewV7(),
 	).Scan(&c.ID, &c.LeaseToken, &c.Attempt)
 	if err == nil {
 		c.Won = true
@@ -133,7 +207,7 @@ func tryClaim(
 		   )
 		RETURNING id, lease_token, attempt
 	`
-	err = pool.QueryRow(ctx, stealSQL,
+	err = database.QueryRow(ctx, stealSQL,
 		runnerID,
 		dbTime, staleSecs,
 		job.Name, scope.Kind, scope.ID, planTime,

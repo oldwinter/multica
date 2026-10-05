@@ -3,16 +3,37 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { afterEach, describe, it, expect } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   builderArgsForTarget,
   deriveVersion,
   DESCRIBE_ARGS,
   envWithLocalBins,
+  githubPublisherArgs,
   normalizeGitVersion,
   parsePackageArgs,
   resolveBuildMatrix,
   stripLeadingSeparator,
 } from "./package.mjs";
+
+describe("githubPublisherArgs", () => {
+  it("routes GitHub Actions builds to the current repository", () => {
+    expect(githubPublisherArgs("oldwinter/multica")).toEqual([
+      "-c.publish.owner=oldwinter",
+      "-c.publish.repo=multica",
+    ]);
+  });
+
+  it("keeps local builds on the checked-in publisher default", () => {
+    expect(githubPublisherArgs(undefined)).toEqual([]);
+  });
+
+  it("rejects values that are unsafe to forward through a platform shell", () => {
+    expect(() => githubPublisherArgs("oldwinter/multica;whoami")).toThrow(
+      "invalid GITHUB_REPOSITORY",
+    );
+  });
+});
 
 describe("normalizeGitVersion", () => {
   it("returns null for empty / nullish input", () => {
@@ -86,12 +107,9 @@ describe("normalizeGitVersion", () => {
 
 describe("DESCRIBE_ARGS", () => {
   it("passes the match pattern as one bare argv token, never a shell-quoted string", () => {
-    // The Windows regression this locks down: the pattern used to be embedded
-    // in a shell command string as `--match 'v[0-9]*'`. cmd.exe does not strip
-    // POSIX single quotes, so git received them literally and matched no tag,
-    // collapsing the Desktop version to the 0.0.0-g<hash> fallback. As a
-    // standalone argv element with no surrounding quotes the pattern is
-    // shell-independent.
+    // Windows cmd.exe does not strip POSIX single quotes. Keeping the pattern
+    // as a bare argv element prevents tagged builds from falling back to a
+    // synthetic 0.0.0-g<hash> version.
     expect(DESCRIBE_ARGS).toContain("v[0-9]*");
     for (const arg of DESCRIBE_ARGS) {
       expect(arg).not.toContain("'");
@@ -267,6 +285,34 @@ describe("resolveBuildMatrix", () => {
 });
 
 describe("builderArgsForTarget", () => {
+  it("overrides the publisher for a downstream GitHub Actions build", () => {
+    expect(
+      builderArgsForTarget(
+        { platform: "linux", arch: "x64" },
+        {
+          allPlatforms: false,
+          sharedArgs: ["--publish", "always"],
+          platformTargets: { mac: [], win: [], linux: [] },
+          requestedPlatforms: ["linux"],
+          requestedArchs: ["x64"],
+        },
+        "1.2.3-oldwinter.1",
+        {
+          hostPlatform: "linux",
+          publishRepositoryArgs: githubPublisherArgs("oldwinter/multica"),
+        },
+      ),
+    ).toEqual([
+      "-c.extraMetadata.version=1.2.3-oldwinter.1",
+      "--linux",
+      "--x64",
+      "--publish",
+      "always",
+      "-c.publish.owner=oldwinter",
+      "-c.publish.repo=multica",
+    ]);
+  });
+
   it("adds scoped output directories for multi-target builds", () => {
     expect(
       builderArgsForTarget(
@@ -280,14 +326,12 @@ describe("builderArgsForTarget", () => {
         },
         "1.2.3",
         {
-          disableMacNotarize: true,
           hostPlatform: "darwin",
           useScopedOutputDir: true,
         },
       ),
     ).toEqual([
       "-c.extraMetadata.version=1.2.3",
-      "-c.mac.notarize=false",
       "--win",
       "nsis",
       "--arm64",
@@ -368,6 +412,38 @@ describe("builderArgsForTarget", () => {
     ).toEqual([
       "-c.extraMetadata.version=1.2.3",
       "--mac",
+      "--arm64",
+      "--publish",
+      "always",
+      "-c.directories.output=dist/mac-arm64",
+    ]);
+  });
+
+  it("disables notarization for unsigned macOS release packages", () => {
+    expect(
+      builderArgsForTarget(
+        { platform: "mac", arch: "arm64" },
+        {
+          allPlatforms: false,
+          sharedArgs: ["--publish", "always"],
+          platformTargets: { mac: ["dmg", "zip"], win: [], linux: [] },
+          requestedPlatforms: ["mac"],
+          requestedArchs: ["arm64"],
+        },
+        "1.2.3-oldwinter.1",
+        {
+          unsignedMac: true,
+          hostPlatform: "darwin",
+          useScopedOutputDir: true,
+        },
+      ),
+    ).toEqual([
+      "-c.extraMetadata.version=1.2.3-oldwinter.1",
+      "-c.mac.identity=null",
+      "-c.mac.notarize=false",
+      "--mac",
+      "dmg",
+      "zip",
       "--arm64",
       "--publish",
       "always",
@@ -470,10 +546,43 @@ describe("electron-builder.yml packaging config", () => {
     return entries;
   }
 
-  it("excludes the dist output directory from the packaged files", () => {
+  it("excludes prior architecture output from packaged files", () => {
     expect(configPath, "electron-builder.yml not found").toBeTruthy();
     const entries = readFilesBlock(readFileSync(configPath, "utf-8"));
     expect(entries.length).toBeGreaterThan(0);
     expect(entries).toContain("!dist/**");
+  });
+});
+
+describe("release workflow Desktop matrix", () => {
+  const workflowPath = [
+    resolve(process.cwd(), ".github/workflows/release.yml"),
+    resolve(process.cwd(), "../../.github/workflows/release.yml"),
+  ].find((candidate) => existsSync(candidate));
+
+  it("publishes unsigned macOS installers for Intel and Apple Silicon", () => {
+    expect(workflowPath, "release workflow not found").toBeTruthy();
+    const workflow = parseYaml(readFileSync(workflowPath, "utf-8"));
+    const desktop = workflow.jobs.desktop;
+
+    expect(desktop.strategy.matrix.include).toContainEqual({
+      os: "macos-latest",
+      target: "mac",
+    });
+
+    const packageStep = desktop.steps.find((step) =>
+      step.name?.startsWith("Package Desktop installers"),
+    );
+    expect(packageStep).toBeTruthy();
+    expect(packageStep.env.CSC_IDENTITY_AUTO_DISCOVERY).toBe("false");
+    expect(packageStep.run).toContain(
+      "--${{ matrix.target }} --x64 --arm64 --publish always",
+    );
+
+    const verifyStep = desktop.steps.find(
+      (step) => step.name === "Verify macOS installer outputs",
+    );
+    expect(verifyStep).toBeTruthy();
+    expect(verifyStep.if).toBe("matrix.target == 'mac'");
   });
 });

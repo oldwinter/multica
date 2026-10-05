@@ -1,0 +1,26 @@
+{
+  "sourceHead": "6225a4ec3e9cb532a90ae8e3ac3cf49d27969c36",
+  "interaction": {
+    "started": {
+      "path": "/api/daemon/tasks/50000000-0000-4000-8000-000000000004/start",
+      "status": 200,
+      "taskStatus": "running"
+    },
+    "completed": {
+      "path": "/api/daemon/tasks/50000000-0000-4000-8000-000000000004/complete",
+      "status": 200,
+      "taskStatus": "completed"
+    },
+    "finalUrl": "http://localhost:13258/pixel-office-lab/office",
+    "finalWorld": "Expedition",
+    "pageErrors": []
+  },
+  "recovery": {
+    "finalUrl": "http://localhost:13258/pixel-office-lab/office",
+    "reducedMotion": "true",
+    "contextLossTriggered": true,
+    "canvasVisible": true,
+    "fallbackVisible": false,
+    "pageErrors": []
+  }
+}

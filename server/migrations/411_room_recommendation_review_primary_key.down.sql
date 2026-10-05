@@ -1,0 +1,1 @@
+ALTER TABLE room_recommendation_review DROP CONSTRAINT IF EXISTS room_recommendation_review_pkey;

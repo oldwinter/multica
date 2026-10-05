@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   resolvePostAuthDestination,
+  paths,
   useHasOnboarded,
 } from "@multica/core/paths";
 import { workspaceListOptions } from "@multica/core/workspace/queries";
@@ -21,6 +22,7 @@ import { useT } from "../i18n";
  */
 export function NoAccessPage() {
   const { t } = useT("workspace");
+  const { t: wikiT } = useT("wiki");
   const nav = useNavigation();
   const logout = useLogout();
   const hasOnboarded = useHasOnboarded();
@@ -61,6 +63,9 @@ export function NoAccessPage() {
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button onClick={recover}>
             {t(($) => $.no_access.go_to_workspaces)}
+          </Button>
+          <Button variant="outline" onClick={() => nav.push(paths.personalWiki())}>
+            {wikiT(($) => $.personal.title)}
           </Button>
           <Button variant="outline" onClick={logout}>
             {t(($) => $.no_access.sign_in_different)}

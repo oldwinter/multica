@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS wiki_page_edit_proposal_page_status_idx;

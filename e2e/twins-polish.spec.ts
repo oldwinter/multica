@@ -1,7 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { TestApiClient } from "./fixtures";
+import {
+  TestApiClient,
+  type TestLMWikiSourcePolicyInput,
+  type TestWikiTwinArtifactCounts,
+} from "./fixtures";
 
 const APP_URL = process.env.PLAYWRIGHT_BASE_URL
   ?? process.env.FRONTEND_ORIGIN
@@ -152,6 +156,12 @@ test("keeps Wiki and Twin edge states actionable, accurate, and responsive", asy
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
 
+    const sourcePolicy = await owner.updateLMWikiSourcePolicy({
+      source_classes: ["issue"],
+      wiki_pages: [],
+      remote_generation_enabled: true,
+    } satisfies TestLMWikiSourcePolicyInput);
+    expect(sourcePolicy.remote_generation_enabled).toBe(true);
     await owner.createIssue(`Edge source ${"X".repeat(120)}`, {
       description: `Long evidence ${"Y".repeat(600)}`,
       status: "in_review",
@@ -193,6 +203,24 @@ test("keeps Wiki and Twin edge states actionable, accurate, and responsive", asy
     expect((await acceptResponse).ok()).toBe(true);
 
     await page.getByRole("tab", { name: "Twin Builder" }).click();
+    const initialBuild = page.getByRole("button", { name: "Build proposal" });
+    await expect(initialBuild).toBeVisible();
+    const initialSeed = await owner.seedTwinProposalForBuild(wiki.latest_revision.id);
+    expect(await owner.seedTwinProposalForBuild(wiki.latest_revision.id)).toEqual(initialSeed);
+    const [initialBuildResponse] = await Promise.all([
+      page.waitForResponse((response) => (
+        new URL(response.url()).pathname === "/api/twins/proposals"
+        && response.request().method() === "POST"
+      )),
+      initialBuild.click(),
+    ]);
+    expect(initialBuildResponse.status()).toBe(200);
+    const initialBuildBody: unknown = await initialBuildResponse.json();
+    expect(initialBuildBody).toMatchObject({
+      created: false,
+      proposal: { id: initialSeed.proposalId, schema_version: 2 },
+    });
+    await expect(page.getByRole("button", { name: "Sign off proposal" })).toBeVisible();
     await page.getByRole("button", { name: "Sign off proposal" }).click();
     await page.getByRole("button", { name: "Confirm sign-off" }).click();
     await expect(page.getByRole("heading", { name: "Current Twin v1" })).toBeVisible();
@@ -209,6 +237,23 @@ test("keeps Wiki and Twin edge states actionable, accurate, and responsive", asy
     await page.getByRole("button", { name: "Confirm acceptance" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("tab", { name: "Twin Builder" }).click();
+    const evolutionBuild = page.getByRole("button", { name: "Build proposal" });
+    await expect(evolutionBuild).toBeVisible();
+    const evolutionSeed = await owner.seedTwinProposalForBuild(wiki.latest_revision.id);
+    const [evolutionBuildResponse] = await Promise.all([
+      page.waitForResponse((response) => (
+        new URL(response.url()).pathname === "/api/twins/proposals"
+        && response.request().method() === "POST"
+      )),
+      evolutionBuild.click(),
+    ]);
+    expect(evolutionBuildResponse.status()).toBe(200);
+    const evolutionBuildBody: unknown = await evolutionBuildResponse.json();
+    expect(evolutionBuildBody).toMatchObject({
+      created: false,
+      proposal: { id: evolutionSeed.proposalId, schema_version: 2 },
+    });
+    await expect(page.getByRole("button", { name: "Sign off proposal" })).toBeVisible();
     await page.getByRole("button", { name: "Sign off proposal" }).click();
     await page.getByRole("button", { name: "Confirm sign-off" }).click();
     await expect(page.getByRole("heading", { name: "Current Twin v2" })).toBeVisible();
@@ -263,13 +308,18 @@ test("keeps Wiki and Twin edge states actionable, accurate, and responsive", asy
       await attemptCleanup(() => owner.deleteWorkspace(workspace.id));
       await attemptCleanup(async () => {
         expect(await owner.getWikiTwinArtifactCounts(workspace.id)).toEqual({
+          workspace_wiki_pages: 0,
+          workspace_wiki_revisions: 0,
+          workspace_wiki_proposals: 0,
+          wiki_source_policies: 0,
+          wiki_source_selections: 0,
           wiki_revisions: 0,
           wiki_citations: 0,
           wiki_reviews: 0,
           twin_proposals: 0,
           twin_reviews: 0,
           twin_versions: 0,
-        });
+        } satisfies TestWikiTwinArtifactCounts);
       });
     }
     await attemptCleanup(() => owner.deleteUser());

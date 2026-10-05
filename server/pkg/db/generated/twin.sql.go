@@ -11,6 +11,58 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createTwinDepositionProposalV2 = `-- name: CreateTwinDepositionProposalV2 :one
+INSERT INTO twin_proposal (
+    workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+    schema_version, content, content_digest, requested_by_id
+)
+SELECT $1, 'deposition', source.id, base.id,
+       2, $2, $3, $4
+FROM twin_version base
+JOIN lm_wiki_revision source
+  ON source.workspace_id = base.workspace_id
+ AND source.id = base.source_wiki_revision_id
+WHERE base.workspace_id = $1
+  AND base.id = $5
+  AND source.id = $6
+RETURNING id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id
+`
+
+type CreateTwinDepositionProposalV2Params struct {
+	WorkspaceID          pgtype.UUID `json:"workspace_id"`
+	Content              []byte      `json:"content"`
+	ContentDigest        string      `json:"content_digest"`
+	RequestedByID        pgtype.UUID `json:"requested_by_id"`
+	BaseTwinVersionID    pgtype.UUID `json:"base_twin_version_id"`
+	SourceWikiRevisionID pgtype.UUID `json:"source_wiki_revision_id"`
+}
+
+func (q *Queries) CreateTwinDepositionProposalV2(ctx context.Context, arg CreateTwinDepositionProposalV2Params) (TwinProposal, error) {
+	row := q.db.QueryRow(ctx, createTwinDepositionProposalV2,
+		arg.WorkspaceID,
+		arg.Content,
+		arg.ContentDigest,
+		arg.RequestedByID,
+		arg.BaseTwinVersionID,
+		arg.SourceWikiRevisionID,
+	)
+	var i TwinProposal
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Kind,
+		&i.SourceWikiRevisionID,
+		&i.BaseTwinVersionID,
+		&i.SchemaVersion,
+		&i.Content,
+		&i.ContentDigest,
+		&i.RequestedByID,
+		&i.CreatedAt,
+		&i.ReplacesProposalID,
+	)
+	return i, err
+}
+
 const createTwinProposal = `-- name: CreateTwinProposal :one
 WITH inserted AS (
     INSERT INTO twin_proposal (
@@ -30,12 +82,12 @@ WITH inserted AS (
     ON CONFLICT (
         workspace_id, kind, source_wiki_revision_id,
         (COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
-    ) DO NOTHING
-    RETURNING id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at
+    ) WHERE kind IN ('initial', 'evolution') DO NOTHING
+    RETURNING id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id
 )
-SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at FROM inserted
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM inserted
 UNION ALL
-SELECT proposal.id, proposal.workspace_id, proposal.kind, proposal.source_wiki_revision_id, proposal.base_twin_version_id, proposal.schema_version, proposal.content, proposal.content_digest, proposal.requested_by_id, proposal.created_at
+SELECT proposal.id, proposal.workspace_id, proposal.kind, proposal.source_wiki_revision_id, proposal.base_twin_version_id, proposal.schema_version, proposal.content, proposal.content_digest, proposal.requested_by_id, proposal.created_at, proposal.replaces_proposal_id
 FROM twin_proposal proposal
 WHERE proposal.workspace_id = $1
   AND proposal.kind = $2
@@ -65,6 +117,7 @@ type CreateTwinProposalRow struct {
 	ContentDigest        string             `json:"content_digest"`
 	RequestedByID        pgtype.UUID        `json:"requested_by_id"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	ReplacesProposalID   pgtype.UUID        `json:"replaces_proposal_id"`
 }
 
 func (q *Queries) CreateTwinProposal(ctx context.Context, arg CreateTwinProposalParams) (CreateTwinProposalRow, error) {
@@ -89,6 +142,85 @@ func (q *Queries) CreateTwinProposal(ctx context.Context, arg CreateTwinProposal
 		&i.ContentDigest,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.ReplacesProposalID,
+	)
+	return i, err
+}
+
+const createTwinProposalCorrectionV2 = `-- name: CreateTwinProposalCorrectionV2 :one
+WITH inserted AS (
+    INSERT INTO twin_proposal (
+        workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+        schema_version, content, content_digest, requested_by_id,
+        replaces_proposal_id
+    )
+    SELECT target.workspace_id, 'correction', target.source_wiki_revision_id,
+           target.base_twin_version_id, 2, $1,
+           $2, $3, target.id
+    FROM twin_proposal target
+    LEFT JOIN twin_proposal_review review
+      ON review.workspace_id = target.workspace_id
+     AND review.proposal_id = target.id
+    WHERE target.workspace_id = $4
+      AND target.id = $5
+      AND target.kind IN ('initial', 'evolution', 'correction')
+      AND review.id IS NULL
+    ON CONFLICT (workspace_id, replaces_proposal_id)
+      WHERE replaces_proposal_id IS NOT NULL DO NOTHING
+    RETURNING id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id
+)
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM inserted
+UNION ALL
+SELECT proposal.id, proposal.workspace_id, proposal.kind, proposal.source_wiki_revision_id, proposal.base_twin_version_id, proposal.schema_version, proposal.content, proposal.content_digest, proposal.requested_by_id, proposal.created_at, proposal.replaces_proposal_id
+FROM twin_proposal proposal
+WHERE proposal.workspace_id = $4
+  AND proposal.replaces_proposal_id = $5
+LIMIT 1
+`
+
+type CreateTwinProposalCorrectionV2Params struct {
+	Content            []byte      `json:"content"`
+	ContentDigest      string      `json:"content_digest"`
+	RequestedByID      pgtype.UUID `json:"requested_by_id"`
+	WorkspaceID        pgtype.UUID `json:"workspace_id"`
+	ReplacesProposalID pgtype.UUID `json:"replaces_proposal_id"`
+}
+
+type CreateTwinProposalCorrectionV2Row struct {
+	ID                   pgtype.UUID        `json:"id"`
+	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
+	Kind                 string             `json:"kind"`
+	SourceWikiRevisionID pgtype.UUID        `json:"source_wiki_revision_id"`
+	BaseTwinVersionID    pgtype.UUID        `json:"base_twin_version_id"`
+	SchemaVersion        int32              `json:"schema_version"`
+	Content              []byte             `json:"content"`
+	ContentDigest        string             `json:"content_digest"`
+	RequestedByID        pgtype.UUID        `json:"requested_by_id"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	ReplacesProposalID   pgtype.UUID        `json:"replaces_proposal_id"`
+}
+
+func (q *Queries) CreateTwinProposalCorrectionV2(ctx context.Context, arg CreateTwinProposalCorrectionV2Params) (CreateTwinProposalCorrectionV2Row, error) {
+	row := q.db.QueryRow(ctx, createTwinProposalCorrectionV2,
+		arg.Content,
+		arg.ContentDigest,
+		arg.RequestedByID,
+		arg.WorkspaceID,
+		arg.ReplacesProposalID,
+	)
+	var i CreateTwinProposalCorrectionV2Row
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Kind,
+		&i.SourceWikiRevisionID,
+		&i.BaseTwinVersionID,
+		&i.SchemaVersion,
+		&i.Content,
+		&i.ContentDigest,
+		&i.RequestedByID,
+		&i.CreatedAt,
+		&i.ReplacesProposalID,
 	)
 	return i, err
 }
@@ -150,6 +282,90 @@ func (q *Queries) CreateTwinProposalReview(ctx context.Context, arg CreateTwinPr
 		&i.ReviewerID,
 		&i.Reason,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createTwinProposalV2 = `-- name: CreateTwinProposalV2 :one
+WITH inserted AS (
+    INSERT INTO twin_proposal (
+        workspace_id, kind, source_wiki_revision_id, base_twin_version_id,
+        schema_version, content, content_digest, requested_by_id
+    )
+    SELECT $1, $2, source.id,
+           $3, 2, $4,
+           $5, $6
+    FROM lm_wiki_revision source
+    LEFT JOIN twin_version base
+      ON base.workspace_id = $1
+     AND base.id = $3
+    WHERE source.workspace_id = $1
+      AND source.id = $7
+      AND ($3::uuid IS NULL OR base.id IS NOT NULL)
+    ON CONFLICT (
+        workspace_id, kind, source_wiki_revision_id,
+        (COALESCE(base_twin_version_id, '00000000-0000-0000-0000-000000000000'::uuid))
+    ) WHERE kind IN ('initial', 'evolution') DO NOTHING
+    RETURNING id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id
+)
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM inserted
+UNION ALL
+SELECT proposal.id, proposal.workspace_id, proposal.kind, proposal.source_wiki_revision_id, proposal.base_twin_version_id, proposal.schema_version, proposal.content, proposal.content_digest, proposal.requested_by_id, proposal.created_at, proposal.replaces_proposal_id
+FROM twin_proposal proposal
+WHERE proposal.workspace_id = $1
+  AND proposal.kind = $2
+  AND proposal.source_wiki_revision_id = $7
+  AND proposal.base_twin_version_id IS NOT DISTINCT FROM $3
+LIMIT 1
+`
+
+type CreateTwinProposalV2Params struct {
+	WorkspaceID          pgtype.UUID `json:"workspace_id"`
+	Kind                 string      `json:"kind"`
+	BaseTwinVersionID    pgtype.UUID `json:"base_twin_version_id"`
+	Content              []byte      `json:"content"`
+	ContentDigest        string      `json:"content_digest"`
+	RequestedByID        pgtype.UUID `json:"requested_by_id"`
+	SourceWikiRevisionID pgtype.UUID `json:"source_wiki_revision_id"`
+}
+
+type CreateTwinProposalV2Row struct {
+	ID                   pgtype.UUID        `json:"id"`
+	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
+	Kind                 string             `json:"kind"`
+	SourceWikiRevisionID pgtype.UUID        `json:"source_wiki_revision_id"`
+	BaseTwinVersionID    pgtype.UUID        `json:"base_twin_version_id"`
+	SchemaVersion        int32              `json:"schema_version"`
+	Content              []byte             `json:"content"`
+	ContentDigest        string             `json:"content_digest"`
+	RequestedByID        pgtype.UUID        `json:"requested_by_id"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	ReplacesProposalID   pgtype.UUID        `json:"replaces_proposal_id"`
+}
+
+func (q *Queries) CreateTwinProposalV2(ctx context.Context, arg CreateTwinProposalV2Params) (CreateTwinProposalV2Row, error) {
+	row := q.db.QueryRow(ctx, createTwinProposalV2,
+		arg.WorkspaceID,
+		arg.Kind,
+		arg.BaseTwinVersionID,
+		arg.Content,
+		arg.ContentDigest,
+		arg.RequestedByID,
+		arg.SourceWikiRevisionID,
+	)
+	var i CreateTwinProposalV2Row
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Kind,
+		&i.SourceWikiRevisionID,
+		&i.BaseTwinVersionID,
+		&i.SchemaVersion,
+		&i.Content,
+		&i.ContentDigest,
+		&i.RequestedByID,
+		&i.CreatedAt,
+		&i.ReplacesProposalID,
 	)
 	return i, err
 }
@@ -258,7 +474,7 @@ func (q *Queries) GetCurrentTwinVersion(ctx context.Context, workspaceID pgtype.
 }
 
 const getPendingTwinProposal = `-- name: GetPendingTwinProposal :one
-SELECT proposal.id, proposal.workspace_id, proposal.kind, proposal.source_wiki_revision_id, proposal.base_twin_version_id, proposal.schema_version, proposal.content, proposal.content_digest, proposal.requested_by_id, proposal.created_at
+SELECT proposal.id, proposal.workspace_id, proposal.kind, proposal.source_wiki_revision_id, proposal.base_twin_version_id, proposal.schema_version, proposal.content, proposal.content_digest, proposal.requested_by_id, proposal.created_at, proposal.replaces_proposal_id
 FROM twin_proposal proposal
 LEFT JOIN twin_proposal_review review
   ON review.workspace_id = proposal.workspace_id
@@ -283,12 +499,13 @@ func (q *Queries) GetPendingTwinProposal(ctx context.Context, workspaceID pgtype
 		&i.ContentDigest,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.ReplacesProposalID,
 	)
 	return i, err
 }
 
 const getTwinProposal = `-- name: GetTwinProposal :one
-SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at FROM twin_proposal
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM twin_proposal
 WHERE workspace_id = $1
   AND id = $2
 `
@@ -312,6 +529,7 @@ func (q *Queries) GetTwinProposal(ctx context.Context, arg GetTwinProposalParams
 		&i.ContentDigest,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.ReplacesProposalID,
 	)
 	return i, err
 }
@@ -352,7 +570,7 @@ func (q *Queries) GetTwinProposalBaseVersion(ctx context.Context, arg GetTwinPro
 }
 
 const getTwinProposalByNaturalKey = `-- name: GetTwinProposalByNaturalKey :one
-SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at FROM twin_proposal
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM twin_proposal
 WHERE workspace_id = $1
   AND kind = $2
   AND source_wiki_revision_id = $3
@@ -385,6 +603,37 @@ func (q *Queries) GetTwinProposalByNaturalKey(ctx context.Context, arg GetTwinPr
 		&i.ContentDigest,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.ReplacesProposalID,
+	)
+	return i, err
+}
+
+const getTwinProposalReplacement = `-- name: GetTwinProposalReplacement :one
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM twin_proposal
+WHERE workspace_id = $1
+  AND replaces_proposal_id = $2
+`
+
+type GetTwinProposalReplacementParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	ProposalID  pgtype.UUID `json:"proposal_id"`
+}
+
+func (q *Queries) GetTwinProposalReplacement(ctx context.Context, arg GetTwinProposalReplacementParams) (TwinProposal, error) {
+	row := q.db.QueryRow(ctx, getTwinProposalReplacement, arg.WorkspaceID, arg.ProposalID)
+	var i TwinProposal
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Kind,
+		&i.SourceWikiRevisionID,
+		&i.BaseTwinVersionID,
+		&i.SchemaVersion,
+		&i.Content,
+		&i.ContentDigest,
+		&i.RequestedByID,
+		&i.CreatedAt,
+		&i.ReplacesProposalID,
 	)
 	return i, err
 }
@@ -416,7 +665,7 @@ func (q *Queries) GetTwinProposalReview(ctx context.Context, arg GetTwinProposal
 }
 
 const getTwinProposalSourceWikiRevision = `-- name: GetTwinProposalSourceWikiRevision :one
-SELECT revision.id, revision.workspace_id, revision.revision_number, revision.schema_version, revision.source_digest, revision.content, revision.trigger_kind, revision.requested_by_id, revision.created_at
+SELECT revision.id, revision.workspace_id, revision.revision_number, revision.schema_version, revision.source_digest, revision.content, revision.trigger_kind, revision.requested_by_id, revision.created_at, revision.source_policy_version, revision.source_policy_digest, revision.remote_generation_enabled
 FROM lm_wiki_revision revision
 JOIN twin_proposal proposal
   ON proposal.workspace_id = revision.workspace_id
@@ -443,6 +692,9 @@ func (q *Queries) GetTwinProposalSourceWikiRevision(ctx context.Context, arg Get
 		&i.TriggerKind,
 		&i.RequestedByID,
 		&i.CreatedAt,
+		&i.SourcePolicyVersion,
+		&i.SourcePolicyDigest,
+		&i.RemoteGenerationEnabled,
 	)
 	return i, err
 }
@@ -544,7 +796,7 @@ func (q *Queries) ListTwinProposalReviews(ctx context.Context, workspaceID pgtyp
 }
 
 const listTwinProposals = `-- name: ListTwinProposals :many
-SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at FROM twin_proposal
+SELECT id, workspace_id, kind, source_wiki_revision_id, base_twin_version_id, schema_version, content, content_digest, requested_by_id, created_at, replaces_proposal_id FROM twin_proposal
 WHERE workspace_id = $1
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $2
@@ -576,6 +828,7 @@ func (q *Queries) ListTwinProposals(ctx context.Context, arg ListTwinProposalsPa
 			&i.ContentDigest,
 			&i.RequestedByID,
 			&i.CreatedAt,
+			&i.ReplacesProposalID,
 		); err != nil {
 			return nil, err
 		}

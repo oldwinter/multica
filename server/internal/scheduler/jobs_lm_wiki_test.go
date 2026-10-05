@@ -187,7 +187,7 @@ func TestLMWikiDailyConcurrent(t *testing.T) {
 
 func TestLMWikiDailyRetry(t *testing.T) {
 	pool := integrationPool(t)
-	workspaceID := uuid.NewString()
+	workspaceID := util.UUIDToString(seedLMWikiSchedulerWorkspace(t, pool))
 	refresher := &recordingWikiRefresher{failuresLeft: 1, createdResult: true}
 	job := LMWikiDailyReconcileJob(db.New(pool), refresher)
 	job.Scopes = StaticScopes(Scope{Kind: ScopeKindWorkspace, ID: workspaceID})
@@ -224,7 +224,7 @@ func TestLMWikiDailyRetry(t *testing.T) {
 
 func TestLMWikiDailyStale(t *testing.T) {
 	pool := integrationPool(t)
-	workspaceID := uuid.NewString()
+	workspaceID := util.UUIDToString(seedLMWikiSchedulerWorkspace(t, pool))
 	workspaceUUID, err := util.ParseUUID(workspaceID)
 	if err != nil {
 		t.Fatalf("parse workspace UUID: %v", err)

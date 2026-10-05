@@ -18,9 +18,9 @@
 // renderer code and white-screens on launch.
 //
 // Extra CLI args after `pnpm package --` are forwarded to electron-builder
-// unchanged (e.g. `--mac --arm64`). For an unsigned local smoke-test
-// build, set `CSC_IDENTITY_AUTO_DISCOVERY=false` so electron-builder falls
-// back to an ad-hoc signature instead of requiring a Developer ID cert.
+// unchanged (e.g. `--mac --arm64`). For an unsigned build, set
+// `CSC_IDENTITY_AUTO_DISCOVERY=false` so electron-builder skips
+// Developer ID signing instead of requiring a certificate.
 //
 // The `normalizeGitVersion`, `deriveVersion`, and `DESCRIBE_ARGS` exports let
 // tests cover version derivation both as a pure string transform and as the
@@ -159,6 +159,24 @@ export function deriveVersion(cwd) {
 
 function uniqueOrdered(values) {
   return [...new Set(values)];
+}
+
+/**
+ * Convert GitHub Actions' `owner/repo` identity into electron-builder CLI
+ * overrides. The checked-in config remains the canonical upstream default,
+ * while tag builds in a fork publish artifacts and update metadata back to
+ * that fork. Restrict the value to GitHub's repository-name character set
+ * because electron-builder is spawned through a platform shell on Windows.
+ */
+export function githubPublisherArgs(repository) {
+  if (!repository) return [];
+  const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(repository);
+  if (!match) {
+    throw new Error(
+      `[package] invalid GITHUB_REPOSITORY value: ${JSON.stringify(repository)}`,
+    );
+  }
+  return [`-c.publish.owner=${match[1]}`, `-c.publish.repo=${match[2]}`];
 }
 
 export function envWithLocalBins(env = process.env, root = desktopRoot) {
@@ -311,14 +329,17 @@ export function builderArgsForTarget(
   parsed,
   version,
   {
-    disableMacNotarize = false,
+    unsignedMac = false,
     hostPlatform = process.platform,
+    publishRepositoryArgs = [],
     useScopedOutputDir = false,
   } = {},
 ) {
   const builderArgs = [];
   if (version) builderArgs.push(`-c.extraMetadata.version=${version}`);
-  if (disableMacNotarize) builderArgs.push("-c.mac.notarize=false");
+  if (unsignedMac && target.platform === "mac") {
+    builderArgs.push("-c.mac.identity=null", "-c.mac.notarize=false");
+  }
   builderArgs.push(PLATFORM_CONFIG[target.platform].builderFlag);
   const requestedTargets = parsed.platformTargets[target.platform];
   if (
@@ -335,6 +356,9 @@ export function builderArgsForTarget(
   }
   builderArgs.push(`--${target.arch}`);
   builderArgs.push(...parsed.sharedArgs);
+  // Keep these after caller-provided shared args so the trusted Actions
+  // repository identity wins over electron-builder.yml and ad-hoc CLI input.
+  builderArgs.push(...publishRepositoryArgs);
   if (useScopedOutputDir) {
     builderArgs.push(
       `-c.directories.output=dist/${target.platform}-${target.arch}`,
@@ -362,9 +386,17 @@ function main() {
   const passthrough = stripLeadingSeparator(process.argv.slice(2));
   const parsed = parsePackageArgs(passthrough);
   const buildMatrix = resolveBuildMatrix(parsed);
+  const publishRepositoryArgs = githubPublisherArgs(
+    process.env.GITHUB_REPOSITORY,
+  );
   console.log(
     `[package] build matrix → ${buildMatrix.map(formatTarget).join(", ")}`,
   );
+  if (publishRepositoryArgs.length > 0) {
+    console.log(
+      `[package] GitHub publisher → ${process.env.GITHUB_REPOSITORY}`,
+    );
+  }
 
   // Step 0: start every release from an empty output directory. Stale
   // artifacts from a prior run would otherwise be repacked into this run's
@@ -418,10 +450,12 @@ function main() {
     );
   }
 
-  const disableMacNotarize = !process.env.APPLE_TEAM_ID;
-  if (disableMacNotarize) {
+  const unsignedMac =
+    buildMatrix.some((target) => target.platform === "mac") &&
+    !process.env.APPLE_TEAM_ID;
+  if (unsignedMac) {
     console.warn(
-      "[package] APPLE_TEAM_ID not set — skipping notarization (local dev build). " +
+      "[package] APPLE_TEAM_ID not set — producing an unsigned, non-notarized macOS build. " +
         "Set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID for a release build.",
     );
   }
@@ -448,8 +482,9 @@ function main() {
     );
 
     const builderArgs = builderArgsForTarget(target, parsed, version, {
-      disableMacNotarize,
+      unsignedMac,
       hostPlatform: process.platform,
+      publishRepositoryArgs,
       useScopedOutputDir,
     });
 

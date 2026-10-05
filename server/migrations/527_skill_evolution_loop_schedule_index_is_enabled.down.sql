@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS skill_evolution_loop_schedule_is_enabled_idx;

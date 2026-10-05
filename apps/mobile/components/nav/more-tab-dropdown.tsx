@@ -23,8 +23,7 @@
  * leaves the real tab button entirely alone.
  *
  * Visual conventions inside the popover (apps/mobile/CLAUDE.md):
- *   - All glyphs are SF Symbols rendered via expo-image (`sf:` source),
- *     so they share the visual language of the bottom tab bar icons.
+ *   - Glyphs share the bottom tab bar's platform symbol adapter.
  *   - All colours route through THEME tokens (foreground /
  *     mutedForeground / secondary), so dark mode is automatic.
  *   - Workspace is collapsed to a single `<WorkspaceCard>` row (icon +
@@ -36,7 +35,7 @@
  */
 import { useMemo } from "react";
 import { Image, Pressable, View } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { PlatformSymbol, type PlatformSymbolName } from "@/components/ui/platform-symbol";
 import { router, usePathname } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,28 +53,31 @@ import { WorkspaceAvatar } from "@/components/workspace/workspace-avatar";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useT } from "@/lib/i18n";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { cn } from "@/lib/utils";
 
 // iOS bottom tab bar default height (above safe-area). React Navigation
 // doesn't expose this as a layout constant, but the value is stable
-// across Expo Router 55 / RN Screens 4 — see BottomTabBar.tsx in
+// across Expo Router 57 / RN Screens 4 — see BottomTabBar.tsx in
 // @react-navigation/bottom-tabs (`styles.tab` has no explicit height;
 // the container settles at 49 from the inner padding + icon size).
 const TAB_BAR_HEIGHT = 49;
 
 interface NavItem {
-  label: string;
-  /** SF Symbol name, rendered via expo-image `source: "sf:<name>"`. */
-  icon: string;
+  labelKey: "more_menu.pinned" | "more_menu.issues" | "more_menu.projects" | "more_menu.wiki" | "more_menu.rooms";
+  /** SF Symbol on iOS, bundled vector glyph on Android. */
+  icon: PlatformSymbolName;
   /** Path under /:slug/ — final href is `/${slug}${path}`. */
   path: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Pinned", icon: "pin", path: "/more/pins" },
-  { label: "Issues", icon: "list.bullet", path: "/more/issues" },
-  { label: "Projects", icon: "square.stack", path: "/more/projects" },
+  { labelKey: "more_menu.pinned", icon: "pin", path: "/more/pins" },
+  { labelKey: "more_menu.issues", icon: "list.bullet", path: "/more/issues" },
+  { labelKey: "more_menu.projects", icon: "square.stack", path: "/more/projects" },
+  { labelKey: "more_menu.wiki", icon: "book.closed", path: "/more/wiki" },
+  { labelKey: "more_menu.rooms", icon: "person.3", path: "/more/rooms" },
 ];
 
 export function MoreTabDropdownAnchor({
@@ -88,7 +90,7 @@ export function MoreTabDropdownAnchor({
   const user = useAuthStore((s) => s.user);
   const pathname = usePathname();
   const { theme } = useColorScheme();
-  const t = theme;
+  const { t } = useT("navigation");
   const currentWorkspace = useCurrentWorkspace(slug);
 
   const isActive = (path: string) => {
@@ -131,7 +133,7 @@ export function MoreTabDropdownAnchor({
           <UserCard
             user={user}
             onPress={() => slug && router.push(`/${slug}/more/settings`)}
-            chevronTint={t.mutedForeground}
+            chevronTint={theme.mutedForeground}
           />
 
           <DropdownMenuSeparator />
@@ -142,7 +144,7 @@ export function MoreTabDropdownAnchor({
             onPress={() =>
               slug && router.push(`/${slug}/switch-workspace`)
             }
-            chevronTint={t.mutedForeground}
+            chevronTint={theme.mutedForeground}
           />
 
           <DropdownMenuSeparator />
@@ -151,18 +153,18 @@ export function MoreTabDropdownAnchor({
             <DropdownMenuItem
               key={item.path}
               onPress={() => slug && router.push(`/${slug}${item.path}`)}
-              accessibilityLabel={item.label}
+              accessibilityLabel={t(item.labelKey)}
               className={cn(
                 "h-9 gap-3",
                 isActive(item.path) && "bg-secondary",
               )}
             >
-              <ExpoImage
-                source={`sf:${item.icon}`}
-                tintColor={t.foreground}
-                style={{ width: 18, height: 18 }}
+              <PlatformSymbol
+                name={item.icon}
+                color={theme.foreground}
+                size={18}
               />
-              <Text className="text-sm text-foreground">{item.label}</Text>
+              <Text className="text-sm text-foreground">{t(item.labelKey)}</Text>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -187,11 +189,12 @@ function UserCard({
   chevronTint: string;
 }) {
   const initial = (user?.name ?? user?.email ?? "U").charAt(0).toUpperCase();
+  const { t } = useT("navigation");
   return (
     <DropdownMenuItem
       onPress={onPress}
       className="h-12 gap-3"
-      accessibilityLabel="Account settings"
+      accessibilityLabel={t("more_menu.account_settings")}
     >
       {user?.avatar_url ? (
         <Image
@@ -221,10 +224,10 @@ function UserCard({
           </Text>
         ) : null}
       </View>
-      <ExpoImage
-        source="sf:chevron.right"
-        tintColor={chevronTint}
-        style={{ width: 12, height: 12 }}
+      <PlatformSymbol
+        name="chevron.right"
+        color={chevronTint}
+        size={12}
       />
     </DropdownMenuItem>
   );
@@ -256,6 +259,7 @@ function WorkspaceCard({
   onPress: () => void;
   chevronTint: string;
 }) {
+  const { t } = useT("navigation");
   const { data } = useQuery(workspaceListOptions());
   const canSwitch = (data?.length ?? 0) > 1;
 
@@ -265,11 +269,13 @@ function WorkspaceCard({
       disabled={!canSwitch}
       className="h-12 gap-3"
       accessibilityLabel={
-        canSwitch ? "Switch workspace" : currentWorkspaceName ?? "Workspace"
+        canSwitch
+          ? t("settings:workspace.switch")
+          : currentWorkspaceName ?? t("settings:account.workspace")
       }
     >
       <WorkspaceAvatar
-        name={currentWorkspaceName ?? "Workspace"}
+        name={currentWorkspaceName ?? t("settings:account.workspace")}
         avatarUrl={currentWorkspaceAvatarUrl}
         size={32}
       />
@@ -278,14 +284,14 @@ function WorkspaceCard({
           className="text-sm font-medium text-foreground"
           numberOfLines={1}
         >
-          {currentWorkspaceName ?? "Workspace"}
+          {currentWorkspaceName ?? t("settings:account.workspace")}
         </Text>
       </View>
       {canSwitch ? (
-        <ExpoImage
-          source="sf:chevron.right"
-          tintColor={chevronTint}
-          style={{ width: 12, height: 12 }}
+        <PlatformSymbol
+          name="chevron.right"
+          color={chevronTint}
+          size={12}
         />
       ) : null}
     </DropdownMenuItem>

@@ -1,5 +1,11 @@
 import type { LifecycleContent } from "@multica/core/twins";
-import type { ProjectedDiff, ProjectedItem, ProjectedTopic } from "./twin-workspace-types";
+import type {
+  ProjectedApplicability,
+  ProjectedDiff,
+  ProjectedItem,
+  ProjectedProvenance,
+  ProjectedTopic,
+} from "./twin-workspace-types";
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,7 +46,44 @@ export function projectWikiContent(content: LifecycleContent): readonly Projecte
     status: stringValue(item, "status") || stringValue(item, "acceptance_state"),
     citationKeys: stringValue(item, "citation_key") ? [stringValue(item, "citation_key")] : [],
     kind,
+    applicability: null,
+    confidence: null,
+    provenance: null,
   })).filter((item) => item.id.length > 0 || item.title.length > 0));
+}
+
+function projectApplicability(value: unknown): ProjectedApplicability | null {
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? {
+      taskId: "",
+      workspaceId: "",
+      agentId: "",
+      projectId: "",
+      issueId: "",
+      keywords: [],
+      legacyText: value.trim(),
+    } : null;
+  }
+  if (!isRecord(value)) return null;
+  const projected = {
+    taskId: stringValue(value, "task_id"),
+    workspaceId: stringValue(value, "workspace_id"),
+    agentId: stringValue(value, "agent_id"),
+    projectId: stringValue(value, "project_id"),
+    issueId: stringValue(value, "issue_id"),
+    keywords: stringArray(value, "keywords"),
+    legacyText: "",
+  };
+  return Object.values(projected).some((item) => Array.isArray(item) ? item.length > 0 : item.length > 0)
+    ? projected
+    : null;
+}
+
+function projectProvenance(value: unknown): ProjectedProvenance | null {
+  if (!isRecord(value)) return null;
+  const kind = stringValue(value, "kind");
+  const generator = stringValue(value, "generator");
+  return kind || generator ? { kind, generator } : null;
 }
 
 export function projectTwinAssertions(content: LifecycleContent): readonly ProjectedItem[] {
@@ -49,8 +92,13 @@ export function projectTwinAssertions(content: LifecycleContent): readonly Proje
     title: stringValue(item, "text"),
     summary: stringValue(item, "source_summary"),
     status: stringValue(item, "source_status"),
-    citationKeys: stringArray(item, "citation_keys"),
-    kind: "assertion",
+    citationKeys: stringArray(item, "evidence_citations").length > 0
+      ? stringArray(item, "evidence_citations")
+      : stringArray(item, "citation_keys"),
+    kind: stringValue(item, "type") || "assertion",
+    applicability: projectApplicability(item.applicability),
+    confidence: numberValue(item, "confidence"),
+    provenance: projectProvenance(item.provenance),
   })).filter((item) => item.id.length > 0 || item.title.length > 0);
 }
 
@@ -66,11 +114,12 @@ export function projectTwinTopics(content: LifecycleContent): readonly Projected
 
 export function projectTwinDiff(content: LifecycleContent): ProjectedDiff {
   const diff = content.diff;
-  if (!isRecord(diff)) return { added: [], removed: [], unchanged: [] };
+  if (!isRecord(diff)) return { added: [], removed: [], unchanged: [], changed: [] };
   return {
     added: stringArray(diff, "added"),
     removed: stringArray(diff, "removed"),
     unchanged: stringArray(diff, "unchanged"),
+    changed: stringArray(diff, "changed"),
   };
 }
 
@@ -95,5 +144,6 @@ export function diffWikiContent(
     added: [...currentById.keys()].filter((id) => !acceptedById.has(id) || changed(id)),
     removed: [...acceptedById.keys()].filter((id) => !currentById.has(id) || changed(id)),
     unchanged: [...currentById.keys()].filter((id) => acceptedById.has(id) && !changed(id)),
+    changed: [],
   };
 }

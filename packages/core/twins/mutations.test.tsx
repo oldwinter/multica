@@ -8,12 +8,14 @@ import { setApiInstance } from "../api";
 import {
   useAcceptLMWikiRevision,
   useAcceptTwinProposal,
+  useCorrectTwinProposal,
   useEnsureTwinProposal,
   useRefreshLMWiki,
   useRejectLMWikiRevision,
   useRejectTwinProposal,
 } from "./mutations";
 import { twinKeys, twinProfileKeys, wikiKeys } from "./queries";
+import { wikiKeys as workspaceWikiKeys } from "../wiki/queries";
 
 const WORKSPACE_A = "workspace-a";
 const WORKSPACE_B = "workspace-b";
@@ -25,7 +27,7 @@ const revision = {
 const proposal = {
   id: "proposal-1", kind: "initial", source_wiki_revision_id: "revision-1",
   base_twin_version_id: null, schema_version: 1, content: {}, content_digest: "sha256:twin",
-  requested_by_id: null, created_at: "", review: null, signed_version: null,
+  requested_by_id: null, replaces_proposal_id: null, created_at: "", review: null, signed_version: null,
 };
 const version = {
   id: "version-1", version_number: 1, proposal_id: "proposal-1",
@@ -60,6 +62,7 @@ describe("Wiki and Twin mutations", () => {
     vi.spyOn(client, "acceptLMWikiRevision").mockResolvedValue({ revision, citations: [] });
     vi.spyOn(client, "rejectLMWikiRevision").mockResolvedValue({ revision, citations: [] });
     vi.spyOn(client, "ensureTwinProposal").mockResolvedValue({ created: true, proposal });
+    vi.spyOn(client, "correctTwinProposal").mockResolvedValue({ created: true, proposal });
     vi.spyOn(client, "acceptTwinProposal").mockResolvedValue({ created: true, version });
     vi.spyOn(client, "rejectTwinProposal").mockResolvedValue({ proposal, source_revision: revision, citations: [] });
     queryClient.setQueryData(wikiKeys.overview(WORKSPACE_A), "wiki-a");
@@ -72,6 +75,7 @@ describe("Wiki and Twin mutations", () => {
       acceptWiki: useAcceptLMWikiRevision(WORKSPACE_A),
       rejectWiki: useRejectLMWikiRevision(WORKSPACE_A),
       ensureTwin: useEnsureTwinProposal(WORKSPACE_A),
+      correctTwin: useCorrectTwinProposal(WORKSPACE_A),
       acceptTwin: useAcceptTwinProposal(WORKSPACE_A),
       rejectTwin: useRejectTwinProposal(WORKSPACE_A),
     }), { wrapper: wrapper(queryClient) });
@@ -81,15 +85,18 @@ describe("Wiki and Twin mutations", () => {
       await result.current.acceptWiki.mutateAsync("revision-1");
       await result.current.rejectWiki.mutateAsync({ revisionId: "revision-1", reason: "not ready" });
       await result.current.ensureTwin.mutateAsync("revision-1");
+      await result.current.correctTwin.mutateAsync({ proposalId: "proposal-1", editedAssertions: [] });
       await result.current.acceptTwin.mutateAsync("proposal-1");
       await result.current.rejectTwin.mutateAsync({ proposalId: "proposal-1", reason: "not ready" });
     });
 
     const keys = invalidateQueries.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toContainEqual(wikiKeys.all(WORKSPACE_A));
+    expect(keys).toContainEqual(workspaceWikiKeys.all(WORKSPACE_A));
     expect(keys).toContainEqual(twinKeys.all(WORKSPACE_A));
     expect(keys).toContainEqual(twinProfileKeys.all(WORKSPACE_A));
     expect(keys).not.toContainEqual(wikiKeys.all(WORKSPACE_B));
+    expect(keys).not.toContainEqual(workspaceWikiKeys.all(WORKSPACE_B));
     expect(keys).not.toContainEqual(twinKeys.all(WORKSPACE_B));
     expect(keys).not.toContainEqual(twinProfileKeys.all(WORKSPACE_B));
     expect(setQueryData).not.toHaveBeenCalled();
@@ -109,6 +116,7 @@ describe("Wiki and Twin mutations", () => {
     });
 
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: wikiKeys.all(WORKSPACE_A) });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceWikiKeys.all(WORKSPACE_A) });
     expect(setQueryData).not.toHaveBeenCalled();
   });
 
@@ -127,7 +135,7 @@ describe("Wiki and Twin mutations", () => {
     const mutation = result.current.mutateAsync("revision-1").then(() => {
       settled = true;
     });
-    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(3));
     expect(settled).toBe(false);
     releaseInvalidation();
     await act(async () => mutation);

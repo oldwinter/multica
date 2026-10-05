@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS skill_evolution_evaluation_id_uidx;
