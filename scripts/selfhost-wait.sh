@@ -55,24 +55,34 @@ frontend_port=$(compose_host_port frontend 3000 "${FRONTEND_PORT:-3000}")
 
 backend_url="http://localhost:${backend_port}"
 frontend_url="http://localhost:${frontend_port}"
+wait_attempts=${SELFHOST_WAIT_ATTEMPTS:-30}
+wait_interval=${SELFHOST_WAIT_INTERVAL_SECONDS:-2}
+health_max_time=${SELFHOST_HEALTH_MAX_TIME_SECONDS:-5}
+
+case "$wait_attempts:$wait_interval:$health_max_time" in
+*[^0-9.:]*)
+  echo "self-host wait settings must be non-negative numbers" >&2
+  exit 2
+  ;;
+esac
 
 health_ok() {
-  curl -sf "${backend_url}/health" >/dev/null 2>&1
+  curl --connect-timeout "$health_max_time" --max-time "$health_max_time" -sf "${backend_url}/health" >/dev/null 2>&1
 }
 
 echo "==> Waiting for backend to be ready..."
-for _ in $(seq 1 30); do
+for _ in $(seq 1 "$wait_attempts"); do
   if health_ok; then
     break
   fi
-  sleep 2
+  sleep "$wait_interval"
 done
 
 if ! health_ok; then
   echo ""
   echo "Services are still starting. Check logs:"
   echo "  ${compose_cmd[*]} ${compose_files[*]} logs"
-  exit 0
+  exit 1
 fi
 
 echo ""

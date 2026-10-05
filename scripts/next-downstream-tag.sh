@@ -7,13 +7,23 @@
 set -euo pipefail
 
 suffix="${DOWNSTREAM_TAG_SUFFIX:-oldwinter}"
-
+if [[ ! "$suffix" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$suffix" == *..* ]] || [[ "$suffix" == *. ]]; then
+  echo "invalid downstream tag suffix: $suffix" >&2
+  exit 2
+fi
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "not a git repository" >&2
   exit 1
 fi
 
-existing="$(git tag --points-at HEAD | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+-${suffix}\.[0-9]+$" | sort -V | tail -1 || true)"
+existing="$(git tag --points-at HEAD | awk -v suffix="$suffix" '
+  /^v[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9][A-Za-z0-9._-]*\.[0-9]+$/ {
+    candidate = $0
+    sub(/^v[0-9]+\.[0-9]+\.[0-9]+-/, "", candidate)
+    sub(/\.[0-9]+$/, "", candidate)
+    if (candidate == suffix) print $0
+  }
+' | sort -V | tail -1)"
 if [[ -n "$existing" ]]; then
   printf '%s\n' "$existing"
   exit 0
