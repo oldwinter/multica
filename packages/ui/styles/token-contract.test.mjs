@@ -174,6 +174,20 @@ test("rejects raw product colors and skin-specific product behavior", async () =
     { path: "components/example.tsx", skin: "relay" },
   ]);
 
+  // A `case` only counts when the switch is on a skin; other domains reuse
+  // the same words (wakeup conditions have a "field" kind).
+  const switchReport = auditProductSources({
+    sourceFiles: new Map([
+      [
+        "components/switch.tsx",
+        'switch (kind) { case "field": break; }\nswitch (prefs.skin) { case "tension": break; }',
+      ],
+    ]),
+  });
+  assert.deepEqual(switchReport.skinBranchViolations, [
+    { path: "components/switch.tsx", skin: "tension" },
+  ]);
+
   const allowedOnce = auditProductSources({
     sourceFiles: new Map([["components/debt.tsx", 'const value = "#123456";']]),
     rawColorPolicy: {

@@ -38,6 +38,12 @@ upstream pair covers both, so the local pair was removed. Upstream's new
 wakeup condition and expiry tests read `f.Pool`; they now use the service
 fixture's own `pool`, as the 2026-09-26 sync did.
 
+CI then found a fourth one. The local token-contract checker treated any
+`case "field":` as a branch on the `field` skin, and upstream's wakeup
+conditions have a `"field"` kind. The checker now reads `case` labels only
+inside a `switch` whose discriminant names a skin, and a regression fixture
+covers the overlap.
+
 Migrations 551–564 are upstream-only. Downstream ends at 550, so no prefix
 collides and the duplicate-prefix lint is unchanged. The runner's
 concurrent-index cleanup map keeps both sides' entries. `make sqlc` and

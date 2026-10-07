@@ -371,8 +371,30 @@ function skinBranches(source) {
   const switchCase = /\bcase\s+["'](tension|relay|field)["']\s*:/gi;
   let match;
   while ((match = productComparison.exec(source)) !== null) branches.push(match[1]);
-  while ((match = switchCase.exec(source)) !== null) branches.push(match[1]);
+  // Only a switch on a skin is a skin branch; other domains reuse these words.
+  for (const body of skinSwitchBodies(source)) {
+    while ((match = switchCase.exec(body)) !== null) branches.push(match[1]);
+  }
   return branches;
+}
+
+function skinSwitchBodies(source) {
+  const bodies = [];
+  const skinSwitch = /\bswitch\s*\(([^)]*)\)\s*\{/g;
+  let match;
+  while ((match = skinSwitch.exec(source)) !== null) {
+    if (!/\bskin\b/i.test(match[1])) continue;
+    const start = skinSwitch.lastIndex;
+    let depth = 1;
+    let end = start;
+    while (end < source.length && depth > 0) {
+      if (source[end] === "{") depth += 1;
+      else if (source[end] === "}") depth -= 1;
+      end += 1;
+    }
+    bodies.push(source.slice(start, end));
+  }
+  return bodies;
 }
 
 function policyHasPath(paths, sourcePath) {
