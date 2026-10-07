@@ -7,6 +7,59 @@ search/issue commands.
 Use this page when merging `upstream/main`. The short pointer lives in
 `AGENTS.md`.
 
+## 2026-10-08 post-v0.6.1 Sync
+
+- Downstream start and published fork tip:
+  `f67c28982f6c726b8f90c50eed2f49a30d0c0e6a`, plus
+  `b203420b3` (the preview helper's `comm` now uses C collation; under a
+  UTF-8 locale it rejected the `LC_ALL=C` sorted path lists).
+- Upstream: `e0f84dda47d42f1826af6b8f596de0b38c3d90a6`
+  (`v0.6.1-7-ge0f84dda4`); merge base
+  `57fabfc0789b162399afb5b48a3dcfe65e01184e`.
+- Divergence: 315 downstream-only and 53 upstream-only commits; 109
+  overlapping paths. Git reported 29 conflicted paths.
+
+| Conflict group | Paths | Decision |
+| --- | --- | --- |
+| Docs | `README.md`, `README.zh.md` | Upstream's count-free agent CLI wording supersedes the local count. The zh self-host block keeps the local build-first order and adopts upstream's docs link and telemetry note. |
+| Shared registries | `apps/mobile/components/inbox/detail-label.tsx`, `packages/core/api/client.ts`, `packages/core/workspace/mutations.ts`, `packages/views/search/search-command.tsx`, `server/cmd/server/router.go`, `server/internal/daemon/{prompt,types}.go`, `server/internal/handler/agent.go` | Both. Room inbox types, Twin schemas and briefing, Room routes, workspace storage cleanup, and copy-branch-name stay beside upstream's `children_done`, local search index, fold/unfold comments, and joined wakeups. Upstream moved `HandoffNote` and the squad fields; each is declared once. |
+| Task claim | `server/internal/handler/daemon.go` | Both. The Twin briefing gate (which may requeue) runs before `JoinWaitingWakeups`, so a refused claim never consumes waiting wakeups. |
+| Editor | `packages/views/editor/utils/repair-list-items{,.test}.ts`, `packages/views/package.json` | Upstream. Both sides fixed the same Tiptap 3.31 selection change; upstream's version wins. The manifest keeps the newer `sonner`. |
+| Settings | `packages/views/settings/components/{preferences-tab,preferences-tab.test,settings-layout}.tsx` | Upstream's scope-grouped page (#8874) supersedes the local tabs. Its per-row success toasts were removed upstream, not local. The local skin and appearance-sync section (undo, reset, diagnostics, recovery notice) replaces upstream's `ThemeRow` without a scope badge, because it reports its own sync state. `resolveSettingsLocale`, the reload-timer cleanup, and the compact-screen chat-launcher padding move to the language and region rows. |
+| Locales | `packages/views/locales/{en,fr,ja,ko,zh-Hans}/{agents,settings}.json`, `fr/inbox.json` | Structural three-way merge. The only value collision, the new `preferences.appearance_title`, takes upstream's fr and ko strings. |
+| Lockfile | `pnpm-lock.yaml` | Regenerated from the downstream lockfile, which leaves only the Tiptap 3.31 and `yaml` delta. Regenerating from upstream's lockfile instead re-resolved about 10k lines, including turbo 2.11.7. |
+
+The clean-merge audit found three semantic conflicts. Upstream's new
+`SetClaimedTaskContext` query returned `agent_task_queue.*`, but its generated
+scan omitted the local `room_turn_id`, `twin_use_state`, and `twin_version_id`
+columns; `make sqlc` fixed it. `chat-window.tsx` gained upstream's
+`isVisible`-based `inert`/`aria-hidden` beside the local `isOpen` pair; the
+upstream pair covers both, so the local pair was removed. Upstream's new
+wakeup condition and expiry tests read `f.Pool`; they now use the service
+fixture's own `pool`, as the 2026-09-26 sync did.
+
+Migrations 551–564 are upstream-only. Downstream ends at 550, so no prefix
+collides and the duplicate-prefix lint is unchanged. The runner's
+concurrent-index cleanup map keeps both sides' entries. `make sqlc` and
+`pnpm generate:reserved-slugs` are stable on a second run.
+
+Verification ran on a Windows host without Docker, `make`, or a managed
+database. `pnpm install --frozen-lockfile`, `pnpm check:toolchain`, root
+`pnpm typecheck` (10/10), root `pnpm lint` (warnings only), the mobile
+typecheck, `go build ./...`, compilation of every Go test binary, the
+migration lint, and `go test ./cmd/migrate` pass. Core (210 files), web (39),
+docs, UI Lab, and the 30 settings files pass. Locale parity passes. The
+`search-command` suite times out under load but passes alone (41/41).
+Baseline failures reproduce at `f67c28982` in a temporary worktree and are not
+caused by this merge: the UI token contract (3/7), desktop
+`App.auth-recovery` and `package.test.mjs`, `task-run-reviews` ownership paths,
+`generate-office-assets --check`, the mobile Room fixture URL, and 437 Go
+daemon/agent tests. These all depend on Windows path separators,
+long paths, or fake executables. The four Go failures that appear only after
+the merge belong to the same classes. **No DB-backed Go test, fresh or
+upgraded migration run, E2E, native build, or CI run happened locally;** the
+DB-backed tests skip without a database.
+
 ## 2026-09-26 post-v0.5.3 Sync
 
 - Downstream start and fetched published fork tip:

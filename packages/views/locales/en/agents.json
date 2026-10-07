@@ -855,6 +855,7 @@
     "status_cancelled": "Cancelled",
     "status_waiting": "Waiting",
     "trigger_initial": "Initial run",
+    "trigger_text": "Trigger",
     "trigger_comment": "From a comment",
     "trigger_autopilot": "Autopilot",
     "trigger_retry": "Retry",
@@ -951,7 +952,8 @@
       "submitting": "Submitting…",
       "retry": "Try again",
       "submit": "Submit review"
-    }
+    },
+    "trigger_wakeup": "Wakeup"
   },
   "task_failure": {
     "cancelled_by_system": "Cancelled by the system",
