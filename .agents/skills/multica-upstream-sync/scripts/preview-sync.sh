@@ -64,7 +64,7 @@ git diff --name-only "$merge_base..$downstream_sha" |
   LC_ALL=C sort -u >"$downstream_paths_file"
 git diff --name-only "$merge_base..$upstream_sha" |
   LC_ALL=C sort -u >"$upstream_paths_file"
-comm -12 "$downstream_paths_file" "$upstream_paths_file" >"$overlap_paths_file"
+LC_ALL=C comm -12 "$downstream_paths_file" "$upstream_paths_file" >"$overlap_paths_file"
 
 downstream_path_count="$(wc -l <"$downstream_paths_file" | tr -d ' ')"
 upstream_path_count="$(wc -l <"$upstream_paths_file" | tr -d ' ')"
