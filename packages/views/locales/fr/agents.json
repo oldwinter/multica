@@ -850,6 +850,7 @@
     "status_cancelled": "Annulée",
     "status_waiting": "En attente",
     "trigger_initial": "Exécution initiale",
+    "trigger_text": "Déclencheur",
     "trigger_comment": "Depuis un commentaire",
     "trigger_autopilot": "Automatisation",
     "trigger_retry": "Relance",
@@ -946,7 +947,8 @@
       "submitting": "Submitting…",
       "retry": "Try again",
       "submit": "Submit review"
-    }
+    },
+    "trigger_wakeup": "Réveil"
   },
   "task_failure": {
     "cancelled_by_system": "Annulée par le système",

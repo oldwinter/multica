@@ -746,6 +746,7 @@
     "status_cancelled": "취소됨",
     "status_waiting": "대기 중",
     "trigger_initial": "최초 실행",
+    "trigger_text": "트리거",
     "trigger_comment": "댓글에서",
     "trigger_autopilot": "오토파일럿",
     "trigger_retry": "재시도",
@@ -838,7 +839,8 @@
       "submitting": "제출 중…",
       "retry": "다시 시도",
       "submit": "리뷰 제출"
-    }
+    },
+    "trigger_wakeup": "깨우기"
   },
   "task_failure": {
     "cancelled_by_system": "시스템에서 취소함",

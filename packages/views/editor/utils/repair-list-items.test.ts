@@ -44,11 +44,10 @@ describe("repairEmptyListItems (real editor)", () => {
     // The draft persisted after typing `1.` in a comment, restored on remount.
     const ed = makeEditor("1. \n\n");
 
-    // Failing-first: @tiptap/markdown parses the empty item into a childless,
-    // schema-invalid listItem. Newer ProseMirror releases may still normalize
-    // the selection to a cursor, so schema validity is the durable contract.
+    // Failing-first: @tiptap/markdown parses the empty item into a childless
+    // listItem, and the caret lands on the following block, not in the item.
     expect(firstItem(ed).childCount).toBe(0);
-    expect(() => ed.state.doc.check()).toThrow();
+    expect(ed.state.selection.$from.node(-1)?.type.name).not.toBe("listItem");
 
     repairEmptyListItems(ed);
 
@@ -71,7 +70,7 @@ describe("repairEmptyListItems (real editor)", () => {
     repairEmptyListItems(ed);
     expect(firstItem(ed).childCount).toBe(1);
 
-    // Undo must not restore the childless item / AllSelection.
+    // Undo must not restore the childless item.
     expect(ed.can().undo()).toBe(false);
     ed.commands.undo();
     expect(firstItem(ed).childCount).toBe(1);

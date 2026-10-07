@@ -60,6 +60,7 @@ const TYPE_KEY: Record<InboxItemType, string> = {
   room_recommendation_review_required: "type.room_recommendation_review_required",
   room_cycle_failed: "type.room_cycle_failed",
   room_cycle_blocked: "type.room_cycle_blocked",
+  children_done: "type.children_done",
 };
 
 // due_date is a calendar day — format timezone-safely (no offset day shift).

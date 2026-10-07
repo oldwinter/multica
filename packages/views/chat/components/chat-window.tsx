@@ -187,7 +187,8 @@ export function ChatWindow({ onMinimize }: { onMinimize: () => void }) {
   } = useChatTaskActions(activeSessionId, enqueueLocalRestore);
   // Nonce handed to ChatInput to pull focus into the compose box: when a new
   // chat starts (⊕ or switching agent), and whenever the window itself opens.
-  const { focusRequest, requestInputFocus } = useChatInputFocus(isOpen);
+  const windowRef = useRef<HTMLDivElement>(null);
+  const { focusRequest, requestInputFocus } = useChatInputFocus(isOpen, windowRef);
   const [conversationStarterRequest, setConversationStarterRequest] = useState<{
     id: number;
     content: string;
@@ -759,7 +760,6 @@ export function ChatWindow({ onMinimize }: { onMinimize: () => void }) {
 
   const isExpanded = useChatStore((s) => s.isExpanded);
 
-  const windowRef = useRef<HTMLDivElement>(null);
   const { renderWidth, renderHeight, isAtMax, boundsReady, isDragging, toggleExpand, startDrag } = useChatResize(windowRef);
 
   // Show the list (vs empty state) as soon as there's anything to display —
