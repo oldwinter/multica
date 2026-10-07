@@ -42,7 +42,9 @@ CI then found a fourth one. The local token-contract checker treated any
 `case "field":` as a branch on the `field` skin, and upstream's wakeup
 conditions have a `"field"` kind. The checker now reads `case` labels only
 inside a `switch` whose discriminant names a skin, and a regression fixture
-covers the overlap.
+covers the overlap. CI also failed desktop `App.auth-recovery`, which was
+already red on `main`. Its `theme-provider` mock predates the local
+`AppearanceSyncBridge`, so the mock now provides `useSkin` and `useTheme`.
 
 Migrations 551–564 are upstream-only. Downstream ends at 550, so no prefix
 collides and the duplicate-prefix lint is unchanged. The runner's
