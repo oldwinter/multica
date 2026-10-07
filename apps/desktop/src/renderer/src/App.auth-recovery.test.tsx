@@ -72,6 +72,8 @@ vi.mock("@multica/core/paths", () => ({
 vi.mock("@multica/core/analytics", () => ({ captureEvent: vi.fn() }));
 vi.mock("@multica/ui/components/common/theme-provider", () => ({
   ThemeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useSkin: () => ({ skin: "tension", setSkin: () => {} }),
+  useTheme: () => ({ theme: "system", setTheme: () => {} }),
 }));
 vi.mock("@multica/ui/components/common/multica-icon", () => ({
   MulticaIcon: () => <div data-testid="app-loading" />,
